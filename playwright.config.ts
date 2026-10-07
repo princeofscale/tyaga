@@ -22,7 +22,7 @@ export default defineConfig({
     {
       command:
         "npx wrangler d1 migrations apply DB --local --persist-to .wrangler/e2e && npm run preview:server -- --port 8787 --persist-to .wrangler/e2e",
-      url: "http://localhost:8787/api/data",
+      url: "http://localhost:8787/api/auth/session",
       reuseExistingServer: !process.env.CI,
       timeout: 60000,
     },

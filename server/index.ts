@@ -13,6 +13,7 @@ import { PersonalExerciseFactory } from "./PersonalExerciseFactory";
 import { HistoryImportService } from "./HistoryImportService";
 import { BackupImportService } from "./BackupImportService";
 import { exerciseById } from "../src/lib/model";
+import { AccountService, AuthError } from "./AccountService";
 interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
@@ -53,12 +54,14 @@ export async function handleApi(request: Request, env: Env) {
       return json({ error: "Требуется JSON" }, 415);
   }
   try {
+    const accounts = new AccountService(env.DB, userId);
+    const authResponse = await accounts.handle(request);
+    if (authResponse) return authResponse;
+    const activeAccount = await accounts.require(request);
     const product = new ProductRepository(env.DB, userId);
     const definitions = async (ids: string[]) => {
-      const [wger, custom] = await Promise.all([
-        new ExerciseRepository(env.DB).findByIds(ids),
-        product.definitions(ids),
-      ]);
+      const wger = await new ExerciseRepository(env.DB).findByIds(ids);
+      const custom = await product.definitions(ids);
       return new Map([...wger, ...custom]);
     };
     if (request.method === "GET" && url.pathname === "/api/product")
@@ -184,7 +187,7 @@ export async function handleApi(request: Request, env: Env) {
         workouts: rows.map(fromRow),
         settings: setting
           ? { ...JSON.parse(setting.payload), revision: setting.revision }
-          : { ...DEFAULT_SETTINGS, revision: 0 },
+          : { ...DEFAULT_SETTINGS, timeZone: activeAccount.timeZone, revision: 0 },
       });
     }
     if (request.method === "PUT" && url.pathname === "/api/settings") {
@@ -237,7 +240,7 @@ export async function handleApi(request: Request, env: Env) {
         : [];
       const importedExercises = await definitions(externalIds);
       const w = validWorkout(input, {
-        timeZone: profile ? JSON.parse(profile.payload).timeZone : "UTC",
+        timeZone: profile ? JSON.parse(profile.payload).timeZone : activeAccount.timeZone,
         importedExercises,
       });
       const { revision = 0, updatedAt: _updatedAt, ...content } = w;
@@ -312,6 +315,7 @@ export async function handleApi(request: Request, env: Env) {
     }
     return json({ error: "Не найдено" }, 404);
   } catch (error) {
+    if (error instanceof AuthError) return json({ error: error.message }, error.status);
     if (error instanceof InputError) return json({ error: error.message }, 400);
     if (error instanceof SyntaxError)
       return json({ error: "Некорректный JSON" }, 400);

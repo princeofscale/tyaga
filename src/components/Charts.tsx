@@ -2,7 +2,7 @@ import {
   fmt,
   localDate,
   addCalendarDays,
-  volume,
+  volumeSummary,
   type Workout,
 } from "../lib/model";
 
@@ -19,7 +19,7 @@ export function VolumeChart({
     return {
       date,
       day: Number(date.slice(8)),
-      value: volume(workouts.filter((w) => w.date === date)),
+      value: volumeSummary(workouts.filter((w) => w.date === date), "all").total,
     };
   });
   const max = Math.max(...days.map((d) => d.value), 1);

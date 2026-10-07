@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { m, AnimatePresence } from "motion/react";
-import { Activity, BookOpen, Dumbbell, Info, Target } from "lucide-react";
+import { Activity, BookOpen, Dumbbell, Flame, Info, Target } from "lucide-react";
 import BodyMap from "./BodyMap";
 import { AnatomyPresenter, type AnatomyPart } from "../domain/AnatomyPresenter";
 import {
@@ -43,6 +43,11 @@ export default function AnatomyExplorer({
     [workouts, options],
   );
   const activity = presenter.activity(part);
+  const warmupPresenter = useMemo(
+    () => new AnatomyPresenter(loads, workouts, { mapping: options.mapping, setKind: "warmup" }),
+    [loads, workouts, options.mapping],
+  );
+  const warmup = warmupPresenter.activity(part);
   const related = EXERCISES.filter((e) =>
     e.muscles.some(
       (m) => part.muscles.includes(m.muscleId) && m.role === "primary",
@@ -132,6 +137,10 @@ export default function AnatomyExplorer({
                   <span>стабилизация</span>
                 </div>
               </div>
+              {(warmup.direct + warmup.assisting + warmup.stabilizing) > 0 && <p className="anatomy-warmup">
+                <Flame size={15} />
+                Разминка: {warmup.direct} прямых, {warmup.assisting} с помощью, {warmup.stabilizing} со стабилизацией.
+              </p>}
               <div className="anatomy-muscle-rows">
                 {anatomy
                   .filter((m) => part.muscles.includes(m.id))

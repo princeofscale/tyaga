@@ -34,7 +34,7 @@ export type MuscleRole = {
 };
 export type Exercise = LegacyExercise & {
   aliases?: string[];
-  custom?: { familyId: string; declaredZones: Muscle[]; origin?: string };
+  custom?: { familyId: string; declaredZones: Muscle[]; origin?: string; basedOnExerciseId?: string };
   catalogRevision: 1 | 2 | 3;
   familyId: string;
   nameEn: string;
@@ -48,7 +48,7 @@ export type Exercise = LegacyExercise & {
     curator: string;
     reviewedAt: string | null;
     license: string;
-    reviewStatus: "editorial" | "legacy-unreviewed" | "source-unreviewed";
+    reviewStatus: "editorial" | "legacy-unreviewed" | "source-unreviewed" | "user-declared";
   };
   source?: {
     provider: "wger";
@@ -95,6 +95,21 @@ export type Workout = {
   analysisVersion?: 1 | 2;
   routineId?: string;
   restSeconds?: number;
+  wearable?: WearableSummary;
+};
+export type WearableSummary = {
+  provider: "apple-health";
+  sourceName: string;
+  activityType: "HKWorkoutActivityTypeTraditionalStrengthTraining" | "HKWorkoutActivityTypeFunctionalStrengthTraining";
+  startedAt: string;
+  endedAt: string;
+  importedAt: string;
+  caloriesKcal?: number;
+  energyKind?: "active" | "reported";
+  heartRateAverage?: number;
+  heartRateMin?: number;
+  heartRateMax?: number;
+  heartRateSamples: number;
 };
 export type Routine = {
   id: string;

@@ -4,6 +4,7 @@ import {
   integer,
   index,
   primaryKey,
+  uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
 export const workouts = sqliteTable(
@@ -92,3 +93,32 @@ export const favoriteExercises = sqliteTable(
   },
   (table) => [primaryKey({ columns: [table.ownerId, table.exerciseId] })],
 );
+
+// The hosted ingress identity owns existing journal rows. An application account
+// adds password/session authentication without reassigning or rewriting history.
+export const accounts = sqliteTable("accounts", {
+  id: text("id").primaryKey(),
+  platformId: text("platform_id").notNull(),
+  email: text("email").notNull(),
+  displayName: text("display_name").notNull(),
+  passwordHash: text("password_hash").notNull(),
+  salt: text("salt").notNull(),
+  recoveryHash: text("recovery_hash").notNull(),
+  timeZone: text("time_zone").notNull(),
+  bodyMassKg: integer("body_mass_kg"),
+  revision: integer("revision").notNull().default(1),
+  createdAt: text("created_at").notNull(),
+}, (t) => [uniqueIndex("idx_accounts_platform").on(t.platformId)]);
+
+export const sessions = sqliteTable("sessions", {
+  tokenHash: text("token_hash").primaryKey(),
+  accountId: text("account_id").notNull().references(() => accounts.id),
+  expiresAt: integer("expires_at").notNull(),
+  createdAt: integer("created_at").notNull(),
+}, (t) => [index("idx_sessions_account_expiry").on(t.accountId, t.expiresAt)]);
+
+export const authLimits = sqliteTable("auth_limits", {
+  platformId: text("platform_id").primaryKey(),
+  attempts: integer("attempts").notNull(),
+  windowStart: integer("window_start").notNull(),
+});

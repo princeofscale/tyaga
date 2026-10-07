@@ -49,6 +49,8 @@ export class ApiClient {
     } catch {
       throw new Error("Сервис временно недоступен. Попробуй ещё раз.");
     }
+    if (response.status === 401 && !path.startsWith("/api/auth/") && typeof window !== "undefined")
+      window.dispatchEvent(new Event("tyaga:auth-expired"));
     if (!response.ok)
       throw new ApiError(
         data.error ?? "Не удалось выполнить запрос",

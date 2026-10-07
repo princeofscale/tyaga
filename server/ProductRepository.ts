@@ -7,41 +7,37 @@ export class ProductRepository {
     private owner: string,
   ) {}
   async read(): Promise<ProductData> {
-    const [routines, custom, favorites, definitions] = await Promise.all([
+    const [routines, custom, favorites, definitions] = await this.db.batch([
       this.db
         .prepare(
           "SELECT payload,revision,updated_at FROM routines WHERE owner_id=? ORDER BY updated_at DESC,id",
         )
-        .bind(this.owner)
-        .all<{ payload: string; revision: number; updated_at: string }>(),
+        .bind(this.owner),
       this.db
         .prepare(
           "SELECT payload FROM custom_exercises WHERE owner_id=? AND active=1 ORDER BY updated_at DESC,id",
         )
-        .bind(this.owner)
-        .all<{ payload: string }>(),
+        .bind(this.owner),
       this.db
         .prepare(
           "SELECT exercise_id FROM favorite_exercises WHERE owner_id=? ORDER BY exercise_id",
         )
-        .bind(this.owner)
-        .all<{ exercise_id: string }>(),
+        .bind(this.owner),
       this.db
         .prepare(
           "SELECT e.payload FROM exercise_catalog e JOIN favorite_exercises f ON f.exercise_id=e.id WHERE f.owner_id=? UNION ALL SELECT e.payload FROM custom_exercises e JOIN favorite_exercises f ON f.exercise_id=e.id AND f.owner_id=e.owner_id WHERE f.owner_id=? LIMIT 200",
         )
-        .bind(this.owner, this.owner)
-        .all<{ payload: string }>(),
+        .bind(this.owner, this.owner),
     ]);
     return {
-      routines: routines.results.map((r) => ({
+      routines: (routines.results as {payload:string;revision:number;updated_at:string}[]).map((r) => ({
         ...JSON.parse(r.payload),
         revision: r.revision,
         updatedAt: r.updated_at,
       })),
-      customExercises: custom.results.map((r) => JSON.parse(r.payload)),
-      favorites: favorites.results.map((r) => r.exercise_id),
-      favoriteDefinitions: definitions.results.map((r) =>
+      customExercises: (custom.results as {payload:string}[]).map((r) => JSON.parse(r.payload)),
+      favorites: (favorites.results as {exercise_id:string}[]).map((r) => r.exercise_id),
+      favoriteDefinitions: (definitions.results as {payload:string}[]).map((r) =>
         JSON.parse(r.payload),
       ),
     };

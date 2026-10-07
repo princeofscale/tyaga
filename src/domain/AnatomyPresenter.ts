@@ -1,4 +1,5 @@
 import { exerciseForEntry, exerciseById } from "../lib/catalog";
+import type { AnalysisOptions } from "./TrainingAnalytics";
 import type {
   AnatomicalMuscle,
   Exercise,
@@ -130,7 +131,7 @@ export class AnatomyPresenter {
   constructor(
     private loads: MuscleLoad[],
     private workouts: Workout[] = [],
-    private options: { mapping?: "recorded" | "current"; maxRir?: number } = {},
+    private options: AnalysisOptions = {},
   ) {}
   part(
     slug: string,
@@ -161,7 +162,7 @@ export class AnatomyPresenter {
         const count = entry.sets.filter(
           (s) =>
             s.done &&
-            !s.warmup &&
+            (this.options.setKind === "all" || (this.options.setKind === "warmup" ? s.warmup : !s.warmup)) &&
             (this.options.maxRir === undefined ||
               (s.rir !== null && s.rir <= this.options.maxRir)),
         ).length;
@@ -184,7 +185,7 @@ export class AnatomyPresenter {
     if (roles.some((m) => m.role === "primary")) return "primary";
     if (roles.some((m) => m.role === "assistant")) return "assistant";
     if (roles.some((m) => m.role === "stabilizer")) return "stabilizer";
-    if (exercise.source) {
+    if (exercise.source && exercise.provenance.reviewStatus === "source-unreviewed") {
       if (
         exercise.source.record.muscles.some((m) => part.wgerIds.includes(m.id))
       )

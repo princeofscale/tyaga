@@ -30,6 +30,19 @@ export interface WgerRecord {
   adaptation: string;
   loggable: boolean;
   recordType?: "reps" | "duration";
+  review?: {
+    version: string;
+    primary: Exercise["muscles"][number]["muscleId"][];
+    assistant: Exercise["muscles"][number]["muscleId"][];
+    stabilizer: Exercise["muscles"][number]["muscleId"][];
+    confidence: "high" | "moderate";
+    recording: Exercise["recording"];
+    variant: string;
+    instructions: string;
+    jointActions: string[];
+    evidence: string[];
+    limitations: string;
+  };
   localization?: {
     version: string;
     sourceLanguage: string;
@@ -74,7 +87,7 @@ export class WgerExerciseAdapter {
   ) {}
   toExercise(row: WgerRecord): Exercise {
     const equipmentIds = row.equipment.map((e) => e.id);
-    return {
+    const exercise: Exercise = {
       id: row.id,
       name: row.name,
       nameEn: row.nameEn,
@@ -120,5 +133,25 @@ export class WgerExerciseAdapter {
         record: row,
       },
     };
+    if (row.review) return new WgerMuscleReview().apply(exercise, row.review);
+    return exercise;
+  }
+}
+
+import { ANATOMICAL_MUSCLES } from "../data/muscles";
+/** Explicit published editorial reviews, never an automatic name-based inference. */
+export class WgerMuscleReview {
+  apply(exercise: Exercise, review: NonNullable<WgerRecord["review"]>): Exercise {
+    const muscles: Exercise["muscles"] = [];
+    for (const role of ["primary", "assistant", "stabilizer"] as const) {
+      for (const muscleId of review[role]) {
+        const zone = ANATOMICAL_MUSCLES.find(m => m.id === muscleId)!.zone;
+        muscles.push({ muscleId, role, confidence: review.confidence, basis: "anatomical-inference", sources: [zone === "core" ? "anatomy-trunk" : muscleId === "erector-spinae" ? "anatomy-back" : ["quads","hamstrings","calves","glutes"].includes(zone) ? "anatomy-lower" : "anatomy-upper"] });
+      }
+    }
+    const zones = (role: "primary" | "assistant") => [...new Set(muscles.filter(m => m.role === role).map(m => ANATOMICAL_MUSCLES.find(a => a.id === m.muscleId)!.zone))];
+    return { ...exercise, muscles, primary: zones("primary"), secondary: zones("assistant").filter(z => !zones("primary").includes(z)),
+      recording: review.recording, variant: review.variant, tip: review.instructions, jointActions: review.jointActions, evidence: review.evidence,
+      limitations: review.limitations, provenance: { ...exercise.provenance, curator: "Tyaga editorial review", reviewedAt: "2026-10-07", reviewStatus: "editorial" } };
   }
 }

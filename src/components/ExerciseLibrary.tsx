@@ -214,7 +214,8 @@ function LibraryContent({
           <p>
             {query.data?.russianCount ?? 918} упражнений на русском. Поиск по
             русским алиасам и английским оригиналам. Описания переведены
-            машинно; роли мышц указаны wger.
+            машинно. У 26 вариантов роли мышц и правило веса проверены по источникам;
+            остальные помечены как непроверенные.
           </p>
         </div>
       ) : null}
@@ -272,7 +273,7 @@ function LibraryContent({
                   <div className="library-copy">
                     <span className="exercise-source-tag">
                       {e.source
-                        ? "wger · " + e.source.record.language.toUpperCase()
+                        ? "wger · " + (e.source.record.review ? "проверено по источникам" : "разметка не проверена")
                         : e.custom
                           ? "МОЁ УПРАЖНЕНИЕ"
                           : "ТЯГА · КАТАЛОГ 2"}

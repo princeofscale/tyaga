@@ -89,14 +89,14 @@ export const balanceScore = (loads: MuscleLoad[]) =>
           100,
       )
     : 0;
-export function volumeSummary(workouts: Workout[]) {
+export function volumeSummary(workouts: Workout[], kind: "working" | "warmup" | "all" = "working") {
   let total = 0,
     omittedSets = 0;
   for (const w of workouts)
     for (const we of w.exercises) {
       const spec = exerciseForEntry(we)?.recording;
       for (const s of we.sets)
-        if (s.done && !s.warmup) {
+        if (s.done && (kind === "all" || (kind === "warmup" ? s.warmup : !s.warmup))) {
           if (
             !spec ||
             spec.type === "duration" ||

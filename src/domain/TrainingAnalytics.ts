@@ -4,6 +4,7 @@ import type { Workout, Settings, MuscleLoad, Exercise } from "../lib/types";
 export interface AnalysisOptions {
   mapping?: "recorded" | "current";
   maxRir?: number;
+  setKind?: "working" | "warmup" | "all";
 }
 export class TrainingAnalytics {
   constructor(
@@ -21,7 +22,7 @@ export class TrainingAnalytics {
         const count = entry.sets.filter(
           (s) =>
             s.done &&
-            !s.warmup &&
+            (this.options.setKind === "all" || (this.options.setKind === "warmup" ? s.warmup : !s.warmup)) &&
             (this.options.maxRir === undefined ||
               (s.rir !== null && s.rir <= this.options.maxRir)),
         ).length;

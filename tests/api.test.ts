@@ -35,7 +35,19 @@ async function sandbox(
     if (i === 0 && beforeUpgrade) await beforeUpgrade(db);
   }
   const base = "http://localhost";
-  const request = (
+  const cookies = new Map<string, Promise<string>>();
+  const accountCookie = (owner: string) => {
+    if (!cookies.has(owner)) cookies.set(owner, (async () => {
+      const response = await mf.dispatchFetch(base + "/api/auth/register", {
+        method: "POST", headers: { "oai-authenticated-user-id": owner, Origin: base, "Content-Type": "application/json" },
+        body: JSON.stringify({ email: `${owner}@example.test`, password: "test account passphrase", displayName: owner, timeZone: "UTC" }),
+      });
+      assert.equal(response.status, 201);
+      return response.headers.get("Set-Cookie")!.split(";")[0];
+    })());
+    return cookies.get(owner)!;
+  };
+  const request = async (
     path: string,
     method = "GET",
     body?: unknown,
@@ -45,7 +57,7 @@ async function sandbox(
     mf.dispatchFetch(base + path, {
       method,
       headers: {
-        ...(owner ? { "oai-authenticated-user-id": owner } : {}),
+        ...(owner ? { "oai-authenticated-user-id": owner, Cookie: await accountCookie(owner) } : {}),
         Origin: origin,
         "Content-Type": "application/json",
       },
@@ -379,7 +391,7 @@ test("wger imports resume in bounded batches, search is paged and saved definiti
       918,
     );
     assert.ok(result.exercises.length > 0 && result.exercises.length <= 24);
-    const e = result.exercises.find((e: any) => e.source.record.loggable);
+    const e = result.exercises.find((e: any) => e.source.record.loggable && e.provenance.reviewStatus === "source-unreviewed");
     assert.ok(e);
     assert.ok(
       e.source.record.attributions.every((a: any) =>

@@ -46,7 +46,7 @@ export default function ExerciseInfo({
           compact
         />
         <p>
-          {e.source
+          {e.source && e.provenance.reviewStatus === "source-unreviewed"
             ? "Зоны мышц по данным wger"
             : "Основные роли в выбранном варианте"}{" "}
           · условный атлас
@@ -57,6 +57,7 @@ export default function ExerciseInfo({
           ? "WGER · " + e.source.record.language.toUpperCase()
           : `Вариант упражнения · каталог ${e.catalogRevision}`}
       </span>
+      {e.source?.record.review && <span className="reviewed-tag">Разметка проверена по источникам · редакционная модель</span>}
       <p>{e.variant}</p>
       <p className="exercise-instructions">{e.tip}</p>
       {e.aliases?.length ? (
@@ -161,11 +162,11 @@ export default function ExerciseInfo({
         ) : null;
       })}
       <p className="catalog-limit">{e.limitations}</p>
-      {!e.source ? (
+      {!e.source || e.provenance.reviewStatus === "editorial" ? (
         <details className="evidence-details">
           <summary>Источники и границы данных</summary>
           <p className="tiny">
-            Разметка составлена с помощью ИИ и сверена с указанными источниками.
+            {e.custom?.basedOnExerciseId ? "Базовое движение выбрано владельцем; его роли перенесены в свой вариант. " : "Разметка составлена с помощью ИИ и сверена с указанными источниками. "}
             Это редакционная модель, без независимой сертификации специалистом.
             Список описывает основные роли и не исчерпывает все работающие
             мышцы.

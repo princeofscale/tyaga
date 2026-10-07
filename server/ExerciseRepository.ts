@@ -1,4 +1,5 @@
-import data from "../data/wger/catalog-v2-ru.json";
+import data from "../data/wger/catalog-v3-reviewed.json";
+import previousRuData from "../data/wger/catalog-v2-ru.json";
 import previousData from "../data/wger/catalog-v1.json";
 import {
   WgerExerciseAdapter,
@@ -164,23 +165,21 @@ export class ExerciseRepository {
       bindings.push(language);
     }
     const clause = where.join(" AND ");
-    const [rows, count] = await Promise.all([
+    const [rows, counts] = await this.db.batch([
       this.db
         .prepare(
           `SELECT payload FROM exercise_catalog JOIN catalog_memberships ON exercise_catalog.id = catalog_memberships.exercise_id WHERE ${clause} ORDER BY name, exercise_catalog.id LIMIT 24 OFFSET ?`,
         )
-        .bind(...bindings, (Math.floor(page) - 1) * 24)
-        .all<{ payload: string }>(),
+        .bind(...bindings, (Math.floor(page) - 1) * 24),
       this.db
         .prepare(
           `SELECT COUNT(*) AS count FROM exercise_catalog JOIN catalog_memberships ON exercise_catalog.id = catalog_memberships.exercise_id WHERE ${clause}`,
         )
-        .bind(...bindings)
-        .first<{ count: number }>(),
+        .bind(...bindings),
     ]);
     return {
-      exercises: rows.results.map((r) => JSON.parse(r.payload) as Exercise),
-      total: count?.count ?? 0,
+      exercises: (rows.results as {payload:string}[]).map((r) => JSON.parse(r.payload) as Exercise),
+      total: (counts.results[0] as {count:number} | undefined)?.count ?? 0,
       page: Math.floor(page),
       pageSize: 24,
       catalogTotal: snapshot.count,
@@ -199,8 +198,12 @@ export class ExerciseRepository {
     // Published source records remain immutable; a translated release has new IDs.
     const archive = previousData as WgerSnapshot;
     const archived = archive.exercises.filter((r) => unique.includes(r.id));
+    const previousRu = previousRuData as WgerSnapshot;
+    const previousRussian = previousRu.exercises.filter(r => unique.includes(r.id));
     const current = snapshot.exercises.filter((r) => unique.includes(r.id));
     const statements: D1PreparedStatement[] = [];
+    for (let i = 0; i < previousRussian.length; i += 8)
+      statements.push(this.insert(previousRussian.slice(i, i + 8), previousRu.release, previousRu.fetchedAt));
     for (let i = 0; i < archived.length; i += 8)
       statements.push(
         this.insert(

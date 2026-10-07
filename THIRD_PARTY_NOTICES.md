@@ -16,6 +16,7 @@ an independently validated clinical atlas.
 
 Manrope and Unbounded: SIL Open Font License 1.1. React, React DOM, Lucide,
 Motion/Framer Motion and TanStack Query: their original MIT notices apply.
+Apple Health import: fflate (MIT), saxes (ISC) and xmlchars (MIT).
 Full applicable notices copied from the pinned installed packages are included in
 `public/licenses/third-party.txt` and served with the application.
 
@@ -40,3 +41,7 @@ Tyaga does not claim scientific or professional certification of these records.
 OpenGym's documented routines, double progression, personal exercises and history
 imports informed product choices. Their implementations here are original; no
 OpenGym AGPL source or media are redistributed.
+
+The reviewed Russian release in `data/wger/catalog-v3-reviewed.json` adds explicit
+AI-assisted editorial reviews to 26 records, retaining original source records
+and applicable CC licences. The review layer does not relicense the data.

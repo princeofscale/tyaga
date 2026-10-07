@@ -33,6 +33,7 @@ import {
   type PersistenceStatus,
 } from "../lib/draft";
 export type { Draft } from "../lib/draft";
+import { WarmupPlanner } from "../domain/WarmupPlanner";
 
 type Props = {
   draft: Draft | null;
@@ -129,6 +130,8 @@ export default function WorkoutView({
     ? w.duration
     : Math.floor(elapsedMs(draft, now) / 60000);
   const summary = volumeSummary([w]);
+  const warmupSummary = volumeSummary([w], "warmup");
+  const warmupCount = w.exercises.reduce((n,e) => n + e.sets.filter(s => s.done && s.warmup).length, 0);
   const startRest = () =>
     update({
       ...draft,
@@ -450,6 +453,11 @@ export default function WorkoutView({
                 <Plus size={15} />
                 Добавить подход
               </button>
+              {!we.sets.some(s => s.warmup) && new WarmupPlanner(we).create().length > 0 && <div className="warmup-scaffold">
+                <button className="text-button" onClick={() => patchExercise(ei, { sets: [...new WarmupPlanner(we).create(), ...we.sets] })}>
+                  <Plus size={15} />Добавить 3 разминочных
+                </button><p className="tiny">Заготовка 40 / 60 / 80% записанного рабочего веса. Проверь и измени веса и повторы под себя.</p>
+              </div>}
             </article>
           );
         })}
@@ -553,9 +561,10 @@ export default function WorkoutView({
             Рабочие подходы<b>{workingSets([w])}</b>
           </span>
           <span>
-            Внешний объём<b>{fmt(summary.total)} кг</b>
+            Рабочий тоннаж<b>{fmt(summary.total)} кг</b>
           </span>
         </div>
+        <p className="tiny warmup-live">Разминка: <b>{warmupCount} подх.</b> · {fmt(warmupSummary.total)} кг. Весь внешний тоннаж: <b>{fmt(summary.total + warmupSummary.total)} кг</b>.</p>
         {summary.omittedSets ? (
           <p className="tiny">
             {summary.omittedSets} подх. с массой тела, тренажёрами или

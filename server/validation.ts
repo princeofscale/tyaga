@@ -116,7 +116,7 @@ export function validWorkout(
     if (e.progressionNote !== undefined)
       metadata.progressionNote = str(e.progressionNote, 500);
     if (
-      catalogRevision === 2 &&
+      (catalogRevision === 2 || exercise.source?.record.review) &&
       ["machine_stack", "assisted_bodyweight"].includes(
         exercise.recording.loadMode,
       ) &&
@@ -201,6 +201,26 @@ export function validWorkout(
     exercises,
     revision: validRevision(w.revision),
   };
+  if (w.wearable !== undefined) {
+    const h = object(w.wearable);
+    if (h.provider !== "apple-health" || !["HKWorkoutActivityTypeTraditionalStrengthTraining", "HKWorkoutActivityTypeFunctionalStrengthTraining"].includes(String(h.activityType)))
+      throw new InputError("Нужна силовая тренировка из Apple Health");
+    const startedAt = str(h.startedAt, 40, 1), endedAt = str(h.endedAt, 40, 1), importedAt = str(h.importedAt, 40, 1);
+    const start = Date.parse(startedAt), end = Date.parse(endedAt);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || !Number.isFinite(Date.parse(importedAt)) || end <= start || end-start > 86400000 || localDate(new Date(start),timeZone) !== date)
+      throw new InputError("Дата показателей Apple Health должна совпадать с датой тренировки");
+    const wearable: NonNullable<Workout["wearable"]> = { provider:"apple-health", sourceName:str(h.sourceName,120,1), activityType:h.activityType as NonNullable<Workout["wearable"]>["activityType"], startedAt, endedAt, importedAt, heartRateSamples:num(h.heartRateSamples,0,20000,true) };
+    if (h.caloriesKcal !== undefined) {
+      wearable.caloriesKcal = num(h.caloriesKcal,0,10000);
+      if (!["active","reported"].includes(String(h.energyKind))) throw new InputError("Проверь тип энергии Apple Health");
+      wearable.energyKind = h.energyKind as "active"|"reported";
+    }
+    for (const key of ["heartRateAverage","heartRateMin","heartRateMax"] as const)
+      if (h[key] !== undefined) wearable[key] = num(h[key],1,400);
+    if (wearable.heartRateMin !== undefined && wearable.heartRateMax !== undefined && wearable.heartRateMin > wearable.heartRateMax)
+      throw new InputError("Некорректный диапазон пульса");
+    result.wearable = wearable;
+  }
   if (w.timeZone !== undefined) result.timeZone = timeZone;
   if (w.createdAt !== undefined) {
     const stamp = str(w.createdAt, 40, 1);

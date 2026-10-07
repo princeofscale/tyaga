@@ -114,18 +114,19 @@ export function parseDraft(text: string | null): Draft | null {
 export function persistDraft(
   storage: Pick<Storage, "setItem" | "removeItem">,
   draft: Draft | null,
+  key = DRAFT_KEY,
 ): PersistenceStatus {
   try {
-    if (draft) storage.setItem(DRAFT_KEY, JSON.stringify(draft));
-    else storage.removeItem(DRAFT_KEY);
+    if (draft) storage.setItem(key, JSON.stringify(draft));
+    else storage.removeItem(key);
     return "saved";
   } catch {
     return "failed";
   }
 }
-export function readDraft(): Draft | null {
+export function readDraft(key = DRAFT_KEY): Draft | null {
   try {
-    return parseDraft(localStorage.getItem(DRAFT_KEY));
+    return parseDraft(localStorage.getItem(key));
   } catch {
     return null;
   }

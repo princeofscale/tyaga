@@ -1,6 +1,6 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import App from "./App";
+import AccountGate from "./components/AccountGate";
 import { LazyMotion, MotionConfig } from "motion/react";
 import "@fontsource-variable/manrope";
 import "@fontsource-variable/unbounded";
@@ -12,7 +12,7 @@ createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <LazyMotion features={loadMotionFeatures}>
       <MotionConfig reducedMotion="user">
-        <App />
+        <AccountGate />
       </MotionConfig>
     </LazyMotion>
   </React.StrictMode>,

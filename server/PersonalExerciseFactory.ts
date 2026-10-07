@@ -1,6 +1,7 @@
 import type { Exercise, Equipment, RecordingSpec } from "../src/lib/types";
 import { MUSCLES } from "../src/data/muscles";
 import { object, str, num, InputError } from "./validation";
+import { exerciseById } from "../src/lib/catalog";
 
 export async function digest(text: string) {
   const hash = await crypto.subtle.digest(
@@ -50,6 +51,11 @@ export class PersonalExerciseFactory {
       : [];
     if (declaredZones.some((z) => !MUSCLES.some((m) => m.id === z)))
       throw new InputError("Проверь группы мышц");
+    const basedOn = typeof v.basedOnExerciseId === "string" && v.basedOnExerciseId
+      ? exerciseById(str(v.basedOnExerciseId, 80, 1), 2) : undefined;
+    if (v.basedOnExerciseId && (!basedOn || basedOn.provenance.reviewStatus !== "editorial"))
+      throw new InputError("Выбери проверенный базовый вариант движения");
+    if (basedOn && recording.type === "duration") throw new InputError("Базовое движение с повторами не подходит для записи времени");
     const content = {
       name,
       nameEn: typeof v.nameEn === "string" ? str(v.nameEn, 120) : "",
@@ -70,6 +76,7 @@ export class PersonalExerciseFactory {
       custom: {
         familyId,
         declaredZones: declaredZones as Exercise["primary"],
+        ...(basedOn ? { basedOnExerciseId: basedOn.id } : {}),
         ...(typeof v.origin === "string" ? { origin: str(v.origin, 120) } : {}),
       },
     };
@@ -78,19 +85,18 @@ export class PersonalExerciseFactory {
       id: `custom:${familyId}:${await digest(JSON.stringify(content))}`,
       familyId,
       catalogRevision: 3,
-      primary: [],
-      secondary: [],
-      variant: "Свой вариант. Правило записи выбрано владельцем.",
-      jointActions: [],
-      muscles: [],
-      evidence: [],
-      limitations:
-        "Мышцы указаны пользователем для поиска. В покрытие мышечных ориентиров и расчётный 1ПМ этот вариант не входит.",
+      primary: basedOn?.primary ?? [],
+      secondary: basedOn?.secondary ?? [],
+      variant: basedOn ? `Свой вариант на основе «${basedOn.name}». Соответствие движения выбрано владельцем.` : "Свой вариант. Правило записи выбрано владельцем.",
+      jointActions: basedOn?.jointActions ?? [],
+      muscles: basedOn?.muscles ?? [],
+      evidence: basedOn?.evidence ?? [],
+      limitations: basedOn ? "Роли мышц взяты из выбранного тобой базового движения. Устройство тренажёра и техника могут отличаться: это пользовательская разметка, не отдельная экспертная проверка. Подходы участвуют в карте; расчётный 1ПМ отключён." : "Мышцы указаны пользователем для поиска. В покрытие мышечных ориентиров и расчётный 1ПМ этот вариант не входит.",
       provenance: {
         curator: "Владелец журнала",
         reviewedAt: null,
         license: "Personal metadata",
-        reviewStatus: "source-unreviewed",
+        reviewStatus: basedOn ? "user-declared" : "source-unreviewed",
       },
     };
   }

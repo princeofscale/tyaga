@@ -1,6 +1,6 @@
 # wger catalogue snapshots
 
-The current `catalog-v2-ru.json` is a Russian adaptation of all 918 records in the
+The archived `catalog-v2-ru.json` is a Russian adaptation of all 918 records in the
 immutable `catalog-v1.json`, fetched from the official public
 `https://wger.de/api/v2/exerciseinfo/` endpoint on 7 October 2026. The source has
 10 Russian translations; the new release has 918 Russian names and descriptions,
@@ -28,17 +28,35 @@ Unreviewed records are excluded from muscle coverage, external volume and e1RM.
 Timed records use seconds and optional kilometres. The service entry for rest is
 browseable but cannot be added to a workout.
 
-Reproduce the current adaptation offline:
+The current `catalog-v3-reviewed.json` / `wger-ru-review-01143e07ac8859bf`
+adds 26 explicit source-backed editorial reviews to the Russian release. Review
+objects specify variant, functional roles, recording rules, evidence references
+and limitations. The other 892 records remain unreviewed. This is AI-assisted
+editorial work, not independent professional certification. Reviewed entries use
+new immutable content IDs; v1 and v2 remain resolvable for historical workouts.
+Reviewed instructions replace misleading cues in the presentation while the
+original source description remains in the record. The actual upstream fetch
+date is preserved; review dates do not pretend to be a new upstream fetch.
+
+Unreviewed records are excluded from muscle coverage, external volume and e1RM;
+reviewed entries use only their explicit recording and muscle specification.
+No activation percentages or generic keyword-based scientific inference are used.
+
+Reproduce the Russian adaptation offline:
 
 ```sh
 npm run catalog:localize
+npm run catalog:review
 ```
+
+These commands reproduce the committed releases. Do not change inputs and
+overwrite a published artifact: choose a new file and release for new reviews.
 
 See [localisation inputs](../localization/README.md). To fetch new data, choose a
 **new file and release**, review licences and variants, then update server inputs:
 
 ```sh
-npm run catalog:import -- --output data/wger/catalog-v3.json
+npm run catalog:import -- --output data/wger/catalog-v4.json
 ```
 
 Do not overwrite published snapshots or seed whole datasets in migrations. D1

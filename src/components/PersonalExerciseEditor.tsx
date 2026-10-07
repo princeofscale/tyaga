@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Exercise, Equipment, RecordingSpec } from "../lib/types";
-import { MUSCLES } from "../lib/model";
+import { MUSCLES, EXERCISES } from "../lib/model";
 import { productService } from "../services/ProductService";
 
 export default function PersonalExerciseEditor({
@@ -29,6 +29,7 @@ export default function PersonalExerciseEditor({
     exercise?.recording.laterality === "unilateral",
   );
   const [zones, setZones] = useState(exercise?.custom?.declaredZones ?? []);
+  const [basedOn, setBasedOn] = useState(exercise?.custom?.basedOnExerciseId ?? "");
   const [familyId] = useState(
     exercise?.custom?.familyId ?? crypto.randomUUID(),
   );
@@ -50,6 +51,7 @@ export default function PersonalExerciseEditor({
         notes,
         equipment,
         declaredZones: zones,
+          basedOnExerciseId: type === "reps" ? basedOn : "",
         recording: {
           type,
           loadMode,
@@ -152,6 +154,12 @@ export default function PersonalExerciseEditor({
           Одностороннее: повторы на каждую сторону
         </label>
         <div>
+          {type === "reps" && <label>Базовое движение для карты мышц
+            <select value={basedOn} onChange={e => setBasedOn(e.target.value)}>
+              <option value="">Без разметки — только журнал</option>
+              {EXERCISES.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+            </select><small className="tiny">Выбирай, если движение совпадает. Для жима от груди в своём тренажёре — жим лёжа; для тяги сидя — горизонтальная тяга. Это твоя разметка, её можно изменить отдельной версией.</small>
+          </label>}
           <p className="field-caption">
             Группы мышц для поиска — твоя разметка
           </p>
@@ -187,8 +195,8 @@ export default function PersonalExerciseEditor({
         </label>
         <p className="tiny">
           Этот вариант сохраняется в твоём аккаунте. Мышцы помогают искать
-          упражнение; в покрытие мышечных ориентиров и расчётный 1ПМ они не
-          включаются.
+          упражнение. Если выбрано базовое движение, подходы участвуют в карте
+          с пометкой пользовательской разметки. Расчётный 1ПМ отключён.
         </p>
         {error ? (
           <p className="error-banner" role="alert">

@@ -1,19 +1,38 @@
 import {
-  test,
+  test as baseTest,
   expect,
   type Page,
   type APIRequestContext,
 } from "@playwright/test";
+import { zipSync, strToU8 } from "fflate";
 const BASE = "http://localhost:5173";
 const WORKER = "http://127.0.0.1:8787";
 const headers = { Origin: BASE };
+let authCookie = "";
+const test = baseTest.extend({
+  request: async ({ playwright }, use) => {
+    const request = await playwright.request.newContext({ baseURL: BASE, extraHTTPHeaders: authCookie ? { Cookie: authCookie } : {} });
+    await use(request); await request.dispose();
+  },
+});
+async function signIn(request: APIRequestContext) {
+  if (authCookie) return;
+  const session = await (await request.get("/api/auth/session")).json();
+  const response = await request.post(`/api/auth/${session.registered ? "login" : "register"}`, {
+    headers, data: { email: "gym-e2e@example.test", password: "test account passphrase", displayName: "[E2E] Атлет", timeZone: "UTC" },
+  });
+  expect(response.ok()).toBeTruthy();
+  authCookie = response.headers()["set-cookie"].split(";")[0];
+}
 async function cleanup(request: APIRequestContext) {
+  if (!authCookie) return;
   // Setup uses the local worker directly. The UI and scenario assertions still
   // exercise Vite's proxy; cleanup avoids reusing its browser-lifetime sockets.
-  const cleanupHeaders = { ...headers, Connection: "close" };
+  const cleanupHeaders = { ...headers, Connection: "close", "Accept-Encoding": "identity", Cookie: authCookie };
   const data = await (
     await request.get(`${WORKER}/api/data`, { headers: cleanupHeaders })
   ).json();
+  expect(Array.isArray(data.workouts)).toBeTruthy();
   for (const w of data.workouts)
     if (w.name.startsWith("[E2E]"))
       await request.delete(WORKER + "/api/workouts/" + w.id, {
@@ -68,11 +87,45 @@ async function history(page: Page) {
     .getByRole("button", { name: "История", exact: true })
     .click();
 }
-test.beforeEach(async ({ request }) => {
+test.beforeEach(async ({ request, context }, info) => {
+  if (info.title.startsWith("account registration")) return;
+  await signIn(request);
+  const [name,value] = authCookie.split("=");
+  await context.addCookies([{ name, value, url: BASE }]);
   await cleanup(request);
 });
 test.afterEach(async ({ request }) => {
   await cleanup(request);
+});
+
+test("account registration or login, profile, logout and returning session work on mobile", async ({ page,context,request }) => {
+  await page.setViewportSize({width:390,height:844});
+  const state=await (await request.get("/api/auth/session")).json();
+  await page.goto("/");
+  if (!state.registered) await page.getByLabel("Как тебя зовут").fill("[E2E] Атлет");
+  await page.getByLabel("Почта",{exact:true}).fill("gym-e2e@example.test");
+  await page.getByLabel("Пароль",{exact:true}).fill("test account passphrase");
+  await page.screenshot({path:"artifacts/account-mobile-v4.png",fullPage:true});
+  await page.getByRole("button",{name:state.registered ? "Войти в Тягу" : "Создать аккаунт",exact:true}).click();
+  if (!state.registered) { await expect(page.getByRole("dialog",{name:"Код восстановления"})).toBeVisible(); await page.getByRole("button",{name:"Код сохранён"}).click(); }
+  await expect(page.getByRole("heading",{name:"Твой прогресс",exact:true})).toBeVisible();
+  await page.reload(); await expect(page.getByRole("heading",{name:"Твой прогресс",exact:true})).toBeVisible();
+  await page.getByRole("button",{name:"Открыть меню"}).click();
+  await page.locator(".profile-button").click();
+  await page.getByLabel("Имя",{exact:true}).fill("[E2E] Атлет");
+  await page.getByLabel("Вес тела, кг",{exact:true}).fill("75.5");
+  await page.getByLabel("Часовой пояс",{exact:true}).fill("UTC");
+  await page.getByRole("button",{name:"Сохранить профиль",exact:true}).click();
+  await expect(page.getByText("Профиль сохранён",{exact:true})).toBeVisible();
+  await page.getByRole("button",{name:"Выйти из аккаунта",exact:true}).click();
+  await expect(page.getByRole("heading",{name:"Снова в зале"})).toBeVisible();
+  await page.getByLabel("Почта",{exact:true}).fill("gym-e2e@example.test"); await page.getByLabel("Пароль",{exact:true}).fill("test account passphrase");
+  await page.getByRole("button",{name:"Войти в Тягу",exact:true}).click();
+  await expect(page.getByRole("heading",{name:"Твой прогресс",exact:true})).toBeVisible();
+  const cookie=(await context.cookies()).find(c=>c.name==="tyaga_session")!;
+  expect(cookie.httpOnly).toBeTruthy(); expect(cookie.sameSite).toBe("Strict"); authCookie=`${cookie.name}=${cookie.value}`;
+  expect(await page.evaluate(()=>document.cookie)).not.toContain("tyaga_session");
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
 });
 
 test("save/reload/edit/export/settings/repeat preserve the actual workout and timers", async ({
@@ -82,6 +135,7 @@ test("save/reload/edit/export/settings/repeat preserve the actual workout and ti
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
+  await page.getByRole("button",{name:"Посмотреть пример",exact:true}).click();
   await expect(page.getByText("Пример данных", { exact: true })).toBeVisible();
   await page.screenshot({ path: "artifacts/desktop-v2.png", fullPage: true });
   await page.getByRole("button", { name: "Собрать тренировку" }).click();
@@ -187,6 +241,8 @@ test("two browser devices do not overwrite each other and can keep a separate co
     viewport: { width: 1440, height: 1080 },
     locale: "ru-RU",
   });
+  const [cookieName,cookieValue] = authCookie.split("=");
+  await secondContext.addCookies([{name:cookieName,value:cookieValue,url:BASE}]);
   const second = await secondContext.newPage();
   await second.goto(BASE);
   await history(second);
@@ -356,9 +412,10 @@ test("warmup-only is blocked and timer completion is announced after restoration
     page.getByRole("button", { name: "Завершить тренировку", exact: true }),
   ).toBeDisabled();
   await page.evaluate(() => {
-    const d = JSON.parse(localStorage.getItem("tyaga-draft-v1")!);
+    const key = Object.keys(localStorage).find(k => k.startsWith("tyaga-draft-account:"))!;
+    const d = JSON.parse(localStorage.getItem(key)!);
     d.restUntil = Date.now() + 1200;
-    localStorage.setItem("tyaga-draft-v1", JSON.stringify(d));
+    localStorage.setItem(key, JSON.stringify(d));
   });
   await page.reload();
   await page
@@ -376,6 +433,7 @@ test("mobile layout, detailed muscle sources and 200% text stay usable", async (
   page.on("pageerror", (e) => errors.push(e.message));
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
+  await page.getByRole("button", { name: "Посмотреть пример", exact: true }).click();
   await expect(page.getByText("Пример данных", { exact: true })).toBeVisible();
   expect(
     await page.evaluate(
@@ -809,4 +867,41 @@ test("CSV import offers a Russian preview, saves literal weights and skips dupli
   await expect(page.locator(".toast")).toContainText(
     "добавлено 0, пропущено 1",
   );
+});
+
+test("first-session warmups and Apple Health XML/ZIP summaries persist without uploading the health export",async({page,request})=> {
+  const errors:string[]=[]; page.on("pageerror",e=>errors.push(e.message));
+  await startBench(page,"[E2E] Разминка и часы");
+  await page.getByLabel("Жим штанги лёжа, подход 1, вес",{exact:true}).fill("50");
+  await page.getByLabel("Жим штанги лёжа, подход 1, повторы",{exact:true}).fill("8");
+  await page.getByRole("button",{name:"Добавить 3 разминочных",exact:true}).click();
+  for(let i=1;i<=3;i++) {
+    await expect(page.getByLabel(`Жим штанги лёжа, подход ${i}, вес`,{exact:true})).toHaveValue(String([20,30,40][i-1]));
+    await page.getByRole("button",{name:`Отметить выполненным: Жим штанги лёжа, подход ${i}`,exact:true}).click();
+  }
+  await page.getByRole("button",{name:"Завершить тренировку",exact:true}).click();
+  await expect(page.getByRole("region",{name:"Итоги тренировки"})).toContainText("830 кг");
+  await expect(page.getByRole("region",{name:"Итоги тренировки"})).toContainText("Разминка: 430 кг");
+  await page.locator(".session-item").filter({hasText:"[E2E] Разминка и часы"}).click();
+  await page.getByText("Импорт из Apple Health",{exact:true}).click();
+  const original=(await (await request.get("/api/data")).json()).workouts.find((w:any)=>w.name==="[E2E] Разминка и часы");
+  const date=original.date;
+  const xml=`<?xml version="1.0"?><HealthData><Record type="HKQuantityTypeIdentifierHeartRate" sourceName="E2E Watch" startDate="${date} 18:00:00 +0000" endDate="${date} 18:00:00 +0000" unit="count/min" value="110"/><Record type="HKQuantityTypeIdentifierHeartRate" sourceName="E2E Watch" startDate="${date} 18:10:00 +0000" endDate="${date} 18:10:00 +0000" unit="count/min" value="130"/><Workout workoutActivityType="HKWorkoutActivityTypeTraditionalStrengthTraining" sourceName="E2E Watch" startDate="${date} 18:00:00 +0000" endDate="${date} 19:00:00 +0000" duration="60" durationUnit="min"><WorkoutStatistics type="HKQuantityTypeIdentifierActiveEnergyBurned" unit="kcal" sum="220"/></Workout></HealthData>`;
+  const bodies:string[]=[]; page.on("request",r=>{if(r.url().includes("/api/") && r.postData()) bodies.push(r.postData()!);});
+  await page.locator('.watch-import input[type="file"]').setInputFiles({name:"export.xml",mimeType:"application/xml",buffer:Buffer.from(xml)});
+  await expect(page.locator(".health-candidate")).toContainText("220 ккал");
+  await page.locator(".health-candidate").click();
+  await expect(page.locator(".watch-metrics")).toContainText("120");
+  await page.reload(); await history(page); await page.locator(".session-item").filter({hasText:"[E2E] Разминка и часы"}).click();
+  await expect(page.locator(".watch-metrics")).toContainText("220");
+  await page.getByText("Заменить данные из Apple Health",{exact:true}).click();
+  const archive=zipSync({"apple_health_export/export.xml":strToU8(xml.replace('sum="220"','sum="240"')),"ignored/medical.txt":strToU8("PRIVATE-UNRELATED-DATA")});
+  await page.locator('.watch-import input[type="file"]').setInputFiles({name:"export.zip",mimeType:"application/zip",buffer:Buffer.from(archive)});
+  await expect(page.locator(".health-candidate")).toContainText("240 ккал"); await page.locator(".health-candidate").click();
+  await expect(page.locator(".watch-metrics")).toContainText("240");
+  const saved=(await (await request.get("/api/data")).json()).workouts.find((w:any)=>w.id===original.id);
+  expect(saved.wearable.heartRateAverage).toBe(120); expect(saved.wearable.caloriesKcal).toBe(240); expect(saved.wearable.heartRateSamples).toBe(2);
+  expect(saved.duration).toBe(original.duration); expect(saved.exercises[0].sets.filter((s:any)=>s.done && s.warmup)).toHaveLength(3);
+  expect(bodies.every(b=>!b.includes("<Record") && !b.includes("PRIVATE-UNRELATED-DATA"))).toBeTruthy();
+  await page.screenshot({path:"artifacts/session-watch-v4.png",fullPage:true}); expect(errors).toEqual([]);
 });

@@ -115,6 +115,7 @@ export class HistoryImportService {
             : `Импорт из ${format}. Записанные значения источника сохранены.`,
         equipment: raw?.equipment ?? "gym",
         declaredZones: custom?.declaredZones ?? [],
+        basedOnExerciseId: custom?.basedOnExerciseId ?? "",
         origin: format,
         recording: raw?.recording ?? {
           type: e.type ?? "reps",
@@ -193,6 +194,7 @@ export class HistoryImportService {
           timeZone: source.timeZone ?? timeZone,
           revision: 0,
           analysisVersion: 2,
+          ...(format === "tyaga" && source.wearable ? { wearable: source.wearable } : {}),
           ...(source.routineId
             ? { routineId: routineMap.get(String(source.routineId)) }
             : {}),

@@ -87,6 +87,7 @@ const PersonalExerciseEditor = lazy(
   () => import("./components/PersonalExerciseEditor"),
 );
 const HistoryImporter = lazy(() => import("./components/HistoryImporter"));
+const AppleHealthPanel = lazy(() => import("./components/AppleHealthPanel"));
 import ExerciseInfo from "./components/ExerciseInfo";
 import {
   readDraft,
@@ -96,12 +97,16 @@ import {
   newDraft,
   type Draft,
   type PersistenceStatus,
+  DRAFT_KEY,
 } from "./lib/draft";
 import { WorkoutSession } from "./domain/WorkoutSession";
 import { api, ApiError } from "./services/ApiClient";
 import { productService } from "./services/ProductService";
 import { TrainingProgram } from "./domain/TrainingProgram";
 import { useTrainingTools } from "./lib/webmcp";
+import { AccountProfileForm } from "./components/AccountProfileForm";
+import type { AccountProfile } from "./lib/account";
+import SessionInsights from "./components/SessionInsights";
 
 type View =
   "overview" | "workout" | "history" | "library" | "progress" | "anatomy";
@@ -125,7 +130,8 @@ const dateLabel = (date: string, long = false) =>
     day: "numeric",
     month: long ? "long" : "short",
   });
-export default function App() {
+export default function App({ account, onAccountChange, onLogout }: { account: AccountProfile; onAccountChange: (p: AccountProfile) => void; onLogout: () => void }) {
+  const draftKey = `tyaga-draft-account:${account.id}`;
   const [view, setView] = useState<ProductView>("overview");
   const [product, setProduct] = useState<ProductData>({
     routines: [],
@@ -141,8 +147,9 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [demo, setDemo] = useState(false);
-  const [draft, setDraft] = useState<Draft | null>(readDraft);
+  const [draft, setDraft] = useState<Draft | null>(() => readDraft(draftKey));
   const [persistence, setPersistence] = useState<PersistenceStatus>("pending");
+  const [legacyDraft, setLegacyDraft] = useState(() => readDraft(DRAFT_KEY));
   const [conflict, setConflict] = useState<{ current: Workout | null } | null>(
     null,
   );
@@ -158,9 +165,11 @@ export default function App() {
     | "discard"
     | "personal"
     | "import"
+    | "profile"
     | null
   >(null);
   const [detail, setDetail] = useState<Workout | null>(null);
+  const [justSaved, setJustSaved] = useState<Workout | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [muscleFilter, setMuscleFilter] = useState<Muscle | "all">("all");
   const [selectedMuscle, setSelectedMuscle] = useState<Muscle | null>(null);
@@ -191,9 +200,11 @@ export default function App() {
         ),
         productService.read(signal),
       ]);
+      if (signal?.aborted) return;
       exerciseCatalog.register([
         ...productData.customExercises,
         ...(productData.favoriteDefinitions ?? []),
+        ...data.workouts.flatMap(w => w.exercises.flatMap(e => e.externalDefinition ? [e.externalDefinition] : [])),
       ]);
       setProduct(productData);
       setWorkouts(data.workouts);
@@ -202,7 +213,7 @@ export default function App() {
         timeZone: data.settings.timeZone ?? browserTimeZone(),
       });
       setPlanEquipment(data.settings.equipment);
-      setDemo(data.workouts.length === 0);
+      setDemo(false);
     } catch (e) {
       if (e instanceof Error && e.name !== "AbortError")
         setLoadError(e.message);
@@ -217,11 +228,11 @@ export default function App() {
   }, [load]);
   useEffect(() => {
     try {
-      setPersistence(persistDraft(localStorage, draft));
+      setPersistence(persistDraft(localStorage, draft, draftKey));
     } catch {
       setPersistence("failed");
     }
-  }, [draft]);
+  }, [draft, draftKey]);
   const hasDraft = !!draft;
   useEffect(() => {
     if (!hasDraft) return;
@@ -331,6 +342,8 @@ export default function App() {
       return;
     }
     const workout = template ?? makeWorkout(ids, workouts, settings.timeZone);
+    if (!template && account.bodyMassKg !== null) workout.exercises = workout.exercises.map(e =>
+      ["bodyweight","added_bodyweight","assisted_bodyweight"].includes(exerciseForEntry(e)?.recording.loadMode ?? "") ? { ...e, bodyMassKg: account.bodyMassKg! } : e);
     if (name) workout.name = name;
     setDraft(newDraft(workout));
     setConflict(null);
@@ -354,7 +367,8 @@ export default function App() {
         ? {
             ...d,
             workout: new WorkoutSession(d.workout).add(
-              makeExerciseEntry(id, workouts),
+              { ...makeExerciseEntry(id, workouts),
+                ...(account.bodyMassKg !== null && ["bodyweight","added_bodyweight","assisted_bodyweight"].includes(exerciseById(id)?.recording.loadMode ?? "") ? {bodyMassKg:account.bodyMassKg} : {}) },
             ),
           }
         : null,
@@ -455,6 +469,7 @@ export default function App() {
       setDraft(null);
       setConflict(null);
       setDemo(false);
+      setJustSaved(result.workout);
       go("history");
       setToast(
         draft.editing
@@ -687,7 +702,7 @@ export default function App() {
       </div>
       <div className="session-item-value">
         <b title="Только однозначно записанные свободные веса">
-          {fmt(volume([w]) / 1000)} т
+          {fmt(volumeSummary([w], "all").total / 1000)} т
         </b>
         <span>
           <Clock3 size={13} />
@@ -750,10 +765,10 @@ export default function App() {
             <Settings2 size={19} />
             Мои ориентиры
           </button>
-          <button className="profile-button" onClick={openSettings}>
-            <span className="profile-avatar">Т</span>
+          <button className="profile-button" onClick={() => setModal("profile")}>
+            <span className="profile-avatar">{account.displayName.slice(0, 1).toUpperCase()}</span>
             <span>
-              <b>Твой профиль</b>
+              <b>{account.displayName}</b>
               <small>
                 <ShieldCheck size={12} />
                 Личный журнал
@@ -904,6 +919,10 @@ export default function App() {
                   </button>
                 </div>
               ) : null}
+              {!draft && legacyDraft && <div className="intro-banner"><Dumbbell size={18} /><span>На устройстве есть черновик прежней версии.</span><button className="text-button" onClick={()=> {
+                setDraft(legacyDraft); setLegacyDraft(null); setDemo(false); go("workout");
+                try { if(persistDraft(localStorage,legacyDraft,draftKey) === "saved") localStorage.removeItem(DRAFT_KEY); } catch { /* The old draft remains available if storage is blocked. */ }
+              }}>Продолжить старый черновик</button></div>}
               {view === "overview" ? (
                 <>
                   <div className="stats-grid">
@@ -921,10 +940,10 @@ export default function App() {
                     />
                     <Stat
                       icon={<TrendingUp size={19} />}
-                      label="Внешний объём"
-                      value={fmt(volume(weekWorkouts) / 1000)}
+                      label="Весь тоннаж"
+                      value={fmt(volumeSummary(weekWorkouts, "all").total / 1000)}
                       unit="т"
-                      meta="свободные веса × повторы"
+                      meta="свободные веса · включая разминку"
                     />
                     <Stat
                       icon={<Target size={19} />}
@@ -1264,7 +1283,7 @@ export default function App() {
                       <div className="panel-header">
                         <div>
                           <h2>Работа в цифрах</h2>
-                          <p>Внешний объём · свободные веса × повторы</p>
+                          <p>Весь тоннаж · свободные веса, включая разминку</p>
                         </div>
                         <span className="period-label">28 дней</span>
                       </div>
@@ -1278,7 +1297,7 @@ export default function App() {
                           Объём за день
                         </span>
                         <b>
-                          {fmt(volume(monthWorkouts) / 1000)} т
+                          {fmt(volumeSummary(monthWorkouts, "all").total / 1000)} т
                           <span> всего</span>
                         </b>
                       </div>
@@ -1325,6 +1344,7 @@ export default function App() {
               ) : null}
               {view === "history" ? (
                 <>
+                  {justSaved && <SessionInsights workout={justSaved} settings={settings} />}
                   <div className="history-toolbar">
                     <div className="search-field">
                       <Search size={18} />
@@ -1891,7 +1911,7 @@ export default function App() {
               <span>как отдельная запись участия движителя</span>
             </div>
             <ul>
-              <li>Разминка и невыполненные подходы исключаются.</li>
+              <li>Разминка записывается и входит в общий тоннаж и количество выполненных подходов. Её участие в мышцах показывается отдельно; недельные ориентиры считают рабочие подходы. Невыполненные подходы исключаются.</li>
               <li>
                 Роли движителя, помощника и стабилизатора разделены. Помощь не
                 прибавляется как «0,5»; стабилизация не заполняет ориентир.
@@ -1983,9 +2003,14 @@ export default function App() {
             </span>
             <span>
               <Dumbbell size={16} />
-              {fmt(volume([detail]))} кг
+              {fmt(volumeSummary([detail], "all").total)} кг
             </span>
           </div>
+          <SessionInsights workout={detail} settings={settings} />
+          <Suspense fallback={<p className="tiny">Открываем показатели часов…</p>}><AppleHealthPanel workout={detail} readOnly={demo} onSaved={saved => {
+            setDetail(saved); setWorkouts(ws => ws.map(w => w.id === saved.id ? saved : w));
+            setJustSaved(w => w?.id === saved.id ? saved : w); setToast("Показатели часов сохранены");
+          }} /></Suspense>
           {detail.exercises.map((e) => (
             <div className="detail-exercise" key={e.exerciseId}>
               <h3>{entryName(e)}</h3>
@@ -2219,6 +2244,10 @@ export default function App() {
           />
         </Modal>
       ) : null}
+      {modal === "profile" ? <Modal title="Мой профиль" onClose={() => setModal(null)}>
+        <AccountProfileForm account={account} hasDraft={!!draft}
+          onChange={p => { onAccountChange(p); void load(); }} onLogout={onLogout} />
+      </Modal> : null}
       {conflict && draft ? (
         <Modal
           title="Версии тренировки разошлись"

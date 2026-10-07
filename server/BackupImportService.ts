@@ -48,6 +48,7 @@ export class BackupImportService {
           notes: raw.tip ?? "",
           equipment: raw.equipment,
           declaredZones: custom.declaredZones ?? [],
+          basedOnExerciseId: custom.basedOnExerciseId ?? "",
           origin: "tyaga",
           recording: raw.recording,
         });
