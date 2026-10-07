@@ -24,37 +24,41 @@ async function signIn(request: APIRequestContext) {
   expect(response.ok()).toBeTruthy();
   authCookie = response.headers()["set-cookie"].split(";")[0];
 }
-async function cleanup(request: APIRequestContext) {
+async function cleanup(_request: APIRequestContext) {
   if (!authCookie) return;
-  // Setup uses the local worker directly. The UI and scenario assertions still
-  // exercise Vite's proxy; cleanup avoids reusing its browser-lifetime sockets.
-  const cleanupHeaders = { ...headers, Connection: "close", "Accept-Encoding": "identity", Cookie: authCookie };
-  const data = await (
-    await request.get(`${WORKER}/api/data`, { headers: cleanupHeaders })
-  ).json();
+  // Fixtures use a separate Node transport and fully drain every response.
+  // Browser actions and scenario assertions continue through the real client
+  // and Playwright API context. Never retry a failed operation silently.
+  const cleanupHeaders = {
+    ...headers, Connection: "close", "Accept-Encoding": "identity",
+    "Content-Type": "application/json", Cookie: authCookie,
+  };
+  const call = async (path: string, method = "GET", data?: unknown) => {
+    try {
+      const response = await fetch(WORKER + path, {
+        method, headers: cleanupHeaders, signal: AbortSignal.timeout(10000),
+        ...(data !== undefined ? { body: JSON.stringify(data) } : {}),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return await response.json() as any;
+    } catch (error) {
+      throw new Error(`Fixture cleanup ${method} ${path}: ${error instanceof Error ? error.message : "failed"}`);
+    }
+  };
+  const data = await call("/api/data");
   expect(Array.isArray(data.workouts)).toBeTruthy();
   for (const w of data.workouts)
     if (w.name.startsWith("[E2E]"))
-      await request.delete(WORKER + "/api/workouts/" + w.id, {
-        headers: cleanupHeaders,
-        data: { revision: w.revision },
-      });
-  const product = await (
-    await request.get(`${WORKER}/api/product`, { headers: cleanupHeaders })
-  ).json();
+      await call("/api/workouts/" + w.id, "DELETE", { revision: w.revision });
+  const product = await call("/api/product");
   for (const r of product.routines ?? [])
     if (r.name.startsWith("[E2E]"))
-      await request.delete(WORKER + "/api/routines/" + r.id, {
-        headers: cleanupHeaders,
-        data: { revision: r.revision },
-      });
+      await call("/api/routines/" + r.id, "DELETE", { revision: r.revision });
   for (const e of product.customExercises ?? [])
     if (e.name.startsWith("[E2E]"))
-      await request.delete(WORKER + "/api/custom-exercises/" + e.id, {
-        headers: cleanupHeaders,
-        data: {},
-      });
+      await call("/api/custom-exercises/" + e.id, "DELETE", {});
 }
+
 async function addExercise(page: Page, name: string) {
   await page
     .getByRole("button", { name: "Добавить упражнение", exact: true })
