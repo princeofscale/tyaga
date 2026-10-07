@@ -6,11 +6,8 @@ import {
   useMemo,
   useState,
   useRef,
-  type ReactNode,
 } from "react";
 import {
-  Activity,
-  ScanLine,
   BarChart3,
   CalendarDays,
   Check,
@@ -19,21 +16,15 @@ import {
   Clock3,
   Download,
   Dumbbell,
-  Flame,
   History,
+  House,
   Info,
-  LayoutDashboard,
-  Menu,
-  Plus,
+  Play,
   Search,
   Settings2,
-  ShieldCheck,
-  SlidersHorizontal,
   Sparkles,
-  Target,
   Trash2,
   TrendingUp,
-  Trophy,
   X,
 } from "lucide-react";
 import {
@@ -75,7 +66,6 @@ import {
   type Exercise,
   exerciseCatalog,
 } from "./lib/model";
-import BodyMap, { loadColor } from "./components/BodyMap";
 import { VolumeChart, Sparkline } from "./components/Charts";
 import Modal from "./components/Modal";
 import WorkoutView from "./components/WorkoutView";
@@ -108,17 +98,15 @@ import { AccountProfileForm } from "./components/AccountProfileForm";
 import type { AccountProfile } from "./lib/account";
 import SessionInsights from "./components/SessionInsights";
 
-type View =
-  "overview" | "workout" | "history" | "library" | "progress" | "anatomy";
-type ProductView = View | "programs";
+type ProductView =
+  "overview" | "workout" | "history" | "library" | "progress" | "programs";
+// "programs" lives in the desktop sidebar; on a phone it opens from «Сегодня».
 const NAV = [
-  { id: "overview", label: "Обзор", icon: LayoutDashboard },
-  { id: "workout", label: "Тренировка", icon: Dumbbell },
-  { id: "programs", label: "Программы", icon: CalendarDays },
-  { id: "anatomy", label: "Анатомия", icon: ScanLine },
+  { id: "overview", label: "Сегодня", icon: House },
   { id: "history", label: "История", icon: History },
-  { id: "library", label: "Упражнения", icon: Activity },
   { id: "progress", label: "Прогресс", icon: BarChart3 },
+  { id: "library", label: "Упражнения", icon: Dumbbell },
+  { id: "programs", label: "Программы", icon: CalendarDays },
 ] as const;
 const EQ = {
   gym: "Весь зал",
@@ -155,11 +143,10 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
   );
   const [mapping, setMapping] = useState<"recorded" | "current">("recorded");
   const [hardSetsOnly, setHardSetsOnly] = useState(false);
-  const [mobileNav, setMobileNav] = useState(false);
+  const [progressTab, setProgressTab] = useState<"balance" | "strength" | "anatomy">("balance");
   const [toast, setToast] = useState("");
   const [modal, setModal] = useState<
     | "picker"
-    | "planner"
     | "settings"
     | "method"
     | "discard"
@@ -322,16 +309,42 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
       ),
     [currentLoads, minutes, planEquipment, excluded, settings.restSeconds],
   );
-  const lowMuscles = [...loads]
+  const today = localDate(new Date(), settings.timeZone);
+  const thisWeek = Array.from({ length: 7 }, (_, i) => {
+    const date = addCalendarDays(weekStart(new Date(), settings.timeZone), i);
+    return {
+      date,
+      label: ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"][i],
+      day: Number(date.slice(8)),
+      trained: displayed.some((w) => w.date === date),
+    };
+  });
+  const todayRoutine = product.routines.find((r) =>
+    new TrainingProgram(r).scheduled(today),
+  );
+  // Preview only; starting builds a fresh workout so ids never repeat.
+  const todayPlan = useMemo(
+    () =>
+      todayRoutine
+        ? new TrainingProgram(todayRoutine).start(
+            workouts,
+            settings.timeZone ?? browserTimeZone(),
+          )
+        : null,
+    [todayRoutine, workouts, settings.timeZone],
+  );
+  const weekDone = currentLoads.reduce((n, m) => n + Math.min(m.total, m.goal), 0);
+  const weekGoal = currentLoads.reduce((n, m) => n + m.goal, 0);
+  const currentLagging = [...currentLoads]
     .sort((a, b) => a.ratio - b.ratio)
     .filter((m) => m.ratio < 0.8);
+  const lagging = currentLagging.filter((m) => m.ratio < 0.5).slice(0, 3);
   const monthWorkouts = displayed.filter((w) => {
     const today = localDate(new Date(), settings.timeZone);
     return w.date >= addCalendarDays(today, -27) && w.date <= today;
   });
   const go = (v: ProductView) => {
     setView(v);
-    setMobileNav(false);
     window.scrollTo({ top: 0, behavior: "instant" });
   };
   const start = (ids: string[] = [], name?: string, template?: Workout) => {
@@ -373,7 +386,6 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
           }
         : null,
     );
-    setToast("Упражнение добавлено");
   };
   const favoriteExercise = async (id: string) => {
     if (pendingFavorites.current.has(id)) return;
@@ -688,7 +700,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
       <div className="session-item-info">
         <h3>{w.name}</h3>
         <p>
-          {w.exercises.length} упр. <span>·</span> {workingSets([w])} подходов{" "}
+          {w.exercises.length} упр. <span>·</span> {workingSets([w])} подх.{" "}
           {expanded ? (
             <>
               <span>·</span>
@@ -714,15 +726,8 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
   );
 
   return (
-    <div className="app-shell">
-      {mobileNav ? (
-        <button
-          className="nav-scrim"
-          aria-label="Закрыть меню"
-          onClick={() => setMobileNav(false)}
-        />
-      ) : null}
-      <aside className={`sidebar ${mobileNav ? "open" : ""}`}>
+    <div className={`app-shell ${view === "workout" ? "in-workout" : ""}`}>
+      <aside className="sidebar">
         <a
           className="brand"
           href="#"
@@ -731,147 +736,49 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
             go("overview");
           }}
         >
-          <span className="brand-mark">
-            <Dumbbell size={26} strokeWidth={2.7} />
-          </span>
-          <span>
-            тяга<span className="brand-period">.</span>
-          </span>
+          тяга<span className="brand-period">.</span>
         </a>
-        <span className="sidebar-caption">ТРЕНИРОВОЧНЫЙ ЖУРНАЛ</span>
         <nav aria-label="Основная навигация">
           {NAV.map((n) => (
             <button
-              className={`nav-item ${view === n.id ? "active" : ""}`}
+              className={`nav-item ${view === n.id ? "active" : ""} ${n.id === "programs" ? "desktop-only" : ""}`}
               key={n.id}
               onClick={() => go(n.id)}
               aria-current={view === n.id ? "page" : undefined}
             >
-              <n.icon size={20} />
+              <n.icon size={22} />
               <span>{n.label}</span>
-              {n.id === "workout" && draft ? <i className="draft-dot" /> : null}
             </button>
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <div className="sidebar-motto">
-            <div className="motto-line" />
-            <b>
-              Сильнее.
-              <br />С каждым подходом.
-            </b>
-          </div>
           <button className="nav-item" onClick={openSettings}>
             <Settings2 size={19} />
-            Мои ориентиры
+            Мои цели
           </button>
           <button className="profile-button" onClick={() => setModal("profile")}>
             <span className="profile-avatar">{account.displayName.slice(0, 1).toUpperCase()}</span>
             <span>
               <b>{account.displayName}</b>
-              <small>
-                <ShieldCheck size={12} />
-                Личный журнал
-              </small>
+              <small>Профиль</small>
             </span>
-            <SlidersHorizontal size={16} />
           </button>
         </div>
       </aside>
       <main className="main-content">
-        <header className="topbar">
-          <button
-            className="mobile-menu icon-button"
-            aria-label="Открыть меню"
-            onClick={() => setMobileNav(true)}
-          >
-            <Menu size={22} />
-          </button>
-          <div className="breadcrumb">
-            Мой зал<span>/</span>
-            <b>{NAV.find((n) => n.id === view)!.label}</b>
-          </div>
-          <div className="topbar-right">
-            <span className="local-date">
-              <CalendarDays size={16} />
-              {new Date().toLocaleDateString("ru-RU", {
-                day: "numeric",
-                month: "long",
-                weekday: "short",
-                timeZone: settings.timeZone,
-              })}
-            </span>
-            <button
-              className="icon-button"
-              aria-label="Настройки целей"
-              onClick={openSettings}
-            >
-              <Settings2 size={19} />
-            </button>
-          </div>
-        </header>
         <m.div
           className="page-content"
           key={view}
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.22 }}
+          transition={{ duration: 0.2 }}
         >
-          <div className="page-heading">
-            <div>
-              <div className="eyebrow">
-                {view === "overview"
-                  ? "МЕНЬШЕ ДОГАДОК. БОЛЬШЕ ПРОГРЕССА."
-                  : "ТВОЙ ТРЕНИРОВОЧНЫЙ ЖУРНАЛ"}
-              </div>
-              <h1>
-                {
-                  {
-                    overview: "Твой прогресс",
-                    workout: draft?.editing
-                      ? "Редактировать тренировку"
-                      : "Твоя тренировка",
-                    anatomy: "Анатомия движения",
-                    history: "История тренировок",
-                    library: "Библиотека упражнений",
-                    progress: "Сила в цифрах",
-                    programs: "Твои программы",
-                  }[view]
-                }
-              </h1>
-              <p>
-                {
-                  {
-                    overview: "Каждый подход складывается в результат.",
-                    workout: "Записывай подходы. Остальное посчитаем.",
-                    anatomy:
-                      "Выбери мышцу. Посмотри работу и упражнения для неё.",
-                    history: "Вся работа, которую ты уже сделал.",
-                    library: "Найди упражнение для своей следующей тренировки.",
-                    progress:
-                      "Сравнивай себя с собой. По одному упражнению за раз.",
-                    programs:
-                      "Собери неделю и начинай сессию из готового шаблона.",
-                  }[view]
-                }
-              </p>
-            </div>
-            {view !== "workout" ? (
-              <button
-                className="button primary start-button"
-                onClick={() => start()}
-              >
-                <Plus size={19} />
-                {draft ? "Продолжить тренировку" : "Начать тренировку"}
-              </button>
-            ) : null}
-          </div>
           {persistence === "failed" && !draft ? (
             <div className="error-banner" role="alert">
               <Info size={18} />
               <span>
-                Браузер не смог удалить локальный черновик. Сохранённая история
-                доступна в аккаунте; проверь черновик после перезагрузки.
+                Не удалось удалить локальный черновик. Сохранённая история на
+                месте; проверь черновик после перезапуска.
               </span>
             </div>
           ) : null}
@@ -898,24 +805,12 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                     <b>Пример данных</b>
                     <span className="demo-explanation">
                       Так будет выглядеть твой прогресс. Эти тренировки не
-                      сохранены в твоём аккаунте.
+                      сохранены.
                     </span>
                   </span>
                   <button onClick={() => setDemo(false)}>
                     Мои данные
                     <X size={14} />
-                  </button>
-                </div>
-              ) : null}
-              {!demo && !workouts.length && view !== "workout" ? (
-                <div className="intro-banner">
-                  <Dumbbell size={18} />
-                  <span>
-                    Здесь появится твоя история. Начни первую тренировку или
-                    посмотри, как работает журнал.
-                  </span>
-                  <button className="text-button" onClick={() => setDemo(true)}>
-                    Посмотреть пример
                   </button>
                 </div>
               ) : null}
@@ -925,407 +820,151 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
               }}>Продолжить старый черновик</button></div>}
               {view === "overview" ? (
                 <>
-                  <div className="stats-grid">
-                    <Stat
-                      icon={<Dumbbell size={19} />}
-                      label="Тренировок"
-                      value={String(monthWorkouts.length).padStart(2, "0")}
-                      meta="за последние 28 дней"
-                    />
-                    <Stat
-                      icon={<BarChart3 size={19} />}
-                      label="Рабочих подходов"
-                      value={String(workingSets(weekWorkouts))}
-                      meta="за выбранную неделю"
-                    />
-                    <Stat
-                      icon={<TrendingUp size={19} />}
-                      label="Весь тоннаж"
-                      value={fmt(volumeSummary(weekWorkouts, "all").total / 1000)}
-                      unit="т"
-                      meta="свободные веса · включая разминку"
-                    />
-                    <Stat
-                      icon={<Target size={19} />}
-                      label="Покрытие ориентиров"
-                      value={String(balanceScore(loads))}
-                      unit="%"
-                      meta="по прямым рабочим подходам"
-                      accent
-                    />
-                  </div>
-                  {product.routines.length ? (
-                    <section className="today-programs panel">
-                      <div>
-                        <span className="eyebrow">СЕГОДНЯ ПО ПЛАНУ</span>
-                        <h2>
-                          {product.routines.some((r) =>
-                            new TrainingProgram(r).scheduled(
-                              localDate(new Date(), settings.timeZone),
-                            ),
-                          )
-                            ? "Твоя следующая сессия"
-                            : "День без назначенной программы"}
-                        </h2>
-                      </div>
-                      <div>
-                        {product.routines
-                          .filter((r) =>
-                            new TrainingProgram(r).scheduled(
-                              localDate(new Date(), settings.timeZone),
-                            ),
-                          )
-                          .map((r) => (
-                            <button
-                              key={r.id}
-                              className="button primary"
-                              onClick={() =>
-                                start(
-                                  [],
-                                  undefined,
-                                  new TrainingProgram(r).start(
-                                    workouts,
-                                    settings.timeZone ?? browserTimeZone(),
-                                  ),
-                                )
-                              }
-                            >
-                              <Dumbbell size={17} />
-                              {r.name}
-                            </button>
-                          ))}
-                        <button
-                          className="button secondary"
-                          onClick={() => go("programs")}
-                        >
-                          Мой план
-                        </button>
-                      </div>
-                    </section>
+                  <header className="today-head">
+                    <div>
+                      <span className="today-date">
+                        {new Date().toLocaleDateString("ru-RU", {
+                          weekday: "long",
+                          day: "numeric",
+                          month: "long",
+                          timeZone: settings.timeZone,
+                        })}
+                      </span>
+                      <h1>Сегодня</h1>
+                    </div>
+                    <button
+                      className="avatar-button"
+                      aria-label="Мой профиль"
+                      onClick={() => setModal("profile")}
+                    >
+                      {account.displayName.slice(0, 1).toUpperCase()}
+                    </button>
+                  </header>
+                  {!demo && !workouts.length ? (
+                    <div className="intro-banner">
+                      <Dumbbell size={18} />
+                      <span>
+                        Здесь появится твоя история. Начни первую тренировку
+                        или посмотри, как работает журнал.
+                      </span>
+                      <button className="text-button" onClick={() => setDemo(true)}>
+                        Посмотреть пример
+                      </button>
+                    </div>
                   ) : null}
-                  <div className="overview-grid">
-                    <section className="panel muscle-panel">
-                      <div className="panel-header">
-                        <div>
-                          <div className="card-eyebrow">
-                            ВИДЕТЬ ПОЛНУЮ КАРТИНУ
-                          </div>
-                          <h2>Распределение подходов</h2>
-                        </div>
-                        <button
-                          className="icon-button"
-                          aria-label="Как считается нагрузка"
-                          onClick={() => setModal("method")}
-                        >
-                          <Info size={18} />
-                        </button>
+                  <div className="week-strip" aria-label="Эта неделя">
+                    {thisWeek.map((d) => (
+                      <div
+                        key={d.date}
+                        className={`week-strip-day ${d.trained ? "trained" : ""} ${d.date === today ? "today" : ""}`}
+                      >
+                        <span>{d.label}</span>
+                        <b>{d.day}</b>
+                        <i aria-label={d.trained ? "тренировка" : undefined} />
                       </div>
-                      <div className="week-selector">
-                        <button
-                          className="icon-button"
-                          aria-label="Предыдущая неделя"
-                          onClick={() => setWeekOffset((o) => o - 1)}
-                        >
-                          <ChevronLeft size={18} />
-                        </button>
-                        <span>
-                          {dateLabel(anchor)} — {dateLabel(weekEnd)}
-                          <small>
-                            {weekOffset === 0
-                              ? "Эта неделя"
-                              : "Выбранная неделя"}
-                          </small>
-                        </span>
-                        <button
-                          className="icon-button"
-                          aria-label="Следующая неделя"
-                          disabled={weekOffset >= 0}
-                          onClick={() => setWeekOffset((o) => o + 1)}
-                        >
-                          <ChevronRight size={18} />
-                        </button>
-                      </div>
-                      <div className="analysis-controls">
-                        <label>
-                          <input
-                            type="checkbox"
-                            checked={hardSetsOnly}
-                            onChange={(e) => setHardSetsOnly(e.target.checked)}
-                          />
-                          Только RIR ≤ 3
-                        </label>
-                        {hasLegacy ? (
-                          <label>
-                            Разметка
-                            <select
-                              value={mapping}
-                              onChange={(e) =>
-                                setMapping(
-                                  e.target.value as "recorded" | "current",
-                                )
-                              }
-                            >
-                              <option value="recorded">
-                                Сохранённые версии
-                              </option>
-                              <option value="current">
-                                Пересчёт по каталогу 2
-                              </option>
-                            </select>
-                          </label>
-                        ) : null}
-                      </div>
-                      <p className="analysis-notice">
-                        Методика 2: считаем прямые подходы без RIR-множителей.
-                        Помощь и стабилизация показаны отдельно.
-                        {hasLegacy
-                          ? " В старых записях оставлена разметка каталога 1; пересчёт меняет только этот вид. Пересчёт предполагает технику текущего канонического варианта. Неопределённые старые варианты сохраняют прежнюю разметку."
-                          : ""}
-                      </p>
-                      <div className="muscle-content">
-                        <BodyMap
-                          loads={loads}
-                          workouts={weekWorkouts}
-                          options={analysisOptions}
-                          selected={selectedMuscle}
-                          onSelect={setSelectedMuscle}
-                        />
-                        <div className="muscle-list">
-                          <div className="muscle-list-label">
-                            <span>МЫШЦА</span>
-                            <span>ПРЯМЫЕ / ОРИЕНТИР</span>
-                          </div>
-                          {loads.map((m) => (
-                            <button
-                              key={m.id}
-                              className={`muscle-row ${selectedMuscle === m.id ? "selected" : ""}`}
-                              onClick={() => setSelectedMuscle(m.id)}
-                            >
-                              <div className="muscle-row-heading">
-                                <span>{m.short}</span>
-                                <b>
-                                  {fmt(m.total)}
-                                  <small> / {m.goal}</small>
-                                </b>
-                              </div>
-                              <div className="load-track">
-                                <span
-                                  style={{
-                                    width: `${Math.min(m.ratio, 1) * 100}%`,
-                                    background: loadColor(m.ratio),
-                                  }}
-                                />
-                              </div>
-                            </button>
-                          ))}
-                          {selectedMuscle ? (
-                            <div className="muscle-detail">
-                              <b>
-                                {
-                                  loads.find((m) => m.id === selectedMuscle)!
-                                    .name
-                                }
-                              </b>
-                              <p>
-                                {fmt(
-                                  loads.find((m) => m.id === selectedMuscle)!
-                                    .direct,
-                                )}{" "}
-                                прямых ·{" "}
-                                {fmt(
-                                  loads.find((m) => m.id === selectedMuscle)!
-                                    .indirect,
-                                )}{" "}
-                                с помощью ·{" "}
-                                {fmt(
-                                  loads.find((m) => m.id === selectedMuscle)!
-                                    .stabilizing,
-                                )}{" "}
-                                со стабилизацией
-                              </p>
-                              <div className="anatomical-breakdown">
-                                {anatomy
-                                  .filter((m) => m.zone === selectedMuscle)
-                                  .map((m) => (
-                                    <div key={m.id}>
-                                      <span>{m.name}</span>
-                                      <small>
-                                        {m.direct} прямых / {m.assisting} помощь
-                                        / {m.stabilizing} стаб.
-                                      </small>
-                                    </div>
-                                  ))}
-                              </div>
-                              {hasLegacy ? (
-                                <p className="tiny">
-                                  У записей каталога 1 нет разметки отдельных
-                                  мышц.
-                                </p>
-                              ) : null}
-                            </div>
-                          ) : (
-                            <p className="map-instruction">
-                              Выбери зону, чтобы увидеть отдельные мышцы.
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                      <div className="muscle-footnote">
-                        <span className="tiny">
-                          Зоны объединяют разные мышцы. Прямые подходы не
-                          означают равный стимул для всех частей зоны.
-                        </span>
-                        <button className="text-button" onClick={openSettings}>
-                          Мои ориентиры
-                        </button>
-                      </div>
-                    </section>
-                    <aside className="focus-column">
-                      <section className="focus-card">
-                        <div className="focus-top">
-                          <span className="feature-tag">
-                            <Sparkles size={14} />
-                            БАЛАНС НЕДЕЛИ
-                          </span>
-                          <Target size={22} />
-                        </div>
-                        <h2>
-                          {lowMuscles.length
-                            ? "Закрой пробелы. Без лишнего."
-                            : "Баланс — в твоих руках."}
-                        </h2>
-                        <p>
-                          {lowMuscles.length
-                            ? `Ниже твоих ориентиров: ${lowMuscles
-                                .slice(0, 2)
-                                .map((m) => m.short.toLowerCase())
-                                .join(
-                                  " и ",
-                                )}. Соберём короткую тренировку с понятным «почему».`
-                            : "Записанные прямые подходы покрывают выбранные ориентиры. Это не оценка восстановления или оптимальности программы."}
-                        </p>
-                        <div className="focus-muscles">
-                          {lowMuscles.slice(0, 3).map((m) => (
-                            <span key={m.id}>
-                              {m.short}
-                              <b>
-                                {fmt(m.total)} / {m.goal}
-                              </b>
-                            </span>
-                          ))}
-                        </div>
-                        <button
-                          className="button focus-button"
-                          onClick={() => {
-                            setExcluded([]);
-                            setModal("planner");
-                          }}
-                        >
-                          Собрать тренировку
-                          <SlidersHorizontal size={17} />
-                        </button>
-                        <span className="focus-note">
-                          По нагрузке и доступному времени
-                        </span>
-                      </section>
-                      <section className="panel week-card">
-                        <div className="panel-header">
-                          <h3>Твоя неделя</h3>
-                          <CalendarDays size={17} className="muted" />
-                        </div>
-                        <div className="week-days">
-                          {Array.from({ length: 7 }, (_, i) => {
-                            const d = new Date(anchor + "T12:00:00");
-                            d.setDate(d.getDate() + i);
-                            const date = localDate(d);
-                            const trained = weekWorkouts.some(
-                              (w) => w.date === date,
-                            );
-                            return (
-                              <div
-                                className={`week-day ${trained ? "trained" : ""} ${date === localDate(new Date(), settings.timeZone) ? "today" : ""}`}
-                                key={i}
-                              >
-                                <span>
-                                  {
-                                    ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"][
-                                      i
-                                    ]
-                                  }
-                                </span>
-                                <b>
-                                  {trained ? <Check size={15} /> : d.getDate()}
-                                </b>
-                              </div>
-                            );
-                          })}
-                        </div>
-                        <div className="week-card-footer">
-                          <span>
-                            <i className="training-dot" />
-                            Тренировочные дни
-                          </span>
-                          <b>{weekWorkouts.length}</b>
-                        </div>
-                      </section>
-                      <section className="quiet-tip">
-                        <Flame size={19} />
-                        <p>
-                          Рост — это нагрузка,
-                          <br />
-                          восстановление и постоянство.
-                        </p>
-                      </section>
-                    </aside>
+                    ))}
                   </div>
-                  <div className="bottom-grid">
-                    <section className="panel volume-panel">
-                      <div className="panel-header">
-                        <div>
-                          <h2>Работа в цифрах</h2>
-                          <p>Весь тоннаж · свободные веса, включая разминку</p>
-                        </div>
-                        <span className="period-label">28 дней</span>
-                      </div>
-                      <VolumeChart
-                        workouts={monthWorkouts}
-                        timeZone={settings.timeZone}
-                      />
-                      <div className="chart-footer">
-                        <span>
-                          <i />
-                          Объём за день
-                        </span>
-                        <b>
-                          {fmt(volumeSummary(monthWorkouts, "all").total / 1000)} т
-                          <span> всего</span>
-                        </b>
-                      </div>
-                    </section>
-                    <section className="panel recent-panel">
-                      <div className="panel-header">
-                        <h2>Последние тренировки</h2>
-                        <button
-                          className="text-button"
-                          onClick={() => go("history")}
-                        >
+                  <section className="plan-card" aria-labelledby="plan-title">
+                    <span className="eyebrow">
+                      {draft
+                        ? "ТРЕНИРОВКА ИДЁТ"
+                        : todayPlan
+                          ? "СЕГОДНЯ ПО ПРОГРАММЕ"
+                          : product.routines.length
+                            ? "ПО ПРОГРАММЕ СЕГОДНЯ ОТДЫХ"
+                            : "ТРЕНИРОВКА"}
+                    </span>
+                    <h2 id="plan-title">
+                      {draft
+                        ? draft.workout.name
+                        : todayPlan
+                          ? todayPlan.name
+                          : displayed.length
+                            ? "Свободная тренировка"
+                            : "Первая тренировка"}
+                    </h2>
+                    <p className="plan-meta">
+                      {draft
+                        ? `${draft.workout.exercises.length} упр. · ${workingSets([draft.workout])} раб. подх. сделано`
+                        : todayPlan
+                          ? `${todayPlan.exercises.length} упр. · ${todayPlan.exercises.reduce((n, e) => n + e.sets.length, 0)} подх.`
+                          : "Записывай подходы — веса и прогресс посчитаем сами."}
+                    </p>
+                    {todayPlan && !draft ? (
+                      <ul className="plan-exercises">
+                        {todayPlan.exercises.slice(0, 4).map((e) => (
+                          <li key={e.exerciseId}>
+                            <span>{entryName(e)}</span>
+                            <b>
+                              {e.sets.length} × {e.sets[0]?.reps ?? 0}
+                              {e.sets[0]?.weight ? ` · ${fmt(e.sets[0].weight)} кг` : ""}
+                            </b>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    <button
+                      className="button primary plan-start"
+                      onClick={() =>
+                        draft
+                          ? go("workout")
+                          : todayRoutine
+                            ? start(
+                                [],
+                                undefined,
+                                new TrainingProgram(todayRoutine).start(
+                                  workouts,
+                                  settings.timeZone ?? browserTimeZone(),
+                                ),
+                              )
+                            : start()
+                      }
+                    >
+                      <Play size={18} />
+                      {draft ? "Продолжить тренировку" : "Начать тренировку"}
+                    </button>
+                    <div className="plan-links">
+                      {todayRoutine && !draft ? (
+                        <button className="text-button" onClick={() => start()}>
+                          Пустая тренировка
+                        </button>
+                      ) : null}
+                      <button className="text-button" onClick={() => go("programs")}>
+                        Программы
+                      </button>
+                    </div>
+                  </section>
+                  <button className="week-summary" onClick={() => go("progress")}>
+                    <span className="week-summary-head">
+                      <b>Неделя</b>
+                      <span>
+                        <strong>{fmt(weekDone)}</strong> / {weekGoal} подх.
+                      </span>
+                    </span>
+                    <span className="meter" aria-hidden="true">
+                      <span style={{ width: `${weekGoal ? Math.min(100, (100 * weekDone) / weekGoal) : 0}%` }} />
+                    </span>
+                    <span className="week-summary-foot">
+                      {lagging.length
+                        ? `Отстают: ${lagging.map((m) => m.short.toLowerCase()).join(", ")}`
+                        : "Все зоны в работе — так держать"}
+                      <ChevronRight size={18} />
+                    </span>
+                  </button>
+                  <section className="recent-panel" aria-labelledby="recent-title">
+                    <div className="section-head">
+                      <h2 id="recent-title">Последние тренировки</h2>
+                      {displayed.length ? (
+                        <button className="text-button" onClick={() => go("history")}>
                           Все
                         </button>
-                      </div>
-                      {displayed.slice(0, 3).map((w) => sessionItem(w))}
-                      {!displayed.length ? (
-                        <div className="small-empty">
-                          Первый подход — начало истории.
-                          <button
-                            className="text-button"
-                            onClick={() => start()}
-                          >
-                            Записать тренировку
-                          </button>
-                        </div>
                       ) : null}
-                    </section>
-                  </div>
+                    </div>
+                    {displayed.slice(0, 2).map((w) => sessionItem(w))}
+                    {!displayed.length ? (
+                      <p className="small-empty">Первый подход — начало истории.</p>
+                    ) : null}
+                  </section>
                 </>
               ) : null}
               {view === "workout" ? (
@@ -1333,6 +972,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                   draft={draft}
                   update={setDraft}
                   settings={settings}
+                  history={workouts}
                   saving={saving}
                   error={saveError}
                   persistence={persistence}
@@ -1340,10 +980,14 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                   onPick={openPicker}
                   onSave={() => void saveWorkout()}
                   onDiscard={() => setModal("discard")}
+                  onMinimize={() => go("overview")}
                 />
               ) : null}
               {view === "history" ? (
                 <>
+                  <header className="screen-head">
+                    <h1>История тренировок</h1>
+                  </header>
                   {justSaved && <SessionInsights workout={justSaved} settings={settings} />}
                   <div className="history-toolbar">
                     <div className="search-field">
@@ -1355,17 +999,11 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                         onChange={(e) => setHistorySearch(e.target.value)}
                       />
                     </div>
-                    <button
-                      className="button secondary"
-                      onClick={exportHistory}
-                    >
+                    <button className="button secondary" onClick={exportHistory}>
                       <Download size={17} />
                       Экспорт JSON
                     </button>
-                    <button
-                      className="button secondary"
-                      onClick={() => setModal("import")}
-                    >
+                    <button className="button secondary" onClick={() => setModal("import")}>
                       Импорт истории
                     </button>
                   </div>
@@ -1375,253 +1013,463 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                       <div className="empty-state">
                         <History size={36} />
                         <h2>История начинается сегодня</h2>
-                        <p>
-                          Завершённая тренировка появится здесь — с каждым
-                          подходом.
-                        </p>
-                        <button
-                          className="button primary"
-                          onClick={() => start()}
-                        >
+                        <p>Завершённая тренировка появится здесь.</p>
+                        <button className="button primary" onClick={() => start()}>
                           Записать тренировку
                         </button>
                       </div>
                     ) : null}
                     {displayed.length && !historyFiltered.length ? (
-                      <div className="no-results">
-                        Таких тренировок пока нет.
-                      </div>
+                      <div className="no-results">Таких тренировок пока нет.</div>
                     ) : null}
                   </div>
+                  {monthWorkouts.length ? (
+                    <section className="panel volume-panel">
+                      <div className="panel-header">
+                        <div>
+                          <h2>Объём за 28 дней</h2>
+                          <p>Свободные веса, включая разминку</p>
+                        </div>
+                        <b className="volume-total">
+                          {fmt(volumeSummary(monthWorkouts, "all").total / 1000)} т
+                        </b>
+                      </div>
+                      <VolumeChart workouts={monthWorkouts} timeZone={settings.timeZone} />
+                    </section>
+                  ) : null}
                 </>
               ) : null}
-              {view === "anatomy" ? (
+              {view === "progress" ? (
                 <>
-                  <div className="anatomy-week-heading">
-                    <span>
-                      {dateLabel(anchor)} — {dateLabel(weekEnd)}
-                    </span>
-                    <div>
+                  <header className="screen-head">
+                    <h1>Прогресс</h1>
+                    <div className="screen-actions">
                       <button
                         className="icon-button"
-                        aria-label="Предыдущая неделя анатомии"
-                        onClick={() => setWeekOffset((o) => o - 1)}
+                        aria-label="Как считаем"
+                        onClick={() => setModal("method")}
                       >
-                        <ChevronLeft size={18} />
+                        <Info size={20} />
                       </button>
                       <button
                         className="icon-button"
-                        aria-label="Следующая неделя анатомии"
+                        aria-label="Настройки целей"
+                        onClick={openSettings}
+                      >
+                        <Settings2 size={20} />
+                      </button>
+                    </div>
+                  </header>
+                  <div className="tabs" role="tablist" aria-label="Раздел прогресса">
+                    {(
+                      [
+                        ["balance", "Баланс"],
+                        ["strength", "Сила"],
+                        ["anatomy", "Карта мышц"],
+                      ] as const
+                    ).map(([id, label]) => (
+                      <button
+                        key={id}
+                        role="tab"
+                        aria-selected={progressTab === id}
+                        className={progressTab === id ? "active" : ""}
+                        onClick={() => setProgressTab(id)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {progressTab !== "strength" ? (
+                    <div className="week-selector">
+                      <button
+                        className="icon-button"
+                        aria-label="Предыдущая неделя"
+                        onClick={() => setWeekOffset((o) => o - 1)}
+                      >
+                        <ChevronLeft size={20} />
+                      </button>
+                      <span>
+                        {dateLabel(anchor)} — {dateLabel(weekEnd)}
+                        <small>{weekOffset === 0 ? "эта неделя" : "выбранная неделя"}</small>
+                      </span>
+                      <button
+                        className="icon-button"
+                        aria-label="Следующая неделя"
                         disabled={weekOffset >= 0}
                         onClick={() => setWeekOffset((o) => o + 1)}
                       >
-                        <ChevronRight size={18} />
+                        <ChevronRight size={20} />
                       </button>
                     </div>
-                  </div>
-                  <Suspense
-                    fallback={
-                      <div className="loading-state" role="status">
-                        Открываем атлас…
+                  ) : null}
+                  {progressTab === "balance" ? (
+                    <>
+                      <section className="panel zones-panel" aria-labelledby="zones-title">
+                        <div className="panel-header">
+                          <div>
+                            <h2 id="zones-title">Рабочие подходы по зонам</h2>
+                            <p>
+                              <strong>{fmt(loads.reduce((n, m) => n + Math.min(m.total, m.goal), 0))}</strong>{" "}
+                              из {loads.reduce((n, m) => n + m.goal, 0)} по твоим целям
+                            </p>
+                          </div>
+                        </div>
+                        <div className="analysis-controls">
+                          <label className="chip-toggle">
+                            <input
+                              type="checkbox"
+                              checked={hardSetsOnly}
+                              onChange={(e) => setHardSetsOnly(e.target.checked)}
+                            />
+                            Только RIR ≤ 3
+                          </label>
+                          {hasLegacy ? (
+                            <label>
+                              Разметка
+                              <select
+                                value={mapping}
+                                onChange={(e) =>
+                                  setMapping(e.target.value as "recorded" | "current")
+                                }
+                              >
+                                <option value="recorded">Сохранённые версии</option>
+                                <option value="current">Пересчёт по каталогу 2</option>
+                              </select>
+                            </label>
+                          ) : null}
+                        </div>
+                        <div className="zone-list">
+                          {loads.map((m) => (
+                            <button
+                              key={m.id}
+                              className={`muscle-row ${selectedMuscle === m.id ? "selected" : ""}`}
+                              aria-expanded={selectedMuscle === m.id}
+                              onClick={() =>
+                                setSelectedMuscle(selectedMuscle === m.id ? null : m.id)
+                              }
+                            >
+                              <span className="zone-name">{m.short}</span>
+                              <span className="zone-track" aria-hidden="true">
+                                <span
+                                  className={m.ratio >= 1.25 ? "over" : m.ratio >= 1 ? "hit" : ""}
+                                  style={{ width: `${Math.min(100, (m.ratio / 1.5) * 100)}%` }}
+                                />
+                                <i />
+                              </span>
+                              <b className={m.ratio >= 1.25 ? "over" : m.ratio >= 1 ? "hit" : ""}>
+                                {fmt(m.total)}
+                                <small> / {m.goal}</small>
+                              </b>
+                            </button>
+                          ))}
+                        </div>
+                        {selectedMuscle ? (
+                          <div className="muscle-detail">
+                            <b>{loads.find((m) => m.id === selectedMuscle)!.name}</b>
+                            <p>
+                              {fmt(loads.find((m) => m.id === selectedMuscle)!.direct)} прямых ·{" "}
+                              {fmt(loads.find((m) => m.id === selectedMuscle)!.indirect)} с помощью ·{" "}
+                              {fmt(loads.find((m) => m.id === selectedMuscle)!.stabilizing)} со стабилизацией
+                            </p>
+                            <div className="anatomical-breakdown">
+                              {anatomy
+                                .filter((m) => m.zone === selectedMuscle)
+                                .map((m) => (
+                                  <div key={m.id}>
+                                    <span>{m.name}</span>
+                                    <small>
+                                      {m.direct} прямых / {m.assisting} помощь / {m.stabilizing} стаб.
+                                    </small>
+                                  </div>
+                                ))}
+                            </div>
+                            {hasLegacy ? (
+                              <p className="tiny">У записей каталога 1 нет разметки отдельных мышц.</p>
+                            ) : null}
+                          </div>
+                        ) : null}
+                        <div className="zone-legend" aria-hidden="true">
+                          <span><i className="dim" />ниже цели</span>
+                          <span><i className="hit" />в цели</span>
+                          <span><i className="over" />заметно выше</span>
+                          <span><i className="tick" />цель</span>
+                        </div>
+                      </section>
+                      <section className="panel planner-card" aria-labelledby="planner-title">
+                        <div>
+                          <h2 id="planner-title">Закрыть пробелы</h2>
+                          <p>
+                            {currentLagging.length
+                              ? `На этой неделе отстают: ${currentLagging
+                                  .slice(0, 2)
+                                  .map((m) => m.short.toLowerCase())
+                                  .join(" и ")}. Соберём короткую тренировку под твоё время.`
+                              : "Подходы этой недели покрывают твои цели. Можно отдыхать или добавить объём."}
+                          </p>
+                        </div>
+                        <div className="planner-controls">
+                          <div className="segmented" role="group" aria-label="Сколько есть времени">
+                            {[20, 40, 60].map((n) => (
+                              <button
+                                key={n}
+                                className={minutes === n ? "active" : ""}
+                                aria-pressed={minutes === n}
+                                onClick={() => setMinutes(n)}
+                              >
+                                {n} мин
+                              </button>
+                            ))}
+                          </div>
+                          <label>
+                            Оборудование
+                            <select
+                              value={planEquipment}
+                              onChange={(e) => setPlanEquipment(e.target.value as Equipment)}
+                            >
+                              {Object.entries(EQ).map(([key, name]) => (
+                                <option key={key} value={key}>
+                                  {name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+                        <details className="exclude-muscles">
+                          <summary>Пропустить мышцы сегодня</summary>
+                          <div className="muscle-chips">
+                            {MUSCLES.map((m) => (
+                              <label key={m.id}>
+                                <input
+                                  type="checkbox"
+                                  checked={excluded.includes(m.id)}
+                                  onChange={(e) =>
+                                    setExcluded((xs) =>
+                                      e.target.checked
+                                        ? [...xs, m.id]
+                                        : xs.filter((id) => id !== m.id),
+                                    )
+                                  }
+                                />
+                                {m.short}
+                              </label>
+                            ))}
+                          </div>
+                        </details>
+                        <div className="plan-list">
+                          {plan.picks.map((p) => (
+                            <div className="plan-item" key={p.exercise.id}>
+                              <div>
+                                <h3>{p.exercise.name}</h3>
+                                <p>{p.reason}</p>
+                              </div>
+                              <span>3 × 8–12</span>
+                            </div>
+                          ))}
+                          {!plan.picks.length ? (
+                            <div className="no-results">
+                              Нет подходящих пробелов. Смени оборудование, сними
+                              исключения или отдыхай.
+                            </div>
+                          ) : null}
+                        </div>
+                        <p className="tiny">
+                          Покрытие целей {plan.before}% → {plan.after}% после плана · около {plan.minutes} мин.
+                          Это не прогноз роста; вес подбери под себя.
+                        </p>
+                        <button
+                          className="button primary full-width"
+                          disabled={!plan.picks.length}
+                          onClick={() =>
+                            start(
+                              plan.picks.map((p) => p.exercise.id),
+                              "Баланс недели",
+                            )
+                          }
+                        >
+                          <Play size={18} />
+                          {demo ? "Попробовать этот план" : "Начать по плану"}
+                        </button>
+                      </section>
+                    </>
+                  ) : null}
+                  {progressTab === "anatomy" ? (
+                    <>
+                      <h2 className="sr-only">Анатомия движения</h2>
+                      <Suspense
+                        fallback={
+                          <div className="loading-state" role="status">
+                            Открываем атлас…
+                          </div>
+                        }
+                      >
+                        <AnatomyExplorer
+                          loads={loads}
+                          workouts={weekWorkouts}
+                          options={analysisOptions}
+                          onExercise={setExerciseDetail}
+                          onLibrary={(zone) => {
+                            setMuscleFilter(zone);
+                            go("library");
+                          }}
+                        />
+                      </Suspense>
+                    </>
+                  ) : null}
+                  {progressTab === "strength" ? (
+                    <>
+                      <div className="progress-selector">
+                        <label>
+                          Упражнение
+                          <select
+                            value={progressExercise}
+                            onChange={(e) => setProgressExercise(e.target.value)}
+                          >
+                            {progressOptions.map((o) => (
+                              <option value={o.key} key={o.key}>
+                                {entryName(o.we)}
+                                {(o.we.catalogRevision ?? 1) === 1
+                                  ? " · старое правило веса"
+                                  : ""}
+                                {o.we.equipmentNote ? ` · ${o.we.equipmentNote}` : ""}
+                                {o.we.performedSides ? ` · ${o.we.performedSides}` : ""}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <p className="tiny">
+                          {recordingLabel(progressEntry)}.{" "}
+                          {progressSpec.loadMode === "assisted_bodyweight"
+                            ? "Больше помощи — меньше сопротивления."
+                            : "Сравнение внутри одной версии и правила записи."}{" "}
+                          {progressSpec.e1rmEligible
+                            ? "Расчётный 1ПМ — по 1–12 повторениям записанного веса."
+                            : "Для этого правила записи расчётный 1ПМ отключён."}
+                        </p>
                       </div>
-                    }
-                  >
-                    <AnatomyExplorer
-                      loads={loads}
-                      workouts={weekWorkouts}
-                      options={analysisOptions}
-                      onExercise={setExerciseDetail}
-                      onLibrary={(zone) => {
-                        setMuscleFilter(zone);
-                        go("library");
-                      }}
+                      <div className="stats-grid progress-stats">
+                        <Stat
+                          label="Лучшее значение"
+                          value={fmt(Math.max(0, ...progressPoints.map((p) => p.max)))}
+                          unit={progressSpec.type === "duration" ? "с" : "кг"}
+                        />
+                        <Stat
+                          label={progressSpec.type === "duration" ? "Изменение, с" : "Изменение веса"}
+                          value={
+                            lastProgress && firstProgress
+                              ? `${lastProgress.max - firstProgress.max >= 0 ? "+" : ""}${fmt(lastProgress.max - firstProgress.max)}`
+                              : "—"
+                          }
+                          unit={lastProgress ? (progressSpec.type === "duration" ? "с" : "кг") : ""}
+                        />
+                        <Stat
+                          label="Расчётный 1ПМ"
+                          value={lastProgress?.e1rm ? fmt(lastProgress.e1rm) : "—"}
+                          unit={lastProgress?.e1rm ? "кг" : ""}
+                        />
+                        <Stat label="Тренировок" value={String(progressPoints.length)} />
+                      </div>
+                      <section className="panel progress-panel">
+                        <div className="panel-header">
+                          <div>
+                            <h2>{entryName(progressEntry)}</h2>
+                            <p>Лучшее записанное значение в каждой тренировке</p>
+                          </div>
+                        </div>
+                        {progressPoints.length ? (
+                          <>
+                            <div className="large-sparkline">
+                              <Sparkline values={progressPoints.map((p) => p.max)} />
+                            </div>
+                            <div className="progress-dates">
+                              <span>{dateLabel(firstProgress.date, true)}</span>
+                              <span>{dateLabel(lastProgress!.date, true)}</span>
+                            </div>
+                            <div className="progress-history">
+                              {[...progressPoints].reverse().map((p, i) => (
+                                <div key={`${p.date}-${i}`}>
+                                  <span>{dateLabel(p.date, true)}</span>
+                                  <span>
+                                    {p.sets.length} подх. · {p.reps}{" "}
+                                    {progressSpec.type === "duration" ? "с" : "повт."}
+                                  </span>
+                                  <b>
+                                    {fmt(p.max)} {progressSpec.type === "duration" ? "с" : "кг"}
+                                  </b>
+                                </div>
+                              ))}
+                            </div>
+                          </>
+                        ) : (
+                          <div className="empty-state">
+                            <TrendingUp size={34} />
+                            <h2>Прогрессу нужна точка отсчёта</h2>
+                            <p>
+                              Запиши {entryName(progressEntry).toLowerCase()} в
+                              тренировке, чтобы увидеть динамику.
+                            </p>
+                            <button
+                              className="button primary"
+                              onClick={() => start([progressEntry.exerciseId])}
+                            >
+                              Записать упражнение
+                            </button>
+                          </div>
+                        )}
+                      </section>
+                    </>
+                  ) : null}
+                </>
+              ) : null}
+              {view === "library" ? (
+                <>
+                  <header className="screen-head">
+                    <h1>Упражнения</h1>
+                  </header>
+                  {exerciseCards()}
+                </>
+              ) : null}
+              {view === "programs" ? (
+                <>
+                  <header className="screen-head">
+                    <h1>Программы</h1>
+                  </header>
+                  <Suspense fallback={<p role="status">Открываем программы…</p>}>
+                    <ProgramsScreen
+                      routines={product.routines}
+                      workouts={workouts}
+                      timeZone={settings.timeZone ?? browserTimeZone()}
+                      personal={product.customExercises}
+                      favorites={product.favorites}
+                      onFavorite={(id) => void favoriteExercise(id)}
+                      onSave={saveRoutine}
+                      onDelete={deleteRoutine}
+                      onStart={(r) =>
+                        start(
+                          [],
+                          undefined,
+                          new TrainingProgram(r).start(
+                            workouts,
+                            settings.timeZone ?? browserTimeZone(),
+                          ),
+                        )
+                      }
+                      initial={initialRoutine}
+                      onInitialUsed={() => setInitialRoutine(null)}
                     />
                   </Suspense>
                 </>
               ) : null}
-              {view === "library" ? <>{exerciseCards()}</> : null}
-              {view === "programs" ? (
-                <Suspense fallback={<p role="status">Открываем программы…</p>}>
-                  <ProgramsScreen
-                    routines={product.routines}
-                    workouts={workouts}
-                    timeZone={settings.timeZone ?? browserTimeZone()}
-                    personal={product.customExercises}
-                    favorites={product.favorites}
-                    onFavorite={(id) => void favoriteExercise(id)}
-                    onSave={saveRoutine}
-                    onDelete={deleteRoutine}
-                    onStart={(r) =>
-                      start(
-                        [],
-                        undefined,
-                        new TrainingProgram(r).start(
-                          workouts,
-                          settings.timeZone ?? browserTimeZone(),
-                        ),
-                      )
-                    }
-                    initial={initialRoutine}
-                    onInitialUsed={() => setInitialRoutine(null)}
-                  />
-                </Suspense>
-              ) : null}
-              {view === "progress" ? (
-                <>
-                  <div className="progress-selector">
-                    <label>
-                      Упражнение
-                      <select
-                        value={progressExercise}
-                        onChange={(e) => setProgressExercise(e.target.value)}
-                      >
-                        {progressOptions.map((o) => (
-                          <option value={o.key} key={o.key}>
-                            {entryName(o.we)}
-                            {(o.we.catalogRevision ?? 1) === 1
-                              ? " · старое правило веса"
-                              : ""}
-                            {o.we.equipmentNote
-                              ? ` · ${o.we.equipmentNote}`
-                              : ""}
-                            {o.we.performedSides
-                              ? ` · ${o.we.performedSides}`
-                              : ""}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <p>
-                      {recordingLabel(progressEntry)}.{" "}
-                      {progressSpec.loadMode === "assisted_bodyweight"
-                        ? "Больше помощи — меньше сопротивления."
-                        : "Сравнение внутри одной версии и правила записи."}{" "}
-                      {progressSpec.e1rmEligible
-                        ? "Расчётный 1ПМ — оценка по 1–12 повторениям записанного веса."
-                        : "Для этого правила записи расчётный 1ПМ отключён."}
-                    </p>
-                  </div>
-                  <div className="stats-grid progress-stats">
-                    <Stat
-                      icon={<Trophy size={19} />}
-                      label="Макс. записанное значение"
-                      value={fmt(
-                        Math.max(0, ...progressPoints.map((p) => p.max)),
-                      )}
-                      unit={progressSpec.type === "duration" ? "с" : "кг"}
-                      meta={recordingLabel(progressEntry)}
-                    />
-                    <Stat
-                      icon={<TrendingUp size={19} />}
-                      label={
-                        progressSpec.type === "duration"
-                          ? "Изменение длительности"
-                          : "Изменение веса"
-                      }
-                      value={
-                        lastProgress && firstProgress
-                          ? `${lastProgress.max - firstProgress.max >= 0 ? "+" : ""}${fmt(lastProgress.max - firstProgress.max)}`
-                          : "—"
-                      }
-                      unit={
-                        lastProgress
-                          ? progressSpec.type === "duration"
-                            ? "с"
-                            : "кг"
-                          : ""
-                      }
-                      meta="первая → последняя тренировка"
-                    />
-                    <Stat
-                      icon={<Target size={19} />}
-                      label="1ПМ записанного веса"
-                      value={lastProgress?.e1rm ? fmt(lastProgress.e1rm) : "—"}
-                      unit={lastProgress?.e1rm ? "кг" : ""}
-                      meta={
-                        progressSpec.e1rmEligible
-                          ? "формула Эпли · версия 1"
-                          : "не вычисляется для этого варианта"
-                      }
-                    />
-                    <Stat
-                      icon={<CalendarDays size={19} />}
-                      label="Тренировок"
-                      value={String(progressPoints.length)}
-                      meta="с этим упражнением"
-                    />
-                  </div>
-                  <section className="panel progress-panel">
-                    <div className="panel-header">
-                      <div>
-                        <h2>{entryName(progressEntry)}</h2>
-                        <p>
-                          Максимальное записанное значение в каждой тренировке
-                        </p>
-                      </div>
-                      <span className="chart-key">
-                        <i />
-                        Записанное значение
-                      </span>
-                    </div>
-                    {progressPoints.length ? (
-                      <>
-                        <div className="large-sparkline">
-                          <Sparkline
-                            values={progressPoints.map((p) => p.max)}
-                          />
-                        </div>
-                        <div className="progress-dates">
-                          <span>{dateLabel(firstProgress.date, true)}</span>
-                          <span>{dateLabel(lastProgress!.date, true)}</span>
-                        </div>
-                        <div className="progress-history">
-                          {[...progressPoints].reverse().map((p, i) => (
-                            <div key={`${p.date}-${i}`}>
-                              <span>{dateLabel(p.date, true)}</span>
-                              <span>
-                                {p.sets.length} подходов · {p.reps}{" "}
-                                {progressSpec.type === "duration"
-                                  ? "с"
-                                  : "повторов"}
-                              </span>
-                              <b>
-                                {fmt(p.max)}{" "}
-                                {progressSpec.type === "duration" ? "с" : "кг"}
-                              </b>
-                            </div>
-                          ))}
-                        </div>
-                      </>
-                    ) : (
-                      <div className="empty-state">
-                        <TrendingUp size={34} />
-                        <h2>Прогрессу нужна точка отсчёта</h2>
-                        <p>
-                          Запиши {entryName(progressEntry).toLowerCase()} в
-                          тренировке, чтобы увидеть динамику.
-                        </p>
-                        <button
-                          className="button primary"
-                          onClick={() => start([progressEntry.exerciseId])}
-                        >
-                          Записать упражнение
-                        </button>
-                      </div>
-                    )}
-                  </section>
-                </>
-              ) : null}
             </>
           )}
-          <footer className="page-footer">
-            <span>
-              тяга<span>.</span>
-            </span>
-            <p>Твоя работа. Твои данные. Твой результат.</p>
-            <button onClick={() => setModal("method")}>Как мы считаем</button>
-          </footer>
         </m.div>
       </main>
+      {draft && view !== "workout" ? (
+        <button className="resume-pill" onClick={() => go("workout")}>
+          <span className="resume-dot" aria-hidden="true" />
+          Вернуться к тренировке
+          <b>{draft.manualDuration ? draft.workout.duration : Math.floor(elapsedMs(draft) / 60000)} мин</b>
+        </button>
+      ) : null}
       {toast ? (
         <div className="toast" role="status">
           <Check size={17} />
@@ -1650,131 +1498,6 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
               }}
             >
               Готово
-            </button>
-          </div>
-        </Modal>
-      ) : null}
-      {modal === "planner" ? (
-        <Modal title="Баланс недели" onClose={() => setModal(null)} wide>
-          <p className="modal-intro">
-            Подберём упражнения для недобора прямых подходов относительно твоих
-            ориентиров. План использует все рабочие подходы без фильтра RIR и
-            учитывает {demo ? "пример тренировок" : "твой журнал"} за текущую
-            неделю.
-          </p>
-          <div className="planner-controls">
-            <div>
-              <label>Сколько времени есть?</label>
-              <div className="segmented">
-                {[20, 40, 60].map((n) => (
-                  <button
-                    key={n}
-                    className={minutes === n ? "active" : ""}
-                    onClick={() => setMinutes(n)}
-                  >
-                    {n} мин
-                  </button>
-                ))}
-              </div>
-            </div>
-            <label>
-              Оборудование
-              <select
-                value={planEquipment}
-                onChange={(e) => setPlanEquipment(e.target.value as Equipment)}
-              >
-                {Object.entries(EQ).map(([key, name]) => (
-                  <option key={key} value={key}>
-                    {name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          <details className="exclude-muscles">
-            <summary>Какие мышцы пропустить сегодня?</summary>
-            <p className="tiny">
-              Исключим упражнения с отмеченной ролью выбранных мышц, включая
-              стабилизацию. Это не гарантия полного отсутствия участия.
-            </p>
-            <div className="muscle-chips">
-              {MUSCLES.map((m) => (
-                <label key={m.id}>
-                  <input
-                    type="checkbox"
-                    checked={excluded.includes(m.id)}
-                    onChange={(e) =>
-                      setExcluded((xs) =>
-                        e.target.checked
-                          ? [...xs, m.id]
-                          : xs.filter((id) => id !== m.id),
-                      )
-                    }
-                  />
-                  {m.short}
-                </label>
-              ))}
-            </div>
-          </details>
-          <div className="balance-projection">
-            <div>
-              <span>Покрытие сейчас</span>
-              <b>{plan.before}%</b>
-            </div>
-            <div className="projection-divider" />
-            <div>
-              <span>После 3 рабочих подходов каждого упражнения</span>
-              <b>{plan.after}%</b>
-            </div>
-            <span className="projection-change">
-              +{plan.after - plan.before} п.п.
-            </span>
-          </div>
-          <div className="plan-list">
-            {plan.picks.map((p, i) => (
-              <div className="plan-item" key={p.exercise.id}>
-                <span className="exercise-number">
-                  {String(i + 1).padStart(2, "0")}
-                </span>
-                <div>
-                  <h3>{p.exercise.name}</h3>
-                  <span>3 подхода × 8–12 повторений · RIR 2</span>
-                  <p>
-                    <Sparkles size={13} />
-                    {p.reason}
-                  </p>
-                </div>
-              </div>
-            ))}
-            {!plan.picks.length ? (
-              <div className="no-results">
-                Нет подходящих пробелов. Выбери другое оборудование, сними
-                исключения или запланируй отдых.
-              </div>
-            ) : null}
-          </div>
-          <p className="tiny planner-disclaimer">
-            Это покрытие ориентиров, а не прогноз роста. Время — приблизительная
-            оценка: подготовка + повторы + выбранный отдых между подходами. Вес
-            и амплитуду подбери под себя.
-          </p>
-          <div className="modal-actions">
-            <span className="muted">
-              <Clock3 size={16} />
-              Около {plan.minutes} минут
-            </span>
-            <button
-              className="button primary"
-              disabled={!plan.picks.length}
-              onClick={() =>
-                start(
-                  plan.picks.map((p) => p.exercise.id),
-                  "Баланс недели",
-                )
-              }
-            >
-              <Plus size={17} />
-              {demo ? "Попробовать этот план" : "Начать по плану"}
             </button>
           </div>
         </Modal>
@@ -2310,31 +2033,21 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
 }
 
 function Stat({
-  icon,
   label,
   value,
   unit,
-  meta,
-  accent = false,
 }: {
-  icon: ReactNode;
   label: string;
   value: string;
   unit?: string;
-  meta: string;
-  accent?: boolean;
 }) {
   return (
-    <article className={`stat-card panel ${accent ? "accent-stat" : ""}`}>
-      <div className="stat-top">
-        <span>{label}</span>
-        <span className="stat-icon">{icon}</span>
-      </div>
+    <article className="stat-card panel">
+      <span className="stat-label">{label}</span>
       <div className="stat-value">
         {value}
         {unit ? <span>{unit}</span> : null}
       </div>
-      <p>{meta}</p>
     </article>
   );
 }

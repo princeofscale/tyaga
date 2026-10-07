@@ -112,10 +112,9 @@ test("account registration or login, profile, logout and returning session work 
   await page.screenshot({path:"artifacts/account-mobile-v4.png",fullPage:true});
   await page.getByRole("button",{name:state.registered ? "Войти в Тягу" : "Создать аккаунт",exact:true}).click();
   if (!state.registered) { await expect(page.getByRole("dialog",{name:"Код восстановления"})).toBeVisible(); await page.getByRole("button",{name:"Код сохранён"}).click(); }
-  await expect(page.getByRole("heading",{name:"Твой прогресс",exact:true})).toBeVisible();
-  await page.reload(); await expect(page.getByRole("heading",{name:"Твой прогресс",exact:true})).toBeVisible();
-  await page.getByRole("button",{name:"Открыть меню"}).click();
-  await page.locator(".profile-button").click();
+  await expect(page.getByRole("heading",{name:"Сегодня",exact:true})).toBeVisible();
+  await page.reload(); await expect(page.getByRole("heading",{name:"Сегодня",exact:true})).toBeVisible();
+  await page.getByRole("button",{name:"Мой профиль"}).click();
   await page.getByLabel("Имя",{exact:true}).fill("[E2E] Атлет");
   await page.getByLabel("Вес тела, кг",{exact:true}).fill("75.5");
   await page.getByLabel("Часовой пояс",{exact:true}).fill("UTC");
@@ -125,7 +124,7 @@ test("account registration or login, profile, logout and returning session work 
   await expect(page.getByRole("heading",{name:"Снова в зале"})).toBeVisible();
   await page.getByLabel("Почта",{exact:true}).fill("gym-e2e@example.test"); await page.getByLabel("Пароль",{exact:true}).fill("test account passphrase");
   await page.getByRole("button",{name:"Войти в Тягу",exact:true}).click();
-  await expect(page.getByRole("heading",{name:"Твой прогресс",exact:true})).toBeVisible();
+  await expect(page.getByRole("heading",{name:"Сегодня",exact:true})).toBeVisible();
   const cookie=(await context.cookies()).find(c=>c.name==="tyaga_session")!;
   expect(cookie.httpOnly).toBeTruthy(); expect(cookie.sameSite).toBe("Strict"); authCookie=`${cookie.name}=${cookie.value}`;
   expect(await page.evaluate(()=>document.cookie)).not.toContain("tyaga_session");
@@ -142,13 +141,16 @@ test("save/reload/edit/export/settings/repeat preserve the actual workout and ti
   await page.getByRole("button",{name:"Посмотреть пример",exact:true}).click();
   await expect(page.getByText("Пример данных", { exact: true })).toBeVisible();
   await page.screenshot({ path: "artifacts/desktop-v2.png", fullPage: true });
-  await page.getByRole("button", { name: "Собрать тренировку" }).click();
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Прогресс", exact: true })
+    .click();
   await page.getByRole("button", { name: "20 мин", exact: true }).click();
   await expect(page.locator(".plan-item")).not.toHaveCount(0);
   expect(await page.locator(".plan-item").count()).toBeLessThanOrEqual(2);
   await page.screenshot({ path: "artifacts/planner-v2.png", fullPage: true });
-  await page.getByRole("button", { name: "Закрыть окно", exact: true }).click();
   await startBench(page, "[E2E] Журнал");
+  await page.getByText("Детали тренировки", { exact: true }).click();
   await page.getByLabel("Длительность тренировки, минуты").fill("42");
   const rest = await page.locator(".rest-digits").textContent();
   await page.reload();
@@ -203,6 +205,10 @@ test("save/reload/edit/export/settings/repeat preserve the actual workout and ti
     exported.workouts.some((w: { id: string }) => w.id.startsWith("demo-")),
   ).toBe(false);
   await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Прогресс", exact: true })
+    .click();
+  await page
     .getByRole("button", { name: "Настройки целей", exact: true })
     .click();
   await page.getByLabel("Недельная цель: Грудь", { exact: true }).fill("11");
@@ -214,6 +220,7 @@ test("save/reload/edit/export/settings/repeat preserve the actual workout and ti
   data = await (await request.get("/api/data")).json();
   expect(data.settings.goals.chest).toBe(11);
   expect(data.settings.timeZone).toBe("Europe/Amsterdam");
+  await history(page);
   await page
     .locator(".session-item")
     .filter({ hasText: "[E2E] Журнал" })
@@ -445,7 +452,6 @@ test("mobile layout, detailed muscle sources and 200% text stay usable", async (
     ),
   ).toBe(false);
   await page.screenshot({ path: "artifacts/mobile-v2.png", fullPage: true });
-  await page.getByRole("button", { name: "Открыть меню", exact: true }).click();
   await page
     .getByRole("navigation")
     .getByRole("button", { name: "Упражнения", exact: true })
@@ -487,8 +493,9 @@ test("anatomy atlas supports mouse, keyboard, mobile and enlarged text", async (
   await page.goto("/");
   await page
     .getByRole("navigation")
-    .getByRole("button", { name: "Анатомия", exact: true })
+    .getByRole("button", { name: "Прогресс", exact: true })
     .click();
+  await page.getByRole("tab", { name: "Карта мышц", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Анатомия движения", exact: true }),
   ).toBeVisible();
@@ -547,7 +554,7 @@ test("wger browse, attribution and recording survive reload and edit", async ({
     .click();
   await page
     .locator(".catalog-tabs")
-    .getByRole("button", { name: /wger/ })
+    .getByRole("button", { name: /База/ })
     .click();
   await page.getByLabel("Поиск упражнений").fill("bench");
   await expect(page.locator(".library-card").first()).toBeVisible({

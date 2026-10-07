@@ -150,6 +150,23 @@ export function makeSets(count = 3, weight = 0, reps = 10): SetEntry[] {
     done: false,
   }));
 }
+/** The same exercise variant from the most recent workout, skipping `excludeId`. */
+export function lastEntry(
+  history: Workout[],
+  entry: WorkoutExercise,
+  excludeId?: string,
+) {
+  return [...history]
+    .filter((w) => w.id !== excludeId)
+    .sort(
+      (a, b) =>
+        b.date.localeCompare(a.date) ||
+        (b.createdAt ?? "").localeCompare(a.createdAt ?? "") ||
+        b.id.localeCompare(a.id),
+    )
+    .flatMap((w) => w.exercises)
+    .find((we) => progressKey(we) === progressKey(entry));
+}
 export function makeExerciseEntry(
   id: string,
   history: Workout[] = [],
@@ -162,16 +179,9 @@ export function makeExerciseEntry(
       rir: null,
       durationSeconds: 30,
     }));
-  const last = [...history]
-    .sort(
-      (a, b) =>
-        b.date.localeCompare(a.date) ||
-        (b.createdAt ?? "").localeCompare(a.createdAt ?? "") ||
-        b.id.localeCompare(a.id),
-    )
-    .flatMap((w) => w.exercises)
-    .find((we) => progressKey(we) === progressKey(entry));
-  const previous = last?.sets.filter((s) => s.done && !s.warmup).at(-1);
+  const previous = lastEntry(history, entry)
+    ?.sets.filter((s) => s.done && !s.warmup)
+    .at(-1);
   if (previous)
     entry.sets = makeSets(3, previous.weight, previous.reps).map((s) => ({
       ...s,
