@@ -15,6 +15,20 @@
       "when": 1791343912284,
       "tag": "0001_misty_ghost_rider",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1791349904705,
+      "tag": "0002_left_ma_gnuci",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1791350056725,
+      "tag": "0003_jazzy_zarda",
+      "breakpoints": true
     }
   ]
 }

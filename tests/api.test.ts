@@ -8,6 +8,7 @@ import {
   type Workout,
   type Settings,
 } from "../src/lib/model";
+import { muscleLoad, volume, workingSets } from "../src/lib/model";
 
 async function sandbox(
   beforeUpgrade?: (
@@ -58,6 +59,85 @@ function completed() {
   w.exercises[0].sets[0].weight = 60;
   return w;
 }
+
+test("wger imports resume in bounded batches, search is paged and saved definitions are authoritative", async () => {
+  const { mf, db, request } = await sandbox();
+  try {
+    assert.equal(
+      (await request("/api/exercises", "GET", undefined, null)).status,
+      401,
+    );
+    let result: any;
+    for (let i = 0; i < 8; i++) {
+      result = await (await request("/api/exercises?q=bench")).json();
+      if (!result.importing) break;
+      assert.ok(result.imported <= result.catalogTotal);
+    }
+    assert.equal(result.importing, undefined);
+    assert.equal(result.catalogTotal, 918);
+    assert.equal(
+      (await db
+        .prepare("SELECT COUNT(*) AS count FROM exercise_catalog")
+        .first<{ count: number }>())!.count,
+      918,
+    );
+    assert.ok(result.exercises.length > 0 && result.exercises.length <= 24);
+    const e = result.exercises.find((e: any) => e.source.record.loggable);
+    assert.ok(e);
+    assert.ok(
+      e.source.record.attributions.every((a: any) =>
+        a.licenseUrl.startsWith("http"),
+      ),
+    );
+    const literal = (await (
+      await request("/api/exercises?q=%25")
+    ).json()) as any;
+    assert.equal(literal.total, 0);
+    const ru = (await (
+      await request("/api/exercises?language=ru")
+    ).json()) as any;
+    assert.equal(ru.total, 10);
+    assert.ok(
+      ru.exercises.every((e: any) => e.source.record.language === "ru"),
+    );
+    const w = completed();
+    w.exercises = [
+      {
+        exerciseId: e.id,
+        catalogRevision: 3,
+        recordingSpecRevision: 3,
+        muscleMappingRevision: 3,
+        displayNameSnapshot: e.name,
+        externalDefinition: { ...e, primary: ["chest"] },
+        sets: w.exercises[0].sets,
+      },
+    ];
+    const response = await request("/api/workouts", "PUT", w);
+    assert.equal(response.status, 200);
+    const saved = ((await response.json()) as { workout: Workout }).workout;
+    assert.deepEqual(saved.exercises[0].externalDefinition?.primary, []);
+    assert.equal(
+      saved.exercises[0].externalDefinition?.source?.record.id,
+      e.id,
+    );
+    assert.equal(workingSets([saved]), 1);
+    assert.equal(volume([saved]), 0);
+    assert.equal(
+      muscleLoad([saved]).reduce((n, l) => n + l.total, 0),
+      0,
+    );
+    const retry = await request("/api/workouts", "PUT", w);
+    assert.equal(
+      ((await retry.json()) as { workout: Workout }).workout.revision,
+      1,
+    );
+    w.id = "unknown-source";
+    w.exercises[0].exerciseId = "wger:missing:123";
+    assert.equal((await request("/api/workouts", "PUT", w)).status, 400);
+  } finally {
+    await mf.dispose();
+  }
+});
 
 test("production API preserves atomic revisions, idempotence, identity isolation and validation", async (t) => {
   const { mf, request } = await sandbox();

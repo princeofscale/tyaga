@@ -395,3 +395,139 @@ test("mobile layout, detailed muscle sources and 200% text stay usable", async (
   ).toBe(false);
   expect(errors).toEqual([]);
 });
+
+test("anatomy atlas supports mouse, keyboard, mobile and enlarged text", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/");
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Анатомия", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Анатомия движения", exact: true }),
+  ).toBeVisible();
+  await expect(page.locator(".anatomy-canvas svg .atlas-muscle")).toHaveCount(
+    35,
+  );
+  const chest = page.getByRole("button", { name: /^Грудные: / });
+  await chest.locator("path").first().click();
+  await expect(page.locator(".anatomy-selection h2")).toHaveText("Грудные");
+  const back = page.getByRole("button", { name: /^Широчайшие и верх спины: / });
+  await back.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.locator(".anatomy-selection h2")).toHaveText(
+    "Широчайшие и верх спины",
+  );
+  await page.getByRole("button", { name: "Спереди", exact: true }).click();
+  await expect(page.locator(".body-figure")).toHaveCount(1);
+  await page.getByRole("button", { name: "Оба вида", exact: true }).click();
+  await page.evaluate(() => document.fonts.ready);
+  expect(
+    await page.evaluate(() =>
+      document.fonts.check('16px "Manrope Variable"', "Тяга"),
+    ),
+  ).toBe(true);
+  await page.screenshot({ path: "artifacts/anatomy-v3.png", fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({
+    path: "artifacts/anatomy-mobile-v3.png",
+    fullPage: true,
+  });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth > innerWidth,
+    ),
+  ).toBe(false);
+  await page.setViewportSize({ width: 1440, height: 1080 });
+  await page.evaluate(() => (document.documentElement.style.fontSize = "200%"));
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth > innerWidth,
+    ),
+  ).toBe(false);
+  expect(errors).toEqual([]);
+});
+
+test("wger browse, attribution and recording survive reload and edit", async ({
+  page,
+  request,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/");
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Упражнения", exact: true })
+    .click();
+  await page
+    .locator(".catalog-tabs")
+    .getByRole("button", { name: /wger/ })
+    .click();
+  await page.getByLabel("Поиск упражнений").fill("bench");
+  await expect(page.locator(".library-card").first()).toBeVisible({
+    timeout: 30000,
+  });
+  await expect(page.locator(".catalog-loading")).toHaveCount(0);
+  await page.screenshot({ path: "artifacts/wger-v3.png", fullPage: true });
+  const card = page
+    .locator(".library-card")
+    .filter({ has: page.locator(".library-add:not([disabled])") })
+    .first();
+  const name = (await card.locator("h3").textContent())!;
+  await card
+    .getByRole("button", { name: "Техника и мышцы", exact: true })
+    .click();
+  await page.getByText("Источник и лицензии", { exact: true }).click();
+  await expect(page.locator(".wger-attribution a").first()).toHaveAttribute(
+    "href",
+    /wger/,
+  );
+  await page.screenshot({
+    path: "artifacts/wger-detail-v3.png",
+    fullPage: true,
+  });
+  await page
+    .getByRole("button", { name: "Добавить в тренировку", exact: true })
+    .click();
+  await page
+    .getByLabel("Название тренировки", { exact: true })
+    .fill("[E2E] wger");
+  await page.getByLabel(`${name}, подход 1, вес`, { exact: true }).fill("25");
+  await page
+    .getByRole("button", {
+      name: `Отметить выполненным: ${name}, подход 1`,
+      exact: true,
+    })
+    .click();
+  await page
+    .getByRole("button", { name: "Завершить тренировку", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "История тренировок", exact: true }),
+  ).toBeVisible();
+  const saved = (await (await request.get("/api/data")).json()).workouts.find(
+    (w: any) => w.name === "[E2E] wger",
+  );
+  expect(saved.exercises[0].catalogRevision).toBe(3);
+  expect(saved.exercises[0].externalDefinition.source.provider).toBe("wger");
+  await page.reload();
+  await history(page);
+  await page.locator(".session-item").filter({ hasText: "[E2E] wger" }).click();
+  await page
+    .getByRole("button", { name: "Редактировать", exact: true })
+    .click();
+  await expect(
+    page.getByLabel(`${name}, подход 1, вес`, { exact: true }),
+  ).toHaveValue("25");
+  await page.getByLabel(`${name}, подход 1, вес`, { exact: true }).fill("30");
+  await page
+    .getByRole("button", { name: "Сохранить изменения", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "История тренировок", exact: true }),
+  ).toBeVisible();
+  expect(errors).toEqual([]);
+});

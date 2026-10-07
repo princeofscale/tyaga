@@ -1,6 +1,7 @@
 import { CATALOG_V1 } from "../data/catalog-v1";
 import { CATALOG_V2 } from "../data/catalog-v2";
 import type { Exercise, WorkoutExercise } from "./types";
+import { ExerciseCatalog } from "../domain/ExerciseCatalog";
 export { ANATOMICAL_MUSCLES, MUSCLES } from "../data/muscles";
 export { EVIDENCE, evidenceById } from "../data/evidence";
 export const CATALOG_REVISION = 2;
@@ -30,13 +31,12 @@ const legacy: Exercise[] = CATALOG_V1.map((e) => ({
     reviewStatus: "legacy-unreviewed",
   },
 }));
-export function exerciseById(id: string, revision: 1 | 2 = 2) {
-  return revision === 1
-    ? legacy.find((e) => e.id === id)
-    : (CATALOG_V2.find((e) => e.id === id) ?? legacy.find((e) => e.id === id));
+export const exerciseCatalog = new ExerciseCatalog(CATALOG_V2, legacy);
+export function exerciseById(id: string, revision: 1 | 2 | 3 = 2) {
+  return exerciseCatalog.find(id, revision);
 }
 export const exerciseForEntry = (we: WorkoutExercise) =>
-  exerciseById(we.exerciseId, we.catalogRevision ?? 1);
+  exerciseCatalog.forEntry(we);
 export const entryName = (we: WorkoutExercise) =>
   we.displayNameSnapshot ?? exerciseForEntry(we)?.name ?? we.exerciseId;
 export function entrySpec(id: string): Omit<WorkoutExercise, "sets"> {
@@ -48,6 +48,7 @@ export function entrySpec(id: string): Omit<WorkoutExercise, "sets"> {
     recordingSpecRevision: e.catalogRevision,
     muscleMappingRevision: e.catalogRevision,
     displayNameSnapshot: e.name,
+    ...(e.source ? { externalDefinition: e } : {}),
     ...(e.recording.laterality === "unilateral"
       ? { performedSides: "both" as const }
       : {}),

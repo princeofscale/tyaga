@@ -1,5 +1,7 @@
 import {
   useCallback,
+  lazy,
+  Suspense,
   useEffect,
   useMemo,
   useState,
@@ -7,6 +9,7 @@ import {
 } from "react";
 import {
   Activity,
+  ScanLine,
   BarChart3,
   CalendarDays,
   Check,
@@ -71,6 +74,9 @@ import BodyMap, { loadColor } from "./components/BodyMap";
 import { VolumeChart, Sparkline } from "./components/Charts";
 import Modal from "./components/Modal";
 import WorkoutView from "./components/WorkoutView";
+import { m } from "motion/react";
+const AnatomyExplorer = lazy(() => import("./components/AnatomyExplorer"));
+const ExerciseLibrary = lazy(() => import("./components/ExerciseLibrary"));
 import ExerciseInfo from "./components/ExerciseInfo";
 import {
   readDraft,
@@ -81,12 +87,21 @@ import {
   type Draft,
   type PersistenceStatus,
 } from "./lib/draft";
+import { WorkoutSession } from "./domain/WorkoutSession";
+import { api, ApiError } from "./services/ApiClient";
 import { useTrainingTools } from "./lib/webmcp";
 
-type View = "overview" | "workout" | "history" | "library" | "progress";
+type View =
+  | "overview"
+  | "workout"
+  | "history"
+  | "library"
+  | "progress"
+  | "anatomy";
 const NAV = [
   { id: "overview", label: "Обзор", icon: LayoutDashboard },
   { id: "workout", label: "Тренировка", icon: Dumbbell },
+  { id: "anatomy", label: "Анатомия", icon: ScanLine },
   { id: "history", label: "История", icon: History },
   { id: "library", label: "Упражнения", icon: Activity },
   { id: "progress", label: "Прогресс", icon: BarChart3 },
@@ -101,52 +116,6 @@ const dateLabel = (date: string, long = false) =>
     day: "numeric",
     month: long ? "long" : "short",
   });
-class ApiError extends Error {
-  constructor(
-    message: string,
-    public status: number,
-    public data: { current?: Workout | null; settings?: Settings },
-  ) {
-    super(message);
-  }
-}
-async function api<T>(
-  path: string,
-  method = "GET",
-  body?: unknown,
-  signal?: AbortSignal,
-): Promise<T> {
-  const requestSignal = signal
-    ? AbortSignal.any([signal, AbortSignal.timeout(15000)])
-    : AbortSignal.timeout(15000);
-  let response: Response;
-  try {
-    response = await fetch(path, {
-      method,
-      signal: requestSignal,
-      headers: method === "GET" ? {} : { "Content-Type": "application/json" },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
-  } catch (error) {
-    if (signal?.aborted) throw error;
-    throw new Error(
-      "Запрос не завершился. Черновик остаётся в форме; можно повторить сохранение.",
-    );
-  }
-  const data = (await response.json()) as T & {
-    error?: string;
-    current?: Workout | null;
-    settings?: Settings;
-  };
-  if (!response.ok)
-    throw new ApiError(
-      data.error ?? "Не удалось выполнить запрос",
-      response.status,
-      data,
-    );
-  return data;
-}
-
 export default function App() {
   const [view, setView] = useState<View>("overview");
   const [workouts, setWorkouts] = useState<Workout[]>([]);
@@ -168,11 +137,7 @@ export default function App() {
   >(null);
   const [detail, setDetail] = useState<Workout | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
   const [muscleFilter, setMuscleFilter] = useState<Muscle | "all">("all");
-  const [equipmentFilter, setEquipmentFilter] = useState<Equipment | "all">(
-    "all",
-  );
   const [selectedMuscle, setSelectedMuscle] = useState<Muscle | null>(null);
   const [weekOffset, setWeekOffset] = useState(0);
   const [minutes, setMinutes] = useState(40);
@@ -355,13 +320,9 @@ export default function App() {
       d
         ? {
             ...d,
-            workout: {
-              ...d.workout,
-              exercises: [
-                ...d.workout.exercises,
-                makeExerciseEntry(id, workouts),
-              ],
-            },
+            workout: new WorkoutSession(d.workout).add(
+              makeExerciseEntry(id, workouts),
+            ),
           }
         : null,
     );
@@ -369,21 +330,23 @@ export default function App() {
   };
   const openPicker = () => {
     if (!draft) start();
-    setSearch("");
     setMuscleFilter("all");
-    setEquipmentFilter("all");
     setModal("picker");
   };
   const saveWorkout = async () => {
     if (!draft || saving) return;
     setSaving(true);
     setSaveError("");
-    const workout = {
-      ...draft.workout,
-      duration: draft.manualDuration
+    if (!new WorkoutSession(draft.workout).completedWorkingSets) {
+      setSaveError("Отметь хотя бы один выполненный рабочий подход.");
+      setSaving(false);
+      return;
+    }
+    const workout = new WorkoutSession(draft.workout).completedWithDuration(
+      draft.manualDuration
         ? draft.workout.duration
-        : Math.min(1440, Math.floor(elapsedMs(draft) / 60000)),
-    };
+        : Math.floor(elapsedMs(draft) / 60000),
+    );
     // Freeze completion time before sending. A retry after a lost response reuses
     // the same payload instead of changing its duration while the request waits.
     setDraft({
@@ -519,16 +482,6 @@ export default function App() {
     a.click();
     URL.revokeObjectURL(url);
   };
-  const filteredExercises = EXERCISES.filter(
-    (e) =>
-      e.name.toLowerCase().includes(search.toLowerCase()) &&
-      (muscleFilter === "all" ||
-        [...e.primary, ...e.secondary].includes(muscleFilter)) &&
-      (equipmentFilter === "all" ||
-        equipmentFilter === "gym" ||
-        e.equipment === equipmentFilter ||
-        e.equipment === "bodyweight"),
-  );
   const historyFiltered = displayed.filter((w) =>
     `${w.name} ${w.exercises.map((e) => entryName(e)).join(" ")}`
       .toLowerCase()
@@ -580,103 +533,23 @@ export default function App() {
     },
   });
 
-  const exerciseFilters = (
-    <div className="exercise-filters">
-      <div className="search-field">
-        <Search size={18} />
-        <input
-          placeholder="Найти упражнение…"
-          aria-label="Поиск упражнений"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-      </div>
-      <select
-        aria-label="Фильтр по мышцам"
-        value={muscleFilter}
-        onChange={(e) => setMuscleFilter(e.target.value as Muscle | "all")}
-      >
-        <option value="all">Все мышцы</option>
-        {MUSCLES.map((m) => (
-          <option key={m.id} value={m.id}>
-            {m.name}
-          </option>
-        ))}
-      </select>
-      <select
-        aria-label="Фильтр по оборудованию"
-        value={equipmentFilter}
-        onChange={(e) =>
-          setEquipmentFilter(e.target.value as Equipment | "all")
-        }
-      >
-        <option value="all">Любое оборудование</option>
-        {Object.entries(EQ).map(([key, name]) => (
-          <option key={key} value={key}>
-            {name}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
   const exerciseCards = (picker = false) => (
-    <div className={picker ? "picker-list" : "library-grid"}>
-      {filteredExercises.length ? (
-        filteredExercises.map((e, i) => (
-          <article
-            key={e.id}
-            className={picker ? "picker-exercise" : "library-card panel"}
-          >
-            <div className="library-icon">
-              <Dumbbell size={picker ? 18 : 24} />
-            </div>
-            <div className="library-copy">
-              <span className="tiny">{EQ[e.equipment]}</span>
-              <h3>{e.name}</h3>
-              <p>
-                {e.primary
-                  .map((m) => MUSCLES.find((x) => x.id === m)!.short)
-                  .join(" · ")}
-              </p>
-              {!picker ? (
-                <button
-                  className="text-button"
-                  onClick={() => setExerciseDetail(e.id)}
-                >
-                  Техника и мышцы
-                </button>
-              ) : null}
-            </div>
-            <button
-              className={
-                picker ? "icon-button add-exercise-button" : "library-add"
-              }
-              disabled={
-                !!draft?.workout.exercises.some((x) => x.exerciseId === e.id) ||
-                (draft?.workout.exercises.length ?? 0) >= 30
-              }
-              aria-label={`Добавить ${e.name}`}
-              onClick={() => addExercise(e.id)}
-            >
-              {draft?.workout.exercises.some((x) => x.exerciseId === e.id) ? (
-                <Check size={20} />
-              ) : (
-                <Plus size={20} />
-              )}
-            </button>
-            {!picker ? (
-              <span className="library-index">
-                {String(i + 1).padStart(2, "0")}
-              </span>
-            ) : null}
-          </article>
-        ))
-      ) : (
-        <div className="no-results">
-          Не нашлось упражнений. Измени поиск или фильтр.
+    <Suspense
+      fallback={
+        <div className="catalog-loading" role="status">
+          Открываем библиотеку…
         </div>
-      )}
-    </div>
+      }
+    >
+      <ExerciseLibrary
+        picker={picker}
+        onAdd={addExercise}
+        onDetail={setExerciseDetail}
+        selectedIds={draft?.workout.exercises.map((e) => e.exerciseId) ?? []}
+        limitReached={(draft?.workout.exercises.length ?? 0) >= 30}
+        defaultMuscle={muscleFilter}
+      />
+    </Suspense>
   );
   const sessionItem = (w: Workout, expanded = false) => (
     <button className="session-item" key={w.id} onClick={() => setDetail(w)}>
@@ -813,7 +686,13 @@ export default function App() {
             </button>
           </div>
         </header>
-        <div className="page-content">
+        <m.div
+          className="page-content"
+          key={view}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.22 }}
+        >
           <div className="page-heading">
             <div>
               <div className="eyebrow">
@@ -828,6 +707,7 @@ export default function App() {
                     workout: draft?.editing
                       ? "Редактировать тренировку"
                       : "Твоя тренировка",
+                    anatomy: "Анатомия движения",
                     history: "История тренировок",
                     library: "Библиотека упражнений",
                     progress: "Сила в цифрах",
@@ -839,6 +719,8 @@ export default function App() {
                   {
                     overview: "Каждый подход складывается в результат.",
                     workout: "Записывай подходы. Остальное посчитаем.",
+                    anatomy:
+                      "Выбери мышцу. Посмотри работу и упражнения для неё.",
                     history: "Вся работа, которую ты уже сделал.",
                     library: "Найди упражнение для своей следующей тренировки.",
                     progress:
@@ -1023,6 +905,8 @@ export default function App() {
                       <div className="muscle-content">
                         <BodyMap
                           loads={loads}
+                          workouts={weekWorkouts}
+                          options={analysisOptions}
                           selected={selectedMuscle}
                           onSelect={setSelectedMuscle}
                         />
@@ -1324,16 +1208,51 @@ export default function App() {
                   </div>
                 </>
               ) : null}
-              {view === "library" ? (
+              {view === "anatomy" ? (
                 <>
-                  {exerciseFilters}
-                  <div className="library-header">
-                    <span>{filteredExercises.length} упражнений</span>
-                    <span>Нажми «+», чтобы добавить в тренировку</span>
+                  <div className="anatomy-week-heading">
+                    <span>
+                      {dateLabel(anchor)} — {dateLabel(weekEnd)}
+                    </span>
+                    <div>
+                      <button
+                        className="icon-button"
+                        aria-label="Предыдущая неделя анатомии"
+                        onClick={() => setWeekOffset((o) => o - 1)}
+                      >
+                        <ChevronLeft size={18} />
+                      </button>
+                      <button
+                        className="icon-button"
+                        aria-label="Следующая неделя анатомии"
+                        disabled={weekOffset >= 0}
+                        onClick={() => setWeekOffset((o) => o + 1)}
+                      >
+                        <ChevronRight size={18} />
+                      </button>
+                    </div>
                   </div>
-                  {exerciseCards()}
+                  <Suspense
+                    fallback={
+                      <div className="loading-state" role="status">
+                        Открываем атлас…
+                      </div>
+                    }
+                  >
+                    <AnatomyExplorer
+                      loads={loads}
+                      workouts={weekWorkouts}
+                      options={analysisOptions}
+                      onExercise={setExerciseDetail}
+                      onLibrary={(zone) => {
+                        setMuscleFilter(zone);
+                        go("library");
+                      }}
+                    />
+                  </Suspense>
                 </>
               ) : null}
+              {view === "library" ? <>{exerciseCards()}</> : null}
               {view === "progress" ? (
                 <>
                   <div className="progress-selector">
@@ -1472,7 +1391,7 @@ export default function App() {
             <p>Твоя работа. Твои данные. Твой результат.</p>
             <button onClick={() => setModal("method")}>Как мы считаем</button>
           </footer>
-        </div>
+        </m.div>
       </main>
       {toast ? (
         <div className="toast" role="status">
@@ -1489,7 +1408,6 @@ export default function App() {
       ) : null}
       {modal === "picker" ? (
         <Modal title="Добавить упражнения" onClose={() => setModal(null)} wide>
-          {exerciseFilters}
           {exerciseCards(true)}
           <div className="modal-actions">
             <span className="muted">
@@ -2010,13 +1928,7 @@ export default function App() {
                   d
                     ? {
                         ...d,
-                        workout: {
-                          ...d.workout,
-                          id: crypto.randomUUID(),
-                          revision: 0,
-                          createdAt: new Date().toISOString(),
-                          name: `${d.workout.name} (копия)`.slice(0, 120),
-                        },
+                        workout: new WorkoutSession(d.workout).separateCopy(),
                         editing: false,
                         manualDuration: true,
                       }

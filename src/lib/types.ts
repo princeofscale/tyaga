@@ -32,7 +32,7 @@ export type MuscleRole = {
   sources: string[];
 };
 export type Exercise = LegacyExercise & {
-  catalogRevision: 1 | 2;
+  catalogRevision: 1 | 2 | 3;
   familyId: string;
   nameEn: string;
   variant: string;
@@ -45,7 +45,13 @@ export type Exercise = LegacyExercise & {
     curator: string;
     reviewedAt: string | null;
     license: string;
-    reviewStatus: "editorial" | "legacy-unreviewed";
+    reviewStatus: "editorial" | "legacy-unreviewed" | "source-unreviewed";
+  };
+  source?: {
+    provider: "wger";
+    release: string;
+    importedAt: string;
+    record: import("../domain/WgerExercise").WgerRecord;
   };
 };
 export type SetEntry = {
@@ -60,9 +66,10 @@ export type SetEntry = {
 export type WorkoutExercise = {
   exerciseId: string;
   sets: SetEntry[];
-  catalogRevision?: 1 | 2;
-  recordingSpecRevision?: 1 | 2;
-  muscleMappingRevision?: 1 | 2;
+  catalogRevision?: 1 | 2 | 3;
+  recordingSpecRevision?: 1 | 2 | 3;
+  muscleMappingRevision?: 1 | 2 | 3;
+  externalDefinition?: Exercise;
   displayNameSnapshot?: string;
   equipmentNote?: string;
   performedSides?: "both" | "left" | "right";

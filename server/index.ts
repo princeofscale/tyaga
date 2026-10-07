@@ -5,6 +5,7 @@ import {
   validRevision,
   InputError,
 } from "./validation";
+import { ExerciseRepository } from "./ExerciseRepository";
 interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
@@ -45,6 +46,10 @@ export async function handleApi(request: Request, env: Env) {
       return json({ error: "Требуется JSON" }, 415);
   }
   try {
+    if (request.method === "GET" && url.pathname === "/api/exercises")
+      return json(
+        await new ExerciseRepository(env.DB).search(url.searchParams),
+      );
     if (request.method === "GET" && url.pathname === "/api/data") {
       const [rows, setting] = await Promise.all([
         env.DB.prepare(
@@ -107,8 +112,18 @@ export async function handleApi(request: Request, env: Env) {
       )
         .bind(userId)
         .first<{ payload: string }>();
-      const w = validWorkout(await readBody(request), {
+      const input = await readBody(request);
+      const externalIds = Array.isArray(input?.exercises)
+        ? input.exercises.map((e: { exerciseId?: unknown }) =>
+            typeof e?.exerciseId === "string" ? e.exerciseId : "",
+          )
+        : [];
+      const importedExercises = await new ExerciseRepository(env.DB).findByIds(
+        externalIds,
+      );
+      const w = validWorkout(input, {
         timeZone: profile ? JSON.parse(profile.payload).timeZone : "UTC",
+        importedExercises,
       });
       const { revision = 0, updatedAt: _updatedAt, ...content } = w;
       const payload = JSON.stringify(content);
@@ -200,7 +215,7 @@ export async function handleApi(request: Request, env: Env) {
 }
 async function readBody(request: Request) {
   const body = await request.text();
-  if (body.length > 200000) throw new InputError("Слишком большой запрос");
+  if (body.length > 500000) throw new InputError("Слишком большой запрос");
   return JSON.parse(body);
 }
 export default {

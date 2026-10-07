@@ -6,6 +6,7 @@ import {
   type Workout,
   type Settings,
   type WorkoutExercise,
+  type Exercise,
 } from "../src/lib/model";
 export class InputError extends Error {}
 const object = (v: unknown): Record<string, unknown> => {
@@ -44,7 +45,11 @@ function zone(v: unknown, fallback = "UTC") {
 }
 export function validWorkout(
   value: unknown,
-  options: { now?: Date; timeZone?: string } = {},
+  options: {
+    now?: Date;
+    timeZone?: string;
+    importedExercises?: Map<string, Exercise>;
+  } = {},
 ): Workout {
   const w = object(value);
   const date = str(w.date, 10);
@@ -71,8 +76,14 @@ export function validWorkout(
   const exercises: WorkoutExercise[] = w.exercises.map((value) => {
     const e = object(value);
     const exerciseId = str(e.exerciseId, 80, 1);
-    const catalogRevision = num(e.catalogRevision ?? 1, 1, 2, true) as 1 | 2;
-    const exercise = exerciseById(exerciseId, catalogRevision);
+    const catalogRevision = num(e.catalogRevision ?? 1, 1, 3, true) as
+      | 1
+      | 2
+      | 3;
+    const exercise =
+      catalogRevision === 3
+        ? options.importedExercises?.get(exerciseId)
+        : exerciseById(exerciseId, catalogRevision);
     if (
       !exercise ||
       exercise.catalogRevision !== catalogRevision ||
@@ -80,11 +91,15 @@ export function validWorkout(
     )
       throw new InputError("Некорректное упражнение или версия каталога");
     seen.add(exerciseId);
+    if (exercise.source && !exercise.source.record.loggable)
+      throw new InputError(
+        "Этот вариант требует записи времени, которая пока не поддерживается.",
+      );
     const metadata: Omit<WorkoutExercise, "sets"> = { exerciseId };
     if (e.catalogRevision !== undefined) {
       if (
-        num(e.recordingSpecRevision, 1, 2, true) !== catalogRevision ||
-        num(e.muscleMappingRevision, 1, 2, true) !== catalogRevision
+        num(e.recordingSpecRevision, 1, 3, true) !== catalogRevision ||
+        num(e.muscleMappingRevision, 1, 3, true) !== catalogRevision
       )
         throw new InputError("Версии упражнения не согласованы");
       metadata.catalogRevision = catalogRevision;
@@ -93,6 +108,8 @@ export function validWorkout(
       metadata.displayNameSnapshot = str(e.displayNameSnapshot, 120, 1);
       if (metadata.displayNameSnapshot !== exercise.name)
         throw new InputError("Название не соответствует версии каталога");
+      // Ignore client-provided definitions. Only the immutable database record is trusted.
+      if (catalogRevision === 3) metadata.externalDefinition = exercise;
     }
     if (e.equipmentNote !== undefined)
       metadata.equipmentNote = str(e.equipmentNote, 120);

@@ -1,3 +1,7 @@
+import {
+  TrainingAnalytics,
+  type AnalysisOptions,
+} from "../domain/TrainingAnalytics";
 import { MUSCLES, ANATOMICAL_MUSCLES } from "../data/muscles";
 import {
   EXERCISES,
@@ -37,85 +41,19 @@ export const DEFAULT_SETTINGS: Settings = {
 };
 export const fmt = (n: number) =>
   new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 }).format(n);
-export type AnalysisOptions = {
-  mapping?: "recorded" | "current";
-  maxRir?: number;
-};
-const analyzedExercise = (we: WorkoutExercise, options: AnalysisOptions) =>
-  options.mapping === "current"
-    ? exerciseById(we.exerciseId)
-    : exerciseForEntry(we);
+export type { AnalysisOptions };
 export function muscleLoad(
   workouts: Workout[],
   settings = DEFAULT_SETTINGS,
   options: AnalysisOptions = {},
 ): MuscleLoad[] {
-  const loads = MUSCLES.map((m) => ({
-    ...m,
-    direct: 0,
-    indirect: 0,
-    stabilizing: 0,
-    total: 0,
-    goal: settings.goals[m.id] ?? m.goal,
-    ratio: 0,
-  }));
-  for (const w of workouts)
-    for (const we of w.exercises) {
-      const e = analyzedExercise(we, options);
-      if (!e) continue;
-      const count = we.sets.filter(
-        (s) =>
-          s.done &&
-          !s.warmup &&
-          (options.maxRir === undefined || s.rir <= options.maxRir),
-      ).length;
-      const stabilizerZones = e.muscles
-        .filter((m) => m.role === "stabilizer")
-        .map((m) => ANATOMICAL_MUSCLES.find((x) => x.id === m.muscleId)!.zone);
-      for (const m of loads) {
-        if (e.primary.includes(m.id)) m.direct += count;
-        else if (e.secondary.includes(m.id)) m.indirect += count;
-        if (stabilizerZones.includes(m.id)) m.stabilizing += count;
-      }
-    }
-  return loads.map((m) => ({
-    ...m,
-    total: m.direct,
-    ratio: m.direct / m.goal,
-  }));
+  return new TrainingAnalytics(workouts, options).zoneLoad(settings);
 }
 export function anatomicalLoad(
   workouts: Workout[],
   options: AnalysisOptions = {},
 ) {
-  const rows = ANATOMICAL_MUSCLES.map((m) => ({
-    ...m,
-    direct: 0,
-    assisting: 0,
-    stabilizing: 0,
-  }));
-  for (const w of workouts)
-    for (const we of w.exercises) {
-      const e = analyzedExercise(we, options);
-      if (!e) continue;
-      const count = we.sets.filter(
-        (s) =>
-          s.done &&
-          !s.warmup &&
-          (options.maxRir === undefined || s.rir <= options.maxRir),
-      ).length;
-      for (const role of e.muscles) {
-        const row = rows.find((m) => m.id === role.muscleId)!;
-        row[
-          role.role === "primary"
-            ? "direct"
-            : role.role === "assistant"
-              ? "assisting"
-              : "stabilizing"
-        ] += count;
-      }
-    }
-  return rows;
+  return new TrainingAnalytics(workouts, options).anatomicalLoad();
 }
 // Frozen release-1 analysis for inspecting historical calculations.
 export function legacyMuscleLoad(

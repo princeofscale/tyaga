@@ -218,9 +218,11 @@ export default function WorkoutView({
                 className={`recording-hint ${exercise.catalogRevision === 1 ? "legacy-hint" : ""}`}
               >
                 <Info size={14} />
-                {exercise.catalogRevision === 1
-                  ? "Старая запись: правило веса и вариант неизвестны. Вес сохранится как введён; тоннаж и 1ПМ не вычисляются."
-                  : `${recordingLabel(we)}. ${spec.implementCount === 2 ? "Используются две гантели / два блока. " : ""}${spec.repsMode === "per_side" ? "Повторы на сторону." : "Повторы всего движения."}`}
+                {exercise.source
+                  ? "Вес и повторы записываются по твоему правилу. Для этой записи wger тоннаж, 1ПМ и покрытие мышц не рассчитываются."
+                  : exercise.catalogRevision === 1
+                    ? "Старая запись: правило веса и вариант неизвестны. Вес сохранится как введён; тоннаж и 1ПМ не вычисляются."
+                    : `${recordingLabel(we)}. ${spec.implementCount === 2 ? "Используются две гантели / два блока. " : ""}${spec.repsMode === "per_side" ? "Повторы на сторону." : "Повторы всего движения."}`}
               </p>
               {spec.laterality === "unilateral" ? (
                 <label className="recording-field">
