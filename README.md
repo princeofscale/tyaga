@@ -55,7 +55,7 @@ npm run build
 npm test
 ```
 
-43 unit/API проверки используют production Worker и настоящую локальную D1: миграции, конфликты, idempotent retry, удаление, owner isolation, timezone/DST, нагрузка/стороны, версии истории, ошибки Storage, программы и импорт. CI также запускает 12 браузерных сценариев.
+44 unit/API проверки используют production Worker и настоящую локальную D1: миграции, конфликты, idempotent retry, удаление, owner isolation, timezone/DST, нагрузка/стороны, версии истории, ошибки Storage, программы и импорт. CI также запускает 12 браузерных сценариев.
 
 ```bash
 npx playwright install chromium

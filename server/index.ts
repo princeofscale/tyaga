@@ -167,20 +167,21 @@ export async function handleApi(request: Request, env: Env) {
         await new ExerciseRepository(env.DB).search(url.searchParams),
       );
     if (request.method === "GET" && url.pathname === "/api/data") {
-      const [rows, setting] = await Promise.all([
+      // One D1 call returns a consistent journal/settings snapshot and avoids
+      // issuing concurrent reads against the same database connection.
+      const results = await env.DB.batch([
         env.DB.prepare(
           "SELECT payload, revision, updated_at FROM workouts WHERE owner_id = ? ORDER BY date DESC, updated_at DESC, id DESC",
-        )
-          .bind(userId)
-          .all<WorkoutRow>(),
+        ).bind(userId),
         env.DB.prepare(
           "SELECT payload, revision FROM settings WHERE owner_id = ?",
-        )
-          .bind(userId)
-          .first<{ payload: string; revision: number }>(),
+        ).bind(userId),
       ]);
+      const rows = results[0].results as WorkoutRow[];
+      const setting = results[1].results[0] as
+        { payload: string; revision: number } | undefined;
       return json({
-        workouts: rows.results.map(fromRow),
+        workouts: rows.map(fromRow),
         settings: setting
           ? { ...JSON.parse(setting.payload), revision: setting.revision }
           : { ...DEFAULT_SETTINGS, revision: 0 },

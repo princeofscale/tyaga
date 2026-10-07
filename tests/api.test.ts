@@ -686,3 +686,83 @@ test("forward migration preserves v1 payloads, supplies revision zero and allows
     await mf.dispose();
   }
 });
+
+test(
+  "empty journal reads remain available after removing a favorited timed exercise",
+  { timeout: 15000 },
+  async () => {
+    const { mf, request } = await sandbox();
+    try {
+      const response = await request("/api/custom-exercises", "PUT", {
+        familyId: "read-after-delete",
+        name: "Планка для проверки",
+        nameEn: "",
+        aliases: ["Test plank"],
+        notes: "",
+        equipment: "bodyweight",
+        declaredZones: ["core"],
+        recording: {
+          type: "duration",
+          loadMode: "bodyweight",
+          implementCount: 1,
+          laterality: "bilateral",
+        },
+      });
+      const e = ((await response.json()) as any).exercise;
+      assert.equal(
+        (
+          await request("/api/favorites", "PUT", {
+            exerciseId: e.id,
+            favorite: true,
+          })
+        ).status,
+        200,
+      );
+      const w = completed();
+      w.exercises = [
+        {
+          exerciseId: e.id,
+          catalogRevision: 3,
+          recordingSpecRevision: 3,
+          muscleMappingRevision: 3,
+          displayNameSnapshot: e.name,
+          sets: [
+            {
+              id: "timed-read-set",
+              weight: 0,
+              reps: 1,
+              rir: null,
+              done: true,
+              warmup: false,
+              durationSeconds: 60,
+            },
+          ],
+        },
+      ];
+      const saved = (
+        (await (await request("/api/workouts", "PUT", w)).json()) as any
+      ).workout;
+      assert.equal(
+        (
+          await request("/api/workouts/" + saved.id, "DELETE", {
+            revision: saved.revision,
+          })
+        ).status,
+        200,
+      );
+      assert.equal(
+        (await request("/api/custom-exercises/" + e.id, "DELETE", {})).status,
+        200,
+      );
+      for (let i = 0; i < 5; i++) {
+        const data = await request("/api/data");
+        assert.equal(data.status, 200);
+        const state = (await data.json()) as any;
+        assert.deepEqual(state.workouts, []);
+        assert.equal(state.settings.goals.chest, DEFAULT_SETTINGS.goals.chest);
+      }
+    } finally {
+      await mf.dispose();
+    }
+  },
+);
