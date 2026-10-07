@@ -5,3 +5,5 @@ dist/
 .env
 *.log
 artifacts/
+test-results/
+playwright-report/

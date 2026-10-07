@@ -8,6 +8,13 @@
       "when": 1791312645633,
       "tag": "0000_romantic_medusa",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1791343912284,
+      "tag": "0001_misty_ghost_rider",
+      "breakpoints": true
     }
   ]
 }

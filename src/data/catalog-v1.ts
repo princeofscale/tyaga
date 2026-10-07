@@ -1,0 +1,31 @@
+// Immutable catalogue from release 1a2da16. Never correct historical entries in place.
+import type { LegacyExercise } from '../lib/types';
+
+export const CATALOG_V1: LegacyExercise[] = [
+  { id: 'bench', name: 'Жим штанги лёжа', primary: ['chest'], secondary: ['triceps', 'shoulders'], equipment: 'gym', tip: 'Лопатки сведены, стопы на полу. Опускай штангу под контролем.' },
+  { id: 'incline-db', name: 'Жим гантелей на наклонной', primary: ['chest'], secondary: ['triceps', 'shoulders'], equipment: 'dumbbells', tip: 'Небольшой наклон скамьи. Не теряй контроль в нижней точке.' },
+  { id: 'fly', name: 'Сведение рук в кроссовере', primary: ['chest'], secondary: [], equipment: 'gym', tip: 'Локти слегка согнуты. Веди движение грудью, без рывков.' },
+  { id: 'pushup', name: 'Отжимания', primary: ['chest'], secondary: ['triceps', 'shoulders'], equipment: 'bodyweight', bodyweight: true, tip: 'Держи корпус прямым. Выбери высоту опоры под свой уровень.' },
+  { id: 'lat-pulldown', name: 'Тяга верхнего блока', primary: ['back'], secondary: ['biceps'], equipment: 'gym', tip: 'Тяни локти вниз. Не отклоняй корпус резко назад.' },
+  { id: 'row', name: 'Тяга горизонтального блока', primary: ['back'], secondary: ['biceps'], equipment: 'gym', tip: 'Сохраняй нейтральное положение спины. Веди локти вдоль корпуса.' },
+  { id: 'db-row', name: 'Тяга гантели в наклоне', primary: ['back'], secondary: ['biceps'], equipment: 'dumbbells', tip: 'Упрись свободной рукой. Не вращай корпус при подъёме.' },
+  { id: 'pullup', name: 'Подтягивания', primary: ['back'], secondary: ['biceps'], equipment: 'gym', bodyweight: true, tip: 'Начинай без раскачки. Используй помощь, если она нужна.' },
+  { id: 'ohp', name: 'Жим гантелей сидя', primary: ['shoulders'], secondary: ['triceps'], equipment: 'dumbbells', tip: 'Не прогибай поясницу. Поднимай гантели по комфортной траектории.' },
+  { id: 'lateral', name: 'Махи гантелями в стороны', primary: ['shoulders'], secondary: [], equipment: 'dumbbells', tip: 'Лёгкий сгиб в локтях. Поднимай руки без раскачки.' },
+  { id: 'facepull', name: 'Тяга каната к лицу', primary: ['shoulders'], secondary: ['back'], equipment: 'gym', tip: 'Тяни к уровню лица, разводя локти. Выбирай умеренный вес.' },
+  { id: 'curl', name: 'Сгибание рук с гантелями', primary: ['biceps'], secondary: [], equipment: 'dumbbells', tip: 'Локти остаются на месте. Полностью контролируй опускание.' },
+  { id: 'hammer', name: 'Молотковые сгибания', primary: ['biceps'], secondary: [], equipment: 'dumbbells', tip: 'Нейтральный хват. Не помогай корпусом.' },
+  { id: 'triceps-push', name: 'Разгибание рук на блоке', primary: ['triceps'], secondary: [], equipment: 'gym', tip: 'Прижми локти к корпусу. Не поднимай плечи.' },
+  { id: 'triceps-db', name: 'Разгибание гантели из-за головы', primary: ['triceps'], secondary: [], equipment: 'dumbbells', tip: 'Работай в комфортной амплитуде, без боли в локтях.' },
+  { id: 'squat', name: 'Приседания со штангой', primary: ['quads', 'glutes'], secondary: ['hamstrings', 'core'], equipment: 'gym', tip: 'Стой устойчиво. Колени движутся по направлению носков.' },
+  { id: 'legpress', name: 'Жим ногами', primary: ['quads'], secondary: ['glutes'], equipment: 'gym', tip: 'Не отрывай таз от спинки. Не выпрямляй колени резко.' },
+  { id: 'goblet', name: 'Гоблет-присед', primary: ['quads', 'glutes'], secondary: ['core'], equipment: 'dumbbells', tip: 'Держи гантель у груди. Выбери комфортную глубину.' },
+  { id: 'lunge', name: 'Выпады с гантелями', primary: ['quads', 'glutes'], secondary: ['hamstrings'], equipment: 'dumbbells', tip: 'Записывай повторы на одну ногу. Сохраняй устойчивую опору.' },
+  { id: 'body-squat', name: 'Приседания без веса', primary: ['quads', 'glutes'], secondary: ['core'], equipment: 'bodyweight', bodyweight: true, tip: 'Контролируй темп. Сохраняй стопы прижатыми к полу.' },
+  { id: 'rdl', name: 'Румынская тяга', primary: ['hamstrings', 'glutes'], secondary: ['back'], equipment: 'gym', tip: 'Уводи таз назад, слегка сгибая колени. Держи спину нейтрально.' },
+  { id: 'db-rdl', name: 'Румынская тяга с гантелями', primary: ['hamstrings', 'glutes'], secondary: ['back'], equipment: 'dumbbells', tip: 'Опускай гантели близко к ногам. Движение начинается от таза.' },
+  { id: 'legcurl', name: 'Сгибание ног в тренажёре', primary: ['hamstrings'], secondary: [], equipment: 'gym', tip: 'Настрой ось тренажёра под колени. Не отрывай таз.' },
+  { id: 'hipthrust', name: 'Ягодичный мост', primary: ['glutes'], secondary: ['hamstrings'], equipment: 'bodyweight', bodyweight: true, tip: 'Поднимай таз без избыточного прогиба в пояснице.' },
+  { id: 'calf', name: 'Подъём на носки', primary: ['calves'], secondary: [], equipment: 'bodyweight', bodyweight: true, tip: 'Полная комфортная амплитуда. Делай паузу наверху.' },
+  { id: 'crunch', name: 'Скручивания', primary: ['core'], secondary: [], equipment: 'bodyweight', bodyweight: true, tip: 'Не тяни голову руками. Поднимай верх спины под контролем.' },
+];

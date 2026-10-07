@@ -1,6 +1,6 @@
 {
   "name": "tyaga",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,17 +8,19 @@
     "build": "vite build && node scripts/build-worker.mjs",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
+    "test:e2e": "playwright test",
     "db:generate": "drizzle-kit generate",
     "preview:server": "wrangler dev --config wrangler.jsonc --ip 0.0.0.0"
   },
   "dependencies": {
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1",
+    "drizzle-orm": "^0.44.5",
     "lucide-react": "^0.468.0",
-    "drizzle-orm": "^0.44.5"
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250927.0",
+    "@playwright/test": "^1.63.0",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^4.7.0",
