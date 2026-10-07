@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
-import { Miniflare } from "miniflare";
+import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import { makeWorkout } from "../src/lib/model";
 async function setup() {
-  const mf = new Miniflare({ modules:true, scriptPath:"dist/server/index.js", compatibilityDate:"2025-09-27", d1Databases:["DB"], cf:false });
+  const mf = new Miniflare(convertV4MiniflareOptions({ workers:[{ modules:true, scriptPath:"dist/server/index.js", compatibilityDate:"2025-09-27", d1Databases:["DB"] }], cf:false }));
   const db = await mf.getD1Database("DB");
   for (const file of (await readdir("drizzle")).filter(p=>p.endsWith(".sql")).sort())
     for (const statement of (await readFile("drizzle/"+file,"utf8")).split("--> statement-breakpoint").filter(s=>s.trim())) await db.prepare(statement.trim()).run();
