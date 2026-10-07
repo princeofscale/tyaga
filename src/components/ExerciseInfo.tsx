@@ -59,6 +59,12 @@ export default function ExerciseInfo({
       </span>
       <p>{e.variant}</p>
       <p className="exercise-instructions">{e.tip}</p>
+      {e.aliases?.length ? (
+        <details className="exercise-aliases">
+          <summary>Другие названия и алиасы</summary>
+          <p>{e.aliases.join(" · ")}</p>
+        </details>
+      ) : null}
       {e.source ? (
         <section className="wger-details">
           <div className="wger-equipment">
@@ -90,9 +96,22 @@ export default function ExerciseInfo({
             <p>
               Снимок от{" "}
               {new Date(e.source.importedAt).toLocaleDateString("ru-RU")}.
-              Описание очищено от HTML, при необходимости сокращено. Медиа не
-              импортировались.
+              {e.source.record.localization
+                ? "Русская адаптация Тяги. Названия и алиасы составлены с помощью ИИ; описание — машинный перевод оригинала. Техника требует проверки."
+                : "Описание очищено от HTML, при необходимости сокращено."}{" "}
+              Медиа не импортировались.
             </p>
+            {e.source.record.localization ? (
+              <details>
+                <summary>Оригинальное описание</summary>
+                <p>
+                  {e.source.record.localization.sourceInstructions.replace(
+                    /\\n/g,
+                    "\n",
+                  )}
+                </p>
+              </details>
+            ) : null}
             {e.source.record.attributions.map((a, i) => (
               <article key={i}>
                 <b>{a.title}</b>

@@ -4,8 +4,15 @@ import {
   validSettings,
   validRevision,
   InputError,
+  validRoutine,
+  str,
 } from "./validation";
 import { ExerciseRepository } from "./ExerciseRepository";
+import { ProductRepository } from "./ProductRepository";
+import { PersonalExerciseFactory } from "./PersonalExerciseFactory";
+import { HistoryImportService } from "./HistoryImportService";
+import { BackupImportService } from "./BackupImportService";
+import { exerciseById } from "../src/lib/model";
 interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
@@ -46,6 +53,115 @@ export async function handleApi(request: Request, env: Env) {
       return json({ error: "Требуется JSON" }, 415);
   }
   try {
+    const product = new ProductRepository(env.DB, userId);
+    const definitions = async (ids: string[]) => {
+      const [wger, custom] = await Promise.all([
+        new ExerciseRepository(env.DB).findByIds(ids),
+        product.definitions(ids),
+      ]);
+      return new Map([...wger, ...custom]);
+    };
+    if (request.method === "GET" && url.pathname === "/api/product")
+      return json(await product.read());
+    if (
+      request.method === "POST" &&
+      url.pathname === "/api/exercises/resolve"
+    ) {
+      const input = await readBody(request);
+      if (!Array.isArray(input.names) || input.names.length > 80)
+        throw new InputError("Не больше 80 названий за запрос");
+      return json({
+        matches: new ExerciseRepository(env.DB).resolve(
+          input.names.map((v: unknown) => str(v, 120, 1)),
+        ),
+      });
+    }
+    if (request.method === "POST" && url.pathname === "/api/import")
+      return json(
+        await new HistoryImportService(env.DB, userId).import(
+          await readBody(request),
+        ),
+      );
+    if (request.method === "POST" && url.pathname === "/api/import/metadata")
+      return json(
+        await new BackupImportService(env.DB, userId).import(
+          await readBody(request),
+        ),
+      );
+    if (request.method === "PUT" && url.pathname === "/api/custom-exercises") {
+      const exercise = await new PersonalExerciseFactory().create(
+        await readBody(request),
+      );
+      return json({ exercise: await product.saveExercise(exercise) });
+    }
+    if (
+      request.method === "DELETE" &&
+      url.pathname.startsWith("/api/custom-exercises/")
+    ) {
+      const id = str(
+        decodeURIComponent(url.pathname.slice("/api/custom-exercises/".length)),
+        80,
+        1,
+      );
+      await product.removeExercise(id);
+      return json({ deleted: id });
+    }
+    if (request.method === "PUT" && url.pathname === "/api/favorites") {
+      const v = await readBody(request);
+      const id = str(v.exerciseId, 80, 1);
+      if (typeof v.favorite !== "boolean")
+        throw new InputError("Проверь отметку избранного");
+      if (v.favorite && !exerciseById(id) && !(await definitions([id])).has(id))
+        throw new InputError("Упражнение недоступно");
+      await product.favorite(id, v.favorite);
+      return json({ exerciseId: id, favorite: v.favorite });
+    }
+    if (request.method === "PUT" && url.pathname === "/api/routines") {
+      const input = await readBody(request);
+      const ids = Array.isArray(input.exercises)
+        ? input.exercises.map((e: { exerciseId: string }) => e.exerciseId)
+        : [];
+      const result = await product.saveRoutine(
+        validRoutine(input, await definitions(ids)),
+      );
+      return result.saved
+        ? json({ routine: result.saved })
+        : json(
+            {
+              error:
+                "Программа изменилась на другом устройстве. Форма сохранена; загрузите актуальную версию или сохраните копию.",
+              currentRoutine: result.current,
+            },
+            409,
+          );
+    }
+    if (
+      request.method === "DELETE" &&
+      url.pathname.startsWith("/api/routines/")
+    ) {
+      const id = str(
+          decodeURIComponent(url.pathname.slice("/api/routines/".length)),
+          80,
+          1,
+        ),
+        body = await readBody(request);
+      if (body.revision === undefined)
+        throw new InputError("Для удаления нужна версия программы");
+      const current = await product.removeRoutine(
+        id,
+        validRevision(body.revision),
+      );
+      return current
+        ? json(
+            {
+              error:
+                "Программа изменилась. Проверьте актуальную версию перед удалением.",
+              currentRoutine: current,
+            },
+            409,
+          )
+        : json({ deleted: id });
+    }
     if (request.method === "GET" && url.pathname === "/api/exercises")
       return json(
         await new ExerciseRepository(env.DB).search(url.searchParams),
@@ -118,9 +234,7 @@ export async function handleApi(request: Request, env: Env) {
             typeof e?.exerciseId === "string" ? e.exerciseId : "",
           )
         : [];
-      const importedExercises = await new ExerciseRepository(env.DB).findByIds(
-        externalIds,
-      );
+      const importedExercises = await definitions(externalIds);
       const w = validWorkout(input, {
         timeZone: profile ? JSON.parse(profile.payload).timeZone : "UTC",
         importedExercises,

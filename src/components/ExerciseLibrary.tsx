@@ -15,9 +15,13 @@ import {
   Globe2,
   Plus,
   Search,
+  Star,
+  Pencil,
 } from "lucide-react";
 import { MUSCLES, exerciseCatalog, type Exercise } from "../lib/model";
 import { WGER_ZONES } from "../domain/WgerExercise";
+import { matchesSearch } from "../lib/search";
+import { quantity } from "../lib/quantity";
 import { exerciseLibraryService } from "../services/ExerciseLibraryService";
 
 function LibraryContent({
@@ -27,6 +31,11 @@ function LibraryContent({
   selectedIds = [],
   limitReached = false,
   defaultMuscle = "all",
+  personal = [],
+  favorites = [],
+  onFavorite,
+  onCreate,
+  onEdit,
 }: {
   picker?: boolean;
   onAdd: (id: string) => void;
@@ -34,8 +43,15 @@ function LibraryContent({
   selectedIds?: string[];
   limitReached?: boolean;
   defaultMuscle?: string;
+  personal?: Exercise[];
+  favorites?: string[];
+  onFavorite?: (id: string) => void;
+  onCreate?: () => void;
+  onEdit?: (exercise: Exercise) => void;
 }) {
-  const [source, setSource] = useState<"tyaga" | "wger">("tyaga");
+  const [source, setSource] = useState<
+    "tyaga" | "wger" | "personal" | "favorites"
+  >("tyaga");
   const [search, setSearch] = useState("");
   const [debounced, setDebounced] = useState("");
   const [muscle, setMuscle] = useState(defaultMuscle);
@@ -60,12 +76,30 @@ function LibraryContent({
     refetchInterval: (q) => (q.state.data?.importing ? 400 : false),
     retry: 1,
   });
+  const local =
+    source === "personal"
+      ? personal
+      : favorites
+          .map((id) => exerciseCatalog.find(id))
+          .filter((e): e is Exercise => !!e);
+  const filteredLocal = local.filter(
+    (e) =>
+      matchesSearch(
+        `${e.name} ${e.nameEn} ${(e.aliases ?? []).join(" ")}`,
+        search,
+      ) &&
+      (muscle === "all" ||
+        e.custom?.declaredZones.includes(muscle as never) ||
+        e.primary.includes(muscle as never)) &&
+      (equipment === "all" || e.equipment === equipment),
+  );
   const exercises =
     source === "tyaga"
       ? exerciseCatalog.search({ text: search, zone: muscle, equipment })
-      : (query.data?.exercises ?? []);
-  const count =
-    source === "tyaga" ? exercises.length : (query.data?.total ?? 0);
+      : source === "wger"
+        ? (query.data?.exercises ?? [])
+        : filteredLocal;
+  const count = source !== "wger" ? exercises.length : (query.data?.total ?? 0);
   const zones = (e: Exercise) =>
     e.source
       ? [
@@ -75,7 +109,9 @@ function LibraryContent({
               .filter(Boolean),
           ),
         ]
-      : [...e.primary, ...e.secondary];
+      : e.custom
+        ? e.custom.declaredZones
+        : [...e.primary, ...e.secondary];
   return (
     <div className={`exercise-library ${picker ? "is-picker" : ""}`}>
       <div className="catalog-tabs" aria-label="Каталог упражнений">
@@ -101,7 +137,29 @@ function LibraryContent({
           <Database size={17} />
           wger <span>{query.data?.catalogTotal ?? 918}</span>
         </button>
+        <button
+          className={source === "personal" ? "active" : ""}
+          aria-pressed={source === "personal"}
+          onClick={() => setSource("personal")}
+        >
+          <Pencil size={17} />
+          Мои <span>{personal.length}</span>
+        </button>
+        <button
+          className={source === "favorites" ? "active" : ""}
+          aria-pressed={source === "favorites"}
+          onClick={() => setSource("favorites")}
+        >
+          <Star size={17} />
+          Избранное <span>{favorites.length}</span>
+        </button>
       </div>
+      {source === "personal" && onCreate ? (
+        <button className="button secondary personal-create" onClick={onCreate}>
+          <Plus size={17} />
+          Создать упражнение
+        </button>
+      ) : null}
       <div className="exercise-filters">
         <div className="search-field">
           <Search size={18} />
@@ -149,25 +207,14 @@ function LibraryContent({
           <option value="dumbbells">Гантели</option>
           <option value="bodyweight">Вес тела</option>
         </select>
-        {source === "wger" ? (
-          <select
-            aria-label="Язык каталога wger"
-            value={language}
-            onChange={(e) => setLanguage(e.target.value)}
-          >
-            <option value="all">Все языки</option>
-            <option value="ru">Русский</option>
-            <option value="en">Английский</option>
-          </select>
-        ) : null}
       </div>
       {source === "wger" ? (
         <div className="source-notice">
           <Globe2 size={18} />
           <p>
-            Открытый каталог wger. {query.data?.russianCount ?? 10} названий на
-            русском; для остальных — английский оригинал. Роли мышц указаны
-            источником, без проверки Тягой.
+            {query.data?.russianCount ?? 918} упражнений на русском. Поиск по
+            русским алиасам и английским оригиналам. Описания переведены
+            машинно; роли мышц указаны wger.
           </p>
         </div>
       ) : null}
@@ -191,7 +238,7 @@ function LibraryContent({
         <>
           <div className="library-header">
             <span>
-              <b>{count}</b> упражнений
+              {quantity(count, "упражнение", "упражнения", "упражнений")}
               {source === "wger" && query.data
                 ? ` · снимок ${new Date(query.data.fetchedAt).toLocaleDateString("ru-RU")}`
                 : ""}
@@ -226,7 +273,9 @@ function LibraryContent({
                     <span className="exercise-source-tag">
                       {e.source
                         ? "wger · " + e.source.record.language.toUpperCase()
-                        : "ТЯГА · КАТАЛОГ 2"}
+                        : e.custom
+                          ? "МОЁ УПРАЖНЕНИЕ"
+                          : "ТЯГА · КАТАЛОГ 2"}
                     </span>
                     <h3>{e.name}</h3>
                     <p>
@@ -245,7 +294,7 @@ function LibraryContent({
                     </button>
                     {!loggable ? (
                       <small className="timed-only">
-                        Запись времени пока не поддерживается
+                        Служебная запись для отдыха
                       </small>
                     ) : null}
                   </div>
@@ -259,6 +308,30 @@ function LibraryContent({
                   >
                     {added ? <Check size={19} /> : <Plus size={19} />}
                   </button>
+                  {onFavorite ? (
+                    <button
+                      className={`favorite-button ${favorites.includes(e.id) ? "active" : ""}`}
+                      aria-label={`${favorites.includes(e.id) ? "Убрать из избранного" : "В избранное"}: ${e.name}`}
+                      aria-pressed={favorites.includes(e.id)}
+                      onClick={() => onFavorite(e.id)}
+                    >
+                      <Star
+                        size={17}
+                        fill={
+                          favorites.includes(e.id) ? "currentColor" : "none"
+                        }
+                      />
+                    </button>
+                  ) : null}
+                  {e.custom && onEdit ? (
+                    <button
+                      className="custom-edit-button"
+                      aria-label={`Редактировать ${e.name}`}
+                      onClick={() => onEdit(e)}
+                    >
+                      <Pencil size={15} />
+                    </button>
+                  ) : null}
                   {!picker ? (
                     <span className="library-index">
                       {String(

@@ -1,9 +1,13 @@
-import type { Settings, Workout } from "../lib/types";
+import type { Settings, Workout, Routine } from "../lib/types";
 export class ApiError extends Error {
   constructor(
     message: string,
     public status: number,
-    public data: { current?: Workout | null; settings?: Settings },
+    public data: {
+      current?: Workout | null;
+      settings?: Settings;
+      currentRoutine?: Routine | null;
+    },
   ) {
     super(message);
   }

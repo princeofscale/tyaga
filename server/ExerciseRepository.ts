@@ -1,10 +1,14 @@
-import data from "../data/wger/catalog-v1.json";
+import data from "../data/wger/catalog-v2-ru.json";
+import previousData from "../data/wger/catalog-v1.json";
 import {
   WgerExerciseAdapter,
   WGER_ZONES,
   type WgerSnapshot,
 } from "../src/domain/WgerExercise";
 import type { Exercise } from "../src/lib/types";
+import { normalizeSearch } from "../src/lib/search";
+import type { WgerRecord } from "../src/domain/WgerExercise";
+import { EXERCISES } from "../src/lib/catalog";
 
 const snapshot = data as WgerSnapshot;
 export class ExerciseRepository {
@@ -13,6 +17,63 @@ export class ExerciseRepository {
     snapshot.fetchedAt,
   );
   constructor(private db: D1Database) {}
+  resolve(names: string[]) {
+    const exercises = [
+      ...EXERCISES,
+      ...snapshot.exercises.map((row) => this.adapter.toExercise(row)),
+    ];
+    return Object.fromEntries(
+      names.map((name) => [
+        name,
+        exercises
+          .filter((e) =>
+            [e.name, e.nameEn, ...(e.aliases ?? [])].some(
+              (alias) => normalizeSearch(alias) === normalizeSearch(name),
+            ),
+          )
+          .slice(0, 4),
+      ]),
+    );
+  }
+  private bindings(
+    record: WgerRecord,
+    release = snapshot.release,
+    date = snapshot.fetchedAt,
+  ) {
+    const exercise = new WgerExerciseAdapter(release, date).toExercise(record);
+    const zones = [
+      ...new Set(
+        [...record.muscles, ...record.secondaryMuscles]
+          .map((m) => WGER_ZONES[m.id])
+          .filter(Boolean),
+      ),
+    ];
+    return [
+      exercise.id,
+      record.sourceId,
+      release,
+      exercise.name,
+      normalizeSearch(
+        `${exercise.name} ${exercise.nameEn} ${record.aliases.join(" ")}`,
+      ),
+      JSON.stringify(zones),
+      exercise.equipment,
+      record.language,
+      record.loggable ? 1 : 0,
+      JSON.stringify(exercise),
+    ];
+  }
+  private insert(
+    rows: WgerRecord[],
+    release = snapshot.release,
+    date = snapshot.fetchedAt,
+  ) {
+    return this.db
+      .prepare(
+        `INSERT INTO exercise_catalog (id,source_id,release,name,search_text,zones,equipment,language,loggable,payload) VALUES ${rows.map(() => "(?,?,?,?,?,?,?,?,?,?)").join(",")} ON CONFLICT(id) DO NOTHING`,
+      )
+      .bind(...rows.flatMap((row) => this.bindings(row, release, date)));
+  }
   async ensureImported(): Promise<number> {
     const ready = await this.db
       .prepare("SELECT record_count FROM catalog_releases WHERE id = ?")
@@ -32,35 +93,7 @@ export class ExerciseRepository {
     // The client continues incomplete imports. Batches are atomic and retry-safe.
     for (let i = 0; i < pending.length; i += 8) {
       const rows = pending.slice(i, i + 8);
-      const bindings = rows.flatMap((record) => {
-        const exercise = this.adapter.toExercise(record);
-        const zones = [
-          ...new Set(
-            [...record.muscles, ...record.secondaryMuscles]
-              .map((m) => WGER_ZONES[m.id])
-              .filter(Boolean),
-          ),
-        ];
-        return [
-          exercise.id,
-          record.sourceId,
-          snapshot.release,
-          exercise.name,
-          `${exercise.name} ${exercise.nameEn} ${record.aliases.join(" ")}`.toLocaleLowerCase(),
-          JSON.stringify(zones),
-          exercise.equipment,
-          record.language,
-          record.loggable ? 1 : 0,
-          JSON.stringify(exercise),
-        ];
-      });
-      statements.push(
-        this.db
-          .prepare(
-            `INSERT INTO exercise_catalog (id,source_id,release,name,search_text,zones,equipment,language,loggable,payload) VALUES ${rows.map(() => "(?,?,?,?,?,?,?,?,?,?)").join(",")} ON CONFLICT(id) DO NOTHING`,
-          )
-          .bind(...bindings),
-      );
+      statements.push(this.insert(rows));
     }
     for (let i = 0; i < pending.length; i += 40) {
       const rows = pending.slice(i, i + 40);
@@ -105,11 +138,7 @@ export class ExerciseRepository {
         importing: true,
         imported,
       };
-    const query = (params.get("q") ?? "")
-      .trim()
-      .toLocaleLowerCase()
-      .slice(0, 100)
-      .replace(/[\\%_]/g, "\\$&");
+    const query = normalizeSearch((params.get("q") ?? "").slice(0, 100));
     const zone = params.get("muscle") ?? "all";
     const equipment = params.get("equipment") ?? "all";
     const page = Math.max(1, Math.min(10000, Number(params.get("page")) || 1));
@@ -117,8 +146,10 @@ export class ExerciseRepository {
     const where = ["catalog_memberships.release = ?"];
     const bindings: (string | number)[] = [snapshot.release];
     if (query) {
-      where.push("search_text LIKE ? ESCAPE '\\'");
-      bindings.push("%" + query + "%");
+      for (const token of query.split(" ").slice(0, 10)) {
+        where.push("search_text LIKE ? ESCAPE '\\'");
+        bindings.push("%" + token.replace(/[\\%_]/g, "\\$&") + "%");
+      }
     }
     if (zone !== "all") {
       where.push("EXISTS (SELECT 1 FROM json_each(zones) WHERE value = ?)");
@@ -161,10 +192,26 @@ export class ExerciseRepository {
   }
   async findByIds(ids: string[]): Promise<Map<string, Exercise>> {
     const unique = [...new Set(ids)]
-      .filter((id) => id.startsWith("wger:"))
+      .filter((id) => typeof id === "string" && id.startsWith("wger:"))
       .slice(0, 30);
     if (!unique.length) return new Map();
-    await this.ensureImported();
+    // Resolve any known historical definition even on a fresh database restore.
+    // Published source records remain immutable; a translated release has new IDs.
+    const archive = previousData as WgerSnapshot;
+    const archived = archive.exercises.filter((r) => unique.includes(r.id));
+    const current = snapshot.exercises.filter((r) => unique.includes(r.id));
+    const statements: D1PreparedStatement[] = [];
+    for (let i = 0; i < archived.length; i += 8)
+      statements.push(
+        this.insert(
+          archived.slice(i, i + 8),
+          archive.release,
+          archive.fetchedAt,
+        ),
+      );
+    for (let i = 0; i < current.length; i += 8)
+      statements.push(this.insert(current.slice(i, i + 8)));
+    if (statements.length) await this.db.batch(statements);
     const rows = await this.db
       .prepare(
         `SELECT id,payload FROM exercise_catalog WHERE id IN (${unique.map(() => "?").join(",")})`,

@@ -2,10 +2,14 @@ import { CATALOG_V1 } from "../data/catalog-v1";
 import { CATALOG_V2 } from "../data/catalog-v2";
 import type { Exercise, WorkoutExercise } from "./types";
 import { ExerciseCatalog } from "../domain/ExerciseCatalog";
+import { EXERCISE_ALIASES } from "../data/exercise-aliases";
 export { ANATOMICAL_MUSCLES, MUSCLES } from "../data/muscles";
 export { EVIDENCE, evidenceById } from "../data/evidence";
 export const CATALOG_REVISION = 2;
-export const EXERCISES = CATALOG_V2;
+export const EXERCISES = CATALOG_V2.map((e) => ({
+  ...e,
+  aliases: EXERCISE_ALIASES[e.id] ?? [e.nameEn],
+}));
 const legacy: Exercise[] = CATALOG_V1.map((e) => ({
   ...e,
   catalogRevision: 1,
@@ -31,7 +35,7 @@ const legacy: Exercise[] = CATALOG_V1.map((e) => ({
     reviewStatus: "legacy-unreviewed",
   },
 }));
-export const exerciseCatalog = new ExerciseCatalog(CATALOG_V2, legacy);
+export const exerciseCatalog = new ExerciseCatalog(EXERCISES, legacy);
 export function exerciseById(id: string, revision: 1 | 2 | 3 = 2) {
   return exerciseCatalog.find(id, revision);
 }
@@ -48,7 +52,7 @@ export function entrySpec(id: string): Omit<WorkoutExercise, "sets"> {
     recordingSpecRevision: e.catalogRevision,
     muscleMappingRevision: e.catalogRevision,
     displayNameSnapshot: e.name,
-    ...(e.source ? { externalDefinition: e } : {}),
+    ...(e.source || e.custom ? { externalDefinition: e } : {}),
     ...(e.recording.laterality === "unilateral"
       ? { performedSides: "both" as const }
       : {}),
@@ -56,6 +60,7 @@ export function entrySpec(id: string): Omit<WorkoutExercise, "sets"> {
 }
 export function recordingLabel(we: WorkoutExercise) {
   const spec = exerciseForEntry(we)?.recording;
+  if (spec?.type === "duration") return "длительность в секундах";
   if (!spec || spec.loadMode === "legacy_unspecified")
     return "кг · правило веса не указано";
   if (spec.loadMode === "bodyweight") return "без внешнего веса";

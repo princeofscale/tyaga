@@ -86,7 +86,7 @@ export function parseDraft(text: string | null): Draft | null {
               typeof s.id !== "string" ||
               !Number.isFinite(s.weight) ||
               !Number.isFinite(s.reps) ||
-              !Number.isFinite(s.rir) ||
+              (s.rir !== null && !Number.isFinite(s.rir)) ||
               typeof s.done !== "boolean" ||
               typeof s.warmup !== "boolean",
           )

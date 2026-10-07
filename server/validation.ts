@@ -7,19 +7,20 @@ import {
   type Settings,
   type WorkoutExercise,
   type Exercise,
+  type Routine,
 } from "../src/lib/model";
 export class InputError extends Error {}
-const object = (v: unknown): Record<string, unknown> => {
+export const object = (v: unknown): Record<string, unknown> => {
   if (!v || typeof v !== "object" || Array.isArray(v))
     throw new InputError("Некорректные данные");
   return v as Record<string, unknown>;
 };
-function str(v: unknown, max: number, min = 0) {
+export function str(v: unknown, max: number, min = 0) {
   if (typeof v !== "string" || v.length > max || v.trim().length < min)
     throw new InputError("Проверьте текстовые поля");
   return v.trim();
 }
-function num(v: unknown, min: number, max: number, integer = false) {
+export function num(v: unknown, min: number, max: number, integer = false) {
   if (
     typeof v !== "number" ||
     !Number.isFinite(v) ||
@@ -49,6 +50,7 @@ export function validWorkout(
     now?: Date;
     timeZone?: string;
     importedExercises?: Map<string, Exercise>;
+    allowIncomplete?: boolean;
   } = {},
 ): Workout {
   const w = object(value);
@@ -77,9 +79,7 @@ export function validWorkout(
     const e = object(value);
     const exerciseId = str(e.exerciseId, 80, 1);
     const catalogRevision = num(e.catalogRevision ?? 1, 1, 3, true) as
-      | 1
-      | 2
-      | 3;
+      1 | 2 | 3;
     const exercise =
       catalogRevision === 3
         ? options.importedExercises?.get(exerciseId)
@@ -93,7 +93,7 @@ export function validWorkout(
     seen.add(exerciseId);
     if (exercise.source && !exercise.source.record.loggable)
       throw new InputError(
-        "Этот вариант требует записи времени, которая пока не поддерживается.",
+        "Эта служебная запись каталога не добавляется в тренировку.",
       );
     const metadata: Omit<WorkoutExercise, "sets"> = { exerciseId };
     if (e.catalogRevision !== undefined) {
@@ -113,12 +113,15 @@ export function validWorkout(
     }
     if (e.equipmentNote !== undefined)
       metadata.equipmentNote = str(e.equipmentNote, 120);
+    if (e.progressionNote !== undefined)
+      metadata.progressionNote = str(e.progressionNote, 500);
     if (
       catalogRevision === 2 &&
       ["machine_stack", "assisted_bodyweight"].includes(
         exercise.recording.loadMode,
       ) &&
-      !metadata.equipmentNote
+      !metadata.equipmentNote &&
+      !options.allowIncomplete
     )
       throw new InputError(
         `Укажи тренажёр для «${exercise.name}», чтобы не сравнивать разные машины`,
@@ -149,12 +152,21 @@ export function validWorkout(
       const set = {
         id,
         weight: num(s.weight, 0, 1000),
-        reps: num(s.reps, 1, 200, true),
-        rir: num(s.rir, 0, 10, true),
+        reps:
+          exercise.recording.type === "duration"
+            ? 1
+            : num(s.reps, 1, 200, true),
+        rir: s.rir === null ? null : num(s.rir, 0, 10),
         done: bool(s.done),
         warmup: bool(s.warmup),
         ...(exercise.recording.loadMode === "assisted_bodyweight"
           ? { assistanceKg: num(s.assistanceKg, 0, 1000) }
+          : {}),
+        ...(exercise.recording.type === "duration"
+          ? { durationSeconds: num(s.durationSeconds, 1, 86400, true) }
+          : {}),
+        ...(exercise.recording.type === "duration" && s.distanceKm !== undefined
+          ? { distanceKm: num(s.distanceKm, 0, 1000) }
           : {}),
       };
       if (
@@ -175,7 +187,10 @@ export function validWorkout(
     });
     return { ...metadata, sets };
   });
-  if (!exercises.some((e) => e.sets.some((s) => s.done && !s.warmup)))
+  if (
+    !options.allowIncomplete &&
+    !exercises.some((e) => e.sets.some((s) => s.done && !s.warmup))
+  )
     throw new InputError("Отметьте хотя бы один выполненный рабочий подход");
   const result: Workout = {
     id: str(w.id, 80, 1),
@@ -195,7 +210,55 @@ export function validWorkout(
   }
   if (w.analysisVersion !== undefined)
     result.analysisVersion = num(w.analysisVersion, 1, 2, true) as 1 | 2;
+  if (w.routineId !== undefined) result.routineId = str(w.routineId, 80, 1);
+  if (w.restSeconds !== undefined)
+    result.restSeconds = num(w.restSeconds, 15, 600, true);
   return result;
+}
+export function validRoutine(
+  value: unknown,
+  importedExercises: Map<string, Exercise>,
+): Routine {
+  const v = object(value);
+  if (
+    !Array.isArray(v.days) ||
+    v.days.length > 7 ||
+    new Set(v.days).size !== v.days.length
+  )
+    throw new InputError("Проверь дни программы");
+  const repMin = num(v.repMin, 1, 200, true),
+    repMax = num(v.repMax, repMin, 200, true);
+  if (!["repeat", "double"].includes(String(v.progression)))
+    throw new InputError("Проверь правило прогрессии");
+  const exercises = validWorkout(
+    {
+      id: "routine-validation",
+      name: "Программа",
+      date: localDate(new Date(), "UTC"),
+      duration: 0,
+      notes: "",
+      exercises: v.exercises,
+    },
+    { timeZone: "UTC", importedExercises, allowIncomplete: true },
+  ).exercises;
+  if (!exercises.some((e) => e.sets.some((s) => !s.warmup)))
+    throw new InputError("Добавь хотя бы один рабочий подход в программу");
+  return {
+    id: str(v.id, 80, 1),
+    name: str(v.name, 120, 1),
+    notes: str(v.notes, 2000),
+    days: v.days.map((d) => num(d, 0, 6, true)),
+    exercises: exercises.map((e) => ({
+      ...e,
+      sets: e.sets.map((s) => ({ ...s, done: false })),
+    })),
+    restSeconds: num(v.restSeconds, 15, 600, true),
+    progression: v.progression as Routine["progression"],
+    repMin,
+    repMax,
+    incrementKg: num(v.incrementKg, 0.25, 50),
+    revision: validRevision(v.revision),
+  };
 }
 export function validSettings(value: unknown): Settings {
   const v = object(value);

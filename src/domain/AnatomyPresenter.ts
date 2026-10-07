@@ -162,7 +162,8 @@ export class AnatomyPresenter {
           (s) =>
             s.done &&
             !s.warmup &&
-            (this.options.maxRir === undefined || s.rir <= this.options.maxRir),
+            (this.options.maxRir === undefined ||
+              (s.rir !== null && s.rir <= this.options.maxRir)),
         ).length;
         const roles = exercise.muscles.filter((m) =>
           part.muscles.includes(m.muscleId),

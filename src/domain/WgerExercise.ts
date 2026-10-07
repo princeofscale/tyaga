@@ -29,6 +29,16 @@ export interface WgerRecord {
   attributions: WgerAttribution[];
   adaptation: string;
   loggable: boolean;
+  recordType?: "reps" | "duration";
+  localization?: {
+    version: string;
+    sourceLanguage: string;
+    sourceName: string;
+    sourceInstructions: string;
+    names: string;
+    instructions: string;
+    scientificReview: boolean;
+  };
 }
 export interface WgerSnapshot {
   provider: string;
@@ -68,6 +78,7 @@ export class WgerExerciseAdapter {
       id: row.id,
       name: row.name,
       nameEn: row.nameEn,
+      aliases: row.aliases,
       catalogRevision: 3,
       familyId: row.variationGroup ?? row.id,
       primary: [],
@@ -85,6 +96,7 @@ export class WgerExerciseAdapter {
         "Вариант и роли мышц приведены по каталогу wger. Правило записи веса задаётся вами и сохраняется без пересчёта.",
       jointActions: [],
       recording: {
+        ...(row.recordType ? { type: row.recordType } : {}),
         loadMode: "legacy_unspecified",
         implementCount: 1,
         laterality: "bilateral",

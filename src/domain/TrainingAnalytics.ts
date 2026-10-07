@@ -22,7 +22,8 @@ export class TrainingAnalytics {
           (s) =>
             s.done &&
             !s.warmup &&
-            (this.options.maxRir === undefined || s.rir <= this.options.maxRir),
+            (this.options.maxRir === undefined ||
+              (s.rir !== null && s.rir <= this.options.maxRir)),
         ).length;
         if (count) yield { exercise, count };
       }

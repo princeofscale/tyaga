@@ -1,4 +1,5 @@
 import type { Exercise, WorkoutExercise } from "../lib/types";
+import { matchesSearch } from "../lib/search";
 
 export class ExerciseCatalog {
   private entries = new Map<string, Exercise>();
@@ -20,7 +21,8 @@ export class ExerciseCatalog {
       );
   }
   find(id: string, revision: 1 | 2 | 3 = 2): Exercise | undefined {
-    if (id.startsWith("wger:")) return this.entries.get(this.key(id, 3));
+    if (id.startsWith("wger:") || id.startsWith("custom:"))
+      return this.entries.get(this.key(id, 3));
     return (
       this.entries.get(this.key(id, revision)) ??
       (revision === 2 ? this.entries.get(this.key(id, 1)) : undefined)
@@ -30,7 +32,8 @@ export class ExerciseCatalog {
     if (
       entry.catalogRevision === 3 &&
       entry.externalDefinition?.id === entry.exerciseId &&
-      entry.externalDefinition.source?.provider === "wger"
+      (entry.externalDefinition.source?.provider === "wger" ||
+        !!entry.externalDefinition.custom)
     )
       return entry.externalDefinition;
     return this.find(entry.exerciseId, entry.catalogRevision ?? 1);
@@ -47,10 +50,12 @@ export class ExerciseCatalog {
     zone?: string;
     equipment?: string;
   }) {
-    const query = text.toLocaleLowerCase().trim();
     return this.curated.filter(
       (e) =>
-        `${e.name} ${e.nameEn}`.toLocaleLowerCase().includes(query) &&
+        matchesSearch(
+          `${e.name} ${e.nameEn} ${(e.aliases ?? []).join(" ")}`,
+          text,
+        ) &&
         (zone === "all" ||
           [...e.primary, ...e.secondary].includes(
             zone as Exercise["primary"][number],

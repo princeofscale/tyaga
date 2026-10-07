@@ -5,6 +5,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  useRef,
   type ReactNode,
 } from "react";
 import {
@@ -69,6 +70,10 @@ import {
   type Settings,
   type Workout,
   type WorkoutExercise,
+  type ProductData,
+  type Routine,
+  type Exercise,
+  exerciseCatalog,
 } from "./lib/model";
 import BodyMap, { loadColor } from "./components/BodyMap";
 import { VolumeChart, Sparkline } from "./components/Charts";
@@ -77,6 +82,11 @@ import WorkoutView from "./components/WorkoutView";
 import { m } from "motion/react";
 const AnatomyExplorer = lazy(() => import("./components/AnatomyExplorer"));
 const ExerciseLibrary = lazy(() => import("./components/ExerciseLibrary"));
+const ProgramsScreen = lazy(() => import("./components/ProgramsScreen"));
+const PersonalExerciseEditor = lazy(
+  () => import("./components/PersonalExerciseEditor"),
+);
+const HistoryImporter = lazy(() => import("./components/HistoryImporter"));
 import ExerciseInfo from "./components/ExerciseInfo";
 import {
   readDraft,
@@ -89,18 +99,17 @@ import {
 } from "./lib/draft";
 import { WorkoutSession } from "./domain/WorkoutSession";
 import { api, ApiError } from "./services/ApiClient";
+import { productService } from "./services/ProductService";
+import { TrainingProgram } from "./domain/TrainingProgram";
 import { useTrainingTools } from "./lib/webmcp";
 
 type View =
-  | "overview"
-  | "workout"
-  | "history"
-  | "library"
-  | "progress"
-  | "anatomy";
+  "overview" | "workout" | "history" | "library" | "progress" | "anatomy";
+type ProductView = View | "programs";
 const NAV = [
   { id: "overview", label: "Обзор", icon: LayoutDashboard },
   { id: "workout", label: "Тренировка", icon: Dumbbell },
+  { id: "programs", label: "Программы", icon: CalendarDays },
   { id: "anatomy", label: "Анатомия", icon: ScanLine },
   { id: "history", label: "История", icon: History },
   { id: "library", label: "Упражнения", icon: Activity },
@@ -117,7 +126,16 @@ const dateLabel = (date: string, long = false) =>
     month: long ? "long" : "short",
   });
 export default function App() {
-  const [view, setView] = useState<View>("overview");
+  const [view, setView] = useState<ProductView>("overview");
+  const [product, setProduct] = useState<ProductData>({
+    routines: [],
+    customExercises: [],
+    favorites: [],
+  });
+  const [personalEditor, setPersonalEditor] = useState<Exercise | undefined>();
+  const [initialRoutine, setInitialRoutine] = useState<Routine | null>(null);
+  const pendingFavorites = useRef(new Set<string>());
+  const [importBusy, setImportBusy] = useState(false);
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
@@ -133,7 +151,14 @@ export default function App() {
   const [mobileNav, setMobileNav] = useState(false);
   const [toast, setToast] = useState("");
   const [modal, setModal] = useState<
-    "picker" | "planner" | "settings" | "method" | "discard" | null
+    | "picker"
+    | "planner"
+    | "settings"
+    | "method"
+    | "discard"
+    | "personal"
+    | "import"
+    | null
   >(null);
   const [detail, setDetail] = useState<Workout | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -157,12 +182,20 @@ export default function App() {
     setLoading(true);
     setLoadError("");
     try {
-      const data = await api<{ workouts: Workout[]; settings: Settings }>(
-        "/api/data",
-        "GET",
-        undefined,
-        signal,
-      );
+      const [data, productData] = await Promise.all([
+        api<{ workouts: Workout[]; settings: Settings }>(
+          "/api/data",
+          "GET",
+          undefined,
+          signal,
+        ),
+        productService.read(signal),
+      ]);
+      exerciseCatalog.register([
+        ...productData.customExercises,
+        ...(productData.favoriteDefinitions ?? []),
+      ]);
+      setProduct(productData);
       setWorkouts(data.workouts);
       setSettings({
         ...data.settings,
@@ -285,7 +318,7 @@ export default function App() {
     const today = localDate(new Date(), settings.timeZone);
     return w.date >= addCalendarDays(today, -27) && w.date <= today;
   });
-  const go = (v: View) => {
+  const go = (v: ProductView) => {
     setView(v);
     setMobileNav(false);
     window.scrollTo({ top: 0, behavior: "instant" });
@@ -327,6 +360,60 @@ export default function App() {
         : null,
     );
     setToast("Упражнение добавлено");
+  };
+  const favoriteExercise = async (id: string) => {
+    if (pendingFavorites.current.has(id)) return;
+    pendingFavorites.current.add(id);
+    const add = !product.favorites.includes(id);
+    setProduct((p) => ({
+      ...p,
+      favorites: add
+        ? [...p.favorites, id]
+        : p.favorites.filter((x) => x !== id),
+    }));
+    try {
+      await productService.favorite(id, add);
+    } catch (e) {
+      setProduct((p) => ({
+        ...p,
+        favorites: add
+          ? p.favorites.filter((x) => x !== id)
+          : [...p.favorites, id],
+      }));
+      setToast(
+        e instanceof Error ? e.message : "Не удалось обновить избранное",
+      );
+    } finally {
+      pendingFavorites.current.delete(id);
+    }
+  };
+  const saveRoutine = async (routine: Routine) => {
+    const result = await productService.saveRoutine(routine);
+    setProduct((p) => ({
+      ...p,
+      routines: [
+        result.routine,
+        ...p.routines.filter((r) => r.id !== result.routine.id),
+      ],
+    }));
+    setToast("Программа сохранена");
+    return result.routine;
+  };
+  const deleteRoutine = async (routine: Routine) => {
+    await productService.deleteRoutine(routine);
+    setProduct((p) => ({
+      ...p,
+      routines: p.routines.filter((r) => r.id !== routine.id),
+    }));
+    setToast("Программа удалена");
+  };
+  const createPersonal = () => {
+    setPersonalEditor(undefined);
+    setModal("personal");
+  };
+  const editPersonal = (exercise: Exercise) => {
+    setPersonalEditor(exercise);
+    setModal("personal");
   };
   const openPicker = () => {
     if (!draft) start();
@@ -424,12 +511,15 @@ export default function App() {
       [
         JSON.stringify(
           {
-            version: 2,
+            version: 3,
             analysisVersion: 2,
             e1rmFormulaVersion: "epley-1",
             exportedAt: new Date().toISOString(),
             workouts,
             settings,
+            routines: product.routines,
+            customExercises: product.customExercises,
+            favorites: product.favorites,
           },
           null,
           2,
@@ -513,9 +603,23 @@ export default function App() {
       const sets = we.sets.filter((s) => s.done && !s.warmup);
       return {
         date: w.date,
-        max: Math.max(0, ...sets.map((s) => recordedLoad(we, s))),
+        max: Math.max(
+          0,
+          ...sets.map((s) =>
+            progressSpec.type === "duration"
+              ? (s.durationSeconds ?? 0)
+              : recordedLoad(we, s),
+          ),
+        ),
         e1rm: Math.max(0, ...sets.map((s) => estimatedOneRepMax(s, we) ?? 0)),
-        reps: sets.reduce((n, s) => n + s.reps, 0),
+        reps: sets.reduce(
+          (n, s) =>
+            n +
+            (progressSpec.type === "duration"
+              ? (s.durationSeconds ?? 0)
+              : s.reps),
+          0,
+        ),
         sets,
       };
     });
@@ -548,6 +652,11 @@ export default function App() {
         selectedIds={draft?.workout.exercises.map((e) => e.exerciseId) ?? []}
         limitReached={(draft?.workout.exercises.length ?? 0) >= 30}
         defaultMuscle={muscleFilter}
+        personal={product.customExercises}
+        favorites={product.favorites}
+        onFavorite={(id) => void favoriteExercise(id)}
+        onCreate={createPersonal}
+        onEdit={editPersonal}
       />
     </Suspense>
   );
@@ -711,6 +820,7 @@ export default function App() {
                     history: "История тренировок",
                     library: "Библиотека упражнений",
                     progress: "Сила в цифрах",
+                    programs: "Твои программы",
                   }[view]
                 }
               </h1>
@@ -725,6 +835,8 @@ export default function App() {
                     library: "Найди упражнение для своей следующей тренировки.",
                     progress:
                       "Сравнивай себя с собой. По одному упражнению за раз.",
+                    programs:
+                      "Собери неделю и начинай сессию из готового шаблона.",
                   }[view]
                 }
               </p>
@@ -823,6 +935,55 @@ export default function App() {
                       accent
                     />
                   </div>
+                  {product.routines.length ? (
+                    <section className="today-programs panel">
+                      <div>
+                        <span className="eyebrow">СЕГОДНЯ ПО ПЛАНУ</span>
+                        <h2>
+                          {product.routines.some((r) =>
+                            new TrainingProgram(r).scheduled(
+                              localDate(new Date(), settings.timeZone),
+                            ),
+                          )
+                            ? "Твоя следующая сессия"
+                            : "День без назначенной программы"}
+                        </h2>
+                      </div>
+                      <div>
+                        {product.routines
+                          .filter((r) =>
+                            new TrainingProgram(r).scheduled(
+                              localDate(new Date(), settings.timeZone),
+                            ),
+                          )
+                          .map((r) => (
+                            <button
+                              key={r.id}
+                              className="button primary"
+                              onClick={() =>
+                                start(
+                                  [],
+                                  undefined,
+                                  new TrainingProgram(r).start(
+                                    workouts,
+                                    settings.timeZone ?? browserTimeZone(),
+                                  ),
+                                )
+                              }
+                            >
+                              <Dumbbell size={17} />
+                              {r.name}
+                            </button>
+                          ))}
+                        <button
+                          className="button secondary"
+                          onClick={() => go("programs")}
+                        >
+                          Мой план
+                        </button>
+                      </div>
+                    </section>
+                  ) : null}
                   <div className="overview-grid">
                     <section className="panel muscle-panel">
                       <div className="panel-header">
@@ -1181,6 +1342,12 @@ export default function App() {
                       <Download size={17} />
                       Экспорт JSON
                     </button>
+                    <button
+                      className="button secondary"
+                      onClick={() => setModal("import")}
+                    >
+                      Импорт истории
+                    </button>
                   </div>
                   <div className="panel history-panel">
                     {historyFiltered.map((w) => sessionItem(w, true))}
@@ -1253,6 +1420,32 @@ export default function App() {
                 </>
               ) : null}
               {view === "library" ? <>{exerciseCards()}</> : null}
+              {view === "programs" ? (
+                <Suspense fallback={<p role="status">Открываем программы…</p>}>
+                  <ProgramsScreen
+                    routines={product.routines}
+                    workouts={workouts}
+                    timeZone={settings.timeZone ?? browserTimeZone()}
+                    personal={product.customExercises}
+                    favorites={product.favorites}
+                    onFavorite={(id) => void favoriteExercise(id)}
+                    onSave={saveRoutine}
+                    onDelete={deleteRoutine}
+                    onStart={(r) =>
+                      start(
+                        [],
+                        undefined,
+                        new TrainingProgram(r).start(
+                          workouts,
+                          settings.timeZone ?? browserTimeZone(),
+                        ),
+                      )
+                    }
+                    initial={initialRoutine}
+                    onInitialUsed={() => setInitialRoutine(null)}
+                  />
+                </Suspense>
+              ) : null}
               {view === "progress" ? (
                 <>
                   <div className="progress-selector">
@@ -1295,18 +1488,28 @@ export default function App() {
                       value={fmt(
                         Math.max(0, ...progressPoints.map((p) => p.max)),
                       )}
-                      unit="кг"
+                      unit={progressSpec.type === "duration" ? "с" : "кг"}
                       meta={recordingLabel(progressEntry)}
                     />
                     <Stat
                       icon={<TrendingUp size={19} />}
-                      label="Изменение веса"
+                      label={
+                        progressSpec.type === "duration"
+                          ? "Изменение длительности"
+                          : "Изменение веса"
+                      }
                       value={
                         lastProgress && firstProgress
                           ? `${lastProgress.max - firstProgress.max >= 0 ? "+" : ""}${fmt(lastProgress.max - firstProgress.max)}`
                           : "—"
                       }
-                      unit={lastProgress ? "кг" : ""}
+                      unit={
+                        lastProgress
+                          ? progressSpec.type === "duration"
+                            ? "с"
+                            : "кг"
+                          : ""
+                      }
                       meta="первая → последняя тренировка"
                     />
                     <Stat
@@ -1356,9 +1559,15 @@ export default function App() {
                             <div key={`${p.date}-${i}`}>
                               <span>{dateLabel(p.date, true)}</span>
                               <span>
-                                {p.sets.length} подходов · {p.reps} повторов
+                                {p.sets.length} подходов · {p.reps}{" "}
+                                {progressSpec.type === "duration"
+                                  ? "с"
+                                  : "повторов"}
                               </span>
-                              <b>{fmt(p.max)} кг</b>
+                              <b>
+                                {fmt(p.max)}{" "}
+                                {progressSpec.type === "duration" ? "с" : "кг"}
+                              </b>
                             </div>
                           ))}
                         </div>
@@ -1794,16 +2003,27 @@ export default function App() {
                     <span key={s.id}>
                       {s.warmup ? "Разминка · " : ""}
                       <b>
-                        {exerciseForEntry(e)?.recording.loadMode ===
-                        "bodyweight"
-                          ? "Без веса"
-                          : `${recordedLoad(e, s)} ${recordingLabel(e)}`}{" "}
-                        × {s.reps}
-                        {exerciseForEntry(e)?.recording.repsMode === "per_side"
-                          ? " / сторону"
-                          : ""}
+                        {exerciseForEntry(e)?.recording.type === "duration" ? (
+                          `${s.durationSeconds} с`
+                        ) : (
+                          <>
+                            {exerciseForEntry(e)?.recording.loadMode ===
+                            "bodyweight"
+                              ? "Без веса"
+                              : `${recordedLoad(e, s)} ${recordingLabel(e)}`}{" "}
+                            × {s.reps}
+                            {exerciseForEntry(e)?.recording.repsMode ===
+                            "per_side"
+                              ? " / сторону"
+                              : ""}
+                          </>
+                        )}
                       </b>
-                      <small>RIR {s.rir}</small>
+                      {exerciseForEntry(e)?.recording.type !== "duration" ? (
+                        <small>RIR {s.rir ?? "—"}</small>
+                      ) : s.distanceKm !== undefined ? (
+                        <small>{s.distanceKm} км</small>
+                      ) : null}
                     </span>
                   ))}
               </div>
@@ -1841,6 +2061,16 @@ export default function App() {
               <span className="tiny">Пример данных</span>
             )}
             <div className="button-group">
+              <button
+                className="button secondary"
+                onClick={() => {
+                  setInitialRoutine(TrainingProgram.fromWorkout(detail));
+                  setDetail(null);
+                  go("programs");
+                }}
+              >
+                В программу
+              </button>
               <button
                 className="button secondary"
                 onClick={() => {
@@ -1884,6 +2114,89 @@ export default function App() {
               {saving ? "Удаляем…" : "Удалить"}
             </button>
           </div>
+        </Modal>
+      ) : null}
+      {modal === "import" ? (
+        <Modal
+          title="Импорт истории"
+          wide
+          onClose={() => {
+            if (!importBusy) setModal(null);
+          }}
+        >
+          <Suspense fallback={<p>Открываем импорт…</p>}>
+            <HistoryImporter
+              timeZone={settings.timeZone ?? browserTimeZone()}
+              onBusy={setImportBusy}
+              onComplete={async (result) => {
+                if (result.settings) {
+                  const latest = await api<{ settings: Settings }>("/api/data");
+                  await api("/api/settings", "PUT", {
+                    ...result.settings,
+                    revision: latest.settings.revision ?? 0,
+                  });
+                }
+                await load();
+                setModal(null);
+                setDemo(false);
+                go("history");
+                setToast(
+                  `Импорт завершён: добавлено ${result.imported}, пропущено ${result.skipped}`,
+                );
+              }}
+            />
+          </Suspense>
+        </Modal>
+      ) : null}
+      {modal === "personal" ? (
+        <Modal
+          title={
+            personalEditor ? "Редактировать своё упражнение" : "Своё упражнение"
+          }
+          onClose={() => setModal(null)}
+        >
+          <Suspense fallback={<p>Открываем редактор…</p>}>
+            <PersonalExerciseEditor
+              exercise={personalEditor}
+              onDeleted={(id) => {
+                setProduct((p) => ({
+                  ...p,
+                  customExercises: p.customExercises.filter((e) => e.id !== id),
+                  favorites: p.favorites.filter((e) => e !== id),
+                }));
+                setModal(null);
+                setToast("Упражнение убрано из каталога; история сохранена");
+              }}
+              onSaved={(exercise) => {
+                exerciseCatalog.register([exercise]);
+                setProduct((p) => {
+                  const oldIds = p.customExercises
+                    .filter(
+                      (e) => e.custom?.familyId === exercise.custom?.familyId,
+                    )
+                    .map((e) => e.id);
+                  const wasFavorite = p.favorites.some((id) =>
+                    oldIds.includes(id),
+                  );
+                  return {
+                    ...p,
+                    customExercises: [
+                      exercise,
+                      ...p.customExercises.filter(
+                        (e) => !oldIds.includes(e.id),
+                      ),
+                    ],
+                    favorites: [
+                      ...p.favorites.filter((id) => !oldIds.includes(id)),
+                      ...(wasFavorite ? [exercise.id] : []),
+                    ],
+                  };
+                });
+                setModal(null);
+                setToast("Упражнение сохранено в личном каталоге");
+              }}
+            />
+          </Suspense>
         </Modal>
       ) : null}
       {exerciseDetail ? (

@@ -60,6 +60,7 @@ export default function WorkoutView({
 }: Props) {
   const [now, setNow] = useState(Date.now());
   const [announcement, setAnnouncement] = useState("");
+  const restSeconds = draft?.workout.restSeconds ?? settings.restSeconds;
   const announcedTimer = useRef<number | null>(null);
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -118,7 +119,7 @@ export default function WorkoutView({
       },
       ...(patch.done
         ? {
-            restUntil: Date.now() + settings.restSeconds * 1000,
+            restUntil: Date.now() + restSeconds * 1000,
             pausedRest: null,
           }
         : {}),
@@ -131,7 +132,7 @@ export default function WorkoutView({
   const startRest = () =>
     update({
       ...draft,
-      restUntil: Date.now() + settings.restSeconds * 1000,
+      restUntil: Date.now() + restSeconds * 1000,
       pausedRest: null,
     });
   return (
@@ -173,6 +174,7 @@ export default function WorkoutView({
         {w.exercises.map((we, ei) => {
           const exercise = exerciseForEntry(we)!;
           const spec = exercise.recording;
+          const timed = spec.type === "duration";
           const assistance = spec.loadMode === "assisted_bodyweight";
           const noLoad = spec.loadMode === "bodyweight";
           const heading =
@@ -219,11 +221,14 @@ export default function WorkoutView({
               >
                 <Info size={14} />
                 {exercise.source
-                  ? "Вес и повторы записываются по твоему правилу. Для этой записи wger тоннаж, 1ПМ и покрытие мышц не рассчитываются."
+                  ? `${timed ? "Длительность записывается в секундах." : "Вес и повторы записываются по твоему правилу."} Для этой записи wger тоннаж, 1ПМ и покрытие мышц не рассчитываются.`
                   : exercise.catalogRevision === 1
                     ? "Старая запись: правило веса и вариант неизвестны. Вес сохранится как введён; тоннаж и 1ПМ не вычисляются."
                     : `${recordingLabel(we)}. ${spec.implementCount === 2 ? "Используются две гантели / два блока. " : ""}${spec.repsMode === "per_side" ? "Повторы на сторону." : "Повторы всего движения."}`}
               </p>
+              {we.progressionNote ? (
+                <p className="progression-note">{we.progressionNote}</p>
+              ) : null}
               {spec.laterality === "unilateral" ? (
                 <label className="recording-field">
                   Выполненные стороны
@@ -296,9 +301,13 @@ export default function WorkoutView({
                   <span>Подход</span>
                   <span>{heading}</span>
                   <span>
-                    {spec.repsMode === "per_side" ? "На сторону" : "Повторы"}
+                    {timed
+                      ? "Секунды"
+                      : spec.repsMode === "per_side"
+                        ? "На сторону"
+                        : "Повторы"}
                   </span>
-                  <span>RIR</span>
+                  <span>{timed ? "Км" : "RIR"}</span>
                   <span>Готово</span>
                   <span />
                 </div>
@@ -344,25 +353,52 @@ export default function WorkoutView({
                       />
                     )}
                     <input
-                      aria-label={`${entryName(we)}, подход ${si + 1}, повторы${spec.repsMode === "per_side" ? " на сторону" : ""}`}
+                      aria-label={`${entryName(we)}, подход ${si + 1}, ${timed ? "секунды" : "повторы"}${!timed && spec.repsMode === "per_side" ? " на сторону" : ""}`}
                       type="number"
                       min="1"
-                      max="200"
+                      max={timed ? "86400" : "200"}
                       inputMode="numeric"
-                      value={s.reps}
+                      value={timed ? (s.durationSeconds ?? 30) : s.reps}
                       onChange={(e) =>
-                        changeSet(ei, si, { reps: Number(e.target.value) })
+                        changeSet(
+                          ei,
+                          si,
+                          timed
+                            ? {
+                                durationSeconds: Number(e.target.value),
+                                reps: 1,
+                              }
+                            : { reps: Number(e.target.value) },
+                        )
                       }
                     />
                     <input
-                      aria-label={`${entryName(we)}, подход ${si + 1}, RIR`}
+                      aria-label={`${entryName(we)}, подход ${si + 1}, ${timed ? "дистанция, км" : "RIR"}`}
                       type="number"
                       min="0"
-                      max="10"
-                      inputMode="numeric"
-                      value={s.rir}
+                      max={timed ? "1000" : "10"}
+                      step={timed ? "0.01" : "0.5"}
+                      inputMode="decimal"
+                      value={timed ? (s.distanceKm ?? "") : (s.rir ?? "")}
+                      placeholder="—"
                       onChange={(e) =>
-                        changeSet(ei, si, { rir: Number(e.target.value) })
+                        changeSet(
+                          ei,
+                          si,
+                          timed
+                            ? {
+                                distanceKm:
+                                  e.target.value === ""
+                                    ? undefined
+                                    : Number(e.target.value),
+                              }
+                            : {
+                                rir:
+                                  e.target.value === ""
+                                    ? null
+                                    : Number(e.target.value),
+                              },
+                        )
                       }
                     />
                     <button
@@ -396,6 +432,13 @@ export default function WorkoutView({
                   const next = makeSets(1, previous.weight, previous.reps).map(
                     (s) => ({
                       ...s,
+                      ...(timed
+                        ? {
+                            reps: 1,
+                            rir: null,
+                            durationSeconds: previous.durationSeconds ?? 30,
+                          }
+                        : {}),
                       ...(assistance
                         ? { assistanceKg: previous.assistanceKg ?? 0 }
                         : {}),

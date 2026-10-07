@@ -68,6 +68,7 @@ export function legacyMuscleLoad(
       if (!e) continue;
       for (const s of we.sets)
         if (s.done && !s.warmup) {
+          if (s.rir === null) continue;
           const factor = s.rir <= 3 ? 1 : s.rir <= 5 ? 0.75 : 0.5;
           for (const m of loads) {
             if (e.primary.includes(m.id)) m.direct += factor;
@@ -98,6 +99,7 @@ export function volumeSummary(workouts: Workout[]) {
         if (s.done && !s.warmup) {
           if (
             !spec ||
+            spec.type === "duration" ||
             !["total_external", "per_implement"].includes(spec.loadMode)
           ) {
             omittedSets++;
@@ -128,6 +130,7 @@ export function estimatedOneRepMax(set: SetEntry, we: WorkoutExercise) {
   const spec = exerciseForEntry(we)?.recording;
   if (
     !spec?.e1rmEligible ||
+    spec.type === "duration" ||
     !set.done ||
     set.warmup ||
     set.weight <= 0 ||
@@ -153,6 +156,12 @@ export function makeExerciseEntry(
 ): WorkoutExercise {
   const entry: WorkoutExercise = { ...entrySpec(id), sets: makeSets() };
   const e = exerciseById(id)!;
+  if (e.recording.type === "duration")
+    entry.sets = makeSets(3, 0, 1).map((s) => ({
+      ...s,
+      rir: null,
+      durationSeconds: 30,
+    }));
   const last = [...history]
     .sort(
       (a, b) =>
@@ -166,6 +175,9 @@ export function makeExerciseEntry(
   if (previous)
     entry.sets = makeSets(3, previous.weight, previous.reps).map((s) => ({
       ...s,
+      ...(e.recording.type === "duration"
+        ? { rir: null, durationSeconds: previous.durationSeconds ?? 30 }
+        : {}),
       ...(e.recording.loadMode === "assisted_bodyweight"
         ? { assistanceKg: previous.assistanceKg ?? 0 }
         : {}),

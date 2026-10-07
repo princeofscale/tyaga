@@ -27,3 +27,16 @@ URL and adaptation description. The source retains CC BY-SA 3.0, CC BY-SA 4.0 or
 CC0 as specified per record. Adapted records remain under the original licence.
 Media and wger AGPL application source are not included. Source attribution also
 travels with saved workout definitions and exports.
+
+The Russian release in `data/wger/catalog-v2-ru.json` is an adaptation of the
+immutable `catalog-v1.json`. Russian names and aliases were editorially translated
+with AI assistance; descriptions were machine translated at build time. Original
+descriptions and attributions remain in each record. These translations retain
+the applicable original CC BY-SA/CC0 licence, not the application's MIT licence.
+Tyaga does not claim scientific or professional certification of these records.
+
+## Product inspiration
+
+OpenGym's documented routines, double progression, personal exercises and history
+imports informed product choices. Their implementations here are original; no
+OpenGym AGPL source or media are redistributed.

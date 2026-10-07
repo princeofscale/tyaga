@@ -58,3 +58,37 @@ export const catalogMemberships = sqliteTable(
   },
   (table) => [primaryKey({ columns: [table.release, table.exerciseId] })],
 );
+
+export const routines = sqliteTable(
+  "routines",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id").notNull(),
+    payload: text("payload").notNull(),
+    revision: integer("revision").notNull().default(1),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [index("idx_routines_owner").on(table.ownerId)],
+);
+
+export const customExercises = sqliteTable(
+  "custom_exercises",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id").notNull(),
+    familyId: text("family_id").notNull(),
+    payload: text("payload").notNull(),
+    active: integer("active").notNull().default(1),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [index("idx_custom_owner_active").on(table.ownerId, table.active)],
+);
+
+export const favoriteExercises = sqliteTable(
+  "favorite_exercises",
+  {
+    ownerId: text("owner_id").notNull(),
+    exerciseId: text("exercise_id").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.ownerId, table.exerciseId] })],
+);

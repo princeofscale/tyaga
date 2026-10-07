@@ -11,6 +11,7 @@ export type LegacyExercise = {
   bodyweight?: boolean;
 };
 export type RecordingSpec = {
+  type?: "reps" | "duration";
   loadMode:
     | "total_external"
     | "per_implement"
@@ -32,6 +33,8 @@ export type MuscleRole = {
   sources: string[];
 };
 export type Exercise = LegacyExercise & {
+  aliases?: string[];
+  custom?: { familyId: string; declaredZones: Muscle[]; origin?: string };
   catalogRevision: 1 | 2 | 3;
   familyId: string;
   nameEn: string;
@@ -58,10 +61,12 @@ export type SetEntry = {
   id: string;
   weight: number;
   reps: number;
-  rir: number;
+  rir: number | null;
   warmup: boolean;
   done: boolean;
   assistanceKg?: number;
+  durationSeconds?: number;
+  distanceKm?: number;
 };
 export type WorkoutExercise = {
   exerciseId: string;
@@ -74,6 +79,7 @@ export type WorkoutExercise = {
   equipmentNote?: string;
   performedSides?: "both" | "left" | "right";
   bodyMassKg?: number;
+  progressionNote?: string;
 };
 export type Workout = {
   id: string;
@@ -87,6 +93,28 @@ export type Workout = {
   createdAt?: string;
   updatedAt?: string;
   analysisVersion?: 1 | 2;
+  routineId?: string;
+  restSeconds?: number;
+};
+export type Routine = {
+  id: string;
+  name: string;
+  notes: string;
+  days: number[];
+  exercises: WorkoutExercise[];
+  restSeconds: number;
+  progression: "repeat" | "double";
+  repMin: number;
+  repMax: number;
+  incrementKg: number;
+  revision: number;
+  updatedAt?: string;
+};
+export type ProductData = {
+  routines: Routine[];
+  customExercises: Exercise[];
+  favorites: string[];
+  favoriteDefinitions?: Exercise[];
 };
 export type Settings = {
   goals: Record<Muscle, number>;

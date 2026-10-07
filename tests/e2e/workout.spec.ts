@@ -5,14 +5,35 @@ import {
   type APIRequestContext,
 } from "@playwright/test";
 const BASE = "http://localhost:5173";
+const WORKER = "http://127.0.0.1:8787";
 const headers = { Origin: BASE };
 async function cleanup(request: APIRequestContext) {
-  const data = await (await request.get("/api/data")).json();
+  // Setup uses the local worker directly. The UI and scenario assertions still
+  // exercise Vite's proxy; cleanup avoids reusing its browser-lifetime sockets.
+  const cleanupHeaders = { ...headers, Connection: "close" };
+  const data = await (
+    await request.get(`${WORKER}/api/data`, { headers: cleanupHeaders })
+  ).json();
   for (const w of data.workouts)
     if (w.name.startsWith("[E2E]"))
-      await request.delete("/api/workouts/" + w.id, {
-        headers,
+      await request.delete(WORKER + "/api/workouts/" + w.id, {
+        headers: cleanupHeaders,
         data: { revision: w.revision },
+      });
+  const product = await (
+    await request.get(`${WORKER}/api/product`, { headers: cleanupHeaders })
+  ).json();
+  for (const r of product.routines ?? [])
+    if (r.name.startsWith("[E2E]"))
+      await request.delete(WORKER + "/api/routines/" + r.id, {
+        headers: cleanupHeaders,
+        data: { revision: r.revision },
+      });
+  for (const e of product.customExercises ?? [])
+    if (e.name.startsWith("[E2E]"))
+      await request.delete(WORKER + "/api/custom-exercises/" + e.id, {
+        headers: cleanupHeaders,
+        data: {},
       });
 }
 async function addExercise(page: Page, name: string) {
@@ -119,7 +140,7 @@ test("save/reload/edit/export/settings/repeat preserve the actual workout and ti
   const exported = JSON.parse(
     await (await import("node:fs/promises")).readFile(file!, "utf8"),
   );
-  expect(exported.version).toBe(2);
+  expect(exported.version).toBe(3);
   expect(
     exported.workouts.some((w: { id: string }) => w.id.startsWith("demo-")),
   ).toBe(false);
@@ -530,4 +551,262 @@ test("wger browse, attribution and recording survive reload and edit", async ({
     page.getByRole("heading", { name: "История тренировок", exact: true }),
   ).toBeVisible();
   expect(errors).toEqual([]);
+});
+
+test("programs save to the account, schedule a week and propose safe double progression", async ({
+  page,
+  request,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/");
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Программы", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Создать программу", exact: true })
+    .click();
+  await page
+    .getByLabel("Название программы", { exact: true })
+    .fill("[E2E] Программа");
+  await page.getByRole("button", { name: "Пн", exact: true }).click();
+  await page.getByRole("button", { name: "Ср", exact: true }).click();
+  await page.getByLabel("Правило прогрессии").selectOption("double");
+  await page
+    .getByRole("button", {
+      name: "Добавить упражнение в программу",
+      exact: true,
+    })
+    .click();
+  await page
+    .getByRole("button", { name: "Добавить Жим штанги лёжа", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Готово", exact: true }).click();
+  await page.getByLabel("Повторы", { exact: true }).fill("12");
+  await page.getByLabel("Начальный вес, кг", { exact: true }).fill("50");
+  await page
+    .getByRole("button", { name: "Сохранить программу", exact: true })
+    .click();
+  await expect(
+    page.locator(".routine-card").filter({ hasText: "[E2E] Программа" }),
+  ).toBeVisible();
+  await page.reload();
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Программы", exact: true })
+    .click();
+  await expect(
+    page.locator(".day-session").filter({ hasText: "[E2E] Программа" }),
+  ).toHaveCount(2);
+  await page.screenshot({
+    path: "artifacts/programs-v1.3.png",
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({
+    path: "artifacts/programs-mobile-v1.3.png",
+    fullPage: true,
+  });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth > innerWidth,
+    ),
+  ).toBe(false);
+  await page.setViewportSize({ width: 1440, height: 1080 });
+  await page
+    .locator(".routine-card")
+    .filter({ hasText: "[E2E] Программа" })
+    .getByRole("button", { name: "Начать", exact: true })
+    .click();
+  for (let i = 1; i <= 3; i++)
+    await page
+      .getByRole("button", {
+        name: `Отметить выполненным: Жим штанги лёжа, подход ${i}`,
+        exact: true,
+      })
+      .click();
+  await page
+    .getByRole("button", { name: "Завершить тренировку", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "История тренировок", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Программы", exact: true })
+    .click();
+  await page
+    .locator(".routine-card")
+    .filter({ hasText: "[E2E] Программа" })
+    .getByRole("button", { name: "Начать", exact: true })
+    .click();
+  await expect(
+    page.getByLabel("Жим штанги лёжа, подход 1, вес", { exact: true }),
+  ).toHaveValue("52.5");
+  await expect(
+    page.getByLabel("Жим штанги лёжа, подход 1, повторы", { exact: true }),
+  ).toHaveValue("8");
+  await expect(page.locator(".progression-note")).toContainText("+2.5 кг");
+  expect(errors).toEqual([]);
+});
+
+test("personal timed exercises, aliases and favorites survive reload and history edit", async ({
+  page,
+  request,
+}) => {
+  await page.goto("/");
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Упражнения", exact: true })
+    .click();
+  await page
+    .locator(".catalog-tabs")
+    .getByRole("button", { name: /Мои/ })
+    .click();
+  await page
+    .getByRole("button", { name: "Создать упражнение", exact: true })
+    .click();
+  await page
+    .getByLabel("Название упражнения", { exact: true })
+    .fill("[E2E] Боковая планка");
+  await page
+    .getByLabel("Алиасы — через точку с запятой")
+    .fill("Моя планка; side bridge");
+  await page.getByLabel("Что записываем").selectOption("duration");
+  await page
+    .getByLabel("Что означает введённый вес")
+    .selectOption("bodyweight");
+  await page
+    .getByRole("button", { name: "Сохранить упражнение", exact: true })
+    .click();
+  await page.getByLabel("Поиск упражнений").fill("side bridge");
+  const card = page
+    .locator(".library-card")
+    .filter({ hasText: "[E2E] Боковая планка" });
+  await expect(card).toBeVisible();
+  await card
+    .getByRole("button", {
+      name: "В избранное: [E2E] Боковая планка",
+      exact: true,
+    })
+    .click();
+  await expect(
+    card.getByRole("button", {
+      name: "Убрать из избранного: [E2E] Боковая планка",
+      exact: true,
+    }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await page.reload();
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Упражнения", exact: true })
+    .click();
+  await page
+    .locator(".catalog-tabs")
+    .getByRole("button", { name: /Избранное/ })
+    .click();
+  await page
+    .getByRole("button", { name: "Добавить [E2E] Боковая планка", exact: true })
+    .click();
+  await page
+    .getByLabel("Название тренировки", { exact: true })
+    .fill("[E2E] Статика");
+  await page
+    .getByLabel("[E2E] Боковая планка, подход 1, секунды", { exact: true })
+    .fill("45");
+  await page
+    .getByRole("button", {
+      name: "Отметить выполненным: [E2E] Боковая планка, подход 1",
+      exact: true,
+    })
+    .click();
+  await page
+    .getByRole("button", { name: "Завершить тренировку", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "История тренировок", exact: true }),
+  ).toBeVisible();
+  await page.reload();
+  await history(page);
+  await page
+    .locator(".session-item")
+    .filter({ hasText: "[E2E] Статика" })
+    .click();
+  await expect(page.locator(".detail-sets")).toContainText("45 с");
+  await page
+    .getByRole("button", { name: "Редактировать", exact: true })
+    .click();
+  await expect(
+    page.getByLabel("[E2E] Боковая планка, подход 1, секунды", { exact: true }),
+  ).toHaveValue("45");
+  await page
+    .getByLabel("[E2E] Боковая планка, подход 1, секунды", { exact: true })
+    .fill("60");
+  await page
+    .getByRole("button", { name: "Сохранить изменения", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "История тренировок", exact: true }),
+  ).toBeVisible();
+  const product = await (await request.get("/api/product")).json();
+  expect(product.favorites.length).toBeGreaterThan(0);
+});
+
+test("CSV import offers a Russian preview, saves literal weights and skips duplicate uploads", async ({
+  page,
+  request,
+}) => {
+  await page.goto("/");
+  await history(page);
+  const csv =
+    "Date,Workout Name,Duration,Exercise Name,Set Order,Weight,Reps,Seconds,RPE\n2026-10-06 18:00:00,[E2E] CSV,45m,Bench Press,1,60,8,0,8\n2026-10-06 18:00:00,[E2E] CSV,45m,Bench Press,2,60,8,0,\n";
+  async function upload() {
+    await page
+      .getByRole("button", { name: "Импорт истории", exact: true })
+      .click();
+    await page.getByLabel("Файл истории тренировок").setInputFiles({
+      name: "strong.csv",
+      mimeType: "text/csv",
+      buffer: Buffer.from(csv),
+    });
+    await page
+      .getByRole("button", { name: "Показать предпросмотр", exact: true })
+      .click();
+    await expect(page.locator(".import-summary")).toContainText("1");
+    await page
+      .getByText("Сопоставления упражнений · 1", { exact: true })
+      .click();
+    await expect(page.locator(".import-mapping-row select")).toHaveValue(
+      "bench",
+    );
+    await page.screenshot({
+      path: "artifacts/import-v1.3.png",
+      fullPage: true,
+    });
+    await page
+      .getByRole("button", { name: "Импортировать", exact: true })
+      .click();
+    await expect(
+      page.getByRole("dialog", { name: "Импорт истории", exact: true }),
+    ).toHaveCount(0);
+  }
+  await upload();
+  let data = await (await request.get("/api/data")).json();
+  let imported = data.workouts.filter((w: any) => w.name === "[E2E] CSV");
+  expect(imported).toHaveLength(1);
+  expect(imported[0].exercises[0].displayNameSnapshot).toBe("Жим штанги лёжа");
+  expect(imported[0].exercises[0].externalDefinition.recording.loadMode).toBe(
+    "legacy_unspecified",
+  );
+  expect(imported[0].exercises[0].sets[0].weight).toBe(60);
+  expect(imported[0].exercises[0].sets[1].rir).toBeNull();
+  await upload();
+  data = await (await request.get("/api/data")).json();
+  expect(data.workouts.filter((w: any) => w.name === "[E2E] CSV")).toHaveLength(
+    1,
+  );
+  await expect(page.locator(".toast")).toContainText(
+    "добавлено 0, пропущено 1",
+  );
 });
