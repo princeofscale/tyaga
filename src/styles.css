@@ -5109,3 +5109,59 @@ textarea:focus {
   background: none;
   border: 0;
 }
+/* Library as a compact list on phones; the 3-column card grid is for desktop. */
+@media (max-width: 760px) {
+  .library-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .library-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
+    align-items: center;
+    gap: 4px;
+    min-height: 0;
+    padding: 12px 10px 12px 16px;
+    border-radius: 16px;
+  }
+  .library-card:hover {
+    transform: none;
+  }
+  .library-card .library-icon,
+  .library-card .library-index {
+    display: none;
+  }
+  .library-card .library-copy h3 {
+    margin-top: 0;
+    font-size: 0.9375rem;
+  }
+  .library-card .library-copy p {
+    margin-top: 2px;
+  }
+  .library-card .library-copy .text-button {
+    margin-top: 0;
+    min-height: 32px;
+  }
+  .library-card .exercise-source-tag {
+    padding-right: 8px;
+  }
+  .library-card .custom-edit-button,
+  .library-card .favorite-button,
+  .library-card .library-add {
+    position: static;
+    grid-row: 1;
+    width: 44px;
+    height: 44px;
+  }
+  .library-card .custom-edit-button {
+    grid-column: 2;
+  }
+  .library-card .favorite-button {
+    grid-column: 3;
+  }
+  .library-card .library-add {
+    grid-column: 4;
+    border-radius: 12px;
+  }
+}
