@@ -268,7 +268,7 @@ export class HistoryImportService {
       statements.push(
         this.db
           .prepare(
-            "INSERT INTO workouts (id,owner_id,date,payload,updated_at,revision) VALUES (?,?,?,?,?,1) ON CONFLICT(id) DO NOTHING",
+            "INSERT INTO workouts (id,owner_id,date,payload,updated_at,revision) VALUES (?,?,?,?,?,1) ON CONFLICT(id) DO NOTHING RETURNING id",
           )
           .bind(
             w.id,
@@ -279,9 +279,10 @@ export class HistoryImportService {
           ),
       );
     const results = statements.length ? await this.db.batch(statements) : [];
+    // RETURNING, not meta.changes: D1 also counts rows written by sync triggers.
     const imported = results
       .slice(proposals.size)
-      .reduce((n, r) => n + (r.meta.changes ?? 0), 0);
+      .filter((r) => r.results.length).length;
     const rows = unique.length
       ? await this.db
           .prepare(

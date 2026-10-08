@@ -9,7 +9,10 @@ const loadMotionFeatures = () =>
   import("./lib/motionFeatures").then((module) => module.default);
 const backend =
   import.meta.env.MODE === "device"
-    ? import("./device/localBackend").then((m) => m.installLocalBackend())
+    ? import("./device/localBackend")
+        .then((m) => m.installLocalBackend())
+        .then(() => import("./device/cloudSync"))
+        .then((m) => m.startCloudSync())
     : Promise.resolve();
 void backend.catch(console.error).finally(() =>
   createRoot(document.getElementById("root")!).render(

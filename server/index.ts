@@ -6,7 +6,9 @@ import {
   InputError,
   validRoutine,
   str,
+  num,
 } from "./validation";
+import { SyncService } from "./SyncService";
 import { ExerciseRepository } from "./ExerciseRepository";
 import { ProductRepository } from "./ProductRepository";
 import { PersonalExerciseFactory } from "./PersonalExerciseFactory";
@@ -166,6 +168,14 @@ export async function handleApi(request: Request, env: Env) {
           )
         : json({ deleted: id });
     }
+    if (request.method === "GET" && url.pathname === "/api/sync/changes")
+      return json(
+        await new SyncService(env.DB, userId).changes(
+          num(Number(url.searchParams.get("since") ?? 0), 0, Number.MAX_SAFE_INTEGER, true),
+        ),
+      );
+    if (request.method === "POST" && url.pathname === "/api/sync/apply")
+      return json(await new SyncService(env.DB, userId).apply(await readBody(request)));
     if (request.method === "GET" && url.pathname === "/api/exercises")
       return json(
         await new ExerciseRepository(env.DB).search(url.searchParams),

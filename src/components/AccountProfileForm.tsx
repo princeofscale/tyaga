@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { lazy, Suspense, useState, type FormEvent } from "react";
 import { UserRound } from "lucide-react";
 import { api } from "../services/ApiClient";
 import { browserTimeZone } from "../lib/calendar";
@@ -7,6 +7,7 @@ import type { AccountProfile } from "../lib/account";
 // On Android the profile is created silently with a stored password, so
 // signing out or changing the password would lock the owner out.
 const onDevice = import.meta.env.MODE === "device";
+const CloudSyncPanel = lazy(() => import("./CloudSyncPanel"));
 export function AccountProfileForm({ account, onChange, onLogout, hasDraft }: {
   account: AccountProfile; onChange: (p: AccountProfile) => void; onLogout: () => void; hasDraft: boolean;
 }) {
@@ -29,7 +30,10 @@ export function AccountProfileForm({ account, onChange, onLogout, hasDraft }: {
       {error && <p className="form-error" role="alert">{error}</p>}{saved && <p role="status" className="success-message">{saved}</p>}
       <button className="button primary" disabled={busy}>{busy ? "Сохраняем…" : "Сохранить профиль"}</button>
     </form>
-    {onDevice ? <p className="tiny">Резервная копия: История → Экспорт JSON. Без неё данные пропадут при удалении приложения.</p> : <>
+    {onDevice ? <>
+      <Suspense fallback={null}><CloudSyncPanel displayName={account.displayName} /></Suspense>
+      <p className="tiny">Без облака резервная копия — История → Экспорт JSON: иначе данные пропадут при удалении приложения.</p>
+    </> : <>
     <details className="password-details"><summary>Изменить пароль</summary><form className="account-form" onSubmit={async e => {
       e.preventDefault(); const f = new FormData(e.currentTarget), form = e.currentTarget; setBusy(true); setError("");
       try { const r = await api<{profile: AccountProfile}>("/api/auth/password", "POST", { currentPassword: f.get("currentPassword"), password: f.get("password") }); onChange(r.profile); form.reset(); setSaved("Пароль изменён. Остальные устройства вышли из аккаунта."); }

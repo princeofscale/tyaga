@@ -5165,3 +5165,36 @@ textarea:focus {
     border-radius: 12px;
   }
 }
+.form-error {
+  color: var(--danger);
+  font-size: 0.875rem;
+}
+.cloud-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+.cloud-panel h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1rem;
+  font-weight: 800;
+}
+.cloud-panel > p {
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--text-soft);
+}
+.cloud-panel .account-tabs {
+  margin: 4px 0;
+}
+.cloud-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}

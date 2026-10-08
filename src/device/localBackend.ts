@@ -75,7 +75,10 @@ export async function installLocalBackend() {
       const local = { url: request.url, method: request.method, headers, text: async () => body } as unknown as Request;
       const before = scalar(db, "SELECT total_changes()");
       const response = await handleApi(local, env);
-      if (scalar(db, "SELECT total_changes()") !== before) await persist();
+      if (scalar(db, "SELECT total_changes()") !== before) {
+        await persist();
+        window.dispatchEvent(new Event("tyaga:local-change")); // cloud sync listens
+      }
       return response;
     });
     queue = next.catch(() => undefined);

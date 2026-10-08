@@ -215,6 +215,12 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
     return () => controller.abort();
   }, [load]);
   useEffect(() => {
+    // The Android app pulled changes made on another device.
+    const reload = () => void load();
+    window.addEventListener("tyaga:synced", reload);
+    return () => window.removeEventListener("tyaga:synced", reload);
+  }, [load]);
+  useEffect(() => {
     try {
       setPersistence(persistDraft(localStorage, draft, draftKey));
     } catch {
