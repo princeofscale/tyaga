@@ -14,7 +14,7 @@
     {
       "binding": "DB",
       "database_name": "tyaga",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "04a40798-6fbf-4ec5-9d8b-519263820713",
       "migrations_dir": "drizzle"
     }
   ]

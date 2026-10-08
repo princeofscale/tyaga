@@ -3,6 +3,7 @@ import { UserRound } from "lucide-react";
 import { api } from "../services/ApiClient";
 import { browserTimeZone } from "../lib/calendar";
 import type { AccountProfile } from "../lib/account";
+import { cloudState } from "../device/cloudSync";
 
 // On Android the profile is created silently with a stored password, so
 // signing out or changing the password would lock the owner out.
@@ -21,7 +22,7 @@ export function AccountProfileForm({ account, onChange, onLogout, hasDraft }: {
     finally { setBusy(false); }
   };
   return <div className="profile-form">
-    <div className="profile-identity"><span className="profile-avatar"><UserRound size={22} /></span><div><b>{account.displayName}</b><p>{onDevice ? "Данные хранятся только на этом телефоне" : account.email}</p></div></div>
+    <div className="profile-identity"><span className="profile-avatar"><UserRound size={22} /></span><div><b>{account.displayName}</b><p>{!onDevice ? account.email : cloudState() ? `Синхронизируется с ${cloudState()!.email}` : "Данные хранятся только на этом телефоне"}</p></div></div>
     <form onSubmit={save} className="account-form">
       <label>Имя<input name="displayName" defaultValue={account.displayName} maxLength={80} required /></label>
       <label>Вес тела, кг <input name="bodyMassKg" type="number" step="0.1" min="20" max="500" placeholder="Необязательно" defaultValue={account.bodyMassKg ?? ""} /></label>
