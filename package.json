@@ -7,7 +7,7 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vite build && node scripts/build-worker.mjs",
     "build:android": "vite build --mode device && cap sync android",
-    "deploy:cloud": "vite build && wrangler d1 migrations apply DB --remote --config wrangler.cloud.jsonc && wrangler deploy --config wrangler.cloud.jsonc",
+    "deploy:cloud": "vite build && node scripts/copy-apk.mjs && wrangler d1 migrations apply DB --remote --config wrangler.cloud.jsonc && wrangler deploy --config wrangler.cloud.jsonc",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
     "test:e2e": "playwright test",

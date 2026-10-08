@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Dumbbell, LockKeyhole, LoaderCircle, ShieldCheck, Download } from "lucide-react";
+import { Dumbbell, LockKeyhole, LoaderCircle, ShieldCheck, Download, Smartphone } from "lucide-react";
 import App from "../App";
 import Modal from "./Modal";
 import { api } from "../services/ApiClient";
@@ -65,6 +65,7 @@ function SignIn({ registered, onSignedIn }: { registered: boolean; onSignedIn: (
       <button className="text-button account-recover" onClick={() => changeMode(mode === "recover" ? "login" : "recover")}>{mode === "recover" ? "Вернуться ко входу" : "Забыл пароль"}</button>
       <div className="account-assurance"><ShieldCheck size={16} /><span>Тренировки сохраняются в аккаунте. Вход запоминается на 30 дней.</span></div>
     </section>
+    {import.meta.env.MODE !== "device" && <a className="button secondary android-download" href="/tyaga.apk" download><Smartphone size={18} />Скачать приложение для Android</a>}
     <p className="account-footer">Разминка. Рабочие подходы. Твой прогресс.</p>
   </main>;
 }
