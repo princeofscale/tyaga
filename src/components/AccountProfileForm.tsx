@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState, type FormEvent } from "react";
-import { UserRound } from "lucide-react";
+import { Smartphone, UserRound } from "lucide-react";
 import { api } from "../services/ApiClient";
 import { browserTimeZone } from "../lib/calendar";
 import type { AccountProfile } from "../lib/account";
@@ -41,6 +41,7 @@ export function AccountProfileForm({ account, onChange, onLogout, hasDraft }: {
       catch(e) { setError(e instanceof Error ? e.message : "Не удалось изменить пароль"); } finally { setBusy(false); }
     }}><label>Текущий пароль<input name="currentPassword" type="password" minLength={10} autoComplete="current-password" required /></label><label>Новый пароль<input name="password" type="password" minLength={10} maxLength={128} autoComplete="new-password" required /></label><button className="button secondary" disabled={busy}>Изменить пароль</button></form></details>
     {hasDraft && <p className="tiny">Текущий черновик останется на этом устройстве и вернётся после входа в этот профиль.</p>}
+    <a className="button secondary android-download" href="/tyaga.apk" download><Smartphone size={18} />Приложение для Android</a>
     <button className="button secondary account-logout" disabled={busy} onClick={async () => {
       setBusy(true); setError(""); try { await api("/api/auth/logout", "POST", {}); onLogout(); }
       catch(e) { setError(e instanceof Error ? e.message : "Не удалось выйти"); setBusy(false); }
