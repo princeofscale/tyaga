@@ -14,9 +14,10 @@ import { HistoryImportService } from "./HistoryImportService";
 import { BackupImportService } from "./BackupImportService";
 import { exerciseById } from "../src/lib/model";
 import { AccountService, AuthError } from "./AccountService";
-interface Env {
+export interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
+  onSessionToken?: (token: string) => void;
 }
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -54,7 +55,7 @@ export async function handleApi(request: Request, env: Env) {
       return json({ error: "Требуется JSON" }, 415);
   }
   try {
-    const accounts = new AccountService(env.DB, userId);
+    const accounts = new AccountService(env.DB, userId, env.onSessionToken);
     const authResponse = await accounts.handle(request);
     if (authResponse) return authResponse;
     const activeAccount = await accounts.require(request);

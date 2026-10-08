@@ -97,6 +97,7 @@ import { useTrainingTools } from "./lib/webmcp";
 import { AccountProfileForm } from "./components/AccountProfileForm";
 import type { AccountProfile } from "./lib/account";
 import SessionInsights from "./components/SessionInsights";
+import { saveFile } from "./lib/saveFile";
 
 type ProductView =
   "overview" | "workout" | "history" | "library" | "progress" | "programs";
@@ -347,6 +348,36 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
     setView(v);
     window.scrollTo({ top: 0, behavior: "instant" });
   };
+  // Android's back button (and the browser's) closes the top layer first;
+  // from Today with nothing open it leaves the app.
+  const layered =
+    view !== "overview" ||
+    !!(modal || detail || exerciseDetail || deleteId || (conflict && draft));
+  const backEntry = useRef(false);
+  const [backPops, setBackPops] = useState(0);
+  useEffect(() => {
+    if (!layered || backEntry.current) return;
+    history.pushState({ tyagaBack: true }, "");
+    backEntry.current = true;
+  }, [layered, backPops]);
+  const closeTop = useRef(() => {});
+  closeTop.current = () => {
+    if (conflict && draft) setConflict(null);
+    else if (exerciseDetail) setExerciseDetail(null);
+    else if (deleteId) setDeleteId(null);
+    else if (detail) setDetail(null);
+    else if (modal && !(modal === "import" && importBusy)) setModal(null);
+    else if (view !== "overview") go("overview");
+  };
+  useEffect(() => {
+    const onPop = () => {
+      backEntry.current = false;
+      closeTop.current();
+      setBackPops((n) => n + 1);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
   const start = (ids: string[] = [], name?: string, template?: Workout) => {
     if (draft) {
       go("workout");
@@ -533,35 +564,28 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
       setSaving(false);
     }
   };
-  const exportHistory = () => {
-    const blob = new Blob(
-      [
-        JSON.stringify(
-          {
-            version: 3,
-            analysisVersion: 2,
-            e1rmFormulaVersion: "epley-1",
-            exportedAt: new Date().toISOString(),
-            workouts,
-            settings,
-            routines: product.routines,
-            customExercises: product.customExercises,
-            favorites: product.favorites,
-          },
-          null,
-          2,
-        ),
-      ],
-      { type: "application/json" },
+  const exportHistory = () =>
+    saveFile(
+      `tyaga-${localDate()}.json`,
+      JSON.stringify(
+        {
+          version: 3,
+          analysisVersion: 2,
+          e1rmFormulaVersion: "epley-1",
+          exportedAt: new Date().toISOString(),
+          workouts,
+          settings,
+          routines: product.routines,
+          customExercises: product.customExercises,
+          favorites: product.favorites,
+        },
+        null,
+        2,
+      ),
+    ).then(
+      () => setToast("Твои данные выгружены. Примеры в файл не входят."),
+      (e) => setToast(e instanceof Error ? e.message : "Не удалось сохранить файл"),
     );
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `tyaga-${localDate()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    setToast("Твои данные выгружены. Примеры в файл не входят.");
-  };
   const saveSettings = async () => {
     setSaving(true);
     setSaveError("");
@@ -589,15 +613,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
     setModal("settings");
   };
   const exportDraft = () => {
-    if (!draft) return;
-    const url = URL.createObjectURL(
-      new Blob([JSON.stringify(draft, null, 2)], { type: "application/json" }),
-    );
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "tyaga-draft.json";
-    a.click();
-    URL.revokeObjectURL(url);
+    if (draft) void saveFile("tyaga-draft.json", JSON.stringify(draft, null, 2));
   };
   const historyFiltered = displayed.filter((w) =>
     `${w.name} ${w.exercises.map((e) => entryName(e)).join(" ")}`
@@ -999,7 +1015,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                         onChange={(e) => setHistorySearch(e.target.value)}
                       />
                     </div>
-                    <button className="button secondary" onClick={exportHistory}>
+                    <button className="button secondary" onClick={() => void exportHistory()}>
                       <Download size={17} />
                       Экспорт JSON
                     </button>

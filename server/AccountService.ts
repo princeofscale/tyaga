@@ -46,7 +46,9 @@ export class AuthError extends Error {
   constructor(message: string, public status = 401) { super(message); }
 }
 export class AccountService {
-  constructor(private db: D1Database, private platformId: string) {}
+  // onSession lets an in-app host (the Android build) keep the token: a browser
+  // cannot read Set-Cookie from a Response it constructed itself.
+  constructor(private db: D1Database, private platformId: string, private onSession?: (token: string) => void) {}
   private account() {
     return this.db.prepare("SELECT * FROM accounts WHERE platform_id = ?").bind(this.platformId).first<AccountRow>();
   }
@@ -79,6 +81,7 @@ export class AccountService {
   private reply(data: unknown, request: Request, token?: string, status = 200) {
     const headers = new Headers({ "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
     if (token !== undefined) {
+      this.onSession?.(token);
       const maxAge = token ? SESSION_MS / 1000 : 0;
       headers.append("Set-Cookie", this.cookie(request, token, maxAge));
       if (new URL(request.url).protocol === "https:")

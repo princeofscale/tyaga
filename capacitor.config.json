@@ -1,0 +1,15 @@
+{
+  "appId": "app.tyaga.journal",
+  "appName": "Тяга",
+  "webDir": "dist/device",
+  "android": {
+    "backgroundColor": "#0e1112"
+  },
+  "plugins": {
+    "SystemBars": {
+      "insetsHandling": "css",
+      "style": "DARK",
+      "initialViewportFitValueHint": "cover"
+    }
+  }
+}

@@ -7,12 +7,18 @@ import "@fontsource-variable/unbounded";
 import "./styles.css";
 const loadMotionFeatures = () =>
   import("./lib/motionFeatures").then((module) => module.default);
-createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <LazyMotion features={loadMotionFeatures}>
-      <MotionConfig reducedMotion="user">
-        <AccountGate />
-      </MotionConfig>
-    </LazyMotion>
-  </React.StrictMode>,
+const backend =
+  import.meta.env.MODE === "device"
+    ? import("./device/localBackend").then((m) => m.installLocalBackend())
+    : Promise.resolve();
+void backend.catch(console.error).finally(() =>
+  createRoot(document.getElementById("root")!).render(
+    <React.StrictMode>
+      <LazyMotion features={loadMotionFeatures}>
+        <MotionConfig reducedMotion="user">
+          <AccountGate />
+        </MotionConfig>
+      </LazyMotion>
+    </React.StrictMode>,
+  ),
 );
