@@ -68,6 +68,7 @@ import {
 } from "./lib/model";
 import { VolumeChart, Sparkline } from "./components/Charts";
 import Modal from "./components/Modal";
+import Select from "./components/Select";
 import WorkoutView from "./components/WorkoutView";
 import { m } from "motion/react";
 const AnatomyExplorer = lazy(() => import("./components/AnatomyExplorer"));
@@ -98,6 +99,7 @@ import { AccountProfileForm } from "./components/AccountProfileForm";
 import type { AccountProfile } from "./lib/account";
 import SessionInsights from "./components/SessionInsights";
 import { saveFile } from "./lib/saveFile";
+import type { Release } from "./device/appUpdate";
 
 type ProductView =
   "overview" | "workout" | "history" | "library" | "progress" | "programs";
@@ -109,11 +111,12 @@ const NAV = [
   { id: "library", label: "Упражнения", icon: Dumbbell },
   { id: "programs", label: "Программы", icon: CalendarDays },
 ] as const;
-const EQ = {
-  gym: "Весь зал",
-  dumbbells: "Гантели",
-  bodyweight: "Без оборудования",
-};
+const EQ_OPTIONS = [
+  { value: "gym", label: "Весь зал" },
+  { value: "dumbbells", label: "Гантели" },
+  { value: "bodyweight", label: "Без оборудования" },
+];
+const SIDES: Record<string, string> = { both: "обе стороны", left: "левая", right: "правая" };
 const dateLabel = (date: string, long = false) =>
   new Date(date + "T12:00:00").toLocaleDateString("ru-RU", {
     day: "numeric",
@@ -214,6 +217,31 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
     void load(controller.signal);
     return () => controller.abort();
   }, [load]);
+  const [update, setUpdate] = useState<Release | null>(null);
+  const [updateProgress, setUpdateProgress] = useState<number | null>(null);
+  useEffect(() => {
+    // Android: look for a newer APK on launch and when the app comes back.
+    if (import.meta.env.MODE !== "device") return;
+    let checkedAt = 0;
+    const check = () => {
+      if (document.visibilityState !== "visible" || Date.now() - checkedAt < 3600000) return;
+      checkedAt = Date.now();
+      void import("./device/appUpdate")
+        .then((m) => m.findUpdate())
+        .then((release) => release && setUpdate(release))
+        .catch(() => {});
+    };
+    check();
+    document.addEventListener("visibilitychange", check);
+    return () => document.removeEventListener("visibilitychange", check);
+  }, []);
+  const installUpdate = () => {
+    if (import.meta.env.MODE !== "device") return;
+    setUpdateProgress(0);
+    void import("./device/appUpdate")
+      .then((m) => m.installUpdate(setUpdateProgress))
+      .finally(() => setUpdateProgress(null));
+  };
   useEffect(() => {
     // The Android app pulled changes made on another device.
     const reload = () => void load();
@@ -795,6 +823,29 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.2 }}
         >
+          {update && view !== "workout" ? (
+            <div className="update-banner" role="status">
+              <Download size={18} />
+              <span>
+                <b>Вышла версия {update.versionName}</b>
+                Тренировки и настройки останутся на месте.
+              </span>
+              <button
+                className="button primary"
+                disabled={updateProgress !== null}
+                onClick={installUpdate}
+              >
+                {updateProgress === null ? "Установить" : `${updateProgress}%`}
+              </button>
+              <button
+                className="icon-button"
+                aria-label="Напомнить позже"
+                onClick={() => setUpdate(null)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+          ) : null}
           {persistence === "failed" && !draft ? (
             <div className="error-banner" role="alert">
               <Info size={18} />
@@ -1148,15 +1199,14 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                           {hasLegacy ? (
                             <label>
                               Разметка
-                              <select
+                              <Select
                                 value={mapping}
-                                onChange={(e) =>
-                                  setMapping(e.target.value as "recorded" | "current")
-                                }
-                              >
-                                <option value="recorded">Сохранённые версии</option>
-                                <option value="current">Пересчёт по каталогу 2</option>
-                              </select>
+                                onChange={(v) => setMapping(v as "recorded" | "current")}
+                                options={[
+                                  { value: "recorded", label: "Сохранённые версии" },
+                                  { value: "current", label: "Пересчёт по каталогу 2" },
+                                ]}
+                              />
                             </label>
                           ) : null}
                         </div>
@@ -1244,16 +1294,11 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                           </div>
                           <label>
                             Оборудование
-                            <select
+                            <Select
                               value={planEquipment}
-                              onChange={(e) => setPlanEquipment(e.target.value as Equipment)}
-                            >
-                              {Object.entries(EQ).map(([key, name]) => (
-                                <option key={key} value={key}>
-                                  {name}
-                                </option>
-                              ))}
-                            </select>
+                              onChange={(v) => setPlanEquipment(v as Equipment)}
+                              options={EQ_OPTIONS}
+                            />
                           </label>
                         </div>
                         <details className="exclude-muscles">
@@ -1342,21 +1387,19 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                       <div className="progress-selector">
                         <label>
                           Упражнение
-                          <select
+                          <Select
                             value={progressExercise}
-                            onChange={(e) => setProgressExercise(e.target.value)}
-                          >
-                            {progressOptions.map((o) => (
-                              <option value={o.key} key={o.key}>
-                                {entryName(o.we)}
-                                {(o.we.catalogRevision ?? 1) === 1
-                                  ? " · старое правило веса"
-                                  : ""}
-                                {o.we.equipmentNote ? ` · ${o.we.equipmentNote}` : ""}
-                                {o.we.performedSides ? ` · ${o.we.performedSides}` : ""}
-                              </option>
-                            ))}
-                          </select>
+                            onChange={setProgressExercise}
+                            options={progressOptions.map((o) => ({
+                              value: o.key,
+                              label: [
+                                entryName(o.we),
+                                (o.we.catalogRevision ?? 1) === 1 ? "старое правило веса" : "",
+                                o.we.equipmentNote ?? "",
+                                o.we.performedSides ? SIDES[o.we.performedSides] : "",
+                              ].filter(Boolean).join(" · "),
+                            }))}
+                          />
                         </label>
                         <p className="tiny">
                           {recordingLabel(progressEntry)}.{" "}
@@ -1569,21 +1612,13 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
           <div className="settings-bottom">
             <label>
               Оборудование
-              <select
+              <Select
                 value={settingsDraft.equipment}
-                onChange={(e) =>
-                  setSettingsDraft((s) => ({
-                    ...s,
-                    equipment: e.target.value as Equipment,
-                  }))
+                onChange={(v) =>
+                  setSettingsDraft((s) => ({ ...s, equipment: v as Equipment }))
                 }
-              >
-                {Object.entries(EQ).map(([key, name]) => (
-                  <option key={key} value={key}>
-                    {name}
-                  </option>
-                ))}
-              </select>
+                options={EQ_OPTIONS}
+              />
             </label>
             <label>
               Отдых, секунды

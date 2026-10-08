@@ -17,6 +17,7 @@ import {
   Star,
   Pencil,
 } from "lucide-react";
+import Select from "./Select";
 import { MUSCLES, exerciseCatalog, type Exercise } from "../lib/model";
 import { WGER_ZONES } from "../domain/WgerExercise";
 import { matchesSearch } from "../lib/search";
@@ -182,15 +183,16 @@ function LibraryContent({
             </button>
           ) : null}
         </div>
-        <select
+        <Select
           aria-label="Оборудование упражнений"
           value={equipment}
-          onChange={(e) => setEquipment(e.target.value)}
-        >
-          <option value="all">Всё оборудование</option>
-          <option value="dumbbells">Гантели</option>
-          <option value="bodyweight">Вес тела</option>
-        </select>
+          onChange={setEquipment}
+          options={[
+            { value: "all", label: "Всё оборудование" },
+            { value: "dumbbells", label: "Гантели" },
+            { value: "bodyweight", label: "Вес тела" },
+          ]}
+        />
       </div>
       <div className="muscle-chips-row" role="group" aria-label="Мышечная группа">
         {[{ id: "all", short: "Все" }, ...MUSCLES].map((m) => (
