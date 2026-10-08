@@ -7,6 +7,7 @@ import {
   type ImportOptions,
 } from "../domain/WorkoutImport";
 import { importService } from "../services/ImportService";
+import Select from "./Select";
 import { EXERCISES, exerciseById, localDate } from "../lib/model";
 import type { Exercise, Settings } from "../lib/types";
 
@@ -206,70 +207,64 @@ export default function HistoryImporter({
       <fieldset disabled={busy} className="import-options">
         <label>
           Формат
-          <select
+          <Select
             value={format}
-            onChange={(e) => {
-              setFormat(e.target.value as ImportFormat);
+            onChange={(v) => {
+              setFormat(v as ImportFormat);
               reset();
             }}
-          >
-            <option value="strong">Strong CSV</option>
-            <option value="hevy">Hevy CSV</option>
-            <option value="fitnotes">FitNotes CSV</option>
-            <option value="tyaga">Тяга JSON</option>
-          </select>
+            options={[
+              { value: "strong", label: "Strong CSV" },
+              { value: "hevy", label: "Hevy CSV" },
+              { value: "fitnotes", label: "FitNotes CSV" },
+              { value: "tyaga", label: "Тяга JSON" },
+            ]}
+          />
         </label>
         {format !== "tyaga" ? (
           <>
             <label>
               Даты с цифрами
-              <select
+              <Select
                 value={options.dateOrder}
-                onChange={(e) => {
-                  setOptions({
-                    ...options,
-                    dateOrder: e.target.value as ImportOptions["dateOrder"],
-                  });
+                onChange={(v) => {
+                  setOptions({ ...options, dateOrder: v as ImportOptions["dateOrder"] });
                   reset();
                 }}
-              >
-                <option value="dmy">День / месяц / год</option>
-                <option value="mdy">Месяц / день / год</option>
-              </select>
+                options={[
+                  { value: "dmy", label: "День / месяц / год" },
+                  { value: "mdy", label: "Месяц / день / год" },
+                ]}
+              />
             </label>
             <label>
               Вес без указанной единицы
-              <select
+              <Select
                 value={options.weightUnit}
-                onChange={(e) => {
-                  setOptions({
-                    ...options,
-                    weightUnit: e.target.value as ImportOptions["weightUnit"],
-                  });
+                onChange={(v) => {
+                  setOptions({ ...options, weightUnit: v as ImportOptions["weightUnit"] });
                   reset();
                 }}
-              >
-                <option value="kg">Килограммы</option>
-                <option value="lb">Фунты → килограммы</option>
-              </select>
+                options={[
+                  { value: "kg", label: "Килограммы" },
+                  { value: "lb", label: "Фунты → килограммы" },
+                ]}
+              />
             </label>
             <label>
               Дистанция без единицы
-              <select
+              <Select
                 value={options.distanceUnit}
-                onChange={(e) => {
-                  setOptions({
-                    ...options,
-                    distanceUnit: e.target
-                      .value as ImportOptions["distanceUnit"],
-                  });
+                onChange={(v) => {
+                  setOptions({ ...options, distanceUnit: v as ImportOptions["distanceUnit"] });
                   reset();
                 }}
-              >
-                <option value="km">Километры</option>
-                <option value="m">Метры → км</option>
-                <option value="mi">Мили → км</option>
-              </select>
+                options={[
+                  { value: "km", label: "Километры" },
+                  { value: "m", label: "Метры → км" },
+                  { value: "mi", label: "Мили → км" },
+                ]}
+              />
             </label>
           </>
         ) : null}
@@ -347,23 +342,18 @@ export default function HistoryImporter({
                       <div className="import-mapping-row" key={name}>
                         <label>
                           <span>{name}</span>
-                          <select
+                          <Select
                             value={choices[name] ?? ""}
                             disabled={busy}
-                            onChange={(e) =>
-                              setChoices({ ...choices, [name]: e.target.value })
-                            }
-                          >
-                            <option value="">
-                              Своя запись с неизвестным правилом
-                            </option>
-                            {options.map((e) => (
-                              <option value={e.id} key={e.id}>
-                                {e.name}
-                                {e.source ? " · wger" : ""}
-                              </option>
-                            ))}
-                          </select>
+                            onChange={(v) => setChoices({ ...choices, [name]: v })}
+                            options={[
+                              { value: "", label: "Своя запись с неизвестным правилом" },
+                              ...options.map((e) => ({
+                                value: e.id,
+                                label: e.source ? `${e.name} · база` : e.name,
+                              })),
+                            ]}
+                          />
                         </label>
                         {applyRules &&
                         candidate &&
@@ -390,23 +380,18 @@ export default function HistoryImporter({
                         candidate?.recording.laterality === "unilateral" ? (
                           <label>
                             Как записаны стороны
-                            <select
+                            <Select
                               value={sides[name] ?? "both"}
                               disabled={busy}
-                              onChange={(e) =>
-                                setSides({
-                                  ...sides,
-                                  [name]: e.target.value as
-                                    "both" | "left" | "right",
-                                })
+                              onChange={(v) =>
+                                setSides({ ...sides, [name]: v as "both" | "left" | "right" })
                               }
-                            >
-                              <option value="both">
-                                Обe: число повторов на каждую
-                              </option>
-                              <option value="left">Только левая</option>
-                              <option value="right">Только правая</option>
-                            </select>
+                              options={[
+                                { value: "both", label: "Обе: число повторов на каждую" },
+                                { value: "left", label: "Только левая" },
+                                { value: "right", label: "Только правая" },
+                              ]}
+                            />
                           </label>
                         ) : null}
                         <small>

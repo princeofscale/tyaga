@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Exercise, Equipment, RecordingSpec } from "../lib/types";
 import { MUSCLES, EXERCISES } from "../lib/model";
 import { productService } from "../services/ProductService";
+import Select from "./Select";
 
 export default function PersonalExerciseEditor({
   exercise,
@@ -92,57 +93,55 @@ export default function PersonalExerciseEditor({
         <div className="form-grid">
           <label>
             Что записываем
-            <select
+            <Select
               value={type}
-              onChange={(e) => setType(e.target.value as typeof type)}
-            >
-              <option value="reps">Повторения</option>
-              <option value="duration">Время в секундах</option>
-            </select>
+              onChange={(v) => setType(v as typeof type)}
+              options={[
+                { value: "reps", label: "Повторения" },
+                { value: "duration", label: "Время в секундах" },
+              ]}
+            />
           </label>
           <label>
             Оборудование
-            <select
+            <Select
               value={equipment}
-              onChange={(e) => setEquipment(e.target.value as Equipment)}
-            >
-              <option value="gym">Оборудование зала</option>
-              <option value="dumbbells">Гантели</option>
-              <option value="bodyweight">Без оборудования</option>
-            </select>
+              onChange={(v) => setEquipment(v as Equipment)}
+              options={[
+                { value: "gym", label: "Оборудование зала" },
+                { value: "dumbbells", label: "Гантели" },
+                { value: "bodyweight", label: "Без оборудования" },
+              ]}
+            />
           </label>
         </div>
         <label>
           Что означает введённый вес
-          <select
+          <Select
             value={loadMode}
-            onChange={(e) =>
-              setLoadMode(e.target.value as RecordingSpec["loadMode"])
-            }
-          >
-            <option value="total_external">Общий вес: гриф и блины</option>
-            <option value="per_implement">Вес одной гантели / снаряда</option>
-            <option value="machine_stack">Число на стеке тренажёра</option>
-            <option value="bodyweight">Без внешнего веса</option>
-            <option value="added_bodyweight">
-              Дополнительный вес к весу тела
-            </option>
-            <option value="assisted_bodyweight">Помощь тренажёра в кг</option>
-            <option value="legacy_unspecified">
-              Правило неизвестно: сохранить как введено
-            </option>
-          </select>
+            onChange={(v) => setLoadMode(v as RecordingSpec["loadMode"])}
+            options={[
+              { value: "total_external", label: "Общий вес: гриф и блины" },
+              { value: "per_implement", label: "Вес одной гантели / снаряда" },
+              { value: "machine_stack", label: "Число на стеке тренажёра" },
+              { value: "bodyweight", label: "Без внешнего веса" },
+              { value: "added_bodyweight", label: "Дополнительный вес к весу тела" },
+              { value: "assisted_bodyweight", label: "Помощь тренажёра в кг" },
+              { value: "legacy_unspecified", label: "Правило неизвестно: сохранить как введено" },
+            ]}
+          />
         </label>
         {loadMode === "per_implement" ? (
           <label>
             Количество снарядов
-            <select
-              value={count}
-              onChange={(e) => setCount(Number(e.target.value) as 1 | 2)}
-            >
-              <option value="1">Один</option>
-              <option value="2">Два</option>
-            </select>
+            <Select
+              value={String(count)}
+              onChange={(v) => setCount(Number(v) as 1 | 2)}
+              options={[
+                { value: "1", label: "Один" },
+                { value: "2", label: "Два" },
+              ]}
+            />
           </label>
         ) : null}
         <label className="check-label">
@@ -155,10 +154,10 @@ export default function PersonalExerciseEditor({
         </label>
         <div>
           {type === "reps" && <label>Базовое движение для карты мышц
-            <select value={basedOn} onChange={e => setBasedOn(e.target.value)}>
-              <option value="">Без разметки — только журнал</option>
-              {EXERCISES.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-            </select><small className="tiny">Выбирай, если движение совпадает. Для жима от груди в своём тренажёре — жим лёжа; для тяги сидя — горизонтальная тяга. Это твоя разметка, её можно изменить отдельной версией.</small>
+            <Select value={basedOn} onChange={setBasedOn} options={[
+              { value: "", label: "Без разметки — только журнал" },
+              ...EXERCISES.map(e => ({ value: e.id, label: e.name })),
+            ]} /><small className="tiny">Выбирай, если движение совпадает. Для жима от груди в своём тренажёре — жим лёжа; для тяги сидя — горизонтальная тяга. Это твоя разметка, её можно изменить отдельной версией.</small>
           </label>}
           <p className="field-caption">
             Группы мышц для поиска — твоя разметка
