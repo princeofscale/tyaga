@@ -5329,3 +5329,16 @@ textarea:focus {
     line-height: 1.2;
   }
 }
+/* Android edge-to-edge: content scrolls under a transparent status bar, so
+   paint the app background behind the clock and stick the workout bar below. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 auto;
+  height: var(--sat);
+  background: var(--bg);
+  z-index: 40;
+}
+.workout-bar {
+  top: var(--sat);
+}
