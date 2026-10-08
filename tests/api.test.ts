@@ -778,3 +778,24 @@ test(
     }
   },
 );
+
+test("sync endpoints run on D1: triggers record changes and newer documents apply", async () => {
+  const { mf, request } = await sandbox();
+  try {
+    const w = completed();
+    assert.equal((await request("/api/workouts", "PUT", w)).status, 200);
+    const page = (await (await request("/api/sync/changes?since=0")).json()) as any;
+    assert.deepEqual(page.docs.map((d: any) => [d.kind, d.id, d.deleted]), [["workout", w.id, false]]);
+    assert.equal((await (await request("/api/sync/changes?since=0", "GET", undefined, "user-b")).json() as any).docs.length, 0);
+    const doc = page.docs[0];
+    const newer = { ...doc, versionAt: "2999-01-01T00:00:00.000Z", row: { ...doc.row, date: "2026-10-01" } };
+    const applied = (await (await request("/api/sync/apply", "POST", { docs: [newer, { ...doc, versionAt: "2000-01-01T00:00:00.000Z" }] })).json()) as any;
+    assert.deepEqual(applied, { applied: 1, skipped: 1 });
+    const data = (await (await request("/api/data")).json()) as any;
+    assert.equal(data.workouts[0].id, w.id);
+    assert.equal((await (await request("/api/sync/changes?since=" + page.cursor)).json() as any).docs[0].versionAt, newer.versionAt);
+    assert.equal((await request("/api/sync/apply", "POST", { docs: [{ ...newer, kind: "accounts" }] })).status, 400);
+  } finally {
+    await mf.dispose();
+  }
+});

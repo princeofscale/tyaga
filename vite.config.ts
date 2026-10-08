@@ -1,10 +1,11 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-export default defineConfig({
+// `vite build --mode device` is the Android build: the API runs in the app.
+export default defineConfig(({ mode }) => ({
   plugins: [react()],
   build: {
-    outDir: "dist/client",
+    outDir: mode === "device" ? "dist/device" : "dist/client",
     sourcemap: false,
     rollupOptions: {
       output: {
@@ -20,4 +21,4 @@ export default defineConfig({
     },
   },
   server: { port: 5173, proxy: { "/api": "http://127.0.0.1:8787" } },
-});
+}));

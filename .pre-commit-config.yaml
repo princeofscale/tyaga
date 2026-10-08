@@ -1,0 +1,14 @@
+# pre-commit.ci runs these checks on every pull request (https://pre-commit.ci).
+# Type checks, unit and browser tests run in .github/workflows/checks.yml.
+ci:
+  autofix_prs: false
+  autoupdate_schedule: quarterly
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-yaml
+      - id: check-json
+      - id: detect-private-key

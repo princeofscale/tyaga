@@ -1,0 +1,21 @@
+// Our own Cloudflare deployment: `npm run deploy:cloud`.
+// (wrangler.jsonc is the local development setup.)
+{
+  "name": "tyaga",
+  "main": "server/cloud.ts",
+  "compatibility_date": "2025-09-27",
+  "assets": {
+    "directory": "dist/client",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "tyaga",
+      "database_id": "04a40798-6fbf-4ec5-9d8b-519263820713",
+      "migrations_dir": "drizzle"
+    }
+  ]
+}

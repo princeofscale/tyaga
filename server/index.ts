@@ -6,7 +6,9 @@ import {
   InputError,
   validRoutine,
   str,
+  num,
 } from "./validation";
+import { SyncService } from "./SyncService";
 import { ExerciseRepository } from "./ExerciseRepository";
 import { ProductRepository } from "./ProductRepository";
 import { PersonalExerciseFactory } from "./PersonalExerciseFactory";
@@ -14,9 +16,10 @@ import { HistoryImportService } from "./HistoryImportService";
 import { BackupImportService } from "./BackupImportService";
 import { exerciseById } from "../src/lib/model";
 import { AccountService, AuthError } from "./AccountService";
-interface Env {
+export interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
+  onSessionToken?: (token: string) => void;
 }
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -54,7 +57,7 @@ export async function handleApi(request: Request, env: Env) {
       return json({ error: "Требуется JSON" }, 415);
   }
   try {
-    const accounts = new AccountService(env.DB, userId);
+    const accounts = new AccountService(env.DB, userId, env.onSessionToken);
     const authResponse = await accounts.handle(request);
     if (authResponse) return authResponse;
     const activeAccount = await accounts.require(request);
@@ -165,6 +168,14 @@ export async function handleApi(request: Request, env: Env) {
           )
         : json({ deleted: id });
     }
+    if (request.method === "GET" && url.pathname === "/api/sync/changes")
+      return json(
+        await new SyncService(env.DB, userId).changes(
+          num(Number(url.searchParams.get("since") ?? 0), 0, Number.MAX_SAFE_INTEGER, true),
+        ),
+      );
+    if (request.method === "POST" && url.pathname === "/api/sync/apply")
+      return json(await new SyncService(env.DB, userId).apply(await readBody(request)));
     if (request.method === "GET" && url.pathname === "/api/exercises")
       return json(
         await new ExerciseRepository(env.DB).search(url.searchParams),

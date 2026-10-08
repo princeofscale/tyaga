@@ -11,7 +11,6 @@ import {
   ChevronRight,
   Database,
   Dumbbell,
-  Filter,
   Globe2,
   Plus,
   Search,
@@ -124,7 +123,7 @@ function LibraryContent({
           }}
         >
           <Dumbbell size={17} />
-          Тяга <span>31</span>
+          Основные <span>31</span>
         </button>
         <button
           className={source === "wger" ? "active" : ""}
@@ -135,7 +134,7 @@ function LibraryContent({
           }}
         >
           <Database size={17} />
-          wger <span>{query.data?.catalogTotal ?? 918}</span>
+          База <span>{query.data?.catalogTotal ?? 918}</span>
         </button>
         <button
           className={source === "personal" ? "active" : ""}
@@ -183,21 +182,6 @@ function LibraryContent({
             </button>
           ) : null}
         </div>
-        <label className="filter-select">
-          <Filter size={15} />
-          <select
-            aria-label="Мышечная группа"
-            value={muscle}
-            onChange={(e) => setMuscle(e.target.value)}
-          >
-            <option value="all">Все мышцы</option>
-            {MUSCLES.map((m) => (
-              <option value={m.id} key={m.id}>
-                {m.name}
-              </option>
-            ))}
-          </select>
-        </label>
         <select
           aria-label="Оборудование упражнений"
           value={equipment}
@@ -208,16 +192,24 @@ function LibraryContent({
           <option value="bodyweight">Вес тела</option>
         </select>
       </div>
+      <div className="muscle-chips-row" role="group" aria-label="Мышечная группа">
+        {[{ id: "all", short: "Все" }, ...MUSCLES].map((m) => (
+          <button
+            key={m.id}
+            className={muscle === m.id ? "active" : ""}
+            aria-pressed={muscle === m.id}
+            onClick={() => setMuscle(m.id)}
+          >
+            {m.short}
+          </button>
+        ))}
+      </div>
       {source === "wger" ? (
-        <div className="source-notice">
-          <Globe2 size={18} />
-          <p>
-            {query.data?.russianCount ?? 918} упражнений на русском. Поиск по
-            русским алиасам и английским оригиналам. Описания переведены
-            машинно. У 26 вариантов роли мышц и правило веса проверены по источникам;
-            остальные помечены как непроверенные.
-          </p>
-        </div>
+        <p className="source-notice">
+          <Globe2 size={16} />
+          Открытая база wger: описания переведены автоматически, проверенные
+          варианты отмечены.
+        </p>
       ) : null}
       {source === "wger" && query.isError ? (
         <div className="error-banner" role="alert">
@@ -240,19 +232,8 @@ function LibraryContent({
           <div className="library-header">
             <span>
               {quantity(count, "упражнение", "упражнения", "упражнений")}
-              {source === "wger" && query.data
-                ? ` · снимок ${new Date(query.data.fetchedAt).toLocaleDateString("ru-RU")}`
-                : ""}
             </span>
-            {query.isFetching ? (
-              <span role="status">Обновляем…</span>
-            ) : (
-              <span>
-                {picker
-                  ? "Выбери упражнение"
-                  : "Техника, мышцы и правила записи"}
-              </span>
-            )}
+            {query.isFetching ? <span role="status">Обновляем…</span> : null}
           </div>
           <div
             className={picker ? "picker-list" : "library-grid"}
@@ -271,13 +252,15 @@ function LibraryContent({
                     <Dumbbell size={21} />
                   </div>
                   <div className="library-copy">
-                    <span className="exercise-source-tag">
-                      {e.source
-                        ? "wger · " + (e.source.record.review ? "проверено по источникам" : "разметка не проверена")
-                        : e.custom
-                          ? "МОЁ УПРАЖНЕНИЕ"
-                          : "ТЯГА · КАТАЛОГ 2"}
-                    </span>
+                    {e.source || e.custom ? (
+                      <span className="exercise-source-tag">
+                        {e.custom
+                          ? "Моё"
+                          : e.source!.record.review
+                            ? "Проверено"
+                            : "Не проверено"}
+                      </span>
+                    ) : null}
                     <h3>{e.name}</h3>
                     <p>
                       {zones(e)

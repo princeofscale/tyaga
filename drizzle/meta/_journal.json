@@ -43,6 +43,13 @@
       "when": 1791373834977,
       "tag": "0005_young_jazinda",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1791373834978,
+      "tag": "0006_sync",
+      "breakpoints": true
     }
   ]
 }
