@@ -4,19 +4,36 @@
 import { registerPlugin } from "@capacitor/core";
 import { Directory, Filesystem } from "@capacitor/filesystem";
 import { CLOUD_URL } from "./cloudSync";
+import { parseRelease, type Release } from "./release";
 
-export type Release = { versionCode: number; versionName: string };
+export type { Release } from "./release";
 const ApkInstaller = registerPlugin<{ install(options: { path: string }): Promise<void> }>("ApkInstaller");
 
+/**
+ * Resolves to a newer release, or null when there is none. A failed check
+ * rejects instead of returning null, so a phone that opens the app offline does
+ * not look like "already up to date" and the next launch checks again.
+ */
 export async function findUpdate(): Promise<Release | null> {
   if (!CLOUD_URL) return null;
-  const response = await fetch(`${CLOUD_URL}/app-version.json`, {
-    cache: "no-store",
-    signal: AbortSignal.timeout(10000),
-  });
-  if (!response.ok) return null;
-  const release = (await response.json()) as Release;
-  return release.versionCode > __APP_VERSION__.code ? release : null;
+  // AbortSignal.timeout needs Chrome 103; android/variables.gradle allows older
+  // WebViews, so the deadline is a plain timer.
+  const controller = new AbortController();
+  const deadline = setTimeout(() => controller.abort(), 10000);
+  try {
+    const response = await fetch(`${CLOUD_URL}/app-version.json`, {
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error("Версия приложения недоступна");
+    // A missing file still answers 200 with the SPA shell, so a body that is not
+    // a release record is a failed check, not "no update".
+    const release = parseRelease(await response.json());
+    if (!release) throw new Error("Неизвестный формат версии");
+    return release.versionCode > __APP_VERSION__.code ? release : null;
+  } finally {
+    clearTimeout(deadline);
+  }
 }
 
 export async function installUpdate(onProgress: (percent: number) => void) {

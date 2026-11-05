@@ -5338,6 +5338,7 @@ body::before {
   height: var(--sat);
   background: var(--bg);
   z-index: 40;
+  pointer-events: none;
 }
 .workout-bar {
   top: var(--sat);

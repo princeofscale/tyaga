@@ -38,7 +38,7 @@ export default function Select({
     const up = below < height && above > below;
     pop.style.width = `${Math.min(width, innerWidth - 16)}px`;
     pop.style.left = `${Math.max(8, Math.min(box.left, innerWidth - width - 8))}px`;
-    pop.style.maxHeight = `${Math.min(320, up ? above : below)}px`;
+    pop.style.maxHeight = `${Math.max(80, Math.min(320, up ? above : below))}px`;
     pop.style.top = up ? "" : `${box.bottom + 6}px`;
     pop.style.bottom = up ? `${innerHeight - box.top + 6}px` : "";
   };

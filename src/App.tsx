@@ -225,10 +225,14 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
     let checkedAt = 0;
     const check = () => {
       if (document.visibilityState !== "visible" || Date.now() - checkedAt < 3600000) return;
-      checkedAt = Date.now();
       void import("./device/appUpdate")
         .then((m) => m.findUpdate())
-        .then((release) => release && setUpdate(release))
+        .then((release) => {
+          // Stamp only a finished check: opening the app without network must not
+          // hide a real update for the next hour.
+          checkedAt = Date.now();
+          if (release) setUpdate(release);
+        })
         .catch(() => {});
     };
     check();
