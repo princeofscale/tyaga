@@ -26,6 +26,7 @@ import ExerciseInfo from "./ExerciseInfo";
 import type { Exercise, Routine, Workout } from "../lib/types";
 import { ApiError } from "../services/ApiClient";
 import Modal from "./Modal";
+import Select from "./Select";
 const ExerciseLibrary = lazy(() => import("./ExerciseLibrary"));
 
 type Props = {
@@ -453,18 +454,16 @@ export default function ProgramsScreen(props: Props) {
                 </label>
                 <label>
                   Правило прогрессии
-                  <select
+                  <Select
                     value={editor.progression}
-                    onChange={(e) =>
-                      setEditor({
-                        ...editor,
-                        progression: e.target.value as Routine["progression"],
-                      })
+                    onChange={(v) =>
+                      setEditor({ ...editor, progression: v as Routine["progression"] })
                     }
-                  >
-                    <option value="repeat">Повторять веса и повторы</option>
-                    <option value="double">Двойная прогрессия</option>
-                  </select>
+                    options={[
+                      { value: "repeat", label: "Повторять веса и повторы" },
+                      { value: "double", label: "Двойная прогрессия" },
+                    ]}
+                  />
                 </label>
               </div>
               {editor.progression === "double" ? (

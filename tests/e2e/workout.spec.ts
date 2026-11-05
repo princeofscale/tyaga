@@ -59,6 +59,12 @@ async function cleanup(_request: APIRequestContext) {
       await call("/api/custom-exercises/" + e.id, "DELETE", {});
 }
 
+/** Picks an option in the in-app dropdown (components/Select.tsx). Its name
+ * is the label plus the current value, so the label matches as a prefix. */
+async function choose(page: Page, label: string, option: string) {
+  await page.getByLabel(label).click();
+  await page.getByRole("option", { name: option, exact: true }).click();
+}
 async function addExercise(page: Page, name: string) {
   await page
     .getByRole("button", { name: "Добавить упражнение", exact: true })
@@ -393,7 +399,7 @@ test("dumbbells, explicit sides and assistance keep distinct input rules", async
       .click();
   }
   await page.getByLabel("Тренажёр / блок", { exact: true }).fill("Ассист A");
-  await expect(page.getByLabel("Выполненные стороны")).toHaveValue("both");
+  await expect(page.getByLabel("Выполненные стороны")).toHaveAttribute("data-value", "both");
   await expect(page.locator(".session-summary-stats")).toContainText("800");
   await page
     .getByRole("button", { name: "Завершить тренировку", exact: true })
@@ -641,7 +647,7 @@ test("programs save to the account, schedule a week and propose safe double prog
     .fill("[E2E] Программа");
   await page.getByRole("button", { name: "Пн", exact: true }).click();
   await page.getByRole("button", { name: "Ср", exact: true }).click();
-  await page.getByLabel("Правило прогрессии").selectOption("double");
+  await choose(page, "Правило прогрессии", "Двойная прогрессия");
   await page
     .getByRole("button", {
       name: "Добавить упражнение в программу",
@@ -742,10 +748,8 @@ test("personal timed exercises, aliases and favorites survive reload and history
   await page
     .getByLabel("Алиасы — через точку с запятой")
     .fill("Моя планка; side bridge");
-  await page.getByLabel("Что записываем").selectOption("duration");
-  await page
-    .getByLabel("Что означает введённый вес")
-    .selectOption("bodyweight");
+  await choose(page, "Что записываем", "Время в секундах");
+  await choose(page, "Что означает введённый вес", "Без внешнего веса");
   await page
     .getByRole("button", { name: "Сохранить упражнение", exact: true })
     .click();
@@ -846,7 +850,8 @@ test("CSV import offers a Russian preview, saves literal weights and skips dupli
     await page
       .getByText("Сопоставления упражнений · 1", { exact: true })
       .click();
-    await expect(page.locator(".import-mapping-row select")).toHaveValue(
+    await expect(page.locator(".import-mapping-row .select-trigger")).toHaveAttribute(
+      "data-value",
       "bench",
     );
     await page.screenshot({

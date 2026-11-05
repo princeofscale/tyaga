@@ -35,6 +35,7 @@ import {
 } from "../lib/draft";
 export type { Draft } from "../lib/draft";
 import { WarmupPlanner } from "../domain/WarmupPlanner";
+import Select from "./Select";
 
 type Props = {
   draft: Draft | null;
@@ -318,20 +319,20 @@ export default function WorkoutView({
               {spec.laterality === "unilateral" ? (
                 <label className="recording-field">
                   Выполненные стороны
-                  <select
+                  <Select
                     aria-label="Выполненные стороны"
                     value={we.performedSides ?? "both"}
-                    onChange={(e) =>
+                    onChange={(v) =>
                       patchExercise(ei, {
-                        performedSides: e.target
-                          .value as WorkoutExercise["performedSides"],
+                        performedSides: v as WorkoutExercise["performedSides"],
                       })
                     }
-                  >
-                    <option value="both">Обе — один парный подход</option>
-                    <option value="left">Только левая</option>
-                    <option value="right">Только правая</option>
-                  </select>
+                    options={[
+                      { value: "both", label: "Обе — один парный подход" },
+                      { value: "left", label: "Только левая" },
+                      { value: "right", label: "Только правая" },
+                    ]}
+                  />
                 </label>
               ) : null}
               {["machine_stack", "assisted_bodyweight"].includes(
