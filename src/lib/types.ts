@@ -71,6 +71,9 @@ export type SetEntry = {
 export type WorkoutExercise = {
   exerciseId: string;
   sets: SetEntry[];
+  /** Planned rep range for this movement. Overrides the routine-wide range. */
+  repMin?: number;
+  repMax?: number;
   catalogRevision?: 1 | 2 | 3;
   recordingSpecRevision?: 1 | 2 | 3;
   muscleMappingRevision?: 1 | 2 | 3;
@@ -111,12 +114,25 @@ export type WearableSummary = {
   heartRateMax?: number;
   heartRateSamples: number;
 };
+/**
+ * A repeating block of weeks with one deload week. Week indexes are 0-based and
+ * counted from the first saved workout of the routine, so a missed week still
+ * advances the cycle instead of stretching it.
+ */
+export type RoutineCycle = {
+  weeks: number;
+  deloadWeek: number;
+  setFactor: number;
+  weightFactor: number;
+  deloadRir: number;
+};
 export type Routine = {
   id: string;
   name: string;
   notes: string;
   days: number[];
   exercises: WorkoutExercise[];
+  cycle?: RoutineCycle;
   restSeconds: number;
   progression: "repeat" | "double";
   repMin: number;

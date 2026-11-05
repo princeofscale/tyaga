@@ -84,4 +84,115 @@ export const EXERCISE_ALIASES: Record<string, string[]> = {
     "Seated calf raise",
   ],
   crunch: ["Кранч", "Скручивание на пресс", "Abdominal crunch"],
+  // Release 3 aliases. Curated entries live in src/data/catalog-v3.ts.
+  "incline-bar": [
+    "Жим штанги на наклонной",
+    "Наклонный жим штанги",
+    "Incline bench press",
+  ],
+  "flat-db-press": [
+    "Жим гантелей лёжа",
+    "Горизонтальный жим гантелей",
+    "Flat dumbbell press",
+  ],
+  "high-cable-fly": [
+    "Кроссовер сверху",
+    "Сведение с верхних блоков",
+    "High cable fly",
+  ],
+  "pulldown-reverse": [
+    "Обратная вертикальная тяга",
+    "Тяга блока обратным хватом",
+    "Reverse grip lat pulldown",
+  ],
+  "row-v-grip": ["Тяга с V-рукоятью", "V-тяга к поясу", "V-grip cable row"],
+  "row-single-cable": [
+    "Тяга одной рукой на блоке",
+    "Одноручная тяга нижнего блока",
+    "Single arm cable row",
+  ],
+  "pullover-cable": ["Пуловер на блоке", "Пуловер с канатом", "Cable pullover"],
+  "shrug-bar": ["Шраги", "Шраги со штангой стоя", "Barbell shrug"],
+  "shrug-db-incline": [
+    "Шраги на наклонной",
+    "Шраги с гантелями лёжа",
+    "Incline dumbbell shrug",
+  ],
+  "rear-delt-fly": ["Задняя дельта", "Обратные разведения", "Rear delt fly"],
+  "curl-preacher-ez": [
+    "Скамья Скотта",
+    "Бицепс на скамье Скотта",
+    "Preacher curl",
+  ],
+  "curl-incline-db": [
+    "Бицепс на наклонной",
+    "Сгибания на наклонной скамье",
+    "Incline dumbbell curl",
+  ],
+  "curl-bar": ["Подъём штанги на бицепс", "Бицепс со штангой", "Barbell curl"],
+  "curl-reverse-ez": ["Обратные сгибания", "Обратный бицепс", "Reverse curl"],
+  "skullcrusher-ez": [
+    "Французский жим",
+    "Французский жим лёжа",
+    "Skull crusher",
+  ],
+  "extension-overhead-cable": [
+    "Трицепс из-за головы на блоке",
+    "Разгибания над головой",
+    "Overhead cable extension",
+  ],
+  "extension-v-pushdown": [
+    "Трицепс с V-рукоятью",
+    "Разгибания с V-рукоятью",
+    "V-bar pushdown",
+  ],
+  "shoulder-press-machine": [
+    "Жим на дельты в тренажёре",
+    "Плечевой жим в машине",
+    "Machine shoulder press",
+  ],
+  "lateral-cable-single": [
+    "Махи в кроссовере",
+    "Махи одной рукой на блоке",
+    "Cable lateral raise",
+  ],
+  "woodchopper-cable": ["Дровосек", "Тяга по диагонали", "Cable woodchopper"],
+  "ab-roller": [
+    "Ролик для пресса",
+    "Выкатывания роликом",
+    "Аб-роллер",
+    "Ab wheel rollout",
+  ],
+  "crunch-incline-plate": [
+    "Скручивания с блином",
+    "Скручивания на наклонной",
+    "Weighted incline crunch",
+  ],
+  "hanging-leg-raise": [
+    "Подъём ног в висе на перекладине",
+    "Подъём ног на турнике",
+    "Подъём коленей в висе",
+    "Hanging leg raise",
+  ],
+  "leg-extension": [
+    "Разгибания ног",
+    "Разгибание голени в тренажёре",
+    "Leg extension",
+  ],
+  "bulgarian-split-squat": [
+    "Болгарский присед",
+    "Сплит-присед с гантелями",
+    "Bulgarian split squat",
+  ],
+  "back-extension": [
+    "Гиперэкстензия на 45°",
+    "Разгибание спины",
+    "Hyperextension",
+    "Back extension",
+  ],
+  "calf-standing-machine": [
+    "Икры в тренажёре стоя",
+    "Подъём на носки в тренажёре",
+    "Standing machine calf raise",
+  ],
 };

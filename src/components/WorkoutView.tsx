@@ -279,6 +279,12 @@ export default function WorkoutView({
                 ]
                   .join(" ")
                   .trim();
+          const plannedRange =
+            we.repMin !== undefined && we.repMax !== undefined
+              ? we.repMin === we.repMax
+                ? String(we.repMin)
+                : `${we.repMin}–${we.repMax}`
+              : null;
           let working = 0;
           let warm = 0;
           return (
@@ -290,6 +296,9 @@ export default function WorkoutView({
                     {exercise.primary
                       .map((id) => MUSCLES.find((m) => m.id === id)!.short)
                       .join(" · ")}
+                    {!timed && plannedRange
+                      ? ` · ${we.sets.filter((s) => !s.warmup).length} × ${plannedRange} по плану`
+                      : null}
                   </p>
                 </div>
                 <button

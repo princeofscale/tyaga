@@ -8,6 +8,7 @@ import {
   type WorkoutExercise,
   type Exercise,
   type Routine,
+  type RoutineCycle,
 } from "../src/lib/model";
 export class InputError extends Error {}
 export const object = (v: unknown): Record<string, unknown> => {
@@ -80,9 +81,12 @@ export function validWorkout(
     const exerciseId = str(e.exerciseId, 80, 1);
     const catalogRevision = num(e.catalogRevision ?? 1, 1, 3, true) as
       1 | 2 | 3;
+    // Release 3 has two kinds of records: curated movements shipped with the
+    // app, and per-user wger/custom records that arrive with the request.
     const exercise =
       catalogRevision === 3
-        ? options.importedExercises?.get(exerciseId)
+        ? (exerciseById(exerciseId, 3) ??
+          options.importedExercises?.get(exerciseId))
         : exerciseById(exerciseId, catalogRevision);
     if (
       !exercise ||
@@ -108,13 +112,20 @@ export function validWorkout(
       metadata.displayNameSnapshot = str(e.displayNameSnapshot, 120, 1);
       if (metadata.displayNameSnapshot !== exercise.name)
         throw new InputError("Название не соответствует версии каталога");
-      // Ignore client-provided definitions. Only the immutable database record is trusted.
-      if (catalogRevision === 3) metadata.externalDefinition = exercise;
+      // Ignore client-provided definitions. Only the immutable database record,
+      // or a curated release shipped with the app, is trusted.
+      if (catalogRevision === 3 && (exercise.source || exercise.custom))
+        metadata.externalDefinition = exercise;
     }
     if (e.equipmentNote !== undefined)
       metadata.equipmentNote = str(e.equipmentNote, 120);
     if (e.progressionNote !== undefined)
       metadata.progressionNote = str(e.progressionNote, 500);
+    if (e.repMin !== undefined || e.repMax !== undefined) {
+      const repMin = num(e.repMin, 1, 200, true);
+      metadata.repMin = repMin;
+      metadata.repMax = num(e.repMax, repMin, 200, true);
+    }
     if (
       (catalogRevision === 2 || exercise.source?.record.review) &&
       ["machine_stack", "assisted_bodyweight"].includes(
@@ -235,6 +246,17 @@ export function validWorkout(
     result.restSeconds = num(w.restSeconds, 15, 600, true);
   return result;
 }
+function validCycle(value: unknown): RoutineCycle {
+  const c = object(value);
+  const weeks = num(c.weeks, 2, 52, true);
+  return {
+    weeks,
+    deloadWeek: num(c.deloadWeek, 0, weeks - 1, true),
+    setFactor: num(c.setFactor, 0.1, 1),
+    weightFactor: num(c.weightFactor, 0.1, 1),
+    deloadRir: num(c.deloadRir, 0, 10, true),
+  };
+}
 export function validRoutine(
   value: unknown,
   importedExercises: Map<string, Exercise>,
@@ -277,6 +299,7 @@ export function validRoutine(
     repMin,
     repMax,
     incrementKg: num(v.incrementKg, 0.25, 50),
+    ...(v.cycle !== undefined ? { cycle: validCycle(v.cycle) } : {}),
     revision: validRevision(v.revision),
   };
 }

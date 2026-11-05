@@ -225,10 +225,14 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
     let checkedAt = 0;
     const check = () => {
       if (document.visibilityState !== "visible" || Date.now() - checkedAt < 3600000) return;
-      checkedAt = Date.now();
       void import("./device/appUpdate")
         .then((m) => m.findUpdate())
-        .then((release) => release && setUpdate(release))
+        .then((release) => {
+          // Stamp only a finished check: opening the app without network must not
+          // hide a real update for the next hour.
+          checkedAt = Date.now();
+          if (release) setUpdate(release);
+        })
         .catch(() => {});
     };
     check();
@@ -1595,6 +1599,31 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
               </label>
             ))}
           </div>
+          <button
+            type="button"
+            className="button secondary full-width"
+            style={{ marginTop: 16 }}
+            onClick={() => {
+              try {
+                const goals = TrainingProgram.programV2Goals();
+                setSettingsDraft((s) => ({
+                  ...s,
+                  goals: { ...s.goals, ...goals },
+                }));
+              } catch (err) {
+                setSaveError(
+                  err instanceof Error ? err.message : "Ошибка расчёта",
+                );
+              }
+            }}
+          >
+            <Sparkles size={17} />
+            Взять ориентиры из программы v2
+          </button>
+          <p className="tiny" style={{ marginTop: 8 }}>
+            Числа — недельные рабочие подходы, которые программа v2 планирует
+            сама; жимы в них считаются и подходами на трицепс.
+          </p>
           <label className="settings-zone">
             Часовой пояс календаря
             <input

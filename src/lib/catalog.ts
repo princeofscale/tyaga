@@ -1,12 +1,14 @@
 import { CATALOG_V1 } from "../data/catalog-v1";
 import { CATALOG_V2 } from "../data/catalog-v2";
+import { CATALOG_V3 } from "../data/catalog-v3";
 import type { Exercise, WorkoutExercise } from "./types";
 import { ExerciseCatalog } from "../domain/ExerciseCatalog";
 import { EXERCISE_ALIASES } from "../data/exercise-aliases";
 export { ANATOMICAL_MUSCLES, MUSCLES } from "../data/muscles";
 export { EVIDENCE, evidenceById } from "../data/evidence";
-export const CATALOG_REVISION = 2;
-export const EXERCISES = CATALOG_V2.map((e) => ({
+export const CATALOG_REVISION = 3;
+// Release 3 only adds movements; release 2 stays frozen and is not rewritten.
+export const EXERCISES = [...CATALOG_V2, ...CATALOG_V3].map((e) => ({
   ...e,
   aliases: EXERCISE_ALIASES[e.id] ?? [e.nameEn],
 }));
