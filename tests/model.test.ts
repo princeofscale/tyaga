@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { CATALOG_V3 } from "../src/data/catalog-v3";
 import {
   DEFAULT_SETTINGS,
   EXERCISES,
@@ -114,7 +115,12 @@ test("catalogue and source references are unique and complete, with explicit inf
   assert.equal(new Set(EXERCISES.map((e) => e.id)).size, EXERCISES.length);
   assert.ok(ANATOMICAL_MUSCLES.length >= 30);
   for (const e of EXERCISES) {
-    assert.equal(e.catalogRevision, 2);
+    // Release 3 only adds movements; release 2 stays frozen beside it.
+    assert.ok([2, 3].includes(e.catalogRevision));
+    assert.equal(
+      e.catalogRevision === 3,
+      CATALOG_V3.some((v) => v.id === e.id),
+    );
     assert.ok(e.variant && e.limitations && e.provenance.license);
     assert.equal(
       new Set(e.muscles.map((m) => m.muscleId)).size,

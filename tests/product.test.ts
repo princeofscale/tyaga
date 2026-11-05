@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import ru from "../data/wger/catalog-v2-ru.json";
 import original from "../data/wger/catalog-v1.json";
+import { CATALOG_V3 } from "../src/data/catalog-v3";
 import {
   EXERCISES,
   exerciseCatalog,
@@ -27,7 +28,7 @@ const importer = new WorkoutImport({
 
 test("all 949 current catalogue exercises have Russian names and aliases; source release stays immutable", () => {
   assert.equal(ru.exercises.length, 918);
-  assert.equal(EXERCISES.length, 31);
+  assert.equal(EXERCISES.length, 31 + CATALOG_V3.length);
   for (const row of ru.exercises) {
     assert.match(row.name, /[а-яё]/i);
     assert.equal(row.language, "ru");

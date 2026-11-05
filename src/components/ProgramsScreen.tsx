@@ -1,5 +1,5 @@
 import { quantity } from "../lib/quantity";
-import { lazy, Suspense, useState, useEffect } from "react";
+import { lazy, Suspense, useState, useEffect, useMemo } from "react";
 import {
   CalendarDays,
   Check,
@@ -60,7 +60,18 @@ export default function ProgramsScreen(props: Props) {
       weekStart(new Date(), props.timeZone),
       offset * 7,
     ),
-    today = localDate(new Date(), props.timeZone);
+    today = localDate(new Date(), props.timeZone),
+    hasCycle = props.routines.some((r) => !!r.cycle);
+  /** isDeload walks the whole history per routine, so it stays off the keystroke path. */
+  const deloadRoutineIds = useMemo(
+    () =>
+      new Set(
+        props.routines
+          .filter((r) => new TrainingProgram(r).isDeload(props.workouts, today))
+          .map((r) => r.id),
+      ),
+    [props.routines, props.workouts, today],
+  );
   const open = (routine: Routine) => {
     setEditor(structuredClone(routine));
     setError("");
@@ -92,11 +103,18 @@ export default function ProgramsScreen(props: Props) {
       setBusy(false);
     }
   }
-  async function starter(kind: Parameters<typeof TrainingProgram.starter>[0]) {
+  async function starter(
+    kind: Parameters<typeof TrainingProgram.starter>[0] | "v2",
+  ) {
     setBusy(true);
     setError("");
     try {
-      for (const r of TrainingProgram.starter(kind))
+      const routines =
+        kind === "v2"
+          ? TrainingProgram.programV2()
+          : TrainingProgram.starter(kind);
+      // Same names are skipped, so a repeated click adds what is missing only.
+      for (const r of routines)
         if (!props.routines.some((old) => old.name === r.name))
           await props.onSave(r);
     } catch (e) {
@@ -119,6 +137,33 @@ export default function ProgramsScreen(props: Props) {
           }
         : r,
     );
+  /**
+   * A movement range is stored as a pair: the API accepts two bounds or none.
+   * The first edit fills the missing bound from the routine range, and clearing
+   * a field drops both so the routine-wide range applies again.
+   */
+  const setRepRange = (
+    index: number,
+    entry: Routine["exercises"][number],
+    side: "min" | "max",
+    raw: string,
+  ) => {
+    if (!editor) return;
+    if (raw === "") {
+      updateExercise(index, { repMin: undefined, repMax: undefined });
+      return;
+    }
+    const bound = (n: number) => Math.max(1, Math.min(200, Math.round(n)));
+    const value = bound(Number(raw)),
+      min = Math.min(entry.repMin ?? editor.repMin, value),
+      max = Math.max(entry.repMax ?? editor.repMax, value);
+    updateExercise(
+      index,
+      side === "min"
+        ? { repMin: value, repMax: max }
+        : { repMax: value, repMin: min },
+    );
+  };
   const move = (i: number, direction: number) =>
     setEditor((r) => {
       if (!r || i + direction < 0 || i + direction >= r.exercises.length)
@@ -251,6 +296,19 @@ export default function ProgramsScreen(props: Props) {
               </button>
             </div>
             <h3>{r.name}</h3>
+            {deloadRoutineIds.has(r.id) ? (
+              <p
+                className="progression-note"
+                style={{
+                  margin: "12px 0 0",
+                  padding: "10px 12px",
+                  fontSize: "0.8rem",
+                  color: "var(--text-soft)",
+                }}
+              >
+                Разгрузочная неделя · половина подходов, 70% веса
+              </p>
+            ) : null}
             <p>
               {quantity(
                 r.exercises.length,
@@ -267,9 +325,20 @@ export default function ProgramsScreen(props: Props) {
               )}
             </p>
             <div className="routine-exercise-names">
-              {r.exercises.slice(0, 4).map((e) => (
-                <span key={e.exerciseId}>{entryName(e)}</span>
-              ))}
+              {r.exercises.slice(0, 4).map((e) => {
+                const planned =
+                  e.repMin === undefined && e.repMax === undefined
+                    ? null
+                    : new TrainingProgram(r).range(e);
+                return (
+                  <span key={e.exerciseId}>
+                    {entryName(e)}
+                    {planned
+                      ? ` · ${e.sets.filter((s) => !s.warmup).length} × ${planned.min}–${planned.max}`
+                      : ""}
+                  </span>
+                );
+              })}
               {r.exercises.length > 4 ? (
                 <span>Ещё {r.exercises.length - 4}</span>
               ) : null}
@@ -358,6 +427,14 @@ export default function ProgramsScreen(props: Props) {
                 name: "База 5 × 5",
                 note: "Три движения · 3 дня",
                 symbol: "04",
+              },
+              {
+                id: "v2",
+                name: "Программа v2 · 5 дней",
+                note: hasCycle
+                  ? "Пять программ · уже добавлена, кнопка добавит недостающие"
+                  : "Пять программ · 5 дней, разгрузка каждую пятую неделю",
+                symbol: "05",
               },
             ] as const
           ).map((p) => (
@@ -528,6 +605,11 @@ export default function ProgramsScreen(props: Props) {
                 </>
               ) : null}
               <div className="routine-editor-exercises">
+                <p className="tiny">
+                  У каждого упражнения может быть свой диапазон повторений.
+                  Пустые поля «Повторы от» и «Повторы до» означают общий
+                  диапазон программы.
+                </p>
                 {editor.exercises.map((entry, index) => {
                   const exercise = exerciseForEntry(entry)!,
                     spec = exercise.recording;
@@ -662,6 +744,36 @@ export default function ProgramsScreen(props: Props) {
                                     : { weight: Number(e.target.value) }),
                                 })),
                               })
+                            }
+                          />
+                        </label>
+                      </div>
+                      <div className="form-grid">
+                        <label>
+                          Повторы от
+                          <input
+                            type="number"
+                            min={1}
+                            max={200}
+                            inputMode="numeric"
+                            placeholder={String(editor.repMin)}
+                            value={entry.repMin ?? ""}
+                            onChange={(e) =>
+                              setRepRange(index, entry, "min", e.target.value)
+                            }
+                          />
+                        </label>
+                        <label>
+                          Повторы до
+                          <input
+                            type="number"
+                            min={1}
+                            max={200}
+                            inputMode="numeric"
+                            placeholder={String(editor.repMax)}
+                            value={entry.repMax ?? ""}
+                            onChange={(e) =>
+                              setRepRange(index, entry, "max", e.target.value)
                             }
                           />
                         </label>

@@ -23,9 +23,13 @@ export class ExerciseCatalog {
   find(id: string, revision: 1 | 2 | 3 = 2): Exercise | undefined {
     if (id.startsWith("wger:") || id.startsWith("custom:"))
       return this.entries.get(this.key(id, 3));
+    // Release 3 is additive: an id missing from the requested release is looked
+    // up in the other curated releases instead of disappearing.
     return (
       this.entries.get(this.key(id, revision)) ??
-      (revision === 2 ? this.entries.get(this.key(id, 1)) : undefined)
+      (this.entries.get(this.key(id, 3)) ||
+        this.entries.get(this.key(id, 1)) ||
+        undefined)
     );
   }
   forEntry(entry: WorkoutExercise): Exercise | undefined {
