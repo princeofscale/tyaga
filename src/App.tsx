@@ -23,9 +23,15 @@ import {
   Search,
   Settings2,
   Sparkles,
+  Target,
   Trash2,
   TrendingUp,
   X,
+  Scale,
+  BatteryCharging,
+  Flame,
+  Smartphone,
+  Zap,
 } from "lucide-react";
 import {
   DEFAULT_SETTINGS,
@@ -70,6 +76,7 @@ import { VolumeChart, Sparkline } from "./components/Charts";
 import Modal from "./components/Modal";
 import Select from "./components/Select";
 import WorkoutView from "./components/WorkoutView";
+import TrainingPlate from "./components/TrainingPlate";
 import { m } from "motion/react";
 const AnatomyExplorer = lazy(() => import("./components/AnatomyExplorer"));
 const ExerciseLibrary = lazy(() => import("./components/ExerciseLibrary"));
@@ -79,7 +86,18 @@ const PersonalExerciseEditor = lazy(
 );
 const HistoryImporter = lazy(() => import("./components/HistoryImporter"));
 const AppleHealthPanel = lazy(() => import("./components/AppleHealthPanel"));
+import PlateCalculator from "./components/PlateCalculator";
+import OneRepMaxCalculator from "./components/OneRepMaxCalculator";
+import { BodyweightModal } from "./components/BodyweightModal";
+import { DeloadModal } from "./components/DeloadModal";
+import { WarmupModal } from "./components/WarmupModal";
+import { IosInstallPrompt } from "./components/IosInstallPrompt";
+import { DeloadEngine } from "./domain/DeloadEngine";
+import { VolumeLandmarksModal } from "./components/VolumeLandmarksModal";
+import StatsAnalytics from "./components/StatsAnalytics";
+import InteractiveStrengthChart from "./components/InteractiveStrengthChart";
 import ExerciseInfo from "./components/ExerciseInfo";
+import WeeklyActivityBar from "./components/WeeklyActivityBar";
 import {
   readDraft,
   persistDraft,
@@ -147,7 +165,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
   );
   const [mapping, setMapping] = useState<"recorded" | "current">("recorded");
   const [hardSetsOnly, setHardSetsOnly] = useState(false);
-  const [progressTab, setProgressTab] = useState<"balance" | "strength" | "anatomy">("balance");
+  const [progressTab, setProgressTab] = useState<"balance" | "analytics" | "strength" | "anatomy">("balance");
   const [toast, setToast] = useState("");
   const [modal, setModal] = useState<
     | "picker"
@@ -157,6 +175,13 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
     | "personal"
     | "import"
     | "profile"
+    | "plate"
+    | "orm"
+    | "bodyweight"
+    | "deload"
+    | "warmup"
+    | "ios_install"
+    | "rp_volume"
     | null
   >(null);
   const [detail, setDetail] = useState<Workout | null>(null);
@@ -349,15 +374,6 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
     [currentLoads, minutes, planEquipment, excluded, settings.restSeconds],
   );
   const today = localDate(new Date(), settings.timeZone);
-  const thisWeek = Array.from({ length: 7 }, (_, i) => {
-    const date = addCalendarDays(weekStart(new Date(), settings.timeZone), i);
-    return {
-      date,
-      label: ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"][i],
-      day: Number(date.slice(8)),
-      trained: displayed.some((w) => w.date === date),
-    };
-  });
   const todayRoutine = product.routines.find((r) =>
     new TrainingProgram(r).scheduled(today),
   );
@@ -791,6 +807,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
           }}
         >
           тяга<span className="brand-period">.</span>
+          <span className="brand-tagline">Силовой журнал</span>
         </a>
         <nav aria-label="Основная навигация">
           {NAV.map((n) => (
@@ -825,7 +842,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
           key={view}
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.2 }}
+          transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
         >
           {update && view !== "workout" ? (
             <div className="update-banner" role="status">
@@ -917,31 +934,9 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                       {account.displayName.slice(0, 1).toUpperCase()}
                     </button>
                   </header>
-                  {!demo && !workouts.length ? (
-                    <div className="intro-banner">
-                      <Dumbbell size={18} />
-                      <span>
-                        Здесь появится твоя история. Начни первую тренировку
-                        или посмотри, как работает журнал.
-                      </span>
-                      <button className="text-button" onClick={() => setDemo(true)}>
-                        Посмотреть пример
-                      </button>
-                    </div>
-                  ) : null}
-                  <div className="week-strip" aria-label="Эта неделя">
-                    {thisWeek.map((d) => (
-                      <div
-                        key={d.date}
-                        className={`week-strip-day ${d.trained ? "trained" : ""} ${d.date === today ? "today" : ""}`}
-                      >
-                        <span>{d.label}</span>
-                        <b>{d.day}</b>
-                        <i aria-label={d.trained ? "тренировка" : undefined} />
-                      </div>
-                    ))}
-                  </div>
-                  <section className="plan-card" aria-labelledby="plan-title">
+                  <div className="today-dashboard">
+                  <section className="plan-card training-hero" aria-labelledby="plan-title">
+                    <div className="plan-main">
                     <span className="eyebrow">
                       {draft
                         ? "ТРЕНИРОВКА ИДЁТ"
@@ -1010,10 +1005,15 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                         Программы
                       </button>
                     </div>
+                    </div>
+                    <div className="plan-art" aria-hidden="true">
+                      <TrainingPlate />
+                    </div>
                   </section>
+                  <WeeklyActivityBar workouts={workouts} timeZone={settings.timeZone} />
                   <button className="week-summary" onClick={() => go("progress")}>
                     <span className="week-summary-head">
-                      <b>Неделя</b>
+                      <b>Нагрузка за неделю</b>
                       <span>
                         <strong>{fmt(weekDone)}</strong> / {weekGoal} подх.
                       </span>
@@ -1028,6 +1028,112 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                       <ChevronRight size={18} />
                     </span>
                   </button>
+                  </div>
+                  <section className="gym-tools" aria-labelledby="tools-title">
+                    <div className="section-head">
+                      <h2 id="tools-title">Для зала</h2>
+                      <span>Всё под рукой</span>
+                    </div>
+                  <div className="quick-gym-tools-panel" role="group" aria-label="Быстрые инструменты">
+                    <button
+                      type="button"
+                      className="quick-tool-card"
+                      onClick={() => setModal("bodyweight")}
+                    >
+                      <div className="tool-icon-circle accent-glow">
+                        <Scale size={20} />
+                      </div>
+                      <div className="tool-info">
+                        <b>Вес тела и тренд</b>
+                        <span>Динамика и цель</span>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="quick-tool-card"
+                      onClick={() => setModal("deload")}
+                    >
+                      <div className="tool-icon-circle">
+                        <BatteryCharging size={20} />
+                      </div>
+                      <div className="tool-info">
+                        <b>Разгрузочная неделя</b>
+                        <span>Объём и восстановление</span>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="quick-tool-card"
+                      onClick={() => setModal("warmup")}
+                    >
+                      <div className="tool-icon-circle">
+                        <Flame size={20} />
+                      </div>
+                      <div className="tool-info">
+                        <b>Разминочная лесенка</b>
+                        <span>Подготовка к весу</span>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="quick-tool-card"
+                      onClick={() => setModal("plate")}
+                    >
+                      <div className="tool-icon-circle">
+                        <Dumbbell size={20} />
+                      </div>
+                      <div className="tool-info">
+                        <b>Калькулятор блинов</b>
+                        <span>Раскладка блинов на гриф</span>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="quick-tool-card"
+                      onClick={() => setModal("orm")}
+                    >
+                      <div className="tool-icon-circle">
+                        <Target size={20} />
+                      </div>
+                      <div className="tool-info">
+                        <b>Калькулятор 1ПМ</b>
+                        <span>Расчёт максимума и проценты</span>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="quick-tool-card ios-tool-card"
+                      onClick={() => setModal("ios_install")}
+                    >
+                      <div className="tool-icon-circle">
+                        <Smartphone size={20} />
+                      </div>
+                      <div className="tool-info">
+                        <b>Добавить на экран</b>
+                        <span>PWA-приложение iOS</span>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="quick-tool-card"
+                      onClick={() => setModal("rp_volume")}
+                    >
+                      <div className="tool-icon-circle accent-glow">
+                        <Zap size={20} />
+                      </div>
+                      <div className="tool-info">
+                        <b>Объём по мышцам</b>
+                        <span>Ориентиры MEV / MAV / MRV</span>
+                      </div>
+                    </button>
+                  </div>
+                  </section>
                   <section className="recent-panel" aria-labelledby="recent-title">
                     <div className="section-head">
                       <h2 id="recent-title">Последние тренировки</h2>
@@ -1065,7 +1171,13 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                   <header className="screen-head">
                     <h1>История тренировок</h1>
                   </header>
-                  {justSaved && <SessionInsights workout={justSaved} settings={settings} />}
+                  {justSaved && (
+                    <SessionInsights
+                      workout={justSaved}
+                      settings={settings}
+                      account={account}
+                    />
+                  )}
                   <div className="history-toolbar">
                     <div className="search-field">
                       <Search size={18} />
@@ -1141,6 +1253,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                     {(
                       [
                         ["balance", "Баланс"],
+                        ["analytics", "Статистика"],
                         ["strength", "Сила"],
                         ["anatomy", "Карта мышц"],
                       ] as const
@@ -1156,7 +1269,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                       </button>
                     ))}
                   </div>
-                  {progressTab !== "strength" ? (
+                  {progressTab !== "strength" && progressTab !== "analytics" ? (
                     <div className="week-selector">
                       <button
                         className="icon-button"
@@ -1178,6 +1291,16 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                         <ChevronRight size={20} />
                       </button>
                     </div>
+                  ) : null}
+                  {progressTab === "analytics" ? (
+                    <StatsAnalytics
+                      workouts={workouts}
+                      settings={settings}
+                      onOpenExerciseStrength={(key) => {
+                        setProgressExercise(key);
+                        setProgressTab("strength");
+                      }}
+                    />
                   ) : null}
                   {progressTab === "balance" ? (
                     <>
@@ -1446,13 +1569,12 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                         </div>
                         {progressPoints.length ? (
                           <>
-                            <div className="large-sparkline">
-                              <Sparkline values={progressPoints.map((p) => p.max)} />
-                            </div>
-                            <div className="progress-dates">
-                              <span>{dateLabel(firstProgress.date, true)}</span>
-                              <span>{dateLabel(lastProgress!.date, true)}</span>
-                            </div>
+                            <InteractiveStrengthChart
+                              points={progressPoints}
+                              unit={progressSpec.type === "duration" ? "с" : "кг"}
+                              isDuration={progressSpec.type === "duration"}
+                              exerciseName={entryName(progressEntry)}
+                            />
                             <div className="progress-history">
                               {[...progressPoints].reverse().map((p, i) => (
                                 <div key={`${p.date}-${i}`}>
@@ -1815,7 +1937,11 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
               {fmt(volumeSummary([detail], "all").total)} кг
             </span>
           </div>
-          <SessionInsights workout={detail} settings={settings} />
+          <SessionInsights
+            workout={detail}
+            settings={settings}
+            account={account}
+          />
           <Suspense fallback={<p className="tiny">Открываем показатели часов…</p>}><AppleHealthPanel workout={detail} readOnly={demo} onSaved={saved => {
             setDetail(saved); setWorkouts(ws => ws.map(w => w.id === saved.id ? saved : w));
             setJustSaved(w => w?.id === saved.id ? saved : w); setToast("Показатели часов сохранены");
@@ -2057,6 +2183,59 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
         <AccountProfileForm account={account} hasDraft={!!draft}
           onChange={p => { onAccountChange(p); void load(); }} onLogout={onLogout} />
       </Modal> : null}
+      {modal === "plate" ? (
+        <Modal title="Калькулятор блинов" onClose={() => setModal(null)} wide>
+          <PlateCalculator onClose={() => setModal(null)} />
+        </Modal>
+      ) : null}
+      {modal === "orm" ? (
+        <Modal title="Калькулятор 1ПМ" onClose={() => setModal(null)} wide>
+          <OneRepMaxCalculator onClose={() => setModal(null)} />
+        </Modal>
+      ) : null}
+      {modal === "bodyweight" ? (
+        <Modal title="Контроль массы тела" onClose={() => setModal(null)} wide>
+          <BodyweightModal
+            accountId={account?.id || "local-user"}
+            onClose={() => setModal(null)}
+          />
+        </Modal>
+      ) : null}
+      {modal === "deload" ? (
+        <Modal title="Настройка разгрузочной недели" onClose={() => setModal(null)} wide>
+          <DeloadModal
+            workouts={workouts}
+            onApplyDeload={(mode) => {
+              if (draft) {
+                setDraft((d) => (d ? { ...d, workout: DeloadEngine.transformWorkoutForDeload(d.workout, mode) } : null));
+              }
+            }}
+            onClose={() => setModal(null)}
+          />
+        </Modal>
+      ) : null}
+      {modal === "warmup" ? (
+        <Modal title="Разминочная лесенка (OpenGym)" onClose={() => setModal(null)} wide>
+          <WarmupModal onClose={() => setModal(null)} />
+        </Modal>
+      ) : null}
+      {modal === "ios_install" ? (
+        <Modal title="Установить на iPhone" onClose={() => setModal(null)}>
+          <IosInstallPrompt onClose={() => setModal(null)} />
+        </Modal>
+      ) : null}
+      {modal === "rp_volume" ? (
+        <Modal
+          title="Ориентиры объёма по доктору Майку Израэтелю (RP)"
+          onClose={() => setModal(null)}
+          wide
+        >
+          <VolumeLandmarksModal
+            loads={loads}
+            onClose={() => setModal(null)}
+          />
+        </Modal>
+      ) : null}
       {conflict && draft ? (
         <Modal
           title="Версии тренировки разошлись"

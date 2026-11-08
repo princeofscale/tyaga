@@ -3,6 +3,9 @@ dist/
 .wrangler/
 .sites-runtime/
 .env
+.env.*
+.dev.vars
+.dev.vars.*
 *.log
 artifacts/
 test-results/

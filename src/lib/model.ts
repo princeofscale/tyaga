@@ -2,7 +2,8 @@ import {
   TrainingAnalytics,
   type AnalysisOptions,
 } from "../domain/TrainingAnalytics";
-import { MUSCLES, ANATOMICAL_MUSCLES } from "../data/muscles";
+import { MUSCLES, ANATOMICAL_MUSCLES, CHEST_HEADS, DELTOID_HEADS } from "../data/muscles";
+export { MUSCLES, ANATOMICAL_MUSCLES, CHEST_HEADS, DELTOID_HEADS };
 import {
   EXERCISES,
   exerciseById,
@@ -15,6 +16,7 @@ import {
   weekStart,
   browserTimeZone,
   addCalendarDays,
+  dateLabel,
 } from "./calendar";
 import type {
   Settings,
@@ -25,7 +27,9 @@ import type {
   Muscle,
   Equipment,
   Exercise,
+  SetKind,
 } from "./types";
+export type { SetKind };
 export * from "./types";
 export * from "./catalog";
 export * from "./calendar";

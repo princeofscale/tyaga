@@ -66,7 +66,7 @@ export class TrainingAnalytics {
       stabilizing: 0,
     }));
     const byId = new Map(rows.map((r) => [r.id, r]));
-    for (const { exercise, count } of this.observations())
+    for (const { exercise, count } of this.observations()) {
       for (const role of exercise.muscles) {
         const row = byId.get(role.muscleId);
         if (!row) continue;
@@ -78,6 +78,34 @@ export class TrainingAnalytics {
               : "stabilizing"
         ] += count;
       }
+      const pec = exercise.muscles.find((m) => m.muscleId === "pectoralis-major");
+      if (pec) {
+        const roleKey = pec.role === "primary" ? "direct" : pec.role === "assistant" ? "assisting" : "stabilizing";
+        const id = (exercise.id || "").toLowerCase();
+        const name = (exercise.name || "").toLowerCase();
+        const isUpper = id.includes("incline") || name.includes("наклон") || id.includes("pullover");
+        const isLower = id.includes("decline") || id.includes("dip") || id.includes("high-cable-fly") || name.includes("брусь") || name.includes("сверху");
+        
+        if (isUpper) {
+          const up = byId.get("pectoralis-clavicular");
+          if (up) up[roleKey] += count;
+          const mid = byId.get("pectoralis-sternal");
+          if (mid && roleKey === "direct") mid.assisting += count;
+        } else if (isLower) {
+          const low = byId.get("pectoralis-abdominal");
+          if (low) low[roleKey] += count;
+          const mid = byId.get("pectoralis-sternal");
+          if (mid && roleKey === "direct") mid.assisting += count;
+        } else {
+          const mid = byId.get("pectoralis-sternal");
+          if (mid) mid[roleKey] += count;
+          const up = byId.get("pectoralis-clavicular");
+          if (up) up[roleKey === "direct" ? "assisting" : roleKey] += count;
+          const low = byId.get("pectoralis-abdominal");
+          if (low) low[roleKey === "direct" ? "assisting" : roleKey] += count;
+        }
+      }
+    }
     return rows;
   }
 }

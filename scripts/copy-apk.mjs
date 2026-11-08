@@ -1,5 +1,5 @@
-// Ships the latest Android build with the website (npm run deploy:cloud):
-// /tyaga.apk to download and /app-version.json for in-app update checks.
+// Optional manual step after a web build; not run by npm run deploy:cloud.
+// Ships /tyaga.apk and paired /app-version.json from an explicitly built Android APK.
 import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 
 const dir = "android/app/build/outputs/apk/debug/";

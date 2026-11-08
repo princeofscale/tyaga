@@ -57,6 +57,8 @@ export type Exercise = LegacyExercise & {
     record: import("../domain/WgerExercise").WgerRecord;
   };
 };
+export type SetKind = "normal" | "warmup" | "dropset" | "myorep";
+
 export type SetEntry = {
   id: string;
   weight: number;
@@ -64,6 +66,7 @@ export type SetEntry = {
   rir: number | null;
   warmup: boolean;
   done: boolean;
+  kind?: SetKind;
   assistanceKg?: number;
   durationSeconds?: number;
   distanceKm?: number;
@@ -71,6 +74,7 @@ export type SetEntry = {
 export type WorkoutExercise = {
   exerciseId: string;
   sets: SetEntry[];
+  supersetId?: string;
   /** Planned rep range for this movement. Overrides the routine-wide range. */
   repMin?: number;
   repMax?: number;

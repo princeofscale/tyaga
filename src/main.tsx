@@ -4,7 +4,11 @@ import AccountGate from "./components/AccountGate";
 import { LazyMotion, MotionConfig } from "motion/react";
 import "@fontsource-variable/manrope";
 import "@fontsource-variable/unbounded";
+import "@fontsource-variable/oswald";
 import "./styles.css";
+import "./styles/athletic.css";
+import "./styles/auth-athletic.css";
+import "./styles/workout-athletic.css";
 const loadMotionFeatures = () =>
   import("./lib/motionFeatures").then((module) => module.default);
 const backend =

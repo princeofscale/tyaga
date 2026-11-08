@@ -14,11 +14,12 @@ an independently validated clinical atlas.
 
 ## Fonts and libraries
 
-Manrope and Unbounded: SIL Open Font License 1.1. React, React DOM, Lucide,
-Motion/Framer Motion and TanStack Query: their original MIT notices apply.
-Apple Health import: fflate (MIT), saxes (ISC) and xmlchars (MIT).
+Manrope, Oswald and Unbounded: SIL Open Font License 1.1. Oswald: Copyright 2016
+The Oswald Project Authors (https://github.com/googlefonts/OswaldFont).
+React, React DOM, Lucide, Motion/Framer Motion and TanStack Query retain their
+original notices. Apple Health import: fflate (MIT), saxes (ISC) and xmlchars (MIT).
 Full applicable notices copied from the pinned installed packages are included in
-`public/licenses/third-party.txt` and served with the application.
+[the shipped licence file](<public/licenses/third-party.txt>) and served with the application.
 
 ## wger community catalogue
 

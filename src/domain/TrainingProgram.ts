@@ -151,10 +151,8 @@ export class TrainingProgram {
           repMax: range.max,
           progressionNote: deload
             ? undefined
-            : r.progression === "double" && progressive
-              ? canIncrease
-                ? `Все рабочие подходы прошлого раза достигли ${range.max} повторений. Предложен шаг +${r.incrementKg} кг; диапазон ${range.min}–${range.max}. Измени вес по самочувствию.`
-                : `Диапазон ${range.min}–${range.max}. Добавляй повторы; вес растёт только после всех ${plannedCount} выполненных рабочих подходов на верхней границе. Это правило программы.`
+            : r.progression === "double" && progressive && canIncrease
+              ? `Все рабочие подходы прошлого раза достигли ${range.max} повторений. Предложен шаг +${r.incrementKg} кг; диапазон ${range.min}–${range.max}. Измени вес по самочувствию.`
               : undefined,
           sets: sets.map((s) => {
             const ref = s.warmup ? undefined : work[index++];

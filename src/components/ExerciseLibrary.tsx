@@ -23,6 +23,29 @@ import { WGER_ZONES } from "../domain/WgerExercise";
 import { matchesSearch } from "../lib/search";
 import { quantity } from "../lib/quantity";
 import { exerciseLibraryService } from "../services/ExerciseLibraryService";
+import { inferExactMuscleHeadRole } from "../domain/AnatomyPresenter";
+
+function getExerciseHeadBadge(e: Exercise): string | null {
+  if (inferExactMuscleHeadRole("chest-upper", e) === "primary") return "Верх груди";
+  if (inferExactMuscleHeadRole("chest-lower", e) === "primary") return "Низ груди";
+  if (inferExactMuscleHeadRole("chest-mid", e) === "primary") return "Середина груди";
+  if (inferExactMuscleHeadRole("deltoid-posterior", e) === "primary") return "Задняя дельта";
+  if (inferExactMuscleHeadRole("deltoid-middle", e) === "primary") return "Средняя дельта";
+  if (inferExactMuscleHeadRole("deltoid-anterior", e) === "primary") return "Передняя дельта";
+
+  const full = `${e.id} ${e.name} ${e.nameEn}`.toLowerCase();
+  if (/overhead|из-за головы|француз|french|skull/i.test(full)) return "Длинная головка трицепса";
+  if (/hammer|молот|нейтральн|брахиалис|brachialis/i.test(full)) return "Брахиалис";
+  if (/pull[- ]?up|pulldown|подтягиван|верхнего блока|тяга блока к груди/i.test(full)) return "Широчайшая спины";
+  if (/shrug|шраги|трапец/i.test(full)) return "Верх трапеции";
+  if (/row|тяга в наклоне|горизонтальная тяга|к поясу/i.test(full)) return "Середина спины";
+  if (/squat|присед|leg press|жим ногами|hack|гакк|выпады/i.test(full)) return "Квадрицепс";
+  if (/leg curl|сгибан.*ног|deadlift|румынск|rdl/i.test(full)) return "Задняя поверхность бедра";
+  if (/hip thrust|ягодичн|мостик/i.test(full)) return "Ягодицы";
+  if (/носки стоя|standing calf/i.test(full)) return "Икроножная";
+  if (/носки сидя|seated calf/i.test(full)) return "Камбаловидная";
+  return null;
+}
 
 function LibraryContent({
   picker = false,
@@ -55,6 +78,7 @@ function LibraryContent({
   const [search, setSearch] = useState("");
   const [debounced, setDebounced] = useState("");
   const [muscle, setMuscle] = useState(defaultMuscle);
+  const [subheadFilter, setSubheadFilter] = useState("all");
   const [equipment, setEquipment] = useState("all");
   const [page, setPage] = useState(1);
   const [language, setLanguage] = useState("all");
@@ -62,7 +86,11 @@ function LibraryContent({
     const id = setTimeout(() => setDebounced(search), 200);
     return () => clearTimeout(id);
   }, [search]);
-  useEffect(() => setPage(1), [debounced, muscle, equipment, language]);
+  useEffect(() => {
+    setPage(1);
+    setSubheadFilter("all");
+  }, [muscle]);
+  useEffect(() => setPage(1), [debounced, equipment, language, subheadFilter]);
   const query = useQuery({
     queryKey: ["wger", debounced, muscle, equipment, page, language],
     queryFn: ({ signal }) =>
@@ -93,12 +121,17 @@ function LibraryContent({
         e.primary.includes(muscle as never)) &&
       (equipment === "all" || e.equipment === equipment),
   );
-  const exercises =
+  const baseExercises =
     source === "tyaga"
       ? exerciseCatalog.search({ text: search, zone: muscle, equipment })
       : source === "wger"
         ? (query.data?.exercises ?? [])
         : filteredLocal;
+
+  const exercises =
+    subheadFilter !== "all"
+      ? baseExercises.filter((e) => inferExactMuscleHeadRole(subheadFilter, e) !== undefined)
+      : baseExercises;
   const count = source !== "wger" ? exercises.length : (query.data?.total ?? 0);
   const zones = (e: Exercise) =>
     e.source
@@ -206,13 +239,70 @@ function LibraryContent({
           </button>
         ))}
       </div>
-      {source === "wger" ? (
-        <p className="source-notice">
-          <Globe2 size={16} />
-          Открытая база wger: описания переведены автоматически, проверенные
-          варианты отмечены.
-        </p>
-      ) : null}
+
+      {(muscle === "chest" || muscle === "shoulders") && (
+        <div className="subhead-filters-row" role="group" aria-label="Фильтр по пучкам мышц">
+          <span className="subhead-label">
+            {muscle === "chest" ? "Отдел груди:" : "Пучок дельты:"}
+          </span>
+          <button
+            type="button"
+            className={`subhead-btn ${subheadFilter === "all" ? "active" : ""}`}
+            onClick={() => setSubheadFilter("all")}
+          >
+            Все
+          </button>
+          {muscle === "chest" ? (
+            <>
+              <button
+                type="button"
+                className={`subhead-btn ${subheadFilter === "chest-upper" ? "active" : ""}`}
+                onClick={() => setSubheadFilter("chest-upper")}
+              >
+                Верх груди
+              </button>
+              <button
+                type="button"
+                className={`subhead-btn ${subheadFilter === "chest-mid" ? "active" : ""}`}
+                onClick={() => setSubheadFilter("chest-mid")}
+              >
+                Середина груди
+              </button>
+              <button
+                type="button"
+                className={`subhead-btn ${subheadFilter === "chest-lower" ? "active" : ""}`}
+                onClick={() => setSubheadFilter("chest-lower")}
+              >
+                Низ груди
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                className={`subhead-btn ${subheadFilter === "deltoid-anterior" ? "active" : ""}`}
+                onClick={() => setSubheadFilter("deltoid-anterior")}
+              >
+                Передняя дельта
+              </button>
+              <button
+                type="button"
+                className={`subhead-btn ${subheadFilter === "deltoid-middle" ? "active" : ""}`}
+                onClick={() => setSubheadFilter("deltoid-middle")}
+              >
+                Средняя дельта
+              </button>
+              <button
+                type="button"
+                className={`subhead-btn ${subheadFilter === "deltoid-posterior" ? "active" : ""}`}
+                onClick={() => setSubheadFilter("deltoid-posterior")}
+              >
+                Задняя дельта
+              </button>
+            </>
+          )}
+        </div>
+      )}
       {source === "wger" && query.isError ? (
         <div className="error-banner" role="alert">
           <p>{query.error.message}</p>
@@ -263,6 +353,12 @@ function LibraryContent({
                             : "Не проверено"}
                       </span>
                     ) : null}
+                    {(() => {
+                      const badge = getExerciseHeadBadge(e);
+                      return badge ? (
+                        <span className="library-head-tag">{badge}</span>
+                      ) : null;
+                    })()}
                     <h3>{e.name}</h3>
                     <p>
                       {zones(e)

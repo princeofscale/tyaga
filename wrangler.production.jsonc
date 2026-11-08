@@ -1,0 +1,25 @@
+// New production in the user's authorized account; legacy hosting is unchanged.
+// Always use this config explicitly. wrangler.cloud.jsonc targets the old site.
+{
+	"name": "tyaga",
+	"account_id": "86373735788c01599af67ce3a6a4777a",
+	"main": "server/cloud.ts",
+	"compatibility_date": "2025-09-27",
+	"workers_dev": true,
+	"assets": {
+		"directory": "dist/client",
+		"binding": "ASSETS",
+		"not_found_handling": "single-page-application",
+		"run_worker_first": [
+			"/api/*"
+		]
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "tyaga",
+			"database_id": "ad437b48-4328-40fa-8cad-0c198a8c3587",
+			"migrations_dir": "drizzle"
+		}
+	]
+}

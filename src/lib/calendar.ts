@@ -30,3 +30,9 @@ export function weekStart(date = new Date(), timeZone?: string) {
   const weekday = new Date(day + "T12:00:00Z").getUTCDay();
   return addCalendarDays(day, -((weekday + 6) % 7));
 }
+export function dateLabel(date: string, long = false) {
+  return new Date(date + "T12:00:00").toLocaleDateString("ru-RU", {
+    day: "numeric",
+    month: long ? "long" : "short",
+  });
+}

@@ -1,9 +1,10 @@
 import { lazy, Suspense, useState, type FormEvent } from "react";
-import { Smartphone, UserRound } from "lucide-react";
+import { Smartphone, UserRound, Sparkles } from "lucide-react";
 import { api } from "../services/ApiClient";
 import { browserTimeZone } from "../lib/calendar";
 import type { AccountProfile } from "../lib/account";
 import { cloudState } from "../device/cloudSync";
+import { THEMES, applyTheme, getCurrentTheme, type ThemeId } from "../lib/theme";
 
 // On Android the profile is created silently with a stored password, so
 // signing out or changing the password would lock the owner out.
@@ -13,6 +14,7 @@ export function AccountProfileForm({ account, onChange, onLogout, hasDraft }: {
   account: AccountProfile; onChange: (p: AccountProfile) => void; onLogout: () => void; hasDraft: boolean;
 }) {
   const [error, setError] = useState(""), [busy, setBusy] = useState(false), [saved, setSaved] = useState("");
+  const [currentTheme, setCurrentTheme] = useState<ThemeId>(() => getCurrentTheme());
   const save = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault(); const f = new FormData(e.currentTarget); setBusy(true); setError(""); setSaved("");
     try { const r = await api<{profile: AccountProfile}>("/api/auth/profile", "PUT", {
@@ -31,6 +33,29 @@ export function AccountProfileForm({ account, onChange, onLogout, hasDraft }: {
       {error && <p className="form-error" role="alert">{error}</p>}{saved && <p role="status" className="success-message">{saved}</p>}
       <button className="button primary" disabled={busy}>{busy ? "Сохраняем…" : "Сохранить профиль"}</button>
     </form>
+    <div className="theme-accent-selector-card">
+      <div className="theme-selector-header">
+        <Sparkles size={16} className="text-accent" />
+        <b>Цветовой акцент интерфейса</b>
+      </div>
+      <div className="theme-swatches-row">
+        {THEMES.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            className={`theme-swatch-btn ${currentTheme === t.id ? "active" : ""}`}
+            onClick={() => {
+              applyTheme(t.id);
+              setCurrentTheme(t.id);
+            }}
+            title={t.name}
+          >
+            <span className="swatch-circle" style={{ backgroundColor: t.accent }} />
+            <span className="swatch-label">{t.name.split(" ")[0]}</span>
+          </button>
+        ))}
+      </div>
+    </div>
     {onDevice ? <>
       <Suspense fallback={null}><CloudSyncPanel displayName={account.displayName} /></Suspense>
       <p className="tiny">Без облака резервная копия — История → Экспорт JSON: иначе данные пропадут при удалении приложения.</p>

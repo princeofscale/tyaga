@@ -25,6 +25,24 @@ export const ANATOMICAL_MUSCLES = [
     zone: "chest",
   },
   {
+    id: "pectoralis-clavicular",
+    name: "Верхняя часть груди (ключичная)",
+    latin: "m. pectoralis major, pars clavicularis",
+    zone: "chest",
+  },
+  {
+    id: "pectoralis-sternal",
+    name: "Средняя часть груди (грудинная)",
+    latin: "m. pectoralis major, pars sternocostalis",
+    zone: "chest",
+  },
+  {
+    id: "pectoralis-abdominal",
+    name: "Нижняя часть груди (брюшная)",
+    latin: "m. pectoralis major, pars abdominalis",
+    zone: "chest",
+  },
+  {
     id: "deltoid-anterior",
     name: "Передняя дельтовидная",
     latin: "m. deltoideus, pars clavicularis",
@@ -188,6 +206,18 @@ export const ANATOMICAL_MUSCLES = [
   },
   { id: "soleus", name: "Камбаловидная", latin: "m. soleus", zone: "calves" },
   {
+    id: "tibialis-anterior",
+    name: "Передняя большеберцовая",
+    latin: "m. tibialis anterior",
+    zone: "calves",
+  },
+  {
+    id: "neck-muscles",
+    name: "Мышцы шеи",
+    latin: "mm. colli",
+    zone: "back",
+  },
+  {
     id: "rectus-abdominis",
     name: "Прямая живота",
     latin: "m. rectus abdominis",
@@ -212,3 +242,52 @@ export const ANATOMICAL_MUSCLES = [
   zone: Muscle;
 }>;
 export type AnatomicalMuscle = (typeof ANATOMICAL_MUSCLES)[number]["id"];
+
+export const CHEST_HEADS = [
+  {
+    id: "pectoralis-clavicular" as const,
+    slug: "chest-upper",
+    name: "Верх груди",
+    latin: "m. pectoralis major, pars clavicularis",
+    desc: "Ключичный пучок: наклонный жим штанги/гантелей, пуловер",
+  },
+  {
+    id: "pectoralis-sternal" as const,
+    slug: "chest-mid",
+    name: "Середина груди",
+    latin: "m. pectoralis major, pars sternocostalis",
+    desc: "Грудинный пучок: горизонтальный жим штанги/гантелей, разводки",
+  },
+  {
+    id: "pectoralis-abdominal" as const,
+    slug: "chest-lower",
+    name: "Низ груди",
+    latin: "m. pectoralis major, pars abdominalis",
+    desc: "Брюшной пучок: отжимания на брусьях, кроссовер сверху вниз",
+  },
+] as const;
+
+export const DELTOID_HEADS = [
+  {
+    id: "deltoid-anterior" as const,
+    slug: "deltoid-anterior",
+    name: "Передняя дельта",
+    latin: "m. deltoideus, pars clavicularis",
+    desc: "Передний пучок: армейский жим, жим сидя, подъёмы перед собой",
+  },
+  {
+    id: "deltoid-middle" as const,
+    slug: "deltoid-middle",
+    name: "Средняя дельта",
+    latin: "m. deltoideus, pars acromialis",
+    desc: "Средний пучок: махи гантелями в стороны, махи на блоке",
+  },
+  {
+    id: "deltoid-posterior" as const,
+    slug: "deltoid-posterior",
+    name: "Задняя дельта",
+    latin: "m. deltoideus, pars spinalis",
+    desc: "Задний пучок: махи в наклоне, фейспул, обратная бабочка",
+  },
+] as const;
+

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { m, AnimatePresence } from "motion/react";
-import { Activity, BookOpen, Dumbbell, Flame, Info, Target } from "lucide-react";
+import { Activity, BookOpen, Dumbbell, Flame, Info, Target, Sparkles, AlertCircle } from "lucide-react";
 import BodyMap from "./BodyMap";
 import { AnatomyPresenter, type AnatomyPart } from "../domain/AnatomyPresenter";
 import {
@@ -12,6 +12,19 @@ import {
   type MuscleLoad,
   type Workout,
 } from "../lib/model";
+import { CHEST_HEADS, DELTOID_HEADS } from "../data/muscles";
+
+interface HeadStat {
+  id: string;
+  slug: string;
+  name: string;
+  latin: string;
+  desc: string;
+  part: AnatomyPart | undefined;
+  direct: number;
+  assisting: number;
+  stabilizing: number;
+}
 
 export default function AnatomyExplorer({
   loads,
@@ -48,11 +61,79 @@ export default function AnatomyExplorer({
     [loads, workouts, options.mapping],
   );
   const warmup = warmupPresenter.activity(part);
-  const related = EXERCISES.filter((e) =>
-    e.muscles.some(
-      (m) => part.muscles.includes(m.muscleId) && m.role === "primary",
-    ),
-  ).slice(0, 4);
+
+  // Filter exercises relevant to the active part / head
+  const related = useMemo(() => {
+    return EXERCISES.filter((e) => {
+      // If a specific chest head is selected
+      if (part.slug === "chest-upper") {
+        const id = e.id.toLowerCase();
+        const n = e.name.toLowerCase();
+        return (id.includes("incline") || n.includes("наклон") || id.includes("pullover")) &&
+          e.muscles.some((m) => m.muscleId.startsWith("pectoralis") || m.muscleId === "deltoid-anterior");
+      }
+      if (part.slug === "chest-lower") {
+        const id = e.id.toLowerCase();
+        const n = e.name.toLowerCase();
+        return (id.includes("decline") || id.includes("dip") || id.includes("high-cable-fly") || n.includes("брусь") || n.includes("сверху"));
+      }
+      if (part.slug === "chest-mid") {
+        const id = e.id.toLowerCase();
+        const n = e.name.toLowerCase();
+        return (id.includes("bench") || id.includes("fly") || id.includes("pushup") || n.includes("жим лежа") || n.includes("разведение")) &&
+          !id.includes("incline");
+      }
+      return e.muscles.some(
+        (m) => part.muscles.includes(m.muscleId) && m.role === "primary",
+      );
+    }).slice(0, 5);
+  }, [part]);
+
+  // Subhead analytics for Chest & Shoulders
+  const headStats: HeadStat[] | null = useMemo(() => {
+    if (zone === "chest") {
+      return CHEST_HEADS.map((head) => {
+        const p = presenter.part(head.slug, "front");
+        const act = p ? presenter.activity(p) : { direct: 0, assisting: 0, stabilizing: 0, ratio: 0 };
+        return {
+          id: head.id,
+          slug: head.slug,
+          name: head.name,
+          latin: head.latin,
+          desc: head.desc,
+          part: p,
+          direct: act.direct,
+          assisting: act.assisting,
+          stabilizing: act.stabilizing,
+        };
+      });
+    }
+    if (zone === "shoulders") {
+      return DELTOID_HEADS.map((head) => {
+        const side = head.slug === "deltoid-posterior" ? "back" : "front";
+        const p = presenter.part(head.slug, side);
+        const act = p ? presenter.activity(p) : { direct: 0, assisting: 0, stabilizing: 0, ratio: 0 };
+        return {
+          id: head.id,
+          slug: head.slug,
+          name: head.name,
+          latin: head.latin,
+          desc: head.desc,
+          part: p,
+          direct: act.direct,
+          assisting: act.assisting,
+          stabilizing: act.stabilizing,
+        };
+      });
+    }
+    return null;
+  }, [zone, presenter]);
+
+  const totalHeadDirect = useMemo(() => {
+    if (!headStats) return 0;
+    return headStats.reduce((sum: number, h: HeadStat) => sum + h.direct, 0);
+  }, [headStats]);
+
   return (
     <section className="anatomy-explorer">
       <div className="anatomy-zone-nav" aria-label="Область тела">
@@ -78,6 +159,7 @@ export default function AnatomyExplorer({
           </button>
         ))}
       </div>
+
       <div className="anatomy-lab">
         <div className="anatomy-canvas panel">
           <div className="anatomy-canvas-header">
@@ -97,11 +179,10 @@ export default function AnatomyExplorer({
             onPartSelect={setPart}
           />
           <p className="atlas-caption">
-            Условный атлас групп мышц. Цвет сравнивает записанные прямые подходы
-            с ориентиром зоны; форма рисунка не показывает силу или степень
-            активации.
+            Интерактивный атлас мышц. Нажмите на любой пучок дельты (передний, средний, задний) или отдел груди (верх, середина, низ) для детального анализа.
           </p>
         </div>
+
         <div className="anatomy-inspector">
           <AnimatePresence mode="wait">
             <m.section
@@ -112,17 +193,27 @@ export default function AnatomyExplorer({
               exit={{ opacity: 0, y: -4 }}
               transition={{ duration: 0.18 }}
             >
-              <span className="feature-tag">
-                <Target size={14} />
-                ВЫБРАННАЯ ОБЛАСТЬ
-              </span>
+              <div className="selection-badge-row">
+                <span className="feature-tag">
+                  <Target size={14} />
+                  ВЫБРАННАЯ ОБЛАСТЬ
+                </span>
+                {part.slug.includes("chest-") || part.slug.includes("deltoid-") ? (
+                  <span className="subhead-pill-active">
+                    <Sparkles size={12} />
+                    Анатомический пучок
+                  </span>
+                ) : null}
+              </div>
+
               <h2>{part.name}</h2>
               <p className="anatomy-latin">
                 {
                   ANATOMICAL_MUSCLES.find((m) => m.id === part.muscles[0])
-                    ?.latin
+                    ?.latin || "Musculi skeleti"
                 }
               </p>
+
               <div className="anatomy-metrics">
                 <div>
                   <b>{activity.direct}</b>
@@ -137,10 +228,84 @@ export default function AnatomyExplorer({
                   <span>стабилизация</span>
                 </div>
               </div>
-              {(warmup.direct + warmup.assisting + warmup.stabilizing) > 0 && <p className="anatomy-warmup">
-                <Flame size={15} />
-                Разминка: {warmup.direct} прямых, {warmup.assisting} с помощью, {warmup.stabilizing} со стабилизацией.
-              </p>}
+
+              {(warmup.direct + warmup.assisting + warmup.stabilizing) > 0 && (
+                <p className="anatomy-warmup">
+                  <Flame size={15} />
+                  Разминка: {warmup.direct} прямых, {warmup.assisting} с помощью, {warmup.stabilizing} со стабилизацией.
+                </p>
+              )}
+
+              {/* Sub-head detailed breakdown cards for Chest & Shoulders */}
+              {headStats && (
+                <div className="heads-dashboard">
+                  <div className="heads-header">
+                    <h4>
+                      {zone === "chest" ? "Отделы груди" : "Пучки дельтовидных мышц"}
+                    </h4>
+                    <span className="tiny muted">
+                      {totalHeadDirect > 0 ? `${totalHeadDirect} подх. всего` : "нет подходов"}
+                    </span>
+                  </div>
+
+                  {/* Volume distribution bar */}
+                  {totalHeadDirect > 0 && (
+                    <div className="head-balance-bar" title="Распределение объёма по пучкам">
+                      {headStats.map((h, i) => {
+                        const pct = Math.round((h.direct / totalHeadDirect) * 100);
+                        const colors = ["#cafa64", "#70d6ff", "#ff9770"];
+                        return (
+                          <div
+                            key={h.id}
+                            className="head-bar-slice"
+                            style={{
+                              width: `${pct}%`,
+                              background: colors[i % colors.length],
+                            }}
+                            title={`${h.name}: ${pct}% (${h.direct} подх.)`}
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <div className="heads-grid">
+                    {headStats.map((head, i) => {
+                      const isSelected = part.slug === head.slug;
+                      const colors = ["#cafa64", "#70d6ff", "#ff9770"];
+                      const color = colors[i % colors.length];
+                      return (
+                        <button
+                          key={head.id}
+                          type="button"
+                          className={`head-card ${isSelected ? "head-card-selected" : ""}`}
+                          onClick={() => {
+                            if (head.part) setPart(head.part);
+                          }}
+                        >
+                          <div className="head-card-top">
+                            <span className="head-dot" style={{ background: color }} />
+                            <b className="head-title">{head.name}</b>
+                            <span className="head-direct-badge">
+                              {head.direct} прямых
+                            </span>
+                          </div>
+                          <p className="head-desc">{head.desc}</p>
+                          <div className="head-card-footer">
+                            <span className="tiny muted">
+                              {head.assisting > 0 ? `+${head.assisting} ассист.` : "без ассиста"}
+                            </span>
+                            {isSelected && (
+                              <span className="head-active-label">Активен на карте</span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               <div className="anatomy-muscle-rows">
                 {anatomy
                   .filter((m) => part.muscles.includes(m.id))
@@ -163,6 +328,7 @@ export default function AnatomyExplorer({
               </p>
             </m.section>
           </AnimatePresence>
+
           <section className="panel anatomy-recommendations">
             <div className="panel-header">
               <h3>
@@ -198,11 +364,11 @@ export default function AnatomyExplorer({
               Открыть библиотеку
             </button>
           </section>
+
           <div className="anatomy-context">
             <Info size={18} />
             <p>
-              32 анатомические записи, сгруппированные на рисунке. Роли мышц и
-              источники можно открыть в каждом упражнении.
+              Анатомические записи с разделением на пучки (передняя, средняя, задняя дельты, верх, середина и низ груди). Роли мышц и источники можно открыть в каждом упражнении.
             </p>
           </div>
         </div>

@@ -1,6 +1,8 @@
+import { useMemo } from "react";
 import { ANATOMICAL_MUSCLES, evidenceById, type Exercise } from "../lib/model";
 import BodyMap from "./BodyMap";
-import { ExternalLink, Globe2 } from "lucide-react";
+import { ExternalLink, Globe2, Sparkles } from "lucide-react";
+import { inferExactMuscleHeadRole } from "../domain/AnatomyPresenter";
 const ROLE_NAMES = {
   primary: "Движители",
   assistant: "Помогающие мышцы",
@@ -35,6 +37,61 @@ export default function ExerciseInfo({
   ]
     .map((id) => evidenceById(id))
     .filter((x) => !!x);
+
+  const highlightedHeads = useMemo(() => {
+    const list: { name: string; role: string }[] = [];
+
+    const upperChest = inferExactMuscleHeadRole("chest-upper", e);
+    if (upperChest) {
+      list.push({
+        name: "Верх груди (ключичный пучок)",
+        role: upperChest === "primary" ? "Основной акцент" : "Синергист",
+      });
+    }
+
+    const midChest = inferExactMuscleHeadRole("chest-mid", e);
+    if (midChest) {
+      list.push({
+        name: "Середина груди (грудинный пучок)",
+        role: midChest === "primary" ? "Основной акцент" : "Синергист",
+      });
+    }
+
+    const lowerChest = inferExactMuscleHeadRole("chest-lower", e);
+    if (lowerChest) {
+      list.push({
+        name: "Низ груди (брюшной пучок)",
+        role: lowerChest === "primary" ? "Основной акцент" : "Синергист",
+      });
+    }
+
+    const antDelt = inferExactMuscleHeadRole("deltoid-anterior", e);
+    if (antDelt) {
+      list.push({
+        name: "Передняя дельта",
+        role: antDelt === "primary" ? "Движитель" : "Ассистент",
+      });
+    }
+
+    const midDelt = inferExactMuscleHeadRole("deltoid-middle", e);
+    if (midDelt) {
+      list.push({
+        name: "Средняя дельта",
+        role: midDelt === "primary" ? "Движитель" : "Ассистент",
+      });
+    }
+
+    const postDelt = inferExactMuscleHeadRole("deltoid-posterior", e);
+    if (postDelt) {
+      list.push({
+        name: "Задняя дельта",
+        role: postDelt === "primary" ? "Движитель" : "Ассистент",
+      });
+    }
+
+    return list;
+  }, [e]);
+
   return (
     <div className="exercise-technique">
       <div className="exercise-atlas">
@@ -52,12 +109,30 @@ export default function ExerciseInfo({
           · условный атлас
         </p>
       </div>
-      <span className="feature-tag">
-        {e.source
-          ? "WGER · " + e.source.record.language.toUpperCase()
-          : `Вариант упражнения · каталог ${e.catalogRevision}`}
-      </span>
-      {e.source?.record.review && <span className="reviewed-tag">Разметка проверена по источникам · редакционная модель</span>}
+      <div className="exercise-tags-row">
+        <span className="feature-tag">
+          {e.source
+            ? "WGER · " + e.source.record.language.toUpperCase()
+            : `Вариант упражнения · каталог ${e.catalogRevision}`}
+        </span>
+        {e.source?.record.review && <span className="reviewed-tag">Разметка проверена по источникам · редакционная модель</span>}
+      </div>
+
+      {highlightedHeads.length > 0 && (
+        <div className="exercise-highlighted-heads">
+          <span className="tiny-label">
+            <Sparkles size={12} /> Анатомический фокус:
+          </span>
+          <div className="heads-tags-list">
+            {highlightedHeads.map((h) => (
+              <span key={h.name} className="exercise-head-tag">
+                <b>{h.name}</b>
+                <small>{h.role}</small>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
       <p>{e.variant}</p>
       <p className="exercise-instructions">{e.tip}</p>
       {e.aliases?.length ? (
