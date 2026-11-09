@@ -12,6 +12,8 @@ export type Draft = {
   restUntil: number | null;
   pausedRest: number | null;
   manualDuration: boolean;
+  /** Время последнего действия пользователя: по нему считается реальная длительность. */
+  activityAt?: number;
   restored?: boolean;
 };
 export type PersistenceStatus = "saved" | "failed" | "pending";
@@ -38,6 +40,20 @@ export function elapsedMs(draft: Draft, now = Date.now()) {
       ? 0
       : Math.max(0, Math.min(now - draft.clock.runningSince, 60000)))
   );
+}
+const MAX_SESSION_SPAN_MS = 4 * 3600000;
+/**
+ * Длительность тренировки. Счётчик в приложении стоит, пока экран погашен или
+ * вкладка скрыта, поэтому в зале (телефон в кармане между подходами) он выдавал
+ * «0 мин». Реальное время — от старта до последнего действия; оно берётся, если
+ * не выглядит как забытый черновик (больше 4 часов), иначе остаётся счётчик.
+ */
+export function sessionMs(draft: Draft, now = Date.now()) {
+  const active = elapsedMs(draft, now);
+  if (draft.editing || draft.manualDuration) return active;
+  const touched = Math.min(draft.activityAt ?? 0, now);
+  const span = touched > draft.startedAt ? touched - draft.startedAt : 0;
+  return span <= MAX_SESSION_SPAN_MS ? Math.max(active, span) : active;
 }
 export function checkpointDraft(
   draft: Draft,
@@ -102,6 +118,7 @@ export function parseDraft(text: string | null): Draft | null {
         elapsedMs: clockValid ? d.clock.elapsedMs : 0,
         runningSince: null,
       },
+      activityAt: Number.isFinite(d.activityAt) ? d.activityAt : undefined,
       restUntil: Number.isFinite(d.restUntil) ? d.restUntil : null,
       pausedRest: Number.isFinite(d.pausedRest) ? d.pausedRest : null,
       manualDuration: d.editing || !!d.manualDuration,

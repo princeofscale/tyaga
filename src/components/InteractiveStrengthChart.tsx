@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { m } from "motion/react";
 import { fmt, dateLabel } from "../lib/model";
 import { TrendingUp, Award, Calendar, Layers } from "lucide-react";
 
@@ -168,11 +169,20 @@ export default function InteractiveStrengthChart({
         )}
 
         {/* Shaded Area */}
-        <polygon points={areaPoints} fill="url(#chartGradient)" />
+        <m.polygon
+          points={areaPoints}
+          fill="url(#chartGradient)"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.9, delay: 0.5 }}
+        />
 
         {/* Main Progression Line */}
-        <polyline
+        <m.polyline
           points={polylinePoints}
+          initial={{ pathLength: 0 }}
+          animate={{ pathLength: 1 }}
+          transition={{ duration: 1.1, ease: [0.22, 1, 0.36, 1] }}
           fill="none"
           stroke="url(#lineGlow)"
           strokeWidth="3.5"
@@ -192,7 +202,10 @@ export default function InteractiveStrengthChart({
               onClick={() => setHoverIndex(c.index)}
               style={{ cursor: "pointer" }}
             >
-              <circle
+              <m.circle
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.3, delay: 0.25 + (c.index / Math.max(1, coords.length)) * 0.85 }}
                 cx={c.x}
                 cy={c.y}
                 r={isSelected ? 7 : 4.5}

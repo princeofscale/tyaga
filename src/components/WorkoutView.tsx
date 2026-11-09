@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { m, useReducedMotion } from "motion/react";
+import NumberField from "./NumberField";
 import {
   Check,
   ChevronDown,
@@ -53,6 +54,7 @@ import {
 import {
   checkpointDraft,
   elapsedMs,
+  sessionMs,
   type Draft,
   type PersistenceStatus,
 } from "../lib/draft";
@@ -199,7 +201,7 @@ function getExerciseHeadBadges(exerciseId: string, exerciseName: string) {
 
 export default function WorkoutView({
   draft,
-  update,
+  update: commitDraft,
   settings,
   history,
   saving,
@@ -294,6 +296,7 @@ export default function WorkoutView({
       </div>
     );
   const w = draft.workout;
+  const update = (next: Draft) => commitDraft({ ...next, activityAt: Date.now() });
   const setWorkout = (workout: Workout) => update({ ...draft, workout });
   const patchExercise = (ei: number, patch: Partial<WorkoutExercise>) =>
     setWorkout({
@@ -359,7 +362,7 @@ export default function WorkoutView({
 
   const elapsed = draft.manualDuration
     ? w.duration
-    : Math.floor(elapsedMs(draft, now) / 60000);
+    : Math.floor(sessionMs(draft, now) / 60000);
   const summary = volumeSummary([w]);
   const warmupSummary = volumeSummary([w], "warmup");
   const warmupCount = w.exercises.reduce(
@@ -1120,83 +1123,55 @@ export default function WorkoutView({
                             —
                           </span>
                         ) : (
-                          <input
+                          <NumberField
                             aria-label={`${entryName(we)}, подход ${si + 1}, ${assistance ? "помощь" : "вес"}`}
                             title={recordingLabel(we)}
-                            type="number"
-                            min="0"
-                            max="1000"
-                            step="0.5"
-                            inputMode="decimal"
+                            blankZero
                             value={assistance ? (s.assistanceKg ?? 0) : s.weight}
                             placeholder={last ? `${last.weight}` : "0"}
                             onFocus={() => setActiveSetKey(`${ei}-${si}`)}
                             onClick={(e) => e.stopPropagation()}
-                            onChange={(e) =>
+                            onValue={(v) =>
                               changeSet(
                                 ei,
                                 si,
                                 assistance
-                                  ? {
-                                      assistanceKg: Number(e.target.value),
-                                      weight: 0,
-                                    }
-                                  : { weight: Number(e.target.value) },
+                                  ? { assistanceKg: Math.min(1000, v ?? 0), weight: 0 }
+                                  : { weight: Math.min(1000, v ?? 0) },
                               )
                             }
                           />
                         )}
-                        <input
+                        <NumberField
                           aria-label={`${entryName(we)}, подход ${si + 1}, ${timed ? "секунды" : "повторы"}${!timed && spec.repsMode === "per_side" ? " на сторону" : ""}`}
-                          type="number"
-                          min="1"
-                          max={timed ? "86400" : "200"}
-                          inputMode="numeric"
+                          decimal={false}
+                          blankZero
                           value={timed ? (s.durationSeconds ?? 30) : s.reps}
                           placeholder={last ? `${last.reps}` : timed ? "30" : "10"}
                           onFocus={() => setActiveSetKey(`${ei}-${si}`)}
                           onClick={(e) => e.stopPropagation()}
-                          onChange={(e) =>
+                          onValue={(v) => {
+                            const n = Math.min(timed ? 86400 : 200, v ?? 0);
                             changeSet(
                               ei,
                               si,
-                              timed
-                                ? {
-                                    durationSeconds: Number(e.target.value),
-                                    reps: 1,
-                                  }
-                                : { reps: Number(e.target.value) },
-                            )
-                          }
+                              timed ? { durationSeconds: n, reps: 1 } : { reps: n },
+                            );
+                          }}
                         />
-                        <input
+                        <NumberField
                           aria-label={`${entryName(we)}, подход ${si + 1}, ${timed ? "дистанция, км" : "RIR"}`}
-                          type="number"
-                          min="0"
-                          max={timed ? "1000" : "10"}
-                          step={timed ? "0.01" : "0.5"}
-                          inputMode="decimal"
-                          value={timed ? (s.distanceKm ?? "") : (s.rir ?? "")}
+                          value={timed ? s.distanceKm : s.rir}
                           placeholder="—"
                           onFocus={() => setActiveSetKey(`${ei}-${si}`)}
                           onClick={(e) => e.stopPropagation()}
-                          onChange={(e) =>
+                          onValue={(v) =>
                             changeSet(
                               ei,
                               si,
                               timed
-                                ? {
-                                    distanceKm:
-                                      e.target.value === ""
-                                        ? undefined
-                                        : Number(e.target.value),
-                                  }
-                                : {
-                                    rir:
-                                      e.target.value === ""
-                                        ? null
-                                        : Number(e.target.value),
-                                  },
+                                ? { distanceKm: v === null ? undefined : Math.min(1000, v) }
+                                : { rir: v === null ? null : Math.min(10, v) },
                             )
                           }
                         />
@@ -1317,18 +1292,16 @@ export default function WorkoutView({
           <div className="duration-controls">
             <label>
               Длительность, минуты
-              <input
+              <NumberField
                 aria-label="Длительность тренировки, минуты"
                 disabled={saving}
-                type="number"
-                min="0"
-                max="1440"
+                decimal={false}
                 value={elapsed}
-                onChange={(e) =>
+                onValue={(v) =>
                   update({
                     ...checkpointDraft(draft, Date.now(), true),
                     manualDuration: true,
-                    workout: { ...w, duration: Number(e.target.value) },
+                    workout: { ...w, duration: Math.min(1440, v ?? 0) },
                   })
                 }
               />

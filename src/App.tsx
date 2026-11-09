@@ -77,6 +77,10 @@ import Modal from "./components/Modal";
 import Select from "./components/Select";
 import WorkoutView from "./components/WorkoutView";
 import TrainingPlate from "./components/TrainingPlate";
+import HistoryList from "./components/HistoryList";
+import ProgressSummary from "./components/ProgressSummary";
+import AnimatedNumber from "./components/AnimatedNumber";
+import { WorkoutPresenter } from "./domain/WorkoutPresenter";
 import { m } from "motion/react";
 const AnatomyExplorer = lazy(() => import("./components/AnatomyExplorer"));
 const ExerciseLibrary = lazy(() => import("./components/ExerciseLibrary"));
@@ -103,6 +107,7 @@ import {
   persistDraft,
   checkpointDraft,
   elapsedMs,
+  sessionMs,
   newDraft,
   type Draft,
   type PersistenceStatus,
@@ -390,6 +395,19 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
   );
   const weekDone = currentLoads.reduce((n, m) => n + Math.min(m.total, m.goal), 0);
   const weekGoal = currentLoads.reduce((n, m) => n + m.goal, 0);
+  const weekSummary = useMemo(() => {
+    const prevStart = addCalendarDays(anchor, -7);
+    const prevEnd = addCalendarDays(anchor, -1);
+    const previous = displayed.filter((w) => w.date >= prevStart && w.date <= prevEnd);
+    const tonnes = (ws: Workout[]) => Math.round(volumeSummary(ws, "all").total / 100) / 10;
+    return {
+      metrics: [
+        { label: "Тренировок", value: weekWorkouts.length, previous: previous.length },
+        { label: "Рабочих подходов", value: workingSets(weekWorkouts), previous: workingSets(previous) },
+        { label: "Тоннаж", value: tonnes(weekWorkouts), previous: tonnes(previous), unit: " т", decimals: 1 },
+      ],
+    };
+  }, [displayed, weekWorkouts, anchor]);
   const currentLagging = [...currentLoads]
     .sort((a, b) => a.ratio - b.ratio)
     .filter((m) => m.ratio < 0.8);
@@ -543,7 +561,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
     const workout = new WorkoutSession(draft.workout).completedWithDuration(
       draft.manualDuration
         ? draft.workout.duration
-        : Math.floor(elapsedMs(draft) / 60000),
+        : Math.max(1, Math.floor(sessionMs({ ...draft, activityAt: Date.now() }) / 60000)),
     );
     // Freeze completion time before sending. A retry after a lost response reuses
     // the same payload instead of changing its duration while the request waits.
@@ -768,7 +786,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
         </span>
       </div>
       <div className="session-item-info">
-        <h3>{w.name}</h3>
+        <h3>{WorkoutPresenter.title(w)}</h3>
         <p>
           {w.exercises.length} упр. <span>·</span> {workingSets([w])} подх.{" "}
           {expanded ? (
@@ -788,7 +806,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
         </b>
         <span>
           <Clock3 size={13} />
-          {w.duration} мин
+          {w.duration > 0 ? `${w.duration} мин` : "—"}
         </span>
       </div>
       <ChevronRight size={17} className="muted" />
@@ -817,6 +835,13 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
               onClick={() => go(n.id)}
               aria-current={view === n.id ? "page" : undefined}
             >
+              {view === n.id ? (
+                <m.span
+                  layoutId="nav-pill"
+                  className="nav-pill"
+                  transition={{ type: "spring", stiffness: 480, damping: 38 }}
+                />
+              ) : null}
               <n.icon size={22} />
               <span>{n.label}</span>
             </button>
@@ -1015,11 +1040,15 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                     <span className="week-summary-head">
                       <b>Нагрузка за неделю</b>
                       <span>
-                        <strong>{fmt(weekDone)}</strong> / {weekGoal} подх.
+                        <strong><AnimatedNumber value={weekDone} decimals={weekDone % 1 ? 1 : 0} /></strong> / {weekGoal} подх.
                       </span>
                     </span>
                     <span className="meter" aria-hidden="true">
-                      <span style={{ width: `${weekGoal ? Math.min(100, (100 * weekDone) / weekGoal) : 0}%` }} />
+                      <m.span
+                        initial={{ width: 0 }}
+                        animate={{ width: `${weekGoal ? Math.min(100, (100 * weekDone) / weekGoal) : 0}%` }}
+                        transition={{ duration: 1, delay: 0.35, ease: [0.22, 1, 0.36, 1] }}
+                      />
                     </span>
                     <span className="week-summary-foot">
                       {lagging.length
@@ -1196,8 +1225,14 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                       Импорт истории
                     </button>
                   </div>
-                  <div className="panel history-panel">
-                    {historyFiltered.map((w) => sessionItem(w, true))}
+                  {historyFiltered.length ? (
+                    <HistoryList
+                      workouts={historyFiltered}
+                      today={localDate(new Date(), settings.timeZone)}
+                      onOpen={setDetail}
+                    />
+                  ) : null}
+                  <div className={displayed.length && historyFiltered.length ? "" : "panel history-panel"}>
                     {!displayed.length ? (
                       <div className="empty-state">
                         <History size={36} />
@@ -1249,7 +1284,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                       </button>
                     </div>
                   </header>
-                  <div className="tabs" role="tablist" aria-label="Раздел прогресса">
+                  <div className="tabs tabs-sliding" role="tablist" aria-label="Раздел прогресса">
                     {(
                       [
                         ["balance", "Баланс"],
@@ -1265,7 +1300,14 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                         className={progressTab === id ? "active" : ""}
                         onClick={() => setProgressTab(id)}
                       >
-                        {label}
+                        {progressTab === id ? (
+                          <m.span
+                            layoutId="progress-tab-pill"
+                            className="tab-pill"
+                            transition={{ type: "spring", stiffness: 520, damping: 40 }}
+                          />
+                        ) : null}
+                        <span className="tab-label">{label}</span>
                       </button>
                     ))}
                   </div>
@@ -1292,6 +1334,13 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                       </button>
                     </div>
                   ) : null}
+                  <m.div
+                    key={progressTab}
+                    className="progress-tab-panel"
+                    initial={{ opacity: 0, y: 14 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
+                  >
                   {progressTab === "analytics" ? (
                     <StatsAnalytics
                       workouts={workouts}
@@ -1304,6 +1353,10 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                   ) : null}
                   {progressTab === "balance" ? (
                     <>
+                      <ProgressSummary
+                        coverage={loads.reduce((n, x) => n + x.goal, 0) ? (100 * loads.reduce((n, x) => n + Math.min(x.total, x.goal), 0)) / loads.reduce((n, x) => n + x.goal, 0) : 0}
+                        metrics={weekSummary.metrics}
+                      />
                       <section className="panel zones-panel" aria-labelledby="zones-title">
                         <div className="panel-header">
                           <div>
@@ -1338,26 +1391,28 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                           ) : null}
                         </div>
                         <div className="zone-list">
-                          {loads.map((m) => (
+                          {loads.map((z, zi) => (
                             <button
-                              key={m.id}
-                              className={`muscle-row ${selectedMuscle === m.id ? "selected" : ""}`}
-                              aria-expanded={selectedMuscle === m.id}
+                              key={z.id}
+                              className={`muscle-row ${selectedMuscle === z.id ? "selected" : ""}`}
+                              aria-expanded={selectedMuscle === z.id}
                               onClick={() =>
-                                setSelectedMuscle(selectedMuscle === m.id ? null : m.id)
+                                setSelectedMuscle(selectedMuscle === z.id ? null : z.id)
                               }
                             >
-                              <span className="zone-name">{m.short}</span>
+                              <span className="zone-name">{z.short}</span>
                               <span className="zone-track" aria-hidden="true">
-                                <span
-                                  className={m.ratio >= 1.25 ? "over" : m.ratio >= 1 ? "hit" : ""}
-                                  style={{ width: `${Math.min(100, (m.ratio / 1.5) * 100)}%` }}
+                                <m.span
+                                  className={z.ratio >= 1.25 ? "over" : z.ratio >= 1 ? "hit" : ""}
+                                  initial={{ width: 0 }}
+                                  animate={{ width: `${Math.min(100, (z.ratio / 1.5) * 100)}%` }}
+                                  transition={{ duration: 0.8, delay: 0.1 + zi * 0.045, ease: [0.22, 1, 0.36, 1] }}
                                 />
                                 <i />
                               </span>
-                              <b className={m.ratio >= 1.25 ? "over" : m.ratio >= 1 ? "hit" : ""}>
-                                {fmt(m.total)}
-                                <small> / {m.goal}</small>
+                              <b className={z.ratio >= 1.25 ? "over" : z.ratio >= 1 ? "hit" : ""}>
+                                {fmt(z.total)}
+                                <small> / {z.goal}</small>
                               </b>
                             </button>
                           ))}
@@ -1570,6 +1625,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                         {progressPoints.length ? (
                           <>
                             <InteractiveStrengthChart
+                              key={progressExercise}
                               points={progressPoints}
                               unit={progressSpec.type === "duration" ? "с" : "кг"}
                               isDuration={progressSpec.type === "duration"}
@@ -1609,6 +1665,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                       </section>
                     </>
                   ) : null}
+                  </m.div>
                 </>
               ) : null}
               {view === "library" ? (
@@ -1658,7 +1715,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
         <button className="resume-pill" onClick={() => go("workout")}>
           <span className="resume-dot" aria-hidden="true" />
           Вернуться к тренировке
-          <b>{draft.manualDuration ? draft.workout.duration : Math.floor(elapsedMs(draft) / 60000)} мин</b>
+          <b>{draft.manualDuration ? draft.workout.duration : Math.floor(sessionMs(draft) / 60000)} мин</b>
         </button>
       ) : null}
       {toast ? (
@@ -1917,7 +1974,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
         </Modal>
       ) : null}
       {detail ? (
-        <Modal title={detail.name} onClose={() => setDetail(null)} wide>
+        <Modal title={WorkoutPresenter.title(detail)} onClose={() => setDetail(null)} wide>
           <p className="history-value-note">
             Внешний объём включает только свободные веса с известным правилом
             записи. Тренажёры, масса тела и неопределённые старые записи
@@ -1930,7 +1987,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
             </span>
             <span>
               <Clock3 size={16} />
-              {detail.duration} мин
+              {detail.duration > 0 ? `${detail.duration} мин` : "—"}
             </span>
             <span>
               <Dumbbell size={16} />

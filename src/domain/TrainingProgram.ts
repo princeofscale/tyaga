@@ -36,6 +36,28 @@ export const DELOAD_CYCLE: RoutineCycle = {
 };
 export class TrainingProgram {
   constructor(public readonly routine: Routine) {}
+  /** Дни недели по возрастанию (Пн…Вс), без повторов. */
+  static sortedDays(days: readonly number[]) {
+    return [...new Set(days)].filter((d) => d >= 0 && d <= 6).sort((a, b) => a - b);
+  }
+  /**
+   * Порядок в списке программ: по первому дню недели Пн→Вс, затем по второму и
+   * т. д.; программы «в любой день» — в конце, по названию.
+   */
+  static order<T extends Pick<Routine, "days" | "name">>(routines: readonly T[]): T[] {
+    const key = (r: T) => {
+      const d = TrainingProgram.sortedDays(r.days);
+      return d.length ? d : [99];
+    };
+    return [...routines].sort((a, b) => {
+      const x = key(a), y = key(b);
+      for (let i = 0; i < Math.max(x.length, y.length); i++) {
+        const d = (x[i] ?? -1) - (y[i] ?? -1);
+        if (d) return d;
+      }
+      return a.name.localeCompare(b.name, "ru");
+    });
+  }
   get workingSets() {
     return this.routine.exercises.reduce(
       (n, e) => n + e.sets.filter((s) => !s.warmup).length,

@@ -41,3 +41,12 @@ test("VolumeLandmarksCalculator classifies volume stages correctly", () => {
   const over = VolumeLandmarksCalculator.assessMuscleVolume("chest", 26);
   assert.equal(over.status, "overreaching");
 });
+
+test("volume bar is a linear scale: 3 sets of core sit left of MEV, not near MAV", () => {
+  const a = VolumeLandmarksCalculator.assessMuscleVolume("core", 3);
+  assert.ok(a.track.fill < a.track.mev, "3 подхода левее MEV");
+  assert.ok(a.track.fill < a.track.mavMin / 2);
+  assert.ok(a.track.mv <= a.track.mev && a.track.mev < a.track.mavMin && a.track.mavMax <= a.track.mrv);
+  const over = VolumeLandmarksCalculator.assessMuscleVolume("core", 30);
+  assert.equal(over.track.fill, 100);
+});

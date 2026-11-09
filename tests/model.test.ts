@@ -33,6 +33,7 @@ import {
   persistDraft,
   elapsedMs,
   checkpointDraft,
+  sessionMs,
 } from "../src/lib/draft";
 const set = (patch: Partial<SetEntry> = {}): SetEntry => ({
   id: crypto.randomUUID(),
@@ -482,4 +483,19 @@ test("quota and disabled-storage failures are reported rather than marked saved"
   };
   assert.equal(persistDraft(ok, newDraft(sample())), "saved");
   assert.ok(parseDraft(stored));
+});
+
+test("session duration counts real time even when the screen was locked between sets", () => {
+  const d = newDraft(sample(), false, 0);
+  // Экран гасили: активный счётчик почти пустой, но последний подход отмечен через 52 минуты.
+  d.clock = { elapsedMs: 20000, runningSince: null };
+  d.activityAt = 52 * 60000;
+  assert.equal(Math.floor(sessionMs(d, 60 * 60000) / 60000), 52);
+  // Забытый черновик (больше 4 часов) не раздувает длительность.
+  d.activityAt = 9 * 3600000;
+  assert.equal(sessionMs(d, 10 * 3600000), 20000);
+  // Ручная длительность и правка старой тренировки не затрагиваются.
+  const edited = newDraft(sample(), true, 0);
+  edited.activityAt = 30 * 60000;
+  assert.equal(sessionMs(edited, 40 * 60000), 0);
 });

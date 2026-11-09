@@ -195,3 +195,12 @@ test("шаблон разгрузки не ломает программу бе�
   const custom = makeExerciseEntry("bench");
   assert.equal(custom.repMin, undefined);
 });
+
+test("routines are ordered Mon→Sun, any-day programs go last", () => {
+  const r = (name: string, days: number[]) => ({ name, days });
+  const ordered = TrainingProgram.order([
+    r("Сб", [5]), r("Любой", []), r("Пт", [4]), r("Вт", [1]), r("Пн-Чт", [3, 0]), r("Пн", [0]),
+  ]);
+  assert.deepEqual(ordered.map((x) => x.name), ["Пн", "Пн-Чт", "Вт", "Пт", "Сб", "Любой"]);
+  assert.deepEqual(TrainingProgram.sortedDays([5, 1, 5, 0]), [0, 1, 5]);
+});

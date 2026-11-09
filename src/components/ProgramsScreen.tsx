@@ -1,5 +1,6 @@
 import { quantity } from "../lib/quantity";
 import { lazy, Suspense, useState, useEffect, useMemo } from "react";
+import { m } from "motion/react";
 import {
   CalendarDays,
   Check,
@@ -12,6 +13,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { TrainingProgram, DAY_NAMES } from "../domain/TrainingProgram";
+import { WorkoutPresenter } from "../domain/WorkoutPresenter";
 import {
   addCalendarDays,
   weekStart,
@@ -42,6 +44,28 @@ type Props = {
   initial?: Routine | null;
   onInitialUsed?: () => void;
 };
+/** Полоска Пн–Вс: активные дни программы залиты, порядок всегда по неделе. */
+function DayStrip({ days }: { days: number[] }) {
+  const active = new Set(TrainingProgram.sortedDays(days));
+  return (
+    <span
+      className="day-strip"
+      role="img"
+      aria-label={active.size ? [...active].map((d) => DAY_NAMES[d]).join(", ") : "В любой день"}
+    >
+      {active.size ? (
+        DAY_NAMES.map((name, d) => (
+          <i key={name} className={active.has(d) ? "on" : ""} aria-hidden="true">
+            {name.slice(0, 2)}
+          </i>
+        ))
+      ) : (
+        <b>В любой день</b>
+      )}
+    </span>
+  );
+}
+
 export default function ProgramsScreen(props: Props) {
   const [editor, setEditor] = useState<Routine | null>(props.initial ?? null);
   const [offset, setOffset] = useState(0),
@@ -73,6 +97,7 @@ export default function ProgramsScreen(props: Props) {
       ),
     [props.routines, props.workouts, today],
   );
+  const orderedRoutines = useMemo(() => TrainingProgram.order(props.routines), [props.routines]);
   const open = (routine: Routine) => {
     setEditor(structuredClone(routine));
     setError("");
@@ -249,7 +274,7 @@ export default function ProgramsScreen(props: Props) {
                   .map((w) => (
                     <div className="day-recorded" key={w.id}>
                       <Check size={12} />
-                      {w.name}
+                      {WorkoutPresenter.title(w)}
                     </div>
                   ))}
               </div>
@@ -280,14 +305,16 @@ export default function ProgramsScreen(props: Props) {
         </p>
       ) : null}
       <div className="routine-grid">
-        {props.routines.map((r) => (
-          <article className="routine-card panel" key={r.id}>
+        {orderedRoutines.map((r, index) => (
+          <m.article
+            className="routine-card panel"
+            key={r.id}
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.45, delay: Math.min(index, 7) * 0.06, ease: [0.22, 1, 0.36, 1] }}
+          >
             <div className="routine-card-top">
-              <span className="feature-tag">
-                {r.days.length
-                  ? r.days.map((d) => DAY_NAMES[d]).join(" · ")
-                  : "В ЛЮБОЙ ДЕНЬ"}
-              </span>
+              <DayStrip days={r.days} />
               <button
                 className="icon-button"
                 aria-label={`Редактировать программу ${r.name}`}
@@ -382,7 +409,7 @@ export default function ProgramsScreen(props: Props) {
                 <Trash2 size={16} />
               </button>
             </div>
-          </article>
+          </m.article>
         ))}
       </div>
       {!props.routines.length ? (

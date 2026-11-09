@@ -1,58 +1,118 @@
 import { useId } from "react";
+import { m } from "motion/react";
 
-/** Decorative original vector artwork: a steel bar and stacked rubber plates. */
+/**
+ * Оригинальная векторная иллюстрация: олимпийский гриф сбоку с набором блинов
+ * 20 · 20 · 10 · 5 · 2,5 кг и замком. Блины «надеваются» один за другим.
+ */
+const PLATES = [
+  { x: 352, w: 48, h: 372, label: "20", size: 27 },
+  { x: 404, w: 48, h: 372, label: "20", size: 27 },
+  { x: 456, w: 34, h: 284, label: "10", size: 20 },
+  { x: 494, w: 26, h: 212, label: "5", size: 16 },
+  { x: 524, w: 20, h: 158, label: "2.5", size: 12 },
+] as const;
+
+const EASE = [0.22, 1, 0.36, 1] as const;
+const CY = 260;
+
 export default function TrainingPlate() {
   const id = useId().replace(/:/g, "");
+  const ref = (name: string) => `url(#${id}-${name})`;
   return (
     <svg className="training-plate" viewBox="0 0 600 520" fill="none" aria-hidden="true" focusable="false">
       <defs>
-        <linearGradient id={`${id}-rim`} x1="140" y1="100" x2="470" y2="420" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#83907a" />
-          <stop offset=".17" stopColor="#363f32" />
-          <stop offset=".5" stopColor="#111810" />
-          <stop offset=".84" stopColor="#48553e" />
-          <stop offset="1" stopColor="#20271e" />
+        <linearGradient id={`${id}-steel`} x1="0" y1="0" x2="0" y2="1">
+          <stop stopColor="#323a32" />
+          <stop offset=".26" stopColor="#c9d0c1" />
+          <stop offset=".46" stopColor="#f3f6ec" />
+          <stop offset=".7" stopColor="#7d867a" />
+          <stop offset="1" stopColor="#262c26" />
         </linearGradient>
-        <radialGradient id={`${id}-face`} cx="0" cy="0" r="1" gradientTransform="translate(248 159) rotate(54) scale(346 315)" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#434f37" />
-          <stop offset=".48" stopColor="#252e21" />
-          <stop offset="1" stopColor="#10160f" />
+        <linearGradient id={`${id}-rubber`} x1="0" y1="0" x2="0" y2="1">
+          <stop stopColor="#141a12" />
+          <stop offset=".2" stopColor="#465638" />
+          <stop offset=".5" stopColor="#62754f" />
+          <stop offset=".8" stopColor="#374630" />
+          <stop offset="1" stopColor="#0f140e" />
+        </linearGradient>
+        <linearGradient id={`${id}-edge`} x1="0" y1="0" x2="1" y2="0">
+          <stop stopColor="#a9b995" stopOpacity=".55" />
+          <stop offset=".18" stopColor="#a9b995" stopOpacity="0" />
+          <stop offset=".85" stopColor="#000" stopOpacity="0" />
+          <stop offset="1" stopColor="#000" stopOpacity=".4" />
+        </linearGradient>
+        <radialGradient id={`${id}-floor`} cx=".5" cy=".5" r=".5">
+          <stop stopColor="#000" stopOpacity=".6" />
+          <stop offset="1" stopColor="#000" stopOpacity="0" />
         </radialGradient>
-        <linearGradient id={`${id}-steel`} x1="380" y1="227" x2="387" y2="269" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#343c35" />
-          <stop offset=".28" stopColor="#c0c8b9" />
-          <stop offset=".48" stopColor="#eef1e7" />
-          <stop offset=".62" stopColor="#777f72" />
-          <stop offset="1" stopColor="#29302a" />
-        </linearGradient>
       </defs>
-      <g opacity=".2" stroke="currentColor">
-        <circle cx="307" cy="266" r="230" strokeDasharray="2 13" />
-        <path d="M40 266h520M307 24v484" strokeOpacity=".4" />
-        <path d="M76 76h24v24M516 76h-24v24M76 456h24v-24M516 456h-24v-24" />
+
+      {/* Рамка прицела и тень на полу: статичны, задают сцену */}
+      <g opacity=".22" stroke="currentColor">
+        <path d="M76 70h24v24M524 70h-24v24M76 462h24v-24M524 462h-24v-24" />
       </g>
-      <g transform="rotate(-22 300 270)">
-        <ellipse cx="310" cy="443" rx="205" ry="18" fill="#050905" opacity=".55" />
-        <rect x="84" y="238" width="460" height="43" rx="7" fill={`url(#${id}-steel)`} />
-        <ellipse cx="331" cy="262" rx="152" ry="177" fill="#0c120c" stroke="#3e4937" strokeWidth="3" />
-        <ellipse cx="311" cy="257" rx="156" ry="183" fill={`url(#${id}-rim)`} stroke="#6a775e" strokeWidth="1.5" />
-        <ellipse cx="291" cy="251" rx="158" ry="185" fill={`url(#${id}-rim)`} stroke="#75846a" strokeWidth="1.5" />
-        <ellipse cx="279" cy="249" rx="152" ry="181" fill={`url(#${id}-face)`} stroke="#4b5940" strokeWidth="2" />
-        <ellipse cx="279" cy="249" rx="139" ry="167" stroke="#6d7c5b" strokeOpacity=".5" />
-        <ellipse cx="279" cy="249" rx="130" ry="156" stroke="#141c12" strokeWidth="4" />
-        <path d="M176 139c22-25 52-43 83-50M359 376c-25 26-52 41-82 45" stroke="#a6b68e" strokeOpacity=".3" strokeWidth="2" strokeLinecap="round" />
-        <path d="M189 202c-14 14-20 33-20 52s6 38 20 52l19-14c-8-11-12-24-12-38s4-27 12-38zM299 112c-25-4-48 0-70 12l8 25c18-9 33-12 52-9zM300 386c-25 4-48 0-70-12l8-25c18 9 33 12 52 9z" fill="#0b110a" stroke="#46533b" strokeWidth="2" />
-        <ellipse cx="279" cy="249" rx="52" ry="62" fill="#20271e" stroke="#4c5a41" strokeWidth="2" />
-        <ellipse cx="279" cy="249" rx="31" ry="37" fill={`url(#${id}-rim)`} stroke="#87947b" strokeWidth="5" />
-        <ellipse cx="279" cy="249" rx="20" ry="25" fill="#080d08" stroke="#1b2418" strokeWidth="3" />
-        <path d="M279 228h233a6 6 0 0 1 6 6v27a6 6 0 0 1-6 6H279z" fill={`url(#${id}-steel)`} />
-        <g stroke="#1c241c" strokeOpacity=".45">
-          {[438, 444, 450, 456, 462, 468, 474, 480, 486, 492, 498].map((x) => <path key={x} d={`M${x} 231v32`} />)}
-        </g>
-        <rect x="403" y="224" width="23" height="49" rx="3" fill={`url(#${id}-rim)`} stroke="#8b987e" />
-        <text x="339" y="214" textAnchor="middle" transform="rotate(9 339 214)" fill="currentColor" fontFamily="var(--font-display)" fontSize="53" fontWeight="600" letterSpacing="-2">20</text>
-        <text x="345" y="233" textAnchor="middle" transform="rotate(9 345 233)" fill="#a6b494" fontFamily="var(--font-body)" fontSize="12" fontWeight="700">КГ</text>
-        <text x="275" y="337" textAnchor="middle" fill="#849474" fontFamily="var(--font-display)" fontSize="20" fontWeight="500" letterSpacing="3">ТЯГА</text>
+      <ellipse cx="318" cy="486" rx="250" ry="20" fill={ref("floor")} />
+
+      <g transform={`translate(-38 8) rotate(-13 300 ${CY})`}>
+        {/* Гриф: накатка и гладкая часть */}
+        <m.g
+          initial={{ opacity: 0, x: -50 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.8, ease: EASE }}
+        >
+          <rect x="66" y={CY - 9} width="280" height="18" rx="3" fill={ref("steel")} />
+          <g stroke="#161c16" strokeOpacity=".42" strokeWidth="1">
+            {Array.from({ length: 27 }, (_, i) => 118 + i * 5).map((x) => (
+              <path key={x} d={`M${x} ${CY - 8}l3 16`} />
+            ))}
+          </g>
+          <path d={`M104 ${CY - 9}v18M262 ${CY - 9}v18`} stroke="#10150f" strokeOpacity=".6" strokeWidth="2" />
+          <text x="146" y={CY - 14} fill="#8d9c7b" fontFamily="var(--font-display)" fontSize="9" fontWeight="600" letterSpacing="3">
+            ТЯГА · 20 КГ
+          </text>
+        </m.g>
+
+        {/* Втулка под блины */}
+        <rect x="340" y={CY - 15} width="256" height="30" rx="4" fill={ref("steel")} />
+        <rect x="592" y={CY - 12} width="9" height="24" rx="3" fill="#59635a" />
+
+        {/* Блины */}
+        {PLATES.map((p, i) => (
+          <m.g
+            key={i}
+            initial={{ opacity: 0, x: 64 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.65, delay: 0.35 + i * 0.1, ease: EASE }}
+          >
+            <rect x={p.x} y={CY - p.h / 2} width={p.w} height={p.h} rx={Math.min(11, p.w / 2)} fill={ref("rubber")} stroke="#6d7c5b" strokeOpacity=".55" />
+            <rect x={p.x} y={CY - p.h / 2} width={p.w} height={p.h} rx={Math.min(11, p.w / 2)} fill={ref("edge")} />
+            <rect x={p.x + 4} y={CY - p.h / 2 + 7} width={p.w - 8} height={p.h - 14} rx={Math.min(8, p.w / 2 - 3)} stroke="#0b100a" strokeOpacity=".55" strokeWidth="1.5" />
+            <rect x={p.x} y={CY - 23} width={p.w} height="46" fill="#222a21" stroke="#7d8a70" strokeOpacity=".6" />
+            <rect x={p.x} y={CY - 23} width={p.w} height="46" fill={ref("steel")} opacity=".22" />
+            <text
+              transform={`translate(${p.x + p.w / 2 + p.size * 0.35} ${CY - p.h / 2 + 46}) rotate(90)`}
+              fill="currentColor"
+              fontFamily="var(--font-display)"
+              fontSize={p.size}
+              fontWeight="600"
+              letterSpacing=".5"
+            >
+              {p.label}
+            </text>
+          </m.g>
+        ))}
+
+        {/* Замок */}
+        <m.g
+          initial={{ opacity: 0, x: 26 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.5, delay: 0.35 + PLATES.length * 0.1, ease: EASE }}
+        >
+          <rect x="548" y={CY - 31} width="26" height="62" rx="5" fill={ref("steel")} stroke="#8b987e" strokeOpacity=".7" />
+          <rect x="554" y={CY - 5} width="14" height="10" rx="2" fill="#10150f" />
+          <path d={`M548 ${CY - 18}h26M548 ${CY + 18}h26`} stroke="#10150f" strokeOpacity=".35" />
+        </m.g>
       </g>
     </svg>
   );

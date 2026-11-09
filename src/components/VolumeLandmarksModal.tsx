@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { m } from "motion/react";
 import {
   Activity,
   Zap,
@@ -65,11 +66,18 @@ export function VolumeLandmarksModal({
 
       {/* Muscle List */}
       <div className="rp-muscle-list">
-        {assessments.map((item) => {
+        {assessments.map((item, index) => {
           const b = item.bracket;
+          const t = item.track;
 
           return (
-            <div key={item.muscle} className="rp-muscle-item">
+            <m.div
+              key={item.muscle}
+              className="rp-muscle-item"
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: Math.min(index, 8) * 0.04, ease: [0.22, 1, 0.36, 1] }}
+            >
               <div className="rp-item-header">
                 <div className="rp-item-title-group">
                   <h4 className="rp-muscle-title">{item.muscleName}</h4>
@@ -91,31 +99,46 @@ export function VolumeLandmarksModal({
                 </div>
               </div>
 
-              {/* Progress Bar with Landmarks */}
-              <div className="rp-bar-track">
-                <div
+              {/* Линейная шкала: заливка = реальные подходы, метки на своих местах */}
+              <div
+                className="rp-bar-track"
+                role="img"
+                aria-label={`${item.actualSets} из ${item.track.max} подходов на шкале. MV ${b.mv}, MEV ${b.mev}, MAV ${b.mavMin}–${b.mavMax}, MRV ${b.mrv}`}
+              >
+                <span className="rp-zone rp-zone-mav" style={{ left: `${t.mavMin}%`, width: `${t.mavMax - t.mavMin}%` }} />
+                <span className="rp-zone rp-zone-danger" style={{ left: `${t.mrv}%`, width: `${100 - t.mrv}%` }} />
+                <m.span
                   className="rp-bar-fill"
-                  style={{
-                    width: `${Math.min(100, item.progressPercent)}%`,
-                    backgroundColor: item.statusColor,
-                  }}
+                  style={{ backgroundColor: item.statusColor }}
+                  initial={{ width: 0 }}
+                  animate={{ width: `${t.fill}%` }}
+                  transition={{ duration: 0.9, delay: 0.08 + index * 0.04, ease: [0.22, 1, 0.36, 1] }}
+                />
+                {[t.mv, t.mev, t.mavMin, t.mrv].map((x, i) => (
+                  <span key={i} className="rp-tick" style={{ left: `${x}%` }} />
+                ))}
+                <m.span
+                  className="rp-pin"
+                  style={{ color: item.statusColor }}
+                  initial={{ left: 0, opacity: 0 }}
+                  animate={{ left: `${t.fill}%`, opacity: 1 }}
+                  transition={{ duration: 0.9, delay: 0.08 + index * 0.04, ease: [0.22, 1, 0.36, 1] }}
                 />
               </div>
 
-              {/* Bracket milestones */}
               <div className="rp-milestones-row">
-                <span title="Maintenance Volume (сохранение)">MV: {b.mv}</span>
-                <span title="Minimum Effective Volume (старт роста)">MEV: {b.mev}</span>
+                <span title="Maintenance Volume (сохранение)">MV {b.mv}</span>
+                <span title="Minimum Effective Volume (старт роста)">MEV {b.mev}</span>
                 <span className="text-accent" title="Maximum Adaptive Volume (золотая зона)">
-                  MAV: {b.mavMin}–{b.mavMax}
+                  MAV {b.mavMin}–{b.mavMax}
                 </span>
                 <span className="text-danger" title="Maximum Recoverable Volume (предел)">
-                  MRV: {b.mrv}
+                  MRV {b.mrv}
                 </span>
               </div>
 
               <p className="rp-recommendation-text">{item.recommendation}</p>
-            </div>
+            </m.div>
           );
         })}
       </div>

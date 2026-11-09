@@ -381,3 +381,139 @@ button, input { font-variant-numeric: tabular-nums; }
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
   .modal[open] { animation: none; }
 }
+
+/* Полоска дней программы */
+.day-strip { display: inline-flex; align-items: center; gap: 4px; }
+.day-strip i {
+  display: grid; place-items: center; width: 27px; height: 27px; border-radius: 8px;
+  font-style: normal; font-size: .66rem; font-weight: 700; color: var(--muted);
+  border: 1px solid var(--line); background: transparent;
+}
+.day-strip i.on { color: #111512; background: var(--accent); border-color: var(--accent); }
+.day-strip b { font-size: .75rem; font-weight: 650; color: var(--muted); }
+@media (max-width: 420px) { .day-strip i { width: 24px; height: 24px; } }
+
+/* История: месяцы и карточки */
+.history-list { display: grid; gap: 30px; margin-bottom: 26px; }
+.history-month-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 2px 12px; }
+.history-month-head h2 { font-family: var(--font-display); font-size: 1.35rem; font-weight: 500; letter-spacing: .01em; margin: 0; }
+.history-month-head span { color: var(--muted); font-size: .78rem; }
+.history-cards { display: grid; gap: 10px; }
+.history-list .history-card {
+  position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 16px;
+  width: 100%; padding: 14px 16px 14px 14px; border: 1px solid var(--line); border-radius: 16px; overflow: hidden;
+  background: linear-gradient(100deg, var(--surface) 0%, color-mix(in srgb, var(--surface) 82%, var(--bg)) 100%);
+  text-align: left; transition: border-color .2s, transform .2s var(--ease-out), background .2s;
+}
+.history-list .history-card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--line-strong); transition: background .2s; }
+.history-list .history-card.is-today::before, .history-list .history-card:hover::before { background: var(--accent); }
+.history-list .history-card:hover { border-color: var(--accent-line); background: var(--surface-2); transform: translateX(3px); }
+.history-list .history-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.history-date { display: grid; place-items: center; width: 54px; height: 62px; border-radius: 12px; background: var(--bg); border: 1px solid var(--line); }
+.history-date b { font-family: var(--font-display); font-size: 1.6rem; font-weight: 500; line-height: 1; }
+.history-date small { margin-top: 3px; font-size: .68rem; color: var(--muted); }
+.is-today .history-date { border-color: var(--accent-line); }
+.is-today .history-date b { color: var(--accent); }
+.history-body { display: grid; gap: 6px; min-width: 0; }
+.history-body strong { font-size: 1rem; font-weight: 700; letter-spacing: -.02em; overflow-wrap: anywhere; }
+.history-meta { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: .76rem; }
+.history-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.history-chips i { font-style: normal; font-size: .68rem; font-weight: 650; padding: 3px 9px; border-radius: 999px; color: var(--text-soft); background: color-mix(in srgb, var(--accent) 8%, transparent); border: 1px solid var(--accent-line); }
+.history-stats { display: grid; justify-items: end; gap: 5px; }
+.history-stats b { font-family: var(--font-display); font-size: 1.5rem; font-weight: 500; line-height: 1; }
+.history-stats b small { font-family: var(--font-body); font-size: .7rem; color: var(--muted); font-weight: 600; }
+.history-stats span { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: .74rem; }
+.history-chevron { color: var(--faint); transition: transform .2s var(--ease-out), color .2s; }
+.history-card:hover .history-chevron { color: var(--accent); transform: translateX(3px); }
+@media (max-width: 560px) {
+  .history-list .history-card { grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; padding: 12px; }
+  .history-chevron { display: none; }
+  .history-date { width: 46px; height: 54px; }
+  .history-stats b { font-size: 1.25rem; }
+}
+
+/* Прогресс: скользящая вкладка и сводка недели */
+.tabs-sliding button { position: relative; isolation: isolate; }
+.tabs-sliding button.active { background: transparent; }
+.tabs-sliding .tab-pill { position: absolute; inset: 0; z-index: -1; border-radius: 10px; background: var(--accent); }
+.progress-summary {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 26px;
+  padding: 22px 26px; margin-bottom: 16px; border: 1px solid var(--line); border-radius: 20px;
+  background:
+    radial-gradient(ellipse at 0% 0%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 55%),
+    var(--surface);
+}
+.coverage-ring { position: relative; width: 132px; height: 132px; display: grid; place-items: center; }
+.coverage-ring svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+.coverage-ring circle { fill: none; stroke-width: 7; }
+.coverage-ring .ring-bg { stroke: var(--line); }
+.coverage-ring .ring-fg { stroke: var(--accent); stroke-linecap: round; filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 45%, transparent)); }
+.coverage-ring > div { display: grid; justify-items: center; line-height: 1; }
+.coverage-ring b { font-family: var(--font-display); font-size: 2.35rem; font-weight: 500; }
+.coverage-ring b small { font-size: 1rem; color: var(--muted); margin-left: 2px; }
+.coverage-ring span { margin-top: 6px; font-size: .7rem; color: var(--muted); }
+.summary-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.summary-metric { display: grid; gap: 7px; padding: 14px 16px; border-radius: 14px; background: color-mix(in srgb, var(--bg) 55%, transparent); border: 1px solid var(--line-soft); min-width: 0; }
+.summary-metric > span { font-size: .74rem; color: var(--muted); }
+.summary-metric b { font-family: var(--font-display); font-size: 2rem; font-weight: 500; line-height: 1; letter-spacing: -.01em; }
+.summary-metric b small { font-family: var(--font-body); font-size: .72rem; font-weight: 600; color: var(--muted); }
+.delta { display: inline-flex; align-items: center; gap: 4px; font-size: .68rem; color: var(--muted); }
+.delta.up { color: var(--accent); }
+.delta.down { color: var(--over); }
+@media (max-width: 720px) {
+  .progress-summary { grid-template-columns: 1fr; justify-items: center; padding: 18px 16px; gap: 18px; }
+  .summary-metrics { width: 100%; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .summary-metric { padding: 11px 10px; }
+  .summary-metric b { font-size: 1.5rem; }
+  .delta { font-size: .62rem; }
+}
+@media (max-width: 340px) { .summary-metrics { grid-template-columns: 1fr; } }
+
+/* Движение. Всё отключается при prefers-reduced-motion (см. блок ниже). */
+.nav-item { position: relative; isolation: isolate; }
+.sidebar .nav-item.active, .sidebar .nav-item.active:hover { background: transparent; border-color: transparent; }
+.nav-pill { position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--accent-soft); border: 1px solid var(--accent-line); }
+@media (max-width: 760px) { .nav-pill { border-color: transparent; } }
+
+@keyframes rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+@keyframes mask-up { from { clip-path: inset(0 0 100% 0); transform: translateY(40%); } to { clip-path: inset(0 0 -20% 0); transform: none; } }
+@keyframes pop-in { from { opacity: 0; transform: translateY(10px) scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes modal-in { from { opacity: 0; transform: translateY(24px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* Главный момент: герой собирается сверху вниз, штанга «надевает» блины */
+.training-hero .plan-main > * { animation: rise .7s var(--ease-out) both; }
+.training-hero .plan-main > :nth-child(2) { animation-name: mask-up; animation-duration: .8s; animation-delay: .08s; }
+.training-hero .plan-main > :nth-child(3) { animation-delay: .16s; }
+.training-hero .plan-main > :nth-child(4) { animation-delay: .22s; }
+.training-hero .plan-main > :nth-child(5) { animation-delay: .3s; }
+.training-hero .plan-main > :nth-child(6) { animation-delay: .38s; }
+.training-hero .plan-main > :nth-child(n+7) { animation-delay: .44s; }
+.training-hero .plan-exercises li { animation: rise .5s var(--ease-out) both; }
+.training-hero .plan-exercises li:nth-child(1) { animation-delay: .28s; }
+.training-hero .plan-exercises li:nth-child(2) { animation-delay: .34s; }
+.training-hero .plan-exercises li:nth-child(3) { animation-delay: .4s; }
+.training-hero .plan-exercises li:nth-child(4) { animation-delay: .46s; }
+
+.quick-tool-card { animation: pop-in .5s var(--ease-out) both; }
+.quick-tool-card:nth-child(1) { animation-delay: .1s; }
+.quick-tool-card:nth-child(2) { animation-delay: .16s; }
+.quick-tool-card:nth-child(3) { animation-delay: .22s; }
+.quick-tool-card:nth-child(4) { animation-delay: .28s; }
+.quick-tool-card:nth-child(5) { animation-delay: .34s; }
+.quick-tool-card:nth-child(6) { animation-delay: .4s; }
+
+dialog.modal[open] { animation: modal-in .38s var(--ease-out); }
+dialog.modal[open]::backdrop { animation: fade-in .3s ease-out; }
+
+/* Нажатие: кнопки «продавливаются» */
+.button, .icon-button, .nav-item, .quick-tool-card, .week-summary { transition: transform .16s var(--ease-out), background-color .18s, border-color .18s, color .18s; }
+.button:active, .icon-button:active, .nav-item:active, .quick-tool-card:active, .week-summary:active { transform: scale(.96); }
+.button.primary:hover { box-shadow: 0 8px 26px -10px color-mix(in srgb, var(--accent) 70%, transparent); }
+
+@media (prefers-reduced-motion: reduce) {
+  .training-hero .plan-main > *, .training-hero .plan-exercises li, .quick-tool-card, dialog.modal[open], dialog.modal[open]::backdrop { animation: none !important; }
+  .button:active, .icon-button:active, .nav-item:active, .quick-tool-card:active, .week-summary:active { transform: none; }
+}
+.tabs.tabs-sliding { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 420px) { .tabs.tabs-sliding button { font-size: .66rem; padding-inline: 2px; } }

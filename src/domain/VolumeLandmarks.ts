@@ -42,6 +42,18 @@ export interface MuscleVolumeAssessment {
   statusColor: string;
   recommendation: string;
   progressPercent: number; // 0 to 100+ % relative to MAV
+  /** Линейная шкала 0…max подходов: позиции ориентиров и заливки в процентах ширины. */
+  track: VolumeTrack;
+}
+
+export interface VolumeTrack {
+  max: number;
+  fill: number;
+  mv: number;
+  mev: number;
+  mavMin: number;
+  mavMax: number;
+  mrv: number;
 }
 
 export const RP_VOLUME_LANDMARKS: Record<Muscle, VolumeLandmarkBracket> = {
@@ -148,6 +160,25 @@ export const RP_VOLUME_LANDMARKS: Record<Muscle, VolumeLandmarkBracket> = {
 };
 
 export class VolumeLandmarksCalculator {
+  /**
+   * Честная шкала: ширина заливки пропорциональна числу подходов, а метки
+   * MV/MEV/MAV/MRV стоят там, где они лежат на самом деле. Раньше заливка шла
+   * по ступенчатой шкале статуса и 3 подхода выглядели как «почти MAV».
+   */
+  public static buildTrack(bracket: VolumeLandmarkBracket, actualSets: number): VolumeTrack {
+    const max = Math.max(bracket.mrv + 2, actualSets);
+    const pct = (n: number) => Math.round((Math.min(n, max) / max) * 1000) / 10;
+    return {
+      max,
+      fill: pct(actualSets),
+      mv: pct(bracket.mv),
+      mev: pct(bracket.mev),
+      mavMin: pct(bracket.mavMin),
+      mavMax: pct(bracket.mavMax),
+      mrv: pct(bracket.mrv),
+    };
+  }
+
   public static getBracket(muscle: Muscle): VolumeLandmarkBracket {
     return RP_VOLUME_LANDMARKS[muscle] || RP_VOLUME_LANDMARKS.chest;
   }
@@ -165,6 +196,7 @@ export class VolumeLandmarksCalculator {
         statusLabel: "Ниже объёма сохранения (MV)",
         statusColor: "#7e8b91",
         recommendation: `Объёма недостаточно даже для сохранения мышечной массы. Добавь хотя бы ${bracket.mv - actualSets} подх.`,
+        track: this.buildTrack(bracket, actualSets),
         progressPercent: Math.round((actualSets / bracket.mavMin) * 50),
       };
     } else if (actualSets < bracket.mev) {
@@ -177,6 +209,7 @@ export class VolumeLandmarksCalculator {
         statusLabel: "Поддержание мышц (MV)",
         statusColor: "#58c0ff",
         recommendation: `Мышцы сохраняются, но стимул для роста слаб. Для запуска гипертрофии нужно ещё ${bracket.mev - actualSets} подх.`,
+        track: this.buildTrack(bracket, actualSets),
         progressPercent: Math.round(50 + ((actualSets - bracket.mv) / (bracket.mev - bracket.mv)) * 25),
       };
     } else if (actualSets < bracket.mavMin) {
@@ -189,6 +222,7 @@ export class VolumeLandmarksCalculator {
         statusLabel: "Минимальный рост (MEV)",
         statusColor: "#a3e635",
         recommendation: `Рост запущен! Можно постепенно повысить объём на ${bracket.mavMin - actualSets} подх. до золотой зоны MAV.`,
+        track: this.buildTrack(bracket, actualSets),
         progressPercent: Math.round(75 + ((actualSets - bracket.mev) / (bracket.mavMin - bracket.mev)) * 15),
       };
     } else if (actualSets <= bracket.mavMax) {
@@ -201,6 +235,7 @@ export class VolumeLandmarksCalculator {
         statusLabel: "Максимальный рост (MAV) ⚡",
         statusColor: "#cafa64",
         recommendation: "Золотая середина максимальной гипертрофии по доктору Израэтелю. Отличная прогрессия!",
+        track: this.buildTrack(bracket, actualSets),
         progressPercent: 100,
       };
     } else if (actualSets <= bracket.mrv) {
@@ -213,6 +248,7 @@ export class VolumeLandmarksCalculator {
         statusLabel: "На пределе восстановления (MRV) ⚠️",
         statusColor: "#f59e0b",
         recommendation: `Очень высокий объём. Допустимо только на пиковой неделе мезоцикла перед разгрузкой.`,
+        track: this.buildTrack(bracket, actualSets),
         progressPercent: 110,
       };
     } else {
@@ -225,6 +261,7 @@ export class VolumeLandmarksCalculator {
         statusLabel: "Превышение предела (Перетрен) 🛑",
         statusColor: "#ef4444",
         recommendation: `Превышен MRV на ${actualSets - bracket.mrv} подходов. Системное утомление опережает рост мышц, снизь объём!`,
+        track: this.buildTrack(bracket, actualSets),
         progressPercent: 125,
       };
     }
