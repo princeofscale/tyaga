@@ -56,7 +56,7 @@
 
 ## Постоянный сайт и production
 
-**Новая production-копия:** постоянный HTTPS URL выдаёт первый Cloudflare deploy; он будет указан здесь после проверки. Сайт работает независимо от локальных серверов.
+**Новая production-копия: [tyaga.dicksee83.workers.dev](https://tyaga.dicksee83.workers.dev).** Сайт работает на Cloudflare независимо от локальных серверов. Веб-релиз Night Session 1.5.0 развёрнут 9 ноября 2026 года.
 
 - GitHub: [princeofscale/tyaga](https://github.com/princeofscale/tyaga), основная ветка `main`.
 - Worker: `tyaga`, точка входа [cloud.ts](<server/cloud.ts>), аккаунт `86373735788c01599af67ce3a6a4777a`.
