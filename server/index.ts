@@ -16,6 +16,7 @@ import { HistoryImportService } from "./HistoryImportService";
 import { BackupImportService } from "./BackupImportService";
 import { exerciseById } from "../src/lib/model";
 import { AccountService, AuthError } from "./AccountService";
+import { SocialService } from "./SocialService";
 export interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
@@ -67,6 +68,23 @@ export async function handleApi(request: Request, env: Env) {
       const custom = await product.definitions(ids);
       return new Map([...wger, ...custom]);
     };
+    if (url.pathname.startsWith("/api/social")) {
+      const social = new SocialService(env.DB, userId);
+      if (request.method === "GET" && url.pathname === "/api/social")
+        return json(await social.overview());
+      if (request.method === "PUT" && url.pathname === "/api/social/profile")
+        return json({ profile: await social.saveProfile(await readBody(request)) });
+      if (request.method === "POST" && url.pathname === "/api/social/follow") {
+        await social.follow(await readBody(request));
+        return json(await social.overview());
+      }
+      if (request.method === "DELETE" && url.pathname.startsWith("/api/social/follow/")) {
+        await social.unfollow(decodeURIComponent(url.pathname.slice("/api/social/follow/".length)));
+        return json(await social.overview());
+      }
+      if (request.method === "PUT" && url.pathname === "/api/social/kudos")
+        return json(await social.kudos(await readBody(request)));
+    }
     if (request.method === "GET" && url.pathname === "/api/product")
       return json(await product.read());
     if (

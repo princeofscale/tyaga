@@ -12,12 +12,14 @@ import {
   CalendarDays,
   Check,
   ChevronLeft,
+  ChevronDown,
   ChevronRight,
   Clock3,
   Download,
   Dumbbell,
   History,
   House,
+  Users,
   Info,
   Play,
   Search,
@@ -81,20 +83,18 @@ import HistoryList from "./components/HistoryList";
 import ProgressSummary from "./components/ProgressSummary";
 import AnimatedNumber from "./components/AnimatedNumber";
 import { WorkoutPresenter } from "./domain/WorkoutPresenter";
-import { m } from "motion/react";
+import { AnimatePresence, m } from "motion/react";
 const AnatomyExplorer = lazy(() => import("./components/AnatomyExplorer"));
 const ExerciseLibrary = lazy(() => import("./components/ExerciseLibrary"));
 const ProgramsScreen = lazy(() => import("./components/ProgramsScreen"));
+const FriendsScreen = lazy(() => import("./components/FriendsScreen"));
 const PersonalExerciseEditor = lazy(
   () => import("./components/PersonalExerciseEditor"),
 );
 const HistoryImporter = lazy(() => import("./components/HistoryImporter"));
 const AppleHealthPanel = lazy(() => import("./components/AppleHealthPanel"));
-import PlateCalculator from "./components/PlateCalculator";
-import OneRepMaxCalculator from "./components/OneRepMaxCalculator";
 import { BodyweightModal } from "./components/BodyweightModal";
 import { DeloadModal } from "./components/DeloadModal";
-import { WarmupModal } from "./components/WarmupModal";
 import { IosInstallPrompt } from "./components/IosInstallPrompt";
 import { DeloadEngine } from "./domain/DeloadEngine";
 import { VolumeLandmarksModal } from "./components/VolumeLandmarksModal";
@@ -125,7 +125,7 @@ import { saveFile } from "./lib/saveFile";
 import type { Release } from "./device/appUpdate";
 
 type ProductView =
-  "overview" | "workout" | "history" | "library" | "progress" | "programs";
+  "overview" | "workout" | "history" | "library" | "progress" | "programs" | "friends";
 // "programs" lives in the desktop sidebar; on a phone it opens from «Сегодня».
 const NAV = [
   { id: "overview", label: "Сегодня", icon: House },
@@ -133,6 +133,7 @@ const NAV = [
   { id: "progress", label: "Прогресс", icon: BarChart3 },
   { id: "library", label: "Упражнения", icon: Dumbbell },
   { id: "programs", label: "Программы", icon: CalendarDays },
+  { id: "friends", label: "Напарники", icon: Users },
 ] as const;
 const EQ_OPTIONS = [
   { value: "gym", label: "Весь зал" },
@@ -170,7 +171,8 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
   );
   const [mapping, setMapping] = useState<"recorded" | "current">("recorded");
   const [hardSetsOnly, setHardSetsOnly] = useState(false);
-  const [progressTab, setProgressTab] = useState<"balance" | "analytics" | "strength" | "anatomy">("balance");
+  const [plannerOpen, setPlannerOpen] = useState(false);
+  const [progressTab, setProgressTab] = useState<"balance" | "analytics" | "strength" | "anatomy" | "weight">("balance");
   const [toast, setToast] = useState("");
   const [modal, setModal] = useState<
     | "picker"
@@ -180,11 +182,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
     | "personal"
     | "import"
     | "profile"
-    | "plate"
-    | "orm"
-    | "bodyweight"
     | "deload"
-    | "warmup"
     | "ios_install"
     | "rp_volume"
     | null
@@ -830,7 +828,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
         <nav aria-label="Основная навигация">
           {NAV.map((n) => (
             <button
-              className={`nav-item ${view === n.id ? "active" : ""} ${n.id === "programs" ? "desktop-only" : ""}`}
+              className={`nav-item ${view === n.id ? "active" : ""} ${n.id === "programs" || n.id === "friends" ? "desktop-only" : ""}`}
               key={n.id}
               onClick={() => go(n.id)}
               aria-current={view === n.id ? "page" : undefined}
@@ -1067,20 +1065,6 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                     <button
                       type="button"
                       className="quick-tool-card"
-                      onClick={() => setModal("bodyweight")}
-                    >
-                      <div className="tool-icon-circle accent-glow">
-                        <Scale size={20} />
-                      </div>
-                      <div className="tool-info">
-                        <b>Вес тела и тренд</b>
-                        <span>Динамика и цель</span>
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      className="quick-tool-card"
                       onClick={() => setModal("deload")}
                     >
                       <div className="tool-icon-circle">
@@ -1095,42 +1079,14 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                     <button
                       type="button"
                       className="quick-tool-card"
-                      onClick={() => setModal("warmup")}
+                      onClick={() => go("friends")}
                     >
                       <div className="tool-icon-circle">
-                        <Flame size={20} />
+                        <Users size={20} />
                       </div>
                       <div className="tool-info">
-                        <b>Разминочная лесенка</b>
-                        <span>Подготовка к весу</span>
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      className="quick-tool-card"
-                      onClick={() => setModal("plate")}
-                    >
-                      <div className="tool-icon-circle">
-                        <Dumbbell size={20} />
-                      </div>
-                      <div className="tool-info">
-                        <b>Калькулятор блинов</b>
-                        <span>Раскладка блинов на гриф</span>
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      className="quick-tool-card"
-                      onClick={() => setModal("orm")}
-                    >
-                      <div className="tool-icon-circle">
-                        <Target size={20} />
-                      </div>
-                      <div className="tool-info">
-                        <b>Калькулятор 1ПМ</b>
-                        <span>Расчёт максимума и проценты</span>
+                        <b>Напарники</b>
+                        <span>Лента и респекты</span>
                       </div>
                     </button>
 
@@ -1291,6 +1247,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                         ["analytics", "Статистика"],
                         ["strength", "Сила"],
                         ["anatomy", "Карта мышц"],
+                        ["weight", "Вес тела"],
                       ] as const
                     ).map(([id, label]) => (
                       <button
@@ -1311,7 +1268,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                       </button>
                     ))}
                   </div>
-                  {progressTab !== "strength" && progressTab !== "analytics" ? (
+                  {progressTab !== "strength" && progressTab !== "analytics" && progressTab !== "weight" ? (
                     <div className="week-selector">
                       <button
                         className="icon-button"
@@ -1449,18 +1406,35 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                           <span><i className="tick" />цель</span>
                         </div>
                       </section>
-                      <section className="panel planner-card" aria-labelledby="planner-title">
-                        <div>
-                          <h2 id="planner-title">Закрыть пробелы</h2>
-                          <p>
-                            {currentLagging.length
-                              ? `На этой неделе отстают: ${currentLagging
-                                  .slice(0, 2)
-                                  .map((m) => m.short.toLowerCase())
-                                  .join(" и ")}. Соберём короткую тренировку под твоё время.`
-                              : "Подходы этой недели покрывают твои цели. Можно отдыхать или добавить объём."}
-                          </p>
-                        </div>
+                      <section className={`panel planner-card ${plannerOpen ? "open" : ""}`} aria-labelledby="planner-title">
+                        <button
+                          type="button"
+                          className="planner-toggle"
+                          aria-expanded={plannerOpen}
+                          aria-controls="planner-body"
+                          onClick={() => setPlannerOpen((v) => !v)}
+                        >
+                          <span>
+                            <b id="planner-title">Закрыть пробелы</b>
+                            <small>
+                              {currentLagging.length
+                                ? `Отстают: ${currentLagging.slice(0, 2).map((x) => x.short.toLowerCase()).join(" и ")}. Собрать короткую тренировку`
+                                : "Цели недели покрыты. Можно собрать тренировку на добавку"}
+                            </small>
+                          </span>
+                          <ChevronDown size={18} aria-hidden="true" />
+                        </button>
+                        <AnimatePresence initial={false}>
+                          {plannerOpen ? (
+                            <m.div
+                              id="planner-body"
+                              className="planner-body"
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: "auto", opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
+                            >
+                              <div className="planner-body-inner">
                         <div className="planner-controls">
                           <div className="segmented" role="group" aria-label="Сколько есть времени">
                             {[20, 40, 60].map((n) => (
@@ -1538,8 +1512,18 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                           <Play size={18} />
                           {demo ? "Попробовать этот план" : "Начать по плану"}
                         </button>
+                              </div>
+                            </m.div>
+                          ) : null}
+                        </AnimatePresence>
                       </section>
                     </>
+                  ) : null}
+                  {progressTab === "weight" ? (
+                    <BodyweightModal
+                      accountId={account?.id || "local-user"}
+                      onClose={() => setProgressTab("balance")}
+                    />
                   ) : null}
                   {progressTab === "anatomy" ? (
                     <>
@@ -1674,6 +1658,16 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                     <h1>Упражнения</h1>
                   </header>
                   {exerciseCards()}
+                </>
+              ) : null}
+              {view === "friends" ? (
+                <>
+                  <header className="screen-head">
+                    <h1>Напарники</h1>
+                  </header>
+                  <Suspense fallback={<p role="status">Открываем напарников…</p>}>
+                    <FriendsScreen />
+                  </Suspense>
                 </>
               ) : null}
               {view === "programs" ? (
@@ -2240,25 +2234,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
         <AccountProfileForm account={account} hasDraft={!!draft}
           onChange={p => { onAccountChange(p); void load(); }} onLogout={onLogout} />
       </Modal> : null}
-      {modal === "plate" ? (
-        <Modal title="Калькулятор блинов" onClose={() => setModal(null)} wide>
-          <PlateCalculator onClose={() => setModal(null)} />
-        </Modal>
-      ) : null}
-      {modal === "orm" ? (
-        <Modal title="Калькулятор 1ПМ" onClose={() => setModal(null)} wide>
-          <OneRepMaxCalculator onClose={() => setModal(null)} />
-        </Modal>
-      ) : null}
-      {modal === "bodyweight" ? (
-        <Modal title="Контроль массы тела" onClose={() => setModal(null)} wide>
-          <BodyweightModal
-            accountId={account?.id || "local-user"}
-            onClose={() => setModal(null)}
-          />
-        </Modal>
-      ) : null}
-      {modal === "deload" ? (
+                        {modal === "deload" ? (
         <Modal title="Настройка разгрузочной недели" onClose={() => setModal(null)} wide>
           <DeloadModal
             workouts={workouts}
@@ -2271,12 +2247,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
           />
         </Modal>
       ) : null}
-      {modal === "warmup" ? (
-        <Modal title="Разминочная лесенка (OpenGym)" onClose={() => setModal(null)} wide>
-          <WarmupModal onClose={() => setModal(null)} />
-        </Modal>
-      ) : null}
-      {modal === "ios_install" ? (
+            {modal === "ios_install" ? (
         <Modal title="Установить на iPhone" onClose={() => setModal(null)}>
           <IosInstallPrompt onClose={() => setModal(null)} />
         </Modal>

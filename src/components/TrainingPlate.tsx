@@ -6,11 +6,11 @@ import { m } from "motion/react";
  * 20 · 20 · 10 · 5 · 2,5 кг и замком. Блины «надеваются» один за другим.
  */
 const PLATES = [
-  { x: 352, w: 48, h: 372, label: "20", size: 27 },
-  { x: 404, w: 48, h: 372, label: "20", size: 27 },
-  { x: 456, w: 34, h: 284, label: "10", size: 20 },
-  { x: 494, w: 26, h: 212, label: "5", size: 16 },
-  { x: 524, w: 20, h: 158, label: "2.5", size: 12 },
+  { x: 352, w: 48, h: 372, label: "20", size: 22 },
+  { x: 404, w: 48, h: 372, label: "20", size: 22 },
+  { x: 456, w: 34, h: 284, label: "10", size: 16 },
+  { x: 494, w: 26, h: 212, label: "5", size: 13 },
+  { x: 524, w: 20, h: 158, label: "2.5", size: 10 },
 ] as const;
 
 const EASE = [0.22, 1, 0.36, 1] as const;
@@ -91,12 +91,13 @@ export default function TrainingPlate() {
             <rect x={p.x} y={CY - 23} width={p.w} height="46" fill="#222a21" stroke="#7d8a70" strokeOpacity=".6" />
             <rect x={p.x} y={CY - 23} width={p.w} height="46" fill={ref("steel")} opacity=".22" />
             <text
-              transform={`translate(${p.x + p.w / 2 + p.size * 0.35} ${CY - p.h / 2 + 46}) rotate(90)`}
+              transform={`translate(${p.x + p.w / 2} ${CY - p.h / 2 + 52}) rotate(90)`}
+              textAnchor="middle"
+              dominantBaseline="central"
               fill="currentColor"
               fontFamily="var(--font-display)"
               fontSize={p.size}
               fontWeight="600"
-              letterSpacing=".5"
             >
               {p.label}
             </text>

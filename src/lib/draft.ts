@@ -11,6 +11,8 @@ export type Draft = {
   clock: { elapsedMs: number; runningSince: number | null };
   restUntil: number | null;
   pausedRest: number | null;
+  /** Подход, который запустил текущий отдых: при отмене подхода отдых тоже снимается. */
+  restFor?: string;
   manualDuration: boolean;
   /** Время последнего действия пользователя: по нему считается реальная длительность. */
   activityAt?: number;
@@ -40,6 +42,22 @@ export function elapsedMs(draft: Draft, now = Date.now()) {
       ? 0
       : Math.max(0, Math.min(now - draft.clock.runningSince, 60000)))
   );
+}
+/**
+ * Отдых после отметки подхода: выполнил — запускается, отменил выполнение —
+ * снимается, если запускал его именно этот подход (чужой отдых не трогаем).
+ */
+export function restAfterSetToggle(
+  draft: Pick<Draft, "restFor">,
+  setId: string,
+  done: boolean,
+  restSeconds: number,
+  now = Date.now(),
+): Pick<Draft, "restUntil" | "pausedRest" | "restFor"> | null {
+  if (done) return { restUntil: now + restSeconds * 1000, pausedRest: null, restFor: setId };
+  if (!draft.restFor || draft.restFor === setId)
+    return { restUntil: null, pausedRest: null, restFor: undefined };
+  return null;
 }
 const MAX_SESSION_SPAN_MS = 4 * 3600000;
 /**

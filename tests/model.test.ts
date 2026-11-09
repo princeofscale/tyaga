@@ -34,6 +34,7 @@ import {
   elapsedMs,
   checkpointDraft,
   sessionMs,
+  restAfterSetToggle,
 } from "../src/lib/draft";
 const set = (patch: Partial<SetEntry> = {}): SetEntry => ({
   id: crypto.randomUUID(),
@@ -498,4 +499,14 @@ test("session duration counts real time even when the screen was locked between 
   const edited = newDraft(sample(), true, 0);
   edited.activityAt = 30 * 60000;
   assert.equal(sessionMs(edited, 40 * 60000), 0);
+});
+
+test("unchecking the set that started the rest cancels it; another set's rest stays", () => {
+  const started = restAfterSetToggle({ restFor: undefined }, "a", true, 90, 1000)!;
+  assert.equal(started.restUntil, 91000);
+  assert.equal(started.restFor, "a");
+  const cancelled = restAfterSetToggle(started, "a", false, 90)!;
+  assert.equal(cancelled.restUntil, null);
+  assert.equal(cancelled.restFor, undefined);
+  assert.equal(restAfterSetToggle({ restFor: "b" }, "a", false, 90), null);
 });

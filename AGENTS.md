@@ -24,14 +24,14 @@ tyaga/
 │   │   ├── AnatomyPresenter.ts       # Анатомические зоны, роли и пучки мышц
 │   │   ├── BodyweightTracker.ts      # Экспоненциальное сглаживание веса тела (EMA)
 │   │   ├── DeloadEngine.ts           # Анализ усталости и масштабирование нагрузок
-│   │   ├── FriendsService.ts         # Напарники, респекты (Kudos), профиль
+│   │   ├── WorkoutPresenter.ts       # Название и главные мышцы тренировки в списках
 │   │   ├── PersonalRecords.ts        # Личные рекорды, e1RM, стрик, баланс
 │   │   ├── TrainingAnalytics.ts      # Аналитика объёма и нагрузок
 │   │   └── WarmupLadderCalculator.ts # Алгоритм пирамиды разминки и раскладки блинов
 │   ├── lib/                # Вспомогательные утилиты, календарь, черновики, типы
 │   ├── services/           # ApiClient, ProductService, Sync
 │   └── styles.css          # Дизайн-система на CSS-токенах
-├── server/                 # Cloudflare Worker API & D1 SQLite
+├── server/                 # Cloudflare Worker API & D1 SQLite (SocialService — напарники и респекты)
 ├── tests/                  # Модульные и интеграционные тесты (Node.js test runner)
 └── tests/e2e/              # Playwright сквозные E2E тесты
 ```

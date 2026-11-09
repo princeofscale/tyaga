@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { m, useReducedMotion } from "motion/react";
+import { AnimatePresence, m, useReducedMotion } from "motion/react";
+import BiomechanicsPanel from "./BiomechanicsPanel";
 import NumberField from "./NumberField";
 import {
   Check,
@@ -29,6 +30,7 @@ import {
 } from "lucide-react";
 import PlateCalculator from "./PlateCalculator";
 import OneRepMaxCalculator from "./OneRepMaxCalculator";
+import { WarmupModal } from "./WarmupModal";
 import ExerciseSwapModal from "./ExerciseSwapModal";
 import BodyMap from "./BodyMap";
 import Modal from "./Modal";
@@ -55,6 +57,7 @@ import {
   checkpointDraft,
   elapsedMs,
   sessionMs,
+  restAfterSetToggle,
   type Draft,
   type PersistenceStatus,
 } from "../lib/draft";
@@ -217,6 +220,7 @@ export default function WorkoutView({
   const [now, setNow] = useState(Date.now());
   const [announcement, setAnnouncement] = useState("");
   const [rirHelp, setRirHelp] = useState(false);
+  const [toolModal, setToolModal] = useState<"warmup" | "orm" | null>(null);
   const [plateCalcTarget, setPlateCalcTarget] = useState<{ weight: number; ei: number } | null>(null);
   const [oneRepMaxTarget, setOneRepMaxTarget] = useState<{ weight: number; reps: number } | null>(null);
   const [swapTarget, setSwapTarget] = useState<{ ei: number; exercise: Exercise } | null>(null);
@@ -337,12 +341,9 @@ export default function WorkoutView({
             : e,
         ),
       },
-      ...(patch.done
-        ? {
-            restUntil: Date.now() + effectiveRest * 1000,
-            pausedRest: null,
-          }
-        : {}),
+      ...(patch.done === undefined
+        ? {}
+        : (restAfterSetToggle(draft, targetEx?.sets[si]?.id ?? "", patch.done, effectiveRest) ?? {})),
     });
   };
 
@@ -360,6 +361,12 @@ export default function WorkoutView({
     }
   };
 
+  // Стартовые значения для калькуляторов: последний выполненный рабочий подход, иначе первый с весом.
+  const toolDefaults = (() => {
+    const working = w.exercises.flatMap((e) => e.sets.filter((x) => !x.warmup && x.weight > 0));
+    const pick = [...working].reverse().find((x) => x.done) ?? working[0];
+    return { weight: pick?.weight ?? 80, reps: pick?.reps ?? 6 };
+  })();
   const elapsed = draft.manualDuration
     ? w.duration
     : Math.floor(sessionMs(draft, now) / 60000);
@@ -495,6 +502,22 @@ export default function WorkoutView({
           </button>
         </div>
       ) : null}
+      <div className="workout-tools" role="group" aria-label="Инструменты тренировки">
+        <button type="button" onClick={() => setToolModal("warmup")}>
+          <Flame size={16} aria-hidden="true" />
+          <span>
+            <b>Разминочная лесенка</b>
+            <small>Подводящие подходы к рабочему весу</small>
+          </span>
+        </button>
+        <button type="button" onClick={() => setToolModal("orm")}>
+          <Target size={16} aria-hidden="true" />
+          <span>
+            <b>Проверить 1ПМ</b>
+            <small>Максимум и проценты по подходу</small>
+          </span>
+        </button>
+      </div>
       <fieldset
         className="workout-main"
         disabled={saving}
@@ -772,85 +795,17 @@ export default function WorkoutView({
                 )}
               </div>
 
-              {/* Upgraded Anatomy Drawer */}
-              {expandedAnatomy === we.exerciseId && (
-                <div className="exercise-inline-anatomy">
-                  <div className="anatomy-drawer-header">
-                    <div className="drawer-title-wrap">
-                      <Activity size={16} className="text-accent" />
-                      <h4>Биомеханика: {entryName(we)}</h4>
-                    </div>
-                    <button
-                      type="button"
-                      className="icon-button close-drawer-btn"
-                      onClick={() => setExpandedAnatomy(null)}
-                      aria-label="Закрыть анатомию"
-                    >
-                      <X size={15} />
-                    </button>
-                  </div>
-
-                  <div className="anatomy-drawer-grid">
-                    <div className="inline-atlas-wrapper">
-                      <BodyMap
-                        loads={[]}
-                        selected={null}
-                        onSelect={() => {}}
-                        exercise={exercise}
-                        compact
-                      />
-                      <span className="atlas-pedestal-tag">3D Атлас тела</span>
-                    </div>
-
-                    <div className="inline-anatomy-info">
-                      <div className="anatomy-role-group primary">
-                        <span className="role-heading">🎯 Главные движители</span>
-                        <div className="anatomy-role-pills">
-                          {headBadges.map((b) => (
-                            <span key={b.text} className={`head-indicator-badge ${b.kind}`}>
-                              {b.text}
-                            </span>
-                          ))}
-                          {exercise.primary.map((p) => {
-                            const m = MUSCLES.find((x) => x.id === p);
-                            return (
-                              <span key={p} className="muscle-role-pill primary">
-                                {m?.name ?? p}
-                              </span>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {exercise.secondary.length > 0 && (
-                        <div className="anatomy-role-group secondary">
-                          <span className="role-heading">🤝 Синергисты и помощь</span>
-                          <div className="anatomy-role-pills">
-                            {exercise.secondary.map((s) => {
-                              const m = MUSCLES.find((x) => x.id === s);
-                              return (
-                                <span key={s} className="muscle-role-pill secondary">
-                                  {m?.name ?? s}
-                                </span>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {exercise.tip && (
-                        <div className="inline-exercise-tip">
-                          <Sparkles size={14} className="text-accent" />
-                          <div className="tip-content">
-                            <b>Фокус техники:</b>
-                            <p>{exercise.tip}</p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
+              <AnimatePresence initial={false}>
+                {expandedAnatomy === we.exerciseId ? (
+                  <BiomechanicsPanel
+                    key="bio"
+                    exercise={exercise}
+                    name={entryName(we)}
+                    badges={headBadges}
+                    onClose={() => setExpandedAnatomy(null)}
+                  />
+                ) : null}
+              </AnimatePresence>
 
               {hint ? (
                 <p
@@ -1487,6 +1442,25 @@ export default function WorkoutView({
           />
         </Modal>
       )}
+
+      {toolModal === "warmup" ? (
+        <Modal title="Разминочная лесенка" onClose={() => setToolModal(null)} wide>
+          <WarmupModal
+            defaultWeight={toolDefaults.weight}
+            defaultReps={toolDefaults.reps}
+            onClose={() => setToolModal(null)}
+          />
+        </Modal>
+      ) : null}
+      {toolModal === "orm" ? (
+        <Modal title="Калькулятор 1ПМ" onClose={() => setToolModal(null)} wide>
+          <OneRepMaxCalculator
+            initialWeight={toolDefaults.weight}
+            initialReps={toolDefaults.reps}
+            onClose={() => setToolModal(null)}
+          />
+        </Modal>
+      ) : null}
 
       {swapTarget && (
         <ExerciseSwapModal

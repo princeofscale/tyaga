@@ -1106,3 +1106,31 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* Биомеханика упражнения */
+.bio-panel { overflow: hidden; }
+.bio-inner { margin: 4px 0 2px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(160deg, var(--surface-2), var(--bg) 70%); }
+.bio-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.bio-head > svg { color: var(--accent); flex-shrink: 0; }
+.bio-head > div { flex: 1; min-width: 0; }
+.bio-head small { display: block; color: var(--muted); font-size: .7rem; font-weight: 650; }
+.bio-head h4 { margin: 2px 0 0; font-size: 1rem; font-weight: 700; letter-spacing: -.02em; overflow-wrap: anywhere; }
+.bio-grid { display: grid; grid-template-columns: minmax(180px, 250px) minmax(0, 1fr); gap: 18px; align-items: start; }
+.bio-map { display: grid; place-items: center; padding: 10px 6px; border-radius: 14px; background: color-mix(in srgb, var(--bg) 70%, transparent); border: 1px solid var(--line-soft); }
+.bio-map .body-map, .bio-map svg { max-width: 100%; }
+.bio-roles { display: grid; gap: 10px; min-width: 0; }
+.bio-role { --role: var(--accent); padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line-soft); border-left: 3px solid var(--role); background: color-mix(in srgb, var(--surface) 70%, transparent); }
+.bio-role.assistant { --role: #b6a1e8; }
+.bio-role.stabilizer { --role: #ffb36b; }
+.bio-role-head { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-bottom: 9px; }
+.bio-role-head b { font-size: .84rem; }
+.bio-role-head small { color: var(--muted); font-size: .72rem; flex-basis: 100%; }
+.bio-meter { display: inline-flex; gap: 3px; }
+.bio-meter i { width: 14px; height: 5px; border-radius: 3px; background: var(--line-strong); }
+.bio-meter i.on { background: var(--role); }
+.bio-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.bio-chip { padding: 4px 10px; border-radius: 999px; font-size: .74rem; font-weight: 600; color: var(--text-soft); background: color-mix(in srgb, var(--role) 11%, transparent); border: 1px solid color-mix(in srgb, var(--role) 32%, transparent); }
+.bio-chip.head { color: var(--on-accent); background: var(--accent); border-color: var(--accent); font-weight: 750; }
+.bio-tip { margin: 0; padding: 12px 14px; border-radius: 12px; border: 1px dashed var(--line-strong); font-size: .82rem; line-height: 1.6; color: var(--text-soft); }
+.bio-tip b { display: block; margin-bottom: 3px; color: var(--accent); font-size: .74rem; }
+@media (max-width: 640px) { .bio-grid { grid-template-columns: 1fr; } .bio-map { max-width: 260px; margin: 0 auto; width: 100%; } }

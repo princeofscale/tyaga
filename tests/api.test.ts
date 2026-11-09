@@ -799,3 +799,56 @@ test("sync endpoints run on D1: triggers record changes and newer documents appl
     await mf.dispose();
   }
 });
+
+test("social: closed profiles stay invisible, public ones feed only summaries and kudos need a follow", async () => {
+  const { mf, request } = await sandbox();
+  try {
+    const put = (path: string, body: unknown, owner: string) => request(path, "PUT", body, owner);
+    // Бета сохраняет тренировку и сначала остаётся закрытым.
+    const w = completed();
+    w.name = "[E2E] Жим дня";
+    w.notes = "личная заметка";
+    assert.equal((await put("/api/workouts", w, "beta")).status, 200);
+    assert.equal((await put("/api/social/profile", { tag: "@Beta_Lift", bio: "жму", isPublic: false }, "beta")).status, 200);
+
+    const miss = await request("/api/social/follow", "POST", { tag: "beta_lift" }, "alpha");
+    assert.equal(miss.status, 400);
+    assert.match(((await miss.json()) as any).error, /не найден или закрыл/);
+
+    // Тег уникален, чужой тег занять нельзя.
+    const taken = await put("/api/social/profile", { tag: "beta_lift", bio: "", isPublic: true }, "alpha");
+    assert.equal(taken.status, 400);
+    assert.equal((await put("/api/social/profile", { tag: "ab", bio: "", isPublic: true }, "alpha")).status, 400);
+
+    // Бета открывается: Альфа подписывается и видит итог без заметок.
+    await put("/api/social/profile", { tag: "beta_lift", bio: "жму", isPublic: true }, "beta");
+    const followed = (await (await request("/api/social/follow", "POST", { tag: "@BETA_LIFT" }, "alpha")).json()) as any;
+    assert.equal(followed.following.length, 1);
+    assert.equal(followed.feed.length, 1);
+    assert.equal(followed.feed[0].title, "[E2E] Жим дня");
+    assert.equal(followed.feed[0].athlete.tag, "beta_lift");
+    assert.ok(!JSON.stringify(followed).includes("личная заметка"));
+    assert.equal((await request("/api/social/follow", "POST", { tag: "beta_lift" }, "beta")).status, 400);
+
+    // Kudos: только подписчик; повтор идемпотентен; снятие работает.
+    const id = followed.feed[0].id;
+    assert.equal((await put("/api/social/kudos", { workoutId: id, give: true }, "gamma")).status, 400);
+    const first = (await (await put("/api/social/kudos", { workoutId: id, give: true }, "alpha")).json()) as any;
+    const again = (await (await put("/api/social/kudos", { workoutId: id, give: true }, "alpha")).json()) as any;
+    assert.deepEqual([first.kudos, again.kudos, again.kudosByMe], [1, 1, true]);
+    const seen = (await (await request("/api/social", "GET", undefined, "alpha")).json()) as any;
+    assert.equal(seen.feed[0].kudos, 1);
+    assert.equal(seen.feed[0].kudosByMe, true);
+    const betaView = (await (await request("/api/social", "GET", undefined, "beta")).json()) as any;
+    assert.equal(betaView.followers, 1);
+
+    // Закрытый профиль пропадает из ленты, отписка очищает список.
+    await put("/api/social/profile", { tag: "beta_lift", bio: "", isPublic: false }, "beta");
+    assert.equal(((await (await request("/api/social", "GET", undefined, "alpha")).json()) as any).feed.length, 0);
+    await put("/api/social/profile", { tag: "beta_lift", bio: "", isPublic: true }, "beta");
+    const after = (await (await request("/api/social/follow/beta_lift", "DELETE", {}, "alpha")).json()) as any;
+    assert.equal(after.following.length, 0);
+  } finally {
+    await mf.dispose();
+  }
+});

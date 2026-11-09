@@ -122,3 +122,41 @@ export const authLimits = sqliteTable("auth_limits", {
   attempts: integer("attempts").notNull(),
   windowStart: integer("window_start").notNull(),
 });
+
+export const athleteProfiles = sqliteTable(
+  "athlete_profiles",
+  {
+    ownerId: text("owner_id").primaryKey(),
+    tag: text("tag").notNull(),
+    bio: text("bio").notNull().default(""),
+    isPublic: integer("is_public").notNull().default(0),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [uniqueIndex("idx_athlete_profiles_tag").on(t.tag)],
+);
+
+export const follows = sqliteTable(
+  "follows",
+  {
+    followerId: text("follower_id").notNull(),
+    followeeId: text("followee_id").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.followerId, t.followeeId] }),
+    index("idx_follows_followee").on(t.followeeId),
+  ],
+);
+
+export const kudos = sqliteTable(
+  "kudos",
+  {
+    workoutId: text("workout_id").notNull(),
+    giverId: text("giver_id").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.workoutId, t.giverId] }),
+    index("idx_kudos_workout").on(t.workoutId),
+  ],
+);

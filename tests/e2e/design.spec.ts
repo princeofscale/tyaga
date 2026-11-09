@@ -116,14 +116,15 @@ test("mobile tool dialogs and workout inputs retain their exact set targets", as
   const clean = await preview(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/"); await ready(page);
-  for (const [button, title] of [["Калькулятор блинов", "Калькулятор блинов"], ["Калькулятор 1ПМ", "Калькулятор 1ПМ"], ["Разминочная лесенка", "Разминочная лесенка (OpenGym)"]]) {
-    await page.getByRole("button", { name: new RegExp(button) }).click();
+  await page.getByRole("button", { name: "Начать тренировку", exact: true }).click();
+  await expect(page.locator(".workout-athletic")).toBeVisible();
+  // Инструменты живут внутри тренировки: лесенка и 1ПМ на уровне экрана, блины — у упражнения со штангой.
+  for (const [button, title] of [["Разминочная лесенка", "Разминочная лесенка"], ["Проверить 1ПМ", "Калькулятор 1ПМ"], ["Блины", "Калькулятор блинов"]]) {
+    await page.getByRole("button", { name: new RegExp(button) }).first().click();
     await expect(page.getByRole("dialog", { name: title, exact: true })).toBeVisible();
     await noOverflow(page);
     await page.keyboard.press("Escape");
   }
-  await page.getByRole("button", { name: "Начать тренировку", exact: true }).click();
-  await expect(page.locator(".workout-athletic")).toBeVisible();
   await page.setViewportSize({ width: 360, height: 844 });
   await noOverflow(page);
   await page.setViewportSize({ width: 390, height: 844 });

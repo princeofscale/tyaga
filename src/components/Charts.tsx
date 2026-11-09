@@ -1,3 +1,4 @@
+import { m } from "motion/react";
 import {
   fmt,
   localDate,
@@ -34,20 +35,30 @@ export function VolumeChart({
         <span>{fmt(max / 2000)} т</span>
         <span>0</span>
       </div>
-      <div className="volume-bars">
+      <m.div
+        className="volume-bars"
+        initial="hidden"
+        whileInView="grow"
+        viewport={{ once: true, amount: 0.35 }}
+      >
         {days.map((d, i) => (
           <div className="bar-column" key={d.date}>
-            <div
+            <m.div
               className={`bar ${i >= 21 ? "recent" : ""}`}
-              style={{
-                height: `${Math.max(d.value ? 5 : 2, (d.value / max) * 100)}%`,
+              custom={i}
+              variants={{
+                hidden: { height: "0%" },
+                grow: (index: number) => ({
+                  height: `${Math.max(d.value ? 5 : 2, (d.value / max) * 100)}%`,
+                  transition: { type: "spring", stiffness: 120, damping: 17, mass: 0.9, delay: 0.1 + index * 0.035 },
+                }),
               }}
               title={`${d.date}: ${fmt(d.value)} кг`}
             />
             <span>{i % 7 === 0 || i === 27 ? d.day : ""}</span>
           </div>
         ))}
-      </div>
+      </m.div>
     </div>
   );
 }

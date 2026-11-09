@@ -292,8 +292,9 @@ button, input { font-variant-numeric: tabular-nums; }
 .account-form label { font-weight: 600; color: var(--text-soft); font-size: .8rem; }
 .account-form input { min-height: 48px; font-size: .9rem; }
 .theme-accent-selector-card { background: var(--bg); border-color: var(--line); box-shadow: none; }
-.theme-swatches-row { display: flex; flex-wrap: wrap; gap: 8px; }
-.theme-swatch-btn { flex: 1 1 64px; min-width: 0; border-color: var(--line); }
+.theme-swatches-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 8px; }
+.theme-swatch-btn { min-width: 0; justify-content: flex-start; padding: 10px 12px; border-color: var(--line); }
+.theme-swatch-btn .swatch-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .theme-swatch-btn.active { background: var(--accent-soft); border-color: var(--accent); box-shadow: none; }
 .swatch-label { font-size: .64rem; }
 @keyframes night-dialog-in { from { opacity: 0; transform: translateY(10px) scale(.985); } to { opacity: 1; transform: none; } }
@@ -515,5 +516,32 @@ dialog.modal[open]::backdrop { animation: fade-in .3s ease-out; }
   .training-hero .plan-main > *, .training-hero .plan-exercises li, .quick-tool-card, dialog.modal[open], dialog.modal[open]::backdrop { animation: none !important; }
   .button:active, .icon-button:active, .nav-item:active, .quick-tool-card:active, .week-summary:active { transform: none; }
 }
-.tabs.tabs-sliding { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 @media (max-width: 420px) { .tabs.tabs-sliding button { font-size: .66rem; padding-inline: 2px; } }
+
+/* «Закрыть пробелы»: свёрнуто по умолчанию, не давит на зоны */
+.planner-card { margin-top: 18px; padding: 0; overflow: hidden; }
+.planner-toggle { display: flex; align-items: center; justify-content: space-between; gap: 14px; width: 100%; padding: 16px 20px; text-align: left; color: var(--text); }
+.planner-toggle > span { display: grid; gap: 4px; min-width: 0; }
+.planner-toggle b { font-size: .95rem; }
+.planner-toggle small { color: var(--muted); font-size: .76rem; line-height: 1.4; }
+.planner-toggle svg { flex-shrink: 0; color: var(--muted); transition: transform .3s var(--ease-out), color .2s; }
+.planner-card.open .planner-toggle svg { transform: rotate(180deg); color: var(--accent); }
+.planner-toggle:hover { background: var(--accent-soft); }
+.planner-body { overflow: hidden; }
+.planner-body-inner { display: grid; gap: 14px; padding: 4px 20px 20px; border-top: 1px solid var(--line-soft); padding-top: 16px; }
+
+/* Инструменты тренировки */
+.workout-tools { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 0 0 14px; }
+.workout-tools button { display: flex; align-items: center; gap: 12px; padding: 12px 14px; text-align: left; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--text); transition: border-color .2s, background .2s, transform .16s var(--ease-out); }
+.workout-tools button:hover { border-color: var(--accent-line); background: var(--surface-2); }
+.workout-tools button:active { transform: scale(.98); }
+.workout-tools svg { color: var(--accent); flex-shrink: 0; }
+.workout-tools span { display: grid; gap: 2px; min-width: 0; }
+.workout-tools b { font-size: .84rem; }
+.workout-tools small { color: var(--muted); font-size: .72rem; line-height: 1.35; }
+@media (max-width: 520px) { .workout-tools { grid-template-columns: 1fr; } }
+
+/* Вкладки прогресса: пять штук, на узких экранах прокручиваются */
+.tabs.tabs-sliding { display: flex; overflow-x: auto; scrollbar-width: none; }
+.tabs.tabs-sliding::-webkit-scrollbar { display: none; }
+.tabs.tabs-sliding button { flex: 1 0 auto; padding-inline: 14px; white-space: nowrap; }

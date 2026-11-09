@@ -9,6 +9,7 @@ import "./styles.css";
 import "./styles/athletic.css";
 import "./styles/auth-athletic.css";
 import "./styles/workout-athletic.css";
+import "./styles/friends.css";
 const loadMotionFeatures = () =>
   import("./lib/motionFeatures").then((module) => module.default);
 const backend =
