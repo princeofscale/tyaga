@@ -32,6 +32,7 @@ import {
   Flame,
   Smartphone,
   Zap,
+  Users,
 } from "lucide-react";
 import {
   DEFAULT_SETTINGS,
@@ -81,6 +82,7 @@ import { m } from "motion/react";
 const AnatomyExplorer = lazy(() => import("./components/AnatomyExplorer"));
 const ExerciseLibrary = lazy(() => import("./components/ExerciseLibrary"));
 const ProgramsScreen = lazy(() => import("./components/ProgramsScreen"));
+const FriendsScreen = lazy(() => import("./components/FriendsScreen"));
 const PersonalExerciseEditor = lazy(
   () => import("./components/PersonalExerciseEditor"),
 );
@@ -120,14 +122,14 @@ import { saveFile } from "./lib/saveFile";
 import type { Release } from "./device/appUpdate";
 
 type ProductView =
-  "overview" | "workout" | "history" | "library" | "progress" | "programs";
-// "programs" lives in the desktop sidebar; on a phone it opens from «Сегодня».
+  "overview" | "workout" | "history" | "library" | "progress" | "programs" | "friends";
 const NAV = [
   { id: "overview", label: "Сегодня", icon: House },
+  { id: "programs", label: "Программы", icon: CalendarDays },
+  { id: "friends", label: "Друзья", icon: Users },
   { id: "history", label: "История", icon: History },
   { id: "progress", label: "Прогресс", icon: BarChart3 },
   { id: "library", label: "Упражнения", icon: Dumbbell },
-  { id: "programs", label: "Программы", icon: CalendarDays },
 ] as const;
 const EQ_OPTIONS = [
   { value: "gym", label: "Весь зал" },
@@ -142,7 +144,7 @@ const dateLabel = (date: string, long = false) =>
   });
 export default function App({ account, onAccountChange, onLogout }: { account: AccountProfile; onAccountChange: (p: AccountProfile) => void; onLogout: () => void }) {
   const draftKey = `tyaga-draft-account:${account.id}`;
-  const [view, setView] = useState<ProductView>("overview");
+  const [view, setView] = useState<ProductView>(() => new URLSearchParams(location.search).has("friend") ? "friends" : "overview");
   const [product, setProduct] = useState<ProductData>({
     routines: [],
     customExercises: [],
@@ -812,7 +814,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
         <nav aria-label="Основная навигация">
           {NAV.map((n) => (
             <button
-              className={`nav-item ${view === n.id ? "active" : ""} ${n.id === "programs" ? "desktop-only" : ""}`}
+              className={`nav-item ${view === n.id ? "active" : ""}`}
               key={n.id}
               onClick={() => go(n.id)}
               aria-current={view === n.id ? "page" : undefined}
@@ -1619,6 +1621,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                   {exerciseCards()}
                 </>
               ) : null}
+              {view === "friends" && <Suspense fallback={<p role="status">Открываем напарников…</p>}><FriendsScreen onProfile={() => setModal("profile")} /></Suspense>}
               {view === "programs" ? (
                 <>
                   <header className="screen-head">

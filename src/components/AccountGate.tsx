@@ -21,7 +21,7 @@ export default function AccountGate() {
     {state.profile ? <App key={state.profile.id} account={state.profile}
       onAccountChange={profile => setState({ registered: true, profile })}
       onLogout={() => setState({ registered: true, profile: null })} />
-      : <SignIn registered={state.registered} onSignedIn={(profile, recoveryCode) => { setState({ registered: true, profile }); if (recoveryCode) setRecovery(recoveryCode); history.replaceState(null, "", location.pathname); }} />}
+      : <SignIn registered={state.registered} onSignedIn={(profile, recoveryCode) => { setState({ registered: true, profile }); if (recoveryCode) setRecovery(recoveryCode); history.replaceState(null, "", location.pathname + location.search); }} />}
     {recovery && <Modal title="Код восстановления" onClose={() => setRecovery("")}>
       <p className="modal-intro">Сохрани этот код. Он позволит установить новый пароль, если забудешь старый. Почту мы используем для входа; письма восстановления пока не отправляем.</p>
       <code className="recovery-code">{recovery}</code>

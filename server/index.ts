@@ -7,6 +7,7 @@ import {
   validRoutine,
   str,
   num,
+  object,
 } from "./validation";
 import { SyncService } from "./SyncService";
 import { ExerciseRepository } from "./ExerciseRepository";
@@ -16,6 +17,7 @@ import { HistoryImportService } from "./HistoryImportService";
 import { BackupImportService } from "./BackupImportService";
 import { exerciseById } from "../src/lib/model";
 import { AccountService, AuthError } from "./AccountService";
+import { FriendsRepository } from "./FriendsRepository";
 export interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
@@ -61,6 +63,29 @@ export async function handleApi(request: Request, env: Env) {
     const authResponse = await accounts.handle(request);
     if (authResponse) return authResponse;
     const activeAccount = await accounts.require(request);
+    if (url.pathname === "/api/friends" || url.pathname.startsWith("/api/friends/")) {
+      const friends = new FriendsRepository(env.DB, activeAccount);
+      const path = url.pathname;
+      if (path === "/api/friends" && request.method === "GET") return json(await friends.read());
+      if (path === "/api/friends/requests" && request.method === "POST") {
+        await friends.request(object(await readBody(request)).code);
+        return json({ ok: true });
+      }
+      if (path === "/api/friends/status" && request.method === "PUT") {
+        await friends.status(object(await readBody(request)));
+        return json({ ok: true });
+      }
+      const match = path.match(/^\/api\/friends\/(connections|kudos)\/([^/]+)$/);
+      if (match) {
+        const id = str(decodeURIComponent(match[2]), 80, 1);
+        if (match[1] === "connections" && request.method === "PUT") await friends.accept(id);
+        else if (match[1] === "connections" && request.method === "DELETE") await friends.remove(id);
+        else if (match[1] === "kudos" && request.method === "PUT") await friends.kudos(id, object(await readBody(request)).given);
+        else return json({ error: "Не найдено" }, 404);
+        return json({ ok: true });
+      }
+      return json({ error: "Не найдено" }, 404);
+    }
     const product = new ProductRepository(env.DB, userId);
     const definitions = async (ids: string[]) => {
       const wger = await new ExerciseRepository(env.DB).findByIds(ids);
