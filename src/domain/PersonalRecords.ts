@@ -1,4 +1,6 @@
+import { ProgressSeries } from "./ProgressSeries";
 import {
+  volumeSummary,
   estimatedOneRepMax,
   exerciseForEntry,
   entryName,
@@ -12,6 +14,8 @@ import {
 } from "../lib/model";
 
 export interface ExercisePR {
+  unit: string;
+  category: string[];
   exerciseId: string;
   name: string;
   key: string;
@@ -68,11 +72,22 @@ export interface BalanceRatios {
   pushPullRatio: number | null;
   upperLowerRatio: number | null;
   pushPullStatus: "balanced" | "push-dominant" | "pull-dominant" | "no-data";
-  upperLowerStatus: "balanced" | "upper-dominant" | "lower-dominant" | "no-data";
+  upperLowerStatus:
+    | "balanced"
+    | "upper-dominant"
+    | "lower-dominant"
+    | "no-data";
 }
 
 export class PersonalRecordsCalculator {
   constructor(private workouts: Workout[]) {}
+
+  private dateWeek(date: string) {
+    return addCalendarDays(
+      date,
+      -((new Date(date + "T12:00:00Z").getUTCDay() + 6) % 7),
+    );
+  }
 
   /** Calculates all personal records (1RM, max weight, set volume) across workout history. */
   calculateRecords(): ExercisePR[] {
@@ -90,12 +105,25 @@ export class PersonalRecordsCalculator {
         let pr = recordMap.get(key);
         if (!pr) {
           pr = {
+            unit: ProgressSeries.metric(we).unit,
+            category: exerciseForEntry(we)?.primary ?? [],
             exerciseId: we.exerciseId,
             name,
             key,
-            bestWeight: { weight: 0, reps: 0, date: w.date, workoutName: w.name },
+            bestWeight: {
+              weight: 0,
+              reps: 0,
+              date: w.date,
+              workoutName: w.name,
+            },
             bestE1rm: null,
-            bestSetVolume: { volume: 0, weight: 0, reps: 0, date: w.date, workoutName: w.name },
+            bestSetVolume: {
+              volume: 0,
+              weight: 0,
+              reps: 0,
+              date: w.date,
+              workoutName: w.name,
+            },
             totalSets: 0,
             totalReps: 0,
             totalVolume: 0,
@@ -112,17 +140,24 @@ export class PersonalRecordsCalculator {
 
         for (const s of workingSets) {
           pr.totalSets++;
-          const reps = spec?.type === "duration" ? (s.durationSeconds ?? 0) : s.reps;
+          const reps =
+            spec?.type === "duration" ? (s.durationSeconds ?? 0) : s.reps;
           pr.totalReps += reps;
 
-          const load = spec?.loadMode === "assisted_bodyweight"
-            ? (s.assistanceKg ?? 0)
-            : s.weight;
-          const setVolume = load * reps;
+          const load = ProgressSeries.value(we, s);
+          const setVolume = volumeSummary([
+            { ...w, exercises: [{ ...we, sets: [s] }] },
+          ]).total;
           pr.totalVolume += setVolume;
 
           // Max weight PR
-          if (load > pr.bestWeight.weight || (load === pr.bestWeight.weight && reps > pr.bestWeight.reps)) {
+          if (
+            pr.totalSets === 1 ||
+            (ProgressSeries.metric(we).lowerIsBetter
+              ? load < pr.bestWeight.weight
+              : load > pr.bestWeight.weight) ||
+            (load === pr.bestWeight.weight && reps > pr.bestWeight.reps)
+          ) {
             pr.bestWeight = {
               weight: load,
               reps,
@@ -165,7 +200,11 @@ export class PersonalRecordsCalculator {
   }
 
   /** Calculates training streak in consecutive weeks. */
-  calculateStreak(timeZone?: string): { currentWeekStreak: number; bestWeekStreak: number; totalWeeks: number } {
+  calculateStreak(timeZone?: string): {
+    currentWeekStreak: number;
+    bestWeekStreak: number;
+    totalWeeks: number;
+  } {
     if (!this.workouts.length) {
       return { currentWeekStreak: 0, bestWeekStreak: 0, totalWeeks: 0 };
     }
@@ -177,7 +216,7 @@ export class PersonalRecordsCalculator {
     for (const w of this.workouts) {
       if (w.exercises.some((e) => e.sets.some((s) => s.done))) {
         const d = new Date(w.date + "T12:00:00");
-        weekSet.add(weekStart(d, timeZone));
+        weekSet.add(this.dateWeek(w.date));
       }
     }
 
@@ -239,14 +278,7 @@ export class PersonalRecordsCalculator {
     const weeklyMap = new Map<string, { volume: number; sets: number }>();
 
     for (const w of this.workouts) {
-      const vol = w.exercises.reduce(
-        (sum, e) =>
-          sum +
-          e.sets
-            .filter((s) => s.done)
-            .reduce((sVol, s) => sVol + s.weight * s.reps, 0),
-        0,
-      );
+      const vol = volumeSummary([w]).total;
       const setsCount = w.exercises.reduce(
         (sum, e) => sum + e.sets.filter((s) => s.done && !s.warmup).length,
         0,
@@ -260,7 +292,7 @@ export class PersonalRecordsCalculator {
 
       // Group into 12 recent weeks
       const d = new Date(w.date + "T12:00:00");
-      const wStart = weekStart(d, timeZone);
+      const wStart = this.dateWeek(w.date);
       if (wStart >= addCalendarDays(today, -84)) {
         const cur = weeklyMap.get(wStart) ?? { volume: 0, sets: 0 };
         cur.volume += vol;
@@ -272,9 +304,7 @@ export class PersonalRecordsCalculator {
     const growthPct =
       priorVolume > 0
         ? Math.round(((recentVolume - priorVolume) / priorVolume) * 100)
-        : recentVolume > 0
-          ? 100
-          : 0;
+        : 0;
 
     const weeklyAverages = Array.from(weeklyMap.entries())
       .sort((a, b) => a[0].localeCompare(b[0]))
@@ -307,21 +337,34 @@ export class PersonalRecordsCalculator {
         if (!count) continue;
 
         const isPush =
-          ex.primary.some((p) => ["chest", "triceps", "shoulders"].includes(p)) ||
-          ex.muscles.some((m) =>
-            ["pectoralis-major", "triceps-brachii", "deltoid-anterior"].includes(m.muscleId) &&
-            m.role === "primary",
+          ex.primary.some((p) =>
+            ["chest", "triceps", "shoulders"].includes(p),
+          ) ||
+          ex.muscles.some(
+            (m) =>
+              [
+                "pectoralis-major",
+                "triceps-brachii",
+                "deltoid-anterior",
+              ].includes(m.muscleId) && m.role === "primary",
           );
 
         const isPull =
           ex.primary.some((p) => ["back", "biceps"].includes(p)) ||
-          ex.muscles.some((m) =>
-            ["latissimus-dorsi", "biceps-brachii", "trapezius-upper", "deltoid-posterior"].includes(m.muscleId) &&
-            m.role === "primary",
+          ex.muscles.some(
+            (m) =>
+              [
+                "latissimus-dorsi",
+                "biceps-brachii",
+                "trapezius-upper",
+                "deltoid-posterior",
+              ].includes(m.muscleId) && m.role === "primary",
           );
 
         const isUpper = ex.primary.some((p) =>
-          ["chest", "back", "shoulders", "biceps", "triceps", "core"].includes(p),
+          ["chest", "back", "shoulders", "biceps", "triceps", "core"].includes(
+            p,
+          ),
         );
         const isLower = ex.primary.some((p) =>
           ["quads", "hamstrings", "glutes", "calves"].includes(p),
@@ -395,19 +438,19 @@ export class PersonalRecordsCalculator {
     const startWeek = addCalendarDays(thisWeekStart, -(weeksCount - 1) * 7);
 
     // Map workouts by date
-    const dateMap = new Map<string, { workouts: Workout[]; volume: number; workingSets: number }>();
+    const dateMap = new Map<
+      string,
+      { workouts: Workout[]; volume: number; workingSets: number }
+    >();
     for (const w of this.workouts) {
       if (w.date >= startWeek && w.date <= today) {
-        const cur = dateMap.get(w.date) ?? { workouts: [], volume: 0, workingSets: 0 };
+        const cur = dateMap.get(w.date) ?? {
+          workouts: [],
+          volume: 0,
+          workingSets: 0,
+        };
         cur.workouts.push(w);
-        cur.volume += w.exercises.reduce(
-          (sum, e) =>
-            sum +
-            e.sets
-              .filter((s) => s.done)
-              .reduce((sVol, s) => sVol + s.weight * s.reps, 0),
-          0,
-        );
+        cur.volume += volumeSummary([w]).total;
         cur.workingSets += w.exercises.reduce(
           (sum, e) => sum + e.sets.filter((s) => s.done && !s.warmup).length,
           0,

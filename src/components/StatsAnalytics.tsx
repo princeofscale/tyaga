@@ -1,3 +1,4 @@
+import { m, useReducedMotion } from "motion/react";
 import { useMemo, useState } from "react";
 import {
   Trophy,
@@ -18,7 +19,15 @@ import {
   type ExercisePR,
   type ActivityHeatmapDay,
 } from "../domain/PersonalRecords";
-import { fmt, dateLabel, MUSCLES, type Workout, type Settings } from "../lib/model";
+import {
+  localDate,
+  volumeSummary,
+  fmt,
+  dateLabel,
+  MUSCLES,
+  type Workout,
+  type Settings,
+} from "../lib/model";
 
 export default function StatsAnalytics({
   workouts,
@@ -29,41 +38,42 @@ export default function StatsAnalytics({
   settings: Settings;
   onOpenExerciseStrength?: (key: string) => void;
 }) {
-  const [filterCategory, setFilterCategory] = useState<"all" | "big5" | "chest" | "back" | "legs" | "shoulders">("big5");
-  const [selectedDay, setSelectedDay] = useState<ActivityHeatmapDay | null>(null);
-
-  const calc = useMemo(() => new PersonalRecordsCalculator(workouts), [workouts]);
-  const prs = useMemo(() => calc.calculateRecords(), [calc]);
-  const streak = useMemo(() => calc.calculateStreak(settings.timeZone), [calc, settings.timeZone]);
-  const trends = useMemo(() => calc.calculateVolumeTrends(settings.timeZone), [calc, settings.timeZone]);
-  const ratios = useMemo(() => calc.calculateRatios(), [calc]);
-  const heatmap = useMemo(() => calc.calculateHeatmap(16, settings.timeZone), [calc, settings.timeZone]);
-
-  const totalVolume = useMemo(
-    () =>
-      workouts.reduce(
-        (sum, w) =>
-          sum +
-          w.exercises.reduce(
-            (eSum, e) =>
-              eSum +
-              e.sets
-                .filter((s) => s.done)
-                .reduce((sSum, s) => sSum + s.weight * s.reps, 0),
-            0,
-          ),
-        0,
-      ),
-    [workouts],
+  const [filterCategory, setFilterCategory] = useState<
+    "all" | "big5" | "chest" | "back" | "legs" | "shoulders"
+  >("big5");
+  const [selectedDay, setSelectedDay] = useState<ActivityHeatmapDay | null>(
+    null,
   );
 
+  const calc = useMemo(
+    () => new PersonalRecordsCalculator(workouts),
+    [workouts],
+  );
+  const prs = useMemo(() => calc.calculateRecords(), [calc]);
+  const streak = useMemo(
+    () => calc.calculateStreak(settings.timeZone),
+    [calc, settings.timeZone],
+  );
+  const trends = useMemo(
+    () => calc.calculateVolumeTrends(settings.timeZone),
+    [calc, settings.timeZone],
+  );
+  const ratios = useMemo(() => calc.calculateRatios(), [calc]);
+  const heatmap = useMemo(
+    () => calc.calculateHeatmap(16, settings.timeZone),
+    [calc, settings.timeZone],
+  );
+
+  const totalVolume = useMemo(() => volumeSummary(workouts).total, [workouts]);
+  const reduced = useReducedMotion();
   const totalWorkingSets = useMemo(
     () =>
       workouts.reduce(
         (sum, w) =>
           sum +
           w.exercises.reduce(
-            (eSum, e) => eSum + e.sets.filter((s) => s.done && !s.warmup).length,
+            (eSum, e) =>
+              eSum + e.sets.filter((s) => s.done && !s.warmup).length,
             0,
           ),
         0,
@@ -76,8 +86,12 @@ export default function StatsAnalytics({
     [workouts],
   );
 
-  const avgWorkoutVolume = workouts.length ? Math.round(totalVolume / workouts.length) : 0;
-  const avgWorkoutDuration = workouts.length ? Math.round(totalDurationMinutes / workouts.length) : 0;
+  const avgWorkoutVolume = workouts.length
+    ? Math.round(totalVolume / workouts.length)
+    : 0;
+  const avgWorkoutDuration = workouts.length
+    ? Math.round(totalDurationMinutes / workouts.length)
+    : 0;
   const totalHours = Math.floor(totalDurationMinutes / 60);
   const totalMinutes = totalDurationMinutes % 60;
 
@@ -99,19 +113,28 @@ export default function StatsAnalytics({
 
   const filteredPrs = useMemo(() => {
     if (filterCategory === "all") return prs;
-    if (filterCategory === "big5") return prs.filter((p) => isBig5(p.exerciseId, p.name));
+    if (filterCategory === "big5")
+      return prs.filter((p) => isBig5(p.exerciseId, p.name));
     return prs.filter((p) => {
-      const s = `${p.exerciseId} ${p.name}`.toLowerCase();
-      if (filterCategory === "chest") return s.includes("bench") || s.includes("fly") || s.includes("pushup") || s.includes("грудь") || s.includes("жим");
-      if (filterCategory === "back") return s.includes("pull") || s.includes("row") || s.includes("тяга") || s.includes("спин");
-      if (filterCategory === "legs") return s.includes("squat") || s.includes("leg") || s.includes("lunge") || s.includes("присед") || s.includes("ног");
-      if (filterCategory === "shoulders") return s.includes("ohp") || s.includes("lateral") || s.includes("delt") || s.includes("плеч") || s.includes("мах");
+      if (filterCategory === "chest") return p.category.includes("chest");
+      if (filterCategory === "back") return p.category.includes("back");
+      if (filterCategory === "legs")
+        return p.category.some((m) =>
+          ["quads", "hamstrings", "glutes", "calves"].includes(m),
+        );
+      if (filterCategory === "shoulders")
+        return p.category.includes("shoulders");
       return true;
     });
   }, [prs, filterCategory]);
 
   return (
-    <div className="stats-analytics-view">
+    <m.div
+      className="stats-analytics-view progress-analytics"
+      initial={reduced ? false : { opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25 }}
+    >
       {/* 1. Hero Highlights Grid */}
       <section className="analytics-hero-grid" aria-label="Сводные показатели">
         <div className="stat-card accent-glow">
@@ -119,14 +142,23 @@ export default function StatsAnalytics({
             <Zap size={22} />
           </div>
           <div className="stat-card-content">
-            <span className="stat-label">Общий тоннаж</span>
+            <span className="stat-label">Тоннаж свободных весов</span>
             <b className="stat-value">
-              {fmt(totalVolume >= 10000 ? Math.round(totalVolume / 100) / 10 : totalVolume)}{" "}
+              {fmt(
+                totalVolume >= 10000
+                  ? Math.round(totalVolume / 100) / 10
+                  : totalVolume,
+              )}{" "}
               <small>{totalVolume >= 10000 ? "т" : "кг"}</small>
             </b>
-            {trends.growthPct !== 0 && (
-              <span className={`stat-trend ${trends.growthPct > 0 ? "positive" : "negative"}`}>
-                {trends.growthPct > 0 ? `+${trends.growthPct}%` : `${trends.growthPct}%`} за 4 нед.
+            {trends.priorVolume > 0 && trends.growthPct !== 0 && (
+              <span
+                className={`stat-trend ${trends.growthPct > 0 ? "positive" : "negative"}`}
+              >
+                {trends.growthPct > 0
+                  ? `+${trends.growthPct}%`
+                  : `${trends.growthPct}%`}{" "}
+                за 4 нед.
               </span>
             )}
           </div>
@@ -141,7 +173,9 @@ export default function StatsAnalytics({
             <b className="stat-value">
               {streak.currentWeekStreak} <small>нед. подряд</small>
             </b>
-            <span className="stat-sub">Рекорд: {streak.bestWeekStreak} нед.</span>
+            <span className="stat-sub">
+              Рекорд: {streak.bestWeekStreak} нед.
+            </span>
           </div>
         </div>
 
@@ -154,7 +188,9 @@ export default function StatsAnalytics({
             <b className="stat-value">
               {totalHours} <small>ч</small> {totalMinutes} <small>мин</small>
             </b>
-            <span className="stat-sub">~{avgWorkoutDuration} мин / тренировка</span>
+            <span className="stat-sub">
+              ~{avgWorkoutDuration} мин / тренировка
+            </span>
           </div>
         </div>
 
@@ -203,6 +239,9 @@ export default function StatsAnalytics({
                 key={day.date}
                 type="button"
                 className={`heat-cell lvl-${day.intensity} ${selectedDay?.date === day.date ? "selected" : ""}`}
+                aria-label={`${day.date}: ${day.workingSets} рабочих подходов`}
+                aria-pressed={selectedDay?.date === day.date}
+                disabled={day.date > localDate(new Date(), settings.timeZone)}
                 title={`${day.date}: ${day.workingSets} подходов (${fmt(day.totalVolume)} кг)`}
                 onClick={() => setSelectedDay(day)}
               />
@@ -220,11 +259,14 @@ export default function StatsAnalytics({
               <div className="detail-workout-info">
                 <span>{selectedDay.names.join(" · ") || "Тренировка"}</span>
                 <b>
-                  {selectedDay.workingSets} рабочих подходов · {fmt(selectedDay.totalVolume)} кг тоннаж
+                  {selectedDay.workingSets} рабочих подходов ·{" "}
+                  {fmt(selectedDay.totalVolume)} кг тоннаж
                 </b>
               </div>
             ) : (
-              <p className="tiny">В этот день тренировок не было (день отдыха или восстановления).</p>
+              <p className="tiny">
+                В этот день тренировок не было (день отдыха или восстановления).
+              </p>
             )}
           </div>
         )}
@@ -234,8 +276,8 @@ export default function StatsAnalytics({
       <section className="panel ratios-panel">
         <div className="panel-header">
           <div>
-            <h2>Баланс нагрузки и антагонистов</h2>
-            <p>Пропорция объёма между движителями</p>
+            <h2>Соотношение рабочих подходов</h2>
+            <p>Жимы и тяги, верх и низ тела</p>
           </div>
         </div>
 
@@ -283,7 +325,9 @@ export default function StatsAnalytics({
               ) : (
                 <b className="ratio-numbers empty-ratio">—</b>
               )}
-              <span className={`ratio-status ${ratios.upperLowerStatus === "no-data" ? "no-data" : "info"}`}>
+              <span
+                className={`ratio-status ${ratios.upperLowerStatus === "no-data" ? "no-data" : "info"}`}
+              >
                 {ratios.upperLowerStatus === "no-data"
                   ? "Нет данных"
                   : ratios.upperLowerStatus === "upper-dominant"
@@ -328,6 +372,7 @@ export default function StatsAnalytics({
             <button
               key={cat.id}
               type="button"
+              aria-pressed={filterCategory === cat.id}
               className={`filter-chip ${filterCategory === cat.id ? "active" : ""}`}
               onClick={() => setFilterCategory(cat.id as typeof filterCategory)}
             >
@@ -338,16 +383,13 @@ export default function StatsAnalytics({
 
         <div className="pr-cards-list">
           {filteredPrs.slice(0, 15).map((pr) => (
-            <div
-              key={pr.key}
-              className="pr-card"
-              onClick={() => onOpenExerciseStrength?.(pr.key)}
-            >
+            <div key={pr.key} className="pr-card">
               <div className="pr-card-head">
                 <div>
                   <h3>{pr.name}</h3>
                   <span className="pr-date">
-                    Рекорд от {dateLabel(pr.bestWeight.date, true)} · «{pr.bestWeight.workoutName}»
+                    Рекорд от {dateLabel(pr.bestWeight.date, true)} · «
+                    {pr.bestWeight.workoutName}»
                   </span>
                 </div>
                 {onOpenExerciseStrength && (
@@ -355,6 +397,8 @@ export default function StatsAnalytics({
                     type="button"
                     className="icon-button pr-nav-btn"
                     title="Посмотреть динамику силы"
+                    aria-label={`Динамика силы: ${pr.name}`}
+                    onClick={() => onOpenExerciseStrength?.(pr.key)}
                   >
                     <ChevronRight size={18} />
                   </button>
@@ -363,10 +407,10 @@ export default function StatsAnalytics({
 
               <div className="pr-metrics-row">
                 <div className="pr-metric-pill weight">
-                  <span className="pr-metric-label">Макс. вес</span>
+                  <span className="pr-metric-label">Лучший подход</span>
                   <b>
-                    {fmt(pr.bestWeight.weight)} кг{" "}
-                    <small>× {pr.bestWeight.reps}</small>
+                    {fmt(pr.bestWeight.weight)} {pr.unit}{" "}
+                    {pr.unit === "кг" && <small>× {pr.bestWeight.reps}</small>}
                   </b>
                 </div>
 
@@ -377,19 +421,23 @@ export default function StatsAnalytics({
                   </div>
                 )}
 
-                <div className="pr-metric-pill volume">
-                  <span className="pr-metric-label">Объём подхода</span>
-                  <b>{fmt(pr.bestSetVolume.volume)} кг</b>
-                </div>
+                {pr.bestSetVolume.volume > 0 && (
+                  <div className="pr-metric-pill volume">
+                    <span className="pr-metric-label">Объём подхода</span>
+                    <b>{fmt(pr.bestSetVolume.volume)} кг</b>
+                  </div>
+                )}
               </div>
             </div>
           ))}
 
           {!filteredPrs.length && (
-            <div className="no-results">В этой категории пока нет записанных рекордов.</div>
+            <div className="no-results">
+              В этой категории пока нет записанных рекордов.
+            </div>
           )}
         </div>
       </section>
-    </div>
+    </m.div>
   );
 }
