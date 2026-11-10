@@ -49,6 +49,7 @@ export class FriendsRepository {
       .first<SocialRow>())!;
   }
 
+  /** Returns consented summaries only; selects team owners before indexed journal lookups. */
   async read(now = new Date()): Promise<FriendsData> {
     const id = this.account.id;
     const me = await this.profile();
@@ -85,11 +86,13 @@ export class FriendsRepository {
         `SELECT w.id, w.payload, a.id AS athlete_id, a.display_name,
       (SELECT COUNT(*) FROM workout_kudos k WHERE k.workout_id = w.id) AS kudos_count,
       EXISTS(SELECT 1 FROM workout_kudos k WHERE k.workout_id = w.id AND k.account_id = ?) AS given
-      FROM workouts w JOIN accounts a ON a.platform_id = w.owner_id
-      WHERE w.date >= ? AND w.date <= ? AND (a.id = ? OR ${connected})
+      FROM accounts a CROSS JOIN workouts w ON w.owner_id = a.platform_id
+      WHERE a.id IN (SELECT ? UNION SELECT CASE WHEN f.low_id = ? THEN f.high_id ELSE f.low_id END
+        FROM friendships f WHERE f.status = 'accepted' AND (f.low_id = ? OR f.high_id = ?))
+        AND w.date >= ? AND w.date <= ?
       ORDER BY w.date DESC, w.updated_at DESC, w.id LIMIT 60`,
       )
-      .bind(id, feedStart, today, id, id, id)
+      .bind(id, id, id, id, id, feedStart, today)
       .all<{
         id: string;
         payload: string;
@@ -146,6 +149,7 @@ export class FriendsRepository {
     };
   }
 
+  /** Creates a pending invitation without auto-accepting reverse requests; limits guessing. */
   async request(value: unknown) {
     const code = FriendsService.inviteCode(str(value, 200, 1));
     if (!code)
@@ -195,6 +199,7 @@ export class FriendsRepository {
       .run();
   }
 
+  /** Accepts only invitations received by this account; safe to retry. */
   async accept(otherId: string) {
     const [low, high] = [this.account.id, otherId].sort();
     const row = await this.db
@@ -207,6 +212,7 @@ export class FriendsRepository {
       throw new AuthError("Входящая заявка не найдена. Обнови список.", 404);
   }
 
+  /** Atomically revokes the pair and its mutual reactions. */
   async remove(otherId: string) {
     const [low, high] = [this.account.id, otherId].sort();
     await this.db.batch([
@@ -223,6 +229,7 @@ export class FriendsRepository {
     ]);
   }
 
+  /** Persists an explicit check-in with a server-owned two-hour expiry. */
   async status(value: Record<string, unknown>) {
     if (typeof value.inGym !== "boolean")
       throw new InputError("Укажи статус тренировки");
@@ -242,6 +249,7 @@ export class FriendsRepository {
       .run();
   }
 
+  /** Sets a reaction idempotently, authorizing friendship inside the insert. */
   async kudos(workoutId: string, given: unknown) {
     if (typeof given !== "boolean")
       throw new InputError("Проверь отметку респекта");

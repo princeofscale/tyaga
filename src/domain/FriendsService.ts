@@ -44,6 +44,7 @@ export class FriendsService {
   static readonly gymSessionMs = 2 * 60 * 60 * 1000;
   static readonly weeklyTarget = 3;
 
+  /** Normalizes a copied code or invitation URL; never performs a network lookup. */
   static inviteCode(value: string): string | null {
     let code = value.trim();
     try {
@@ -56,6 +57,7 @@ export class FriendsService {
     return /^[A-F0-9]{12}$/.test(code) ? code : null;
   }
 
+  /** Uses the viewer’s calendar for weekly and 30-day social ranges. */
   static week(now: Date, timeZone: string) {
     const today = localDate(now, timeZone);
     return {
@@ -65,6 +67,7 @@ export class FriendsService {
     };
   }
 
+  /** Reduces a workout to completed work and supported free-weight volume. */
   static workout(workout: Workout) {
     return {
       setsCount: workingSets([workout]),
@@ -72,6 +75,7 @@ export class FriendsService {
     };
   }
 
+  /** Caps each contribution so one athlete cannot fill another’s weekly target. */
   static teamProgress(athletes: Athlete[]) {
     const target = athletes.length * this.weeklyTarget;
     const done = athletes.reduce(
