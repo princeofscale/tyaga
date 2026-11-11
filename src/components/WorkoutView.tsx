@@ -234,6 +234,14 @@ export default function WorkoutView({
     audioHaptics.setMuted(!soundEnabled);
   }, [soundEnabled]);
 
+  // Причина отказа при сохранении лежит над подходами. Человек в этот момент внизу страницы, поэтому показываем её сами.
+  // Зависимость от saving перезапускает эффект на каждую попытку, даже если текст ошибки не изменился.
+  const errorRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (!error || saving) return;
+    errorRef.current?.scrollIntoView({ block: "center", behavior: reducedMotion ? "auto" : "smooth" });
+  }, [error, saving, reducedMotion]);
+
   useEffect(()=>{
     if(!focusRequest)return;
     const timer=window.setTimeout(()=>{
@@ -494,7 +502,7 @@ export default function WorkoutView({
       </header>
       {notificationError && <p className="inline-error" role="alert">{notificationError}. Таймер на экране продолжает работать.</p>}
       {error ? (
-        <p className="inline-error" role="alert">
+        <p className="inline-error" role="alert" ref={errorRef}>
           {error}
         </p>
       ) : null}
@@ -1435,8 +1443,17 @@ export default function WorkoutView({
           </button>
         </details>
       </fieldset>
+      <AnimatePresence initial={false}>
       {resting ? (
-      <section className="rest-bar" aria-label="Таймер отдыха">
+        <m.section
+          key="rest"
+          className="rest-bar"
+          aria-label="Таймер отдыха"
+          initial={{ opacity: 0, y: 28 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 28, transition: { duration: 0.2 } }}
+          transition={{ type: "spring", stiffness: 420, damping: 34 }}
+        >
           <div className="rest-progress">
             <span
               style={{
@@ -1492,8 +1509,9 @@ export default function WorkoutView({
               <X size={20} />
             </button>
           </div>
-        </section>
+        </m.section>
       ) : null}
+      </AnimatePresence>
       <span className="sr-only" role="status" aria-live="polite">
         {announcement}
       </span>

@@ -418,6 +418,41 @@ test("dumbbells, explicit sides and assistance keep distinct input rules", async
   expect(exercises[2].sets[0].weight).toBe(0);
 });
 
+test("a rejected save scrolls its reason into view instead of failing silently", async ({
+  page,
+}) => {
+  // Невысокий экран телефона: сообщение живёт над подходами и без прокрутки осталось бы за краем.
+  await page.setViewportSize({ width: 390, height: 700 });
+  await startBench(page, "[E2E] Тренажёр без названия");
+  const machine = "Подтягивания с помощью тренажёра";
+  await addExercise(page, machine);
+  await page.getByLabel(`${machine}, подход 1, помощь`, { exact: true }).fill("40");
+  await page
+    .getByRole("button", {
+      name: `Отметить выполненным: ${machine}, подход 1`,
+      exact: true,
+    })
+    .click();
+  await page.evaluate(() =>
+    window.scrollTo(0, document.documentElement.scrollHeight),
+  );
+  await page
+    .getByRole("button", { name: "Завершить тренировку", exact: true })
+    .click();
+
+  // Сервер не принимает тренажёр без названия: причина должна оказаться на экране, а не над ним и не под липкой шапкой.
+  const reason = page.getByRole("alert").filter({ hasText: "Укажи тренажёр" });
+  await expect(reason).toBeVisible();
+  await expect(reason).toBeInViewport({ ratio: 1 });
+  const hidden = await reason.evaluate((node) => {
+    const head = document
+      .querySelector(".workout-bar")!
+      .getBoundingClientRect();
+    return node.getBoundingClientRect().top < head.bottom;
+  });
+  expect(hidden, "причина спрятана под шапкой тренировки").toBe(false);
+});
+
 test("warmup-only is blocked and timer completion is announced after restoration", async ({
   page,
 }) => {

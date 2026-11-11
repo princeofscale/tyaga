@@ -89,7 +89,7 @@ import Modal from "./components/Modal";
 import Select from "./components/Select";
 import WorkoutView from "./components/WorkoutView";
 import TrainingPlate from "./components/TrainingPlate";
-import { m } from "motion/react";
+import { AnimatePresence, m } from "motion/react";
 const AnatomyExplorer = lazy(() => import("./components/AnatomyExplorer"));
 const ExerciseLibrary = lazy(() => import("./components/ExerciseLibrary"));
 const ProgramsScreen = lazy(() => import("./components/ProgramsScreen"));
@@ -1563,26 +1563,49 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
           )}
         </m.div>
       </main>
-      {draft && view !== "workout" ? (
-        <button className="resume-pill" onClick={() => go("workout")}>
-          <span className="resume-dot" aria-hidden="true" />
-          Вернуться к тренировке
-          <b>{draft.manualDuration ? draft.workout.duration : Math.floor(elapsedMs(draft) / 60000)} мин</b>
-        </button>
-      ) : null}
-      {toast ? (
-        <div className="toast" role="status">
-          <Check size={17} />
-          <span>{toast}</span>
-          <button
-            className="icon-button"
-            aria-label="Скрыть уведомление"
-            onClick={() => setToast("")}
+      <AnimatePresence>
+        {draft && view !== "workout" ? (
+          <m.button
+            key="resume"
+            className="resume-pill"
+            style={{ x: "-50%" }}
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 24, transition: { duration: 0.18 } }}
+            whileTap={{ scale: 0.97 }}
+            transition={{ type: "spring", stiffness: 380, damping: 30 }}
+            onClick={() => go("workout")}
           >
-            <X size={16} />
-          </button>
-        </div>
-      ) : null}
+            <span className="resume-dot" aria-hidden="true" />
+            Вернуться к тренировке
+            <b>{draft.manualDuration ? draft.workout.duration : Math.floor(elapsedMs(draft) / 60000)} мин</b>
+          </m.button>
+        ) : null}
+      </AnimatePresence>
+      <AnimatePresence>
+        {toast ? (
+          <m.div
+            key="toast"
+            className="toast"
+            role="status"
+            style={{ x: "-50%" }}
+            initial={{ opacity: 0, y: 14, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 8, scale: 0.98, transition: { duration: 0.16 } }}
+            transition={{ type: "spring", stiffness: 420, damping: 32 }}
+          >
+            <Check size={17} />
+            <span>{toast}</span>
+            <button
+              className="icon-button"
+              aria-label="Скрыть уведомление"
+              onClick={() => setToast("")}
+            >
+              <X size={16} />
+            </button>
+          </m.div>
+        ) : null}
+      </AnimatePresence>
       {modal === "picker" ? (
         <Modal title="Добавить упражнения" onClose={() => setModal(null)} wide>
           {exerciseCards(true)}

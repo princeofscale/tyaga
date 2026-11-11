@@ -1097,6 +1097,14 @@
   }
 }
 
+/* 320 px: на кнопку «Завершить» остаётся около 60 px, поэтому подпись чуть меньше и без боковых полей. */
+@media (max-width: 340px) {
+  .workout-athletic .workout-head-buttons-cluster .finish-button {
+    padding: 0 3px;
+    font-size: 0.6875rem;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .workout-athletic *,
   .workout-athletic *::before,

@@ -380,3 +380,65 @@ test("native motion renders a cold page and completes navigation without backgro
   expect(infiniteAnimations).toBe(0);
   clean();
 });
+
+test("workout header buttons keep their labels inside on the narrowest phones", async ({
+  page,
+}) => {
+  const clean = await preview(page);
+  await page.setViewportSize({ width: 320, height: 640 });
+  await page.goto("/");
+  await ready(page);
+  await page
+    .getByRole("button", { name: "Начать тренировку", exact: true })
+    .click();
+  await expect(page.locator(".workout-athletic")).toBeVisible();
+  const clipped = await page.locator(".workout-bar button").evaluateAll(
+    (buttons) =>
+      buttons
+        .filter((button) => button.scrollWidth > button.clientWidth)
+        .map(
+          (button) =>
+            button.getAttribute("aria-label") ?? button.textContent?.trim(),
+        ),
+  );
+  expect(clipped, "подпись выходит за край кнопки").toEqual([]);
+  clean();
+});
+
+for (const motion of ["no-preference", "reduce"] as const) {
+  test(`dialogs ${motion === "reduce" ? "close at once" : "play their exit before leaving"} with reduced-motion: ${motion}`, async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: motion });
+    const clean = await preview(page);
+    await page.goto("/");
+    await ready(page);
+    await page
+      .getByRole("button", { name: "Мой профиль", exact: true })
+      .click();
+    const dialog = page.locator("dialog.modal");
+    await expect(dialog).toBeVisible();
+    // Класс closing живёт около 160 мс, обычная проверка могла бы его не застать: запоминаем сами.
+    await dialog.evaluate((node) => {
+      const seen = { closing: false };
+      Object.assign(window, { __dialogExit: seen });
+      new MutationObserver(() => {
+        if (node.classList.contains("closing")) seen.closing = true;
+      }).observe(node, { attributes: true, attributeFilter: ["class"] });
+    });
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    const playedExit = await page.evaluate(
+      () =>
+        (window as unknown as { __dialogExit: { closing: boolean } })
+          .__dialogExit.closing,
+    );
+    expect(
+      playedExit,
+      motion === "reduce"
+        ? "при reduced-motion окно закрывается сразу, без выхода"
+        : "окно уходит через состояние closing",
+    ).toBe(motion === "no-preference");
+    clean();
+  });
+}
