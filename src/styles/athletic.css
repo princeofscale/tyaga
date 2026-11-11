@@ -25,8 +25,6 @@
   --r-card: 20px;
   --r-btn: 12px;
   --r-field: 10px;
-  --font-display: "Oswald Variable", "Arial Narrow", sans-serif;
-  --font-body: "Manrope Variable", Manrope, system-ui, sans-serif;
   --ease-out: cubic-bezier(.22, 1, .36, 1);
   font-family: var(--font-body);
   font-variant-numeric: tabular-nums;
@@ -69,6 +67,11 @@ button, input { font-variant-numeric: tabular-nums; }
 .button.secondary:hover:not(:disabled) { background: var(--surface-3); border-color: var(--line-strong); transform: none; }
 .icon-button { border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); }
 .text-button { font-weight: 650; }
+/* На сенсорных экранах у текстовых кнопок невидимая зона нажатия около 44px: вид и вёрстка не меняются. */
+@media (pointer: coarse) {
+  .text-button { position: relative; }
+  .text-button::after { content: ""; position: absolute; inset: -9px -8px; }
+}
 .panel, .stat-card, .library-card, .routine-card {
   background: var(--surface);
   border-color: var(--line);
@@ -90,8 +93,8 @@ button, input { font-variant-numeric: tabular-nums; }
   padding: 0 16px 42px;
   font-family: var(--font-display);
   font-size: 3.3rem;
-  font-weight: 600;
-  letter-spacing: -.055em;
+  font-weight: 700;
+  letter-spacing: -0.015em;
   line-height: 1;
 }
 .brand-period { color: var(--accent); }
@@ -126,8 +129,8 @@ button, input { font-variant-numeric: tabular-nums; }
 .today-head h1, .screen-head h1 {
   font-family: var(--font-display);
   font-size: clamp(2.6rem, 4.3vw, 4rem);
-  font-weight: 500;
-  letter-spacing: -.035em;
+  font-weight: 600;
+  letter-spacing: -0.015em;
   line-height: 1.08;
 }
 .today-date { display: block; margin-bottom: 9px; color: var(--muted); font-size: .82rem; font-weight: 500; text-transform: none; }
@@ -183,9 +186,9 @@ button, input { font-variant-numeric: tabular-nums; }
   color: var(--text);
   font-family: var(--font-display);
   font-size: clamp(2.3rem, 3.7vw, 3.65rem);
-  font-weight: 500;
+  font-weight: 600;
   line-height: 1.13;
-  letter-spacing: -.025em;
+  letter-spacing: -0.015em;
   text-transform: uppercase;
   text-wrap: balance;
   overflow-wrap: anywhere;
@@ -232,7 +235,7 @@ button, input { font-variant-numeric: tabular-nums; }
 .week-summary-head { align-items: flex-start; }
 .week-summary-head > b { max-width: 110px; line-height: 1.5; font-size: .82rem; font-weight: 650; }
 .week-summary-head > span { font-size: .75rem; white-space: nowrap; }
-.week-summary-head strong { font-family: var(--font-display); font-size: 2.7rem; line-height: 1; font-weight: 500; margin-right: 3px; }
+.week-summary-head strong { font-family: var(--font-display); font-size: 2.7rem; line-height: 1; font-weight: 700; margin-right: 3px; }
 .week-summary .meter { height: 5px; background: var(--surface-3); }
 .week-summary .meter > span { background: var(--accent); transition: width .4s var(--ease-out); }
 .week-summary-foot { font-size: .7rem; line-height: 1.5; gap: 12px; }
@@ -258,12 +261,12 @@ button, input { font-variant-numeric: tabular-nums; }
 .session-item { padding: 18px 20px; border-radius: 14px; background: var(--surface); border-color: var(--line); box-shadow: none; }
 .session-item:hover { background: var(--surface-2); border-color: var(--line-strong); transform: none; }
 .session-item h3 { font-family: var(--font-body); font-size: .9rem; font-weight: 700; }
-.session-item-value > b { font-family: var(--font-display); font-size: 1.65rem; font-weight: 500; }
+.session-item-value > b { font-family: var(--font-display); font-size: 1.65rem; font-weight: 700; }
 .history-panel { padding: 0; background: var(--surface); overflow: hidden; }
 .history-panel .session-item { border-radius: 0; background: transparent; }
 .stat-card { border-radius: 17px; }
 .stat-card:hover, .stat-card.accent-glow:hover, .stat-card.streak-glow:hover { transform: none; box-shadow: none; border-color: var(--line-strong); }
-.stat-card .stat-value, .stat-card-value { font-family: var(--font-display); font-weight: 500; font-size: 2.8rem; letter-spacing: -.03em; text-shadow: none; }
+.stat-card .stat-value, .stat-card-value { font-family: var(--font-display); font-weight: 700; font-size: 2.8rem; letter-spacing: -0.015em; text-shadow: none; }
 .tabs { padding: 5px; border-radius: 13px; background: var(--surface); border-color: var(--line); }
 .tabs button { min-height: 43px; font-size: .82rem; transition: color .18s, background-color .18s; }
 .tabs button.active { background: var(--accent); color: var(--on-accent); box-shadow: none; }
@@ -273,12 +276,12 @@ button, input { font-variant-numeric: tabular-nums; }
 .routine-card { border-radius: 17px; }
 .program-day { border-color: var(--line); background: var(--bg); }
 .program-day.today { border-color: var(--accent-line); background: var(--accent-soft); }
-.program-day-label b { font-family: var(--font-display); font-size: 1.6rem; font-weight: 500; }
+.program-day-label b { font-family: var(--font-display); font-size: 1.6rem; font-weight: 700; }
 .search-field { border-radius: 11px; background: var(--surface); border: 1px solid var(--line-strong); }
 .search-field:focus-within { border-color: var(--accent); }
 .search-field input { border: 0; background: transparent; }
 .empty-state { min-height: 290px; padding: 32px 20px; }
-.empty-state h2 { font-family: var(--font-display); font-size: 2rem; font-weight: 500; letter-spacing: -.025em; }
+.empty-state h2 { font-family: var(--font-display); font-size: 2rem; font-weight: 600; letter-spacing: -0.015em; }
 .empty-state p { max-width: 430px; line-height: 1.7; }
 .empty-icon { background: var(--accent-soft); border: 1px solid var(--accent-line); color: var(--accent); box-shadow: none; }
 
@@ -287,7 +290,7 @@ button, input { font-variant-numeric: tabular-nums; }
 .modal::backdrop { background: rgba(6, 10, 7, .76); backdrop-filter: blur(5px); }
 .modal[open] { animation: night-dialog-in .18s var(--ease-out); }
 .modal-head { padding-bottom: 16px; border-bottom: 1px solid var(--line); gap: 20px; background: var(--surface); }
-.modal-head h2 { font-family: var(--font-display); font-size: 1.8rem; font-weight: 500; letter-spacing: -.02em; }
+.modal-head h2 { font-family: var(--font-display); font-size: 1.8rem; font-weight: 600; letter-spacing: -.02em; }
 .modal .account-form { gap: 16px; }
 .account-form label { font-weight: 600; color: var(--text-soft); font-size: .8rem; }
 .account-form input { min-height: 48px; font-size: .9rem; }
@@ -362,6 +365,8 @@ button, input { font-variant-numeric: tabular-nums; }
   .tool-info b { font-size: .8rem; }
   .tool-info span { font-size: .72rem; margin-top: 3px; }
   .quick-gym-tools-panel .quick-tool-card:last-child { flex-direction: row; align-items: center; gap: 13px; min-height: 86px; }
+  /* Нечётная плитка перед последней осталась бы одна в строке с дырой справа: растягиваем её на обе колонки. */
+  .quick-gym-tools-panel .quick-tool-card:nth-last-child(2):nth-child(odd) { grid-column: 1 / -1; flex-direction: row; align-items: center; gap: 13px; min-height: 86px; }
   .gym-tools { margin-top: 24px; }
   .gym-tools .section-head > span { font-size: .67rem; }
   .session-item { padding: 16px; }
@@ -397,7 +402,7 @@ button, input { font-variant-numeric: tabular-nums; }
 /* История: месяцы и карточки */
 .history-list { display: grid; gap: 30px; margin-bottom: 26px; }
 .history-month-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 2px 12px; }
-.history-month-head h2 { font-family: var(--font-display); font-size: 1.35rem; font-weight: 500; letter-spacing: .01em; margin: 0; }
+.history-month-head h2 { font-family: var(--font-display); font-size: 1.35rem; font-weight: 600; letter-spacing: .01em; margin: 0; }
 .history-month-head span { color: var(--muted); font-size: .78rem; }
 .history-cards { display: grid; gap: 10px; }
 .history-list .history-card {
@@ -411,7 +416,7 @@ button, input { font-variant-numeric: tabular-nums; }
 .history-list .history-card:hover { border-color: var(--accent-line); background: var(--surface-2); transform: translateX(3px); }
 .history-list .history-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .history-date { display: grid; place-items: center; width: 54px; height: 62px; border-radius: 12px; background: var(--bg); border: 1px solid var(--line); }
-.history-date b { font-family: var(--font-display); font-size: 1.6rem; font-weight: 500; line-height: 1; }
+.history-date b { font-family: var(--font-display); font-size: 1.6rem; font-weight: 700; line-height: 1; }
 .history-date small { margin-top: 3px; font-size: .68rem; color: var(--muted); }
 .is-today .history-date { border-color: var(--accent-line); }
 .is-today .history-date b { color: var(--accent); }
@@ -421,7 +426,7 @@ button, input { font-variant-numeric: tabular-nums; }
 .history-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .history-chips i { font-style: normal; font-size: .68rem; font-weight: 650; padding: 3px 9px; border-radius: 999px; color: var(--text-soft); background: color-mix(in srgb, var(--accent) 8%, transparent); border: 1px solid var(--accent-line); }
 .history-stats { display: grid; justify-items: end; gap: 5px; }
-.history-stats b { font-family: var(--font-display); font-size: 1.5rem; font-weight: 500; line-height: 1; }
+.history-stats b { font-family: var(--font-display); font-size: 1.5rem; font-weight: 700; line-height: 1; }
 .history-stats b small { font-family: var(--font-body); font-size: .7rem; color: var(--muted); font-weight: 600; }
 .history-stats span { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: .74rem; }
 .history-chevron { color: var(--faint); transition: transform .2s var(--ease-out), color .2s; }
@@ -450,13 +455,13 @@ button, input { font-variant-numeric: tabular-nums; }
 .coverage-ring .ring-bg { stroke: var(--line); }
 .coverage-ring .ring-fg { stroke: var(--accent); stroke-linecap: round; filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 45%, transparent)); }
 .coverage-ring > div { display: grid; justify-items: center; line-height: 1; }
-.coverage-ring b { font-family: var(--font-display); font-size: 2.35rem; font-weight: 500; }
+.coverage-ring b { font-family: var(--font-display); font-size: 2.35rem; font-weight: 700; }
 .coverage-ring b small { font-size: 1rem; color: var(--muted); margin-left: 2px; }
 .coverage-ring span { margin-top: 6px; font-size: .7rem; color: var(--muted); }
 .summary-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .summary-metric { display: grid; gap: 7px; padding: 14px 16px; border-radius: 14px; background: color-mix(in srgb, var(--bg) 55%, transparent); border: 1px solid var(--line-soft); min-width: 0; }
 .summary-metric > span { font-size: .74rem; color: var(--muted); }
-.summary-metric b { font-family: var(--font-display); font-size: 2rem; font-weight: 500; line-height: 1; letter-spacing: -.01em; }
+.summary-metric b { font-family: var(--font-display); font-size: 2rem; font-weight: 700; line-height: 1; letter-spacing: -.01em; }
 .summary-metric b small { font-family: var(--font-body); font-size: .72rem; font-weight: 600; color: var(--muted); }
 .delta { display: inline-flex; align-items: center; gap: 4px; font-size: .68rem; color: var(--muted); }
 .delta.up { color: var(--accent); }
@@ -506,6 +511,11 @@ button, input { font-variant-numeric: tabular-nums; }
 
 dialog.modal[open] { animation: modal-in .38s var(--ease-out); }
 dialog.modal[open]::backdrop { animation: fade-in .3s ease-out; }
+/* Выход: Modal.tsx снимает окно после animationend, поэтому закрытие не обрывается на полукадре. */
+dialog.modal.closing[open] { animation: modal-out .16s ease-in forwards; }
+dialog.modal.closing[open]::backdrop { animation: fade-out .16s ease-in forwards; }
+@keyframes modal-out { to { opacity: 0; transform: translateY(12px) scale(.98); } }
+@keyframes fade-out { to { opacity: 0; } }
 
 /* Нажатие: кнопки «продавливаются» */
 .button, .icon-button, .nav-item, .quick-tool-card, .week-summary { transition: transform .16s var(--ease-out), background-color .18s, border-color .18s, color .18s; }
@@ -545,3 +555,9 @@ dialog.modal[open]::backdrop { animation: fade-in .3s ease-out; }
 .tabs.tabs-sliding { display: flex; overflow-x: auto; scrollbar-width: none; }
 .tabs.tabs-sliding::-webkit-scrollbar { display: none; }
 .tabs.tabs-sliding button { flex: 1 0 auto; padding-inline: 14px; white-space: nowrap; }
+
+/* Плавающая кнопка «Вернуться к тренировке» занимает место над нижним краем: контент не должен заезжать под неё. */
+.app-shell.has-resume .page-content { padding-bottom: 96px; }
+@media (max-width: 960px) {
+  .app-shell.has-resume .page-content { padding-bottom: calc(150px + var(--sab)); }
+}

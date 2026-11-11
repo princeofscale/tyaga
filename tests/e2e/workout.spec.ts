@@ -144,13 +144,13 @@ test("save/reload/edit/export/settings/repeat preserve the actual workout and ti
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
-  await page.getByRole("button",{name:"Посмотреть пример",exact:true}).click();
-  await expect(page.getByText("Пример данных", { exact: true })).toBeVisible();
   await page.screenshot({ path: "artifacts/desktop-v2.png", fullPage: true });
   await page
     .getByRole("navigation")
     .getByRole("button", { name: "Прогресс", exact: true })
     .click();
+  // Планировщик свёрнут в карточку «Закрыть пробелы»: сначала раскрываем её.
+  await page.getByRole("button", { name: /^Закрыть пробелы/ }).click();
   await page.getByRole("button", { name: "20 мин", exact: true }).click();
   await expect(page.locator(".plan-item")).not.toHaveCount(0);
   expect(await page.locator(".plan-item").count()).toBeLessThanOrEqual(2);
@@ -415,13 +415,39 @@ test("dumbbells, explicit sides and assistance keep distinct input rules", async
   expect(exercises[2].sets[0].weight).toBe(0);
 });
 
+test("a rejected save scrolls its reason into view instead of failing silently", async ({
+  page,
+}) => {
+  // Невысокий экран телефона: сообщение живёт над подходами и без прокрутки осталось бы за краем.
+  await page.setViewportSize({ width: 390, height: 700 });
+  await startBench(page, "[E2E] Тренажёр без названия");
+  const machine = "Подтягивания с помощью тренажёра";
+  await addExercise(page, machine);
+  await page.getByLabel(`${machine}, подход 1, помощь`, { exact: true }).fill("40");
+  await page
+    .getByRole("button", { name: `Отметить выполненным: ${machine}, подход 1`, exact: true })
+    .click();
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await page.getByRole("button", { name: "Завершить тренировку", exact: true }).click();
+
+  // Сервер не принимает тренажёр без названия: причина должна оказаться на экране, а не над ним и не под липкой шапкой.
+  const reason = page.getByRole("alert").filter({ hasText: "Укажи тренажёр" });
+  await expect(reason).toBeVisible();
+  await expect(reason).toBeInViewport({ ratio: 1 });
+  const hidden = await reason.evaluate((node) => {
+    const head = document.querySelector(".workout-bar")!.getBoundingClientRect();
+    return node.getBoundingClientRect().top < head.bottom;
+  });
+  expect(hidden, "причина спрятана под шапкой тренировки").toBe(false);
+});
+
 test("warmup-only is blocked and timer completion is announced after restoration", async ({
   page,
 }) => {
   await startBench(page, "[E2E] Разминка");
   await page
     .getByRole("button", {
-      name: "Подход 1: рабочий. Переключить тип",
+      name: "Подход 1: рабочий. Нажми для переключения",
       exact: true,
     })
     .click();
@@ -450,8 +476,7 @@ test("mobile layout, detailed muscle sources and 200% text stay usable", async (
   page.on("pageerror", (e) => errors.push(e.message));
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
-  await page.getByRole("button", { name: "Посмотреть пример", exact: true }).click();
-  await expect(page.getByText("Пример данных", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Сегодня", exact: true })).toBeVisible();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth > innerWidth,
@@ -521,9 +546,13 @@ test("anatomy atlas supports mouse, keyboard, mobile and enlarged text", async (
   await expect(page.locator(".body-figure")).toHaveCount(1);
   await page.getByRole("button", { name: "Оба вида", exact: true }).click();
   await page.evaluate(() => document.fonts.ready);
+  // `fonts.check` для гарнитуры, которой нет в @font-face, вхолостую возвращает true,
+  // поэтому смотрим на сами начертания: файл интерфейсного шрифта должен быть загружен.
   expect(
     await page.evaluate(() =>
-      document.fonts.check('16px "Manrope Variable"', "Тяга"),
+      [...document.fonts].some(
+        (face) => face.family.replaceAll('"', "") === "Onest Variable" && face.status === "loaded",
+      ),
     ),
   ).toBe(true);
   await page.screenshot({ path: "artifacts/anatomy-v3.png", fullPage: true });
@@ -722,7 +751,7 @@ test("programs save to the account, schedule a week and propose safe double prog
   await expect(
     page.getByLabel("Жим штанги лёжа, подход 1, повторы", { exact: true }),
   ).toHaveValue("8");
-  await expect(page.locator(".progression-note")).toContainText("+2.5 кг");
+  await expect(page.locator(".progression-banner")).toContainText("+2.5 кг");
   expect(errors).toEqual([]);
 });
 

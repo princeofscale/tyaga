@@ -160,3 +160,19 @@ export const kudos = sqliteTable(
     index("idx_kudos_workout").on(t.workoutId),
   ],
 );
+
+export const liveMembers = sqliteTable(
+  "live_members",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    code: text("code").notNull(),
+    ownerId: text("owner_id").notNull(),
+    state: text("state"),
+    joinedAt: text("joined_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("idx_live_members_owner").on(t.ownerId),
+    index("idx_live_members_code").on(t.code),
+  ],
+);

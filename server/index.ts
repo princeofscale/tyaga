@@ -17,6 +17,7 @@ import { BackupImportService } from "./BackupImportService";
 import { exerciseById } from "../src/lib/model";
 import { AccountService, AuthError } from "./AccountService";
 import { SocialService } from "./SocialService";
+import { LiveRoomService } from "./LiveRoomService";
 export interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
@@ -84,6 +85,20 @@ export async function handleApi(request: Request, env: Env) {
       }
       if (request.method === "PUT" && url.pathname === "/api/social/kudos")
         return json(await social.kudos(await readBody(request)));
+      const live = new LiveRoomService(env.DB, userId);
+      switch (`${request.method} ${url.pathname}`) {
+        case "GET /api/social/live":
+          return json({ room: await live.current() });
+        case "POST /api/social/live":
+          return json({ room: await live.create() });
+        case "POST /api/social/live/join":
+          return json({ room: await live.join(await readBody(request)) });
+        case "PUT /api/social/live/state":
+          return json({ room: await live.push(await readBody(request)) });
+        case "DELETE /api/social/live":
+          await live.leave();
+          return json({ room: null });
+      }
     }
     if (request.method === "GET" && url.pathname === "/api/product")
       return json(await product.read());

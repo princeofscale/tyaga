@@ -123,10 +123,14 @@ import type { AccountProfile } from "./lib/account";
 import SessionInsights from "./components/SessionInsights";
 import { saveFile } from "./lib/saveFile";
 import type { Release } from "./device/appUpdate";
+import { useLiveRoom } from "./components/LiveRoomProvider";
+import { useLiveBroadcast } from "./lib/useLiveBroadcast";
+import { takeInvite, type Invite } from "./lib/invite";
+import { LiveStateBuilder } from "./domain/LiveSession";
 
 type ProductView =
   "overview" | "workout" | "history" | "library" | "progress" | "programs" | "friends";
-// "programs" lives in the desktop sidebar; on a phone it opens from «Сегодня».
+// "programs" lives in the desktop sidebar; on a phone it opens from «Сегодня». «Напарники» есть и на телефоне: с ним тренируются в зале.
 const NAV = [
   { id: "overview", label: "Сегодня", icon: House },
   { id: "history", label: "История", icon: History },
@@ -174,6 +178,16 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
   const [plannerOpen, setPlannerOpen] = useState(false);
   const [progressTab, setProgressTab] = useState<"balance" | "analytics" | "strength" | "anatomy" | "weight">("balance");
   const [toast, setToast] = useState("");
+  const live = useLiveRoom();
+  useLiveBroadcast(draft);
+  // Ссылка-приглашение (`?p=тег` или `?r=КОД`) открывает «Напарников» с готовым предложением.
+  const [invite, setInvite] = useState<Invite | null>(null);
+  useEffect(() => {
+    const incoming = takeInvite();
+    if (!incoming) return;
+    setInvite(incoming);
+    setView("friends");
+  }, []);
   const [modal, setModal] = useState<
     | "picker"
     | "settings"
@@ -583,6 +597,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
       setConflict(null);
       setDemo(false);
       setJustSaved(result.workout);
+      live.finish(LiveStateBuilder.fromWorkout(result.workout, { now: Date.now(), nameOf: entryName, finished: true }));
       go("history");
       setToast(
         draft.editing
@@ -812,7 +827,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
   );
 
   return (
-    <div className={`app-shell ${view === "workout" ? "in-workout" : ""}`}>
+    <div className={`app-shell ${view === "workout" ? "in-workout" : ""} ${draft && view !== "workout" ? "has-resume" : ""}`}>
       <aside className="sidebar">
         <a
           className="brand"
@@ -828,7 +843,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
         <nav aria-label="Основная навигация">
           {NAV.map((n) => (
             <button
-              className={`nav-item ${view === n.id ? "active" : ""} ${n.id === "programs" || n.id === "friends" ? "desktop-only" : ""}`}
+              className={`nav-item ${view === n.id ? "active" : ""} ${n.id === "programs" ? "desktop-only" : ""}`}
               key={n.id}
               onClick={() => go(n.id)}
               aria-current={view === n.id ? "page" : undefined}
@@ -1086,7 +1101,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                       </div>
                       <div className="tool-info">
                         <b>Напарники</b>
-                        <span>Лента и респекты</span>
+                        <span>Тренируйтесь вместе</span>
                       </div>
                     </button>
 
@@ -1149,6 +1164,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                   onSave={() => void saveWorkout()}
                   onDiscard={() => setModal("discard")}
                   onMinimize={() => go("overview")}
+                  onOpenTogether={() => go("friends")}
                 />
               ) : null}
               {view === "history" ? (
@@ -1666,7 +1682,13 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                     <h1>Напарники</h1>
                   </header>
                   <Suspense fallback={<p role="status">Открываем напарников…</p>}>
-                    <FriendsScreen />
+                    <FriendsScreen
+                      invite={invite}
+                      onInviteHandled={() => setInvite(null)}
+                      onToast={setToast}
+                      workoutActive={!!draft}
+                      onWorkout={() => (draft ? go("workout") : start())}
+                    />
                   </Suspense>
                 </>
               ) : null}
@@ -1705,26 +1727,49 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
           )}
         </m.div>
       </main>
-      {draft && view !== "workout" ? (
-        <button className="resume-pill" onClick={() => go("workout")}>
-          <span className="resume-dot" aria-hidden="true" />
-          Вернуться к тренировке
-          <b>{draft.manualDuration ? draft.workout.duration : Math.floor(sessionMs(draft) / 60000)} мин</b>
-        </button>
-      ) : null}
-      {toast ? (
-        <div className="toast" role="status">
-          <Check size={17} />
-          <span>{toast}</span>
-          <button
-            className="icon-button"
-            aria-label="Скрыть уведомление"
-            onClick={() => setToast("")}
+      <AnimatePresence>
+        {draft && view !== "workout" ? (
+          <m.button
+            key="resume"
+            className="resume-pill"
+            style={{ x: "-50%" }}
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 24, transition: { duration: 0.18 } }}
+            whileTap={{ scale: 0.97 }}
+            transition={{ type: "spring", stiffness: 380, damping: 30 }}
+            onClick={() => go("workout")}
           >
-            <X size={16} />
-          </button>
-        </div>
-      ) : null}
+            <span className="resume-dot" aria-hidden="true" />
+            Вернуться к тренировке
+            <b>{draft.manualDuration ? draft.workout.duration : Math.floor(sessionMs(draft) / 60000)} мин</b>
+          </m.button>
+        ) : null}
+      </AnimatePresence>
+      <AnimatePresence>
+        {toast ? (
+          <m.div
+            key="toast"
+            className="toast"
+            role="status"
+            style={{ x: "-50%" }}
+            initial={{ opacity: 0, y: 14, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 8, scale: 0.98, transition: { duration: 0.16 } }}
+            transition={{ type: "spring", stiffness: 420, damping: 32 }}
+          >
+            <Check size={17} />
+            <span>{toast}</span>
+            <button
+              className="icon-button"
+              aria-label="Скрыть уведомление"
+              onClick={() => setToast("")}
+            >
+              <X size={16} />
+            </button>
+          </m.div>
+        ) : null}
+      </AnimatePresence>
       {modal === "picker" ? (
         <Modal title="Добавить упражнения" onClose={() => setModal(null)} wide>
           {exerciseCards(true)}

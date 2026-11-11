@@ -1,21 +1,94 @@
-/* Напарники */
-.friends-screen { display: grid; grid-template-columns: minmax(280px, 360px) minmax(0, 1fr); gap: 22px; align-items: start; }
-.friends-side, .feed-list { display: grid; gap: 14px; }
-.friends-side { position: sticky; top: 20px; }
-.friends-feed .section-head { margin-bottom: 12px; }
-.friend-card { padding: 18px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); min-width: 0; }
-.friend-card h2 { margin: 0 0 12px; font-size: 1rem; font-weight: 700; letter-spacing: -.02em; }
-.friend-card > p { margin: 0 0 12px; color: var(--muted); font-size: .82rem; line-height: 1.55; }
-.friend-avatar { display: grid; place-items: center; flex: none; width: 42px; height: 42px; border-radius: 14px; color: #111512; font-family: var(--font-display); font-size: 1.15rem; font-weight: 600; }
-.friend-note { display: block; color: var(--muted); font-size: .74rem; line-height: 1.5; }
+/* Напарники: комната «Вместе», лента, таблица недели, люди */
+.friends-screen { --rest: #ff9d42; display: grid; grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); gap: 22px; align-items: start; }
+.friends-together { display: grid; gap: 14px; position: sticky; top: 20px; min-width: 0; }
+.friends-main { display: grid; gap: 14px; min-width: 0; }
+.feed-list, .people { display: grid; gap: 14px; }
 
-.friend-me { display: grid; gap: 14px; background: radial-gradient(ellipse at 0 0, color-mix(in srgb, var(--accent) 11%, transparent), transparent 60%), var(--surface); }
+.friend-card { padding: 18px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); min-width: 0; }
+.friend-card h2 { margin: 0 0 12px; font-size: 1rem; font-weight: 700; letter-spacing: -.01em; }
+.friend-card > p { margin: 0 0 12px; color: var(--muted); font-size: .82rem; line-height: 1.55; }
+.friend-card .form-error, .together .form-error { margin: 0; color: var(--danger); font-size: .82rem; line-height: 1.5; }
+.friend-avatar { display: grid; place-items: center; flex: none; width: 42px; height: 42px; border-radius: 14px; color: #111512; font-family: var(--font-display); font-size: 1.15rem; font-weight: 700; }
+.friend-avatar.sm { width: 28px; height: 28px; border-radius: 9px; font-size: .85rem; }
+.friend-note { display: block; color: var(--muted); font-size: .74rem; line-height: 1.5; }
+.button.compact { min-height: 36px; padding: 6px 12px; font-size: .78rem; border-radius: 10px; }
+
+/* Тренироваться вместе */
+.together { display: grid; gap: 12px; padding: 20px; border: 1px solid var(--line); border-radius: 20px; background: radial-gradient(ellipse at 0 0, color-mix(in srgb, var(--accent) 10%, transparent), transparent 62%), var(--surface); min-width: 0; }
+.together h2 { margin: 0; font-family: var(--font-display); font-size: 2rem; font-weight: 700; line-height: 1; }
+.together > p { margin: 0; max-width: 40ch; color: var(--muted); font-size: .86rem; line-height: 1.55; }
+.together-icon { color: var(--accent); }
+.together-loading { display: flex; align-items: center; gap: 10px; margin: 0; color: var(--muted); }
+.together-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.together-actions .button { flex: 1 1 auto; justify-content: center; }
+.together-hint { margin: 0; color: var(--muted); font-size: .8rem; line-height: 1.5; }
+.together-join { overflow: hidden; }
+.together-join label { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; font-size: .78rem; font-weight: 650; color: var(--text-soft); }
+.join-field { display: flex; gap: 8px; min-width: 0; }
+.join-field input { flex: 1 1 0; width: 0; min-width: 0; height: 46px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--bg); color: var(--text); font-family: var(--font-mono); font-size: 1.15rem; font-weight: 700; letter-spacing: .16em; text-align: center; text-transform: uppercase; outline: none; }
+.join-field input:focus { border-color: var(--accent); }
+.join-field input[aria-invalid="true"] { border-color: var(--danger); }
+.join-field .button { flex: none; min-height: 46px; }
+
+.room-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px 12px; }
+.room-label { grid-row: 1; color: var(--muted); font-size: .74rem; font-weight: 650; }
+.room-tools { grid-row: 1; grid-column: 2; display: flex; gap: 6px; }
+.room-code { grid-row: 2; grid-column: 1 / -1; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; max-width: 340px; }
+.room-code span { display: grid; place-items: center; height: 58px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--bg); font-family: var(--font-mono); font-size: 1.8rem; font-weight: 700; }
+
+.live-members { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.live-member { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--line-soft); border-radius: 14px; background: var(--bg); }
+.live-member.me { border-color: var(--accent-line); }
+.live-member.away { opacity: .6; }
+.live-member-text { display: grid; gap: 3px; flex: 1; min-width: 0; }
+.live-member-text b { overflow: hidden; font-size: .92rem; text-overflow: ellipsis; white-space: nowrap; }
+.live-member-text b i { color: var(--muted); font-style: normal; font-weight: 500; }
+.live-member-text small { overflow: hidden; color: var(--text-soft); font-size: .78rem; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+.live-bar { display: block; height: 4px; margin-top: 3px; overflow: hidden; border-radius: 999px; background: var(--surface-3); }
+.live-bar > span { display: block; height: 100%; border-radius: inherit; background: var(--accent); transform-origin: 0 50%; }
+.live-member.resting .live-bar > span { background: var(--rest); }
+.live-member-side { display: inline-flex; align-items: center; gap: 6px; flex: none; color: var(--muted); font-size: .78rem; font-variant-numeric: tabular-nums; }
+.live-member.done .live-member-side { color: var(--accent); }
+.live-tonnage { font-family: var(--font-display); font-size: 1.05rem; font-weight: 700; color: var(--text-soft); }
+.live-rest { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px; background: color-mix(in srgb, var(--rest) 16%, transparent); color: var(--rest); font-family: var(--font-mono); font-size: .8rem; font-weight: 700; }
+
+/* Полоса напарников: живёт внутри липкой шапки тренировки, поэтому видна при прокрутке подходов.
+   Отрицательный нижний отступ гасит row-gap шапки, пока полоса схлопнута, и экран не прыгает. */
+.live-strip { --rest: #ff9d42; grid-column: 1 / -1; margin-bottom: -12px; overflow: hidden; }
+.live-strip-row { display: flex; align-items: center; gap: 10px; padding: 8px 0 10px; border-top: 1px solid var(--line-soft); }
+.live-strip-room { display: inline-flex; align-items: center; gap: 6px; flex: none; min-height: 36px; padding: 0 10px; border: 1px solid var(--accent-line); border-radius: 10px; background: var(--accent-soft); color: var(--accent); font-family: var(--font-mono); font-size: .82rem; font-weight: 700; }
+.live-strip ul { display: flex; flex: 1; gap: 8px; min-width: 0; margin: 0; padding: 0; overflow-x: auto; list-style: none; scrollbar-width: none; }
+.live-strip ul::-webkit-scrollbar { display: none; }
+.live-strip li { display: flex; align-items: center; gap: 8px; flex: none; padding: 3px 10px 3px 3px; border: 1px solid var(--line-soft); border-radius: 999px; background: var(--bg); }
+.live-strip li.resting { border-color: color-mix(in srgb, var(--rest) 45%, transparent); }
+.live-strip li > span:not(.friend-avatar) { display: grid; line-height: 1.15; }
+.live-strip li b { font-size: .76rem; }
+.live-strip li small { color: var(--text-soft); font-size: .7rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.live-strip li i { display: inline-flex; color: var(--rest); }
+
+/* Разделы */
+.friends-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+.friends-tabs button { position: relative; isolation: isolate; min-height: 42px; border: 0; border-radius: 10px; background: transparent; color: var(--muted); font-size: .88rem; font-weight: 700; transition: color .2s; }
+.friends-tabs button:hover { color: var(--text); }
+.friends-tabs button.active { color: var(--on-accent); }
+.friends-tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.friends-tab-pill { position: absolute; inset: 0; z-index: -1; border-radius: 10px; background: var(--accent); }
+
+/* Приглашение */
+.invite-banner { display: grid; gap: 12px; border-color: var(--accent-line); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); }
+.invite-banner > div:first-child { display: grid; gap: 3px; }
+.invite-banner b { font-size: .95rem; }
+.invite-banner small { color: var(--muted); font-size: .78rem; }
+.invite-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* Профиль и поиск */
+.friend-me { display: grid; gap: 14px; background: radial-gradient(ellipse at 0 0, color-mix(in srgb, var(--accent) 9%, transparent), transparent 60%), var(--surface); }
 .friend-me-head { display: flex; align-items: center; gap: 12px; }
 .friend-me-head div { display: grid; gap: 2px; min-width: 0; }
 .friend-me-head b { font-size: 1.05rem; }
 .friend-me-head small { color: var(--muted); font-size: .78rem; overflow-wrap: anywhere; }
 .friend-me-stats { display: flex; flex-wrap: wrap; gap: 6px 14px; color: var(--muted); font-size: .76rem; }
-.friend-me-stats b { color: var(--text); font-family: var(--font-display); font-size: 1.1rem; font-weight: 500; }
+.friend-me-stats b { color: var(--text); font-family: var(--font-display); font-size: 1.1rem; font-weight: 700; }
 .friend-me-stats .on { color: var(--accent); }
 .friend-me-stats span { display: inline-flex; align-items: center; gap: 5px; }
 
@@ -25,11 +98,10 @@
 .friend-form label small.bad { color: var(--danger); }
 .friend-form textarea { resize: none; }
 .friend-form-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.friend-input { display: flex; align-items: center; gap: 8px; padding: 0 6px 0 12px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--bg); }
+.friend-input { display: flex; align-items: center; gap: 8px; padding: 0 4px 0 12px; overflow: hidden; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--bg); }
 .friend-input:focus-within { border-color: var(--accent); }
 .friend-input svg { color: var(--muted); flex: none; }
 .friend-input input { flex: 1; min-width: 0; padding: 12px 0; border: 0; background: transparent; outline: none; }
-.friend-input { overflow: hidden; padding-right: 4px; }
 .friend-input .button { min-height: 36px; padding: 6px 12px; font-size: .78rem; border-radius: 9px; }
 .friend-switch { display: flex !important; grid-template-columns: none; align-items: center; gap: 10px !important; cursor: pointer; }
 .friend-switch input { position: absolute; opacity: 0; pointer-events: none; }
@@ -45,41 +117,80 @@
 .friend-list li { display: flex; align-items: center; gap: 12px; padding: 8px 0; overflow: hidden; border-top: 1px solid var(--line-soft); }
 .friend-list li:first-child { border-top: 0; }
 .friend-list li > span:not(.friend-avatar) { display: grid; gap: 2px; flex: 1; min-width: 0; }
-.friend-list b { font-size: .9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.friend-list b { display: flex; align-items: center; gap: 8px; overflow: hidden; font-size: .9rem; text-overflow: ellipsis; white-space: nowrap; }
 .friend-list small { color: var(--muted); font-size: .72rem; }
+.mutual { padding: 2px 8px; border: 1px solid var(--accent-line); border-radius: 999px; color: var(--accent); font-size: .66rem; font-style: normal; font-weight: 650; }
 
+/* Неделя */
+.standings header { display: grid; gap: 4px; margin-bottom: 12px; }
+.standings h2 { margin: 0; }
+.standings header small { color: var(--muted); font-size: .76rem; }
+.standings ol { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.standings li { display: grid; grid-template-columns: 28px 42px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 10px; border: 1px solid transparent; border-radius: 14px; }
+.standings li.me { border-color: var(--accent-line); background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.standings .rank { display: grid; place-items: center; color: var(--muted); font-family: var(--font-display); font-size: 1.2rem; font-weight: 700; }
+.standings li.leader .rank { color: var(--accent); }
+.standing-main { display: grid; gap: 2px; min-width: 0; }
+.standing-main b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.standing-main small { color: var(--muted); font-size: .72rem; }
+.standing-bar { display: block; height: 5px; margin-top: 5px; overflow: hidden; border-radius: 999px; background: var(--surface-3); }
+.standing-bar > span { display: block; height: 100%; border-radius: inherit; background: color-mix(in srgb, var(--accent) 55%, var(--surface-3)); transform-origin: 0 50%; }
+.standings li.leader .standing-bar > span { background: var(--accent); }
+.standing-value { font-family: var(--font-display); font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.standing-value small { color: var(--muted); font-family: var(--font-body); font-size: .7rem; }
+.standings .friend-note { margin-top: 10px; }
+
+/* Лента */
 .feed-card { display: grid; gap: 14px; transition: border-color .2s; }
 .feed-card:hover { border-color: var(--accent-line); }
 .feed-card header { display: flex; align-items: center; gap: 12px; }
 .feed-card header span:not(.friend-avatar) { display: grid; gap: 2px; min-width: 0; }
 .feed-card header small { color: var(--muted); font-size: .74rem; }
-.feed-card h3 { margin: 0; font-family: var(--font-display); font-size: 1.7rem; font-weight: 500; line-height: 1.1; letter-spacing: .005em; overflow-wrap: anywhere; }
+.feed-card h3 { margin: 0; font-family: var(--font-display); font-size: 1.7rem; font-weight: 700; line-height: 1.1; letter-spacing: .005em; overflow-wrap: anywhere; }
 .feed-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 0; }
-.feed-stats div { padding: 10px 12px; border-radius: 12px; background: var(--bg); border: 1px solid var(--line-soft); }
+.feed-stats div { padding: 10px 12px; border: 1px solid var(--line-soft); border-radius: 12px; background: var(--bg); }
 .feed-stats dt { color: var(--muted); font-size: .68rem; }
-.feed-stats dd { margin: 4px 0 0; font-family: var(--font-display); font-size: 1.45rem; font-weight: 500; line-height: 1; }
-.feed-stats dd small { font-family: var(--font-body); font-size: .68rem; color: var(--muted); }
+.feed-stats dd { margin: 4px 0 0; font-family: var(--font-display); font-size: 1.45rem; font-weight: 700; line-height: 1; }
+.feed-stats dd small { color: var(--muted); font-family: var(--font-body); font-size: .68rem; }
 .feed-card footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .feed-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.feed-chips i { font-style: normal; font-size: .68rem; font-weight: 650; padding: 3px 9px; border-radius: 999px; color: var(--text-soft); background: color-mix(in srgb, var(--accent) 8%, transparent); border: 1px solid var(--accent-line); }
-.kudos-button { display: inline-flex; align-items: center; gap: 7px; min-height: 40px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: 999px; font-size: .82rem; font-weight: 700; color: var(--text-soft); background: transparent; transition: background .2s, border-color .2s, color .2s; }
-.kudos-button b { font-family: var(--font-display); font-weight: 500; font-size: 1rem; }
+.feed-chips i { padding: 3px 9px; border: 1px solid var(--accent-line); border-radius: 999px; background: color-mix(in srgb, var(--accent) 8%, transparent); color: var(--text-soft); font-size: .68rem; font-style: normal; font-weight: 650; }
+.kudos-button { display: inline-flex; align-items: center; gap: 7px; min-height: 40px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: 999px; background: transparent; color: var(--text-soft); font-size: .82rem; font-weight: 700; transition: background .2s, border-color .2s, color .2s; }
+.kudos-button b { font-family: var(--font-display); font-size: 1rem; font-weight: 700; }
 .kudos-button:hover { border-color: var(--accent-line); color: var(--text); }
-.kudos-button.given { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.kudos-button.given { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
 .kudos-icon { display: inline-flex; }
 
 .friend-empty { display: grid; justify-items: start; gap: 8px; padding: 26px; }
 .friend-empty svg { color: var(--accent); }
 .friend-empty h2 { margin: 0; }
-.friend-empty p { margin: 0; max-width: 46ch; color: var(--muted); font-size: .86rem; line-height: 1.6; }
+.friend-empty p { margin: 0 0 6px; max-width: 46ch; color: var(--muted); font-size: .86rem; line-height: 1.6; }
 .friend-loading { display: flex; align-items: center; gap: 10px; padding: 30px 4px; color: var(--muted); }
 
-@media (max-width: 900px) {
-  .friends-screen { grid-template-columns: 1fr; }
-  .friends-side { position: static; }
-  .friends-feed { order: -1; }
+/* Шапка тренировки липкая: когда в ней есть полоса напарников, отступ прокрутки к полям растёт на её высоту. */
+.workout-screen.workout-athletic:has(.live-strip) { --workout-header-space: 222px; }
+
+@media (max-width: 960px) {
+  .friends-screen { grid-template-columns: minmax(0, 1fr); }
+  .friends-together { position: static; }
   .feed-card h3 { font-size: 1.4rem; }
+}
+@media (max-width: 640px) {
+  .live-strip { margin-bottom: -8px; }
+  .workout-screen.workout-athletic:has(.live-strip) { --workout-header-space: 254px; }
+}
+@media (max-width: 420px) {
+  .room-code span { height: 52px; font-size: 1.6rem; }
+  .standings li { grid-template-columns: 22px 36px minmax(0, 1fr) auto; gap: 10px; }
+  .standing-value { font-size: 1.3rem; }
 }
 .spin { animation: friend-spin 1s linear infinite; }
 @keyframes friend-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+
+/* Телефон в ландшафте (подпёрт на стойке): липкая шапка занимала больше половины экрана, поэтому она едет вместе с подходами. */
+@media (max-height: 520px) and (orientation: landscape) {
+  .workout-athletic .workout-bar { position: static; }
+  .workout-screen.workout-athletic,
+  .workout-screen.workout-athletic:has(.live-strip) { --workout-header-space: 16px; }
+}

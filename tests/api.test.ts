@@ -8,7 +8,9 @@ import {
   type Workout,
   type Settings,
 } from "../src/lib/model";
-import { muscleLoad, volume, workingSets } from "../src/lib/model";
+import { makeSets, muscleLoad, volume, workingSets } from "../src/lib/model";
+import { RoomCode } from "../src/domain/LiveSession";
+import { LiveRoomService } from "../server/LiveRoomService";
 
 async function sandbox(
   beforeUpgrade?: (
@@ -848,6 +850,325 @@ test("social: closed profiles stay invisible, public ones feed only summaries an
     await put("/api/social/profile", { tag: "beta_lift", bio: "", isPublic: true }, "beta");
     const after = (await (await request("/api/social/follow/beta_lift", "DELETE", {}, "alpha")).json()) as any;
     assert.equal(after.following.length, 0);
+  } finally {
+    await mf.dispose();
+  }
+});
+
+/** Жим с заданными подходами «вес, повторы, разминка?»; все подходы выполнены. */
+function lifted(...sets: Array<[number, number, boolean?]>) {
+  const w = makeWorkout(["bench"], [], "UTC");
+  w.exercises[0].sets = makeSets(sets.length).map((s, i) => ({
+    ...s,
+    weight: sets[i][0],
+    reps: sets[i][1],
+    warmup: sets[i][2] ?? false,
+    done: true,
+  }));
+  return w;
+}
+const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+
+test("social: the weekly board counts working tonnage of me and my partners, and closed profiles drop out of it", async () => {
+  const { mf, request } = await sandbox();
+  try {
+    const put = (path: string, body: unknown, owner: string) => request(path, "PUT", body, owner);
+    const overview = async (owner: string) => (await (await request("/api/social", "GET", undefined, owner)).json()) as any;
+    for (const [owner, tag] of [["beta", "beta_b"], ["gamma", "gamma_g"]])
+      await put("/api/social/profile", { tag, bio: "", isPublic: true }, owner);
+
+    // Альфа: два рабочих подхода по 100×5 и разминка 40×10, которая в тоннаж не входит.
+    assert.equal((await put("/api/workouts", lifted([40, 10, true], [100, 5], [100, 5]), "alpha")).status, 200);
+    // Бета: три подхода по 80×10 на этой неделе и старая тренировка, которая в неделю не попадает.
+    assert.equal((await put("/api/workouts", lifted([80, 10], [80, 10], [80, 10]), "beta")).status, 200);
+    const old = lifted([200, 10]);
+    old.date = daysAgo(10);
+    assert.equal((await put("/api/workouts", old, "beta")).status, 200);
+    // Гамма не тренировалась.
+    for (const tag of ["beta_b", "gamma_g"]) await request("/api/social/follow", "POST", { tag }, "alpha");
+
+    const board = (await overview("alpha")).standings;
+    assert.deepEqual(
+      board.map((r: any) => [r.tag, r.rank, r.isMe, r.leader, r.sessions, r.sets, r.tonnageKg]),
+      [
+        ["beta_b", 1, false, true, 1, 3, 2400],
+        ["", 2, true, false, 1, 2, 1000],
+        ["gamma_g", 3, false, false, 0, 0, 0],
+      ],
+    );
+    assert.deepEqual(board.map((r: any) => r.displayName), ["beta", "alpha", "gamma"]);
+    assert.deepEqual(board.map((r: any) => Math.round(r.share * 100)), [100, 42, 0]);
+    assert.ok(!JSON.stringify(board).includes("payload"));
+
+    // Закрытый профиль пропадает из таблицы целиком.
+    await put("/api/social/profile", { tag: "beta_b", bio: "", isPublic: false }, "beta");
+    assert.deepEqual((await overview("alpha")).standings.map((r: any) => r.displayName), ["alpha", "gamma"]);
+
+    // Без подписок таблица — это только я, и лидера нет, пока я не потренировался.
+    const lone = (await overview("delta")).standings;
+    assert.deepEqual(lone.map((r: any) => [r.isMe, r.leader, r.tonnageKg]), [[true, false, 0]]);
+  } finally {
+    await mf.dispose();
+  }
+});
+
+test("social: followers I do not follow back are offered, mutual follows are marked", async () => {
+  const { mf, request } = await sandbox();
+  try {
+    const put = (path: string, body: unknown, owner: string) => request(path, "PUT", body, owner);
+    const follow = (tag: string, owner: string) => request("/api/social/follow", "POST", { tag }, owner);
+    const overview = async (owner: string) => (await (await request("/api/social", "GET", undefined, owner)).json()) as any;
+    for (const [owner, tag] of [["alpha", "alpha_a"], ["beta", "beta_b"], ["gamma", "gamma_g"]])
+      await put("/api/social/profile", { tag, bio: owner + " bio", isPublic: true }, owner);
+    await follow("alpha_a", "beta");
+    await follow("alpha_a", "gamma");
+    await follow("beta_b", "alpha");
+
+    // Бета уже взаимная, Гамма ждёт ответной подписки.
+    let seen = await overview("alpha");
+    assert.deepEqual(seen.following.map((f: any) => [f.tag, f.mutual]), [["beta_b", true]]);
+    assert.deepEqual(seen.incoming, [{ tag: "gamma_g", displayName: "gamma", bio: "gamma bio" }]);
+
+    // Ответная подписка закрывает приглашение и делает Гамму взаимной.
+    await follow("gamma_g", "alpha");
+    seen = await overview("alpha");
+    assert.deepEqual(seen.incoming, []);
+    assert.deepEqual(seen.following.map((f: any) => [f.tag, f.mutual]), [["beta_b", true], ["gamma_g", true]]);
+
+    // Бета перестаёт следить за мной: моя подписка на неё больше не взаимна.
+    await request("/api/social/follow/alpha_a", "DELETE", {}, "beta");
+    seen = await overview("alpha");
+    assert.deepEqual(seen.following.map((f: any) => [f.tag, f.mutual]), [["beta_b", false], ["gamma_g", true]]);
+    assert.deepEqual(seen.incoming, []);
+
+    // Бета возвращается, а я отписываюсь: она снова во входящих, пока её профиль открыт.
+    await follow("alpha_a", "beta");
+    await request("/api/social/follow/beta_b", "DELETE", {}, "alpha");
+    assert.deepEqual((await overview("alpha")).incoming.map((i: any) => i.tag), ["beta_b"]);
+    await put("/api/social/profile", { tag: "beta_b", bio: "", isPublic: false }, "beta");
+    assert.deepEqual((await overview("alpha")).incoming, []);
+
+    // Если закрыт мой профиль, подписчиков для меня нет вовсе, и «взаимно» ничего не значит.
+    await put("/api/social/profile", { tag: "beta_b", bio: "", isPublic: true }, "beta");
+    await put("/api/social/profile", { tag: "alpha_a", bio: "", isPublic: false }, "alpha");
+    seen = await overview("alpha");
+    assert.deepEqual([seen.incoming, seen.following.map((f: any) => f.mutual)], [[], [false]]);
+  } finally {
+    await mf.dispose();
+  }
+});
+
+test("social: the feed counts the same working tonnage as the weekly board", async () => {
+  const { mf, request } = await sandbox();
+  try {
+    await request("/api/social/profile", "PUT", { tag: "beta_b", bio: "", isPublic: true }, "beta");
+    // Разминка 40×10 и один рабочий подход 60×10.
+    assert.equal((await request("/api/workouts", "PUT", lifted([40, 10, true], [60, 10]), "beta")).status, 200);
+    const followed = (await (await request("/api/social/follow", "POST", { tag: "beta_b" }, "alpha")).json()) as any;
+    assert.equal(followed.feed[0].sets, 1);
+    assert.equal(followed.feed[0].tonnageKg, 600);
+  } finally {
+    await mf.dispose();
+  }
+});
+
+const liveState = (over: Record<string, unknown> = {}) => ({
+  phase: "lifting",
+  exercise: "Жим штанги лёжа",
+  setsDone: 2,
+  setsTotal: 5,
+  tonnageKg: 1200,
+  lastSet: { kg: 60, reps: 10 },
+  restEndsAt: null,
+  ...over,
+});
+const liveApi =
+  (request: Awaited<ReturnType<typeof sandbox>>["request"]) =>
+  (method: string, path: string, body: unknown, owner: string) =>
+    request("/api/social/live" + path, method, body, owner);
+
+test("live rooms: a code lets two people in, each sees the other's progress and nothing more", async () => {
+  const { mf, request } = await sandbox();
+  try {
+    const live = liveApi(request);
+    assert.deepEqual(await (await live("GET", "", undefined, "alpha")).json(), { room: null });
+
+    const made = (await (await live("POST", "", undefined, "alpha")).json()) as any;
+    assert.ok(RoomCode.isValid(made.room.code));
+    assert.equal(made.room.members.length, 1);
+    assert.equal(made.room.members[0].isMe, true);
+    assert.equal(made.room.members[0].state, null);
+
+    // Код можно ввести как угодно: регистр, пробелы и дефис не мешают.
+    const typed = ` ${made.room.code.slice(0, 2).toLowerCase()}-${made.room.code.slice(2)} `;
+    const joined = (await (await live("POST", "/join", { code: typed }, "beta")).json()) as any;
+    assert.equal(joined.room.code, made.room.code);
+    assert.deepEqual(
+      joined.room.members.map((m: any) => [m.displayName, m.isMe]),
+      [["alpha", false], ["beta", true]],
+    );
+
+    // Альфа выкладывает состояние: Бета его видит, лишние поля до неё не доходят.
+    assert.equal((await live("PUT", "/state", liveState({ notes: "секрет" }), "alpha")).status, 200);
+    const betaView = (await (await live("GET", "", undefined, "beta")).json()) as any;
+    assert.deepEqual(betaView.room.members[0].state, liveState());
+    assert.ok(!JSON.stringify(betaView).includes("секрет"));
+    const alphaView = (await (await live("GET", "", undefined, "alpha")).json()) as any;
+    assert.equal(alphaView.room.members[1].state, null);
+
+    // Посторонний комнату не видит.
+    assert.deepEqual(await (await live("GET", "", undefined, "gamma")).json(), { room: null });
+
+    // Неверный код — понятная ошибка, а не пустая комната.
+    for (const code of ["ZZZZZ", "H7KQ", "00000", ""]) {
+      const miss = await live("POST", "/join", { code }, "gamma");
+      assert.equal(miss.status, 400, code);
+    }
+    const unknown = await live("POST", "/join", { code: "ZZZZZ" }, "gamma");
+    assert.match(((await unknown.json()) as any).error, /не найдена/);
+  } finally {
+    await mf.dispose();
+  }
+});
+
+test("live rooms: a pushed state is checked field by field and needs a room", async () => {
+  const { mf, request } = await sandbox();
+  try {
+    const live = liveApi(request);
+    const orphan = await live("PUT", "/state", liveState(), "alpha");
+    assert.equal(orphan.status, 400);
+    assert.match(((await orphan.json()) as any).error, /Сначала войдите в комнату/);
+
+    await live("POST", "", undefined, "alpha");
+    const invalid: Record<string, unknown>[] = [
+      liveState({ phase: "sleeping" }),
+      liveState({ exercise: 5 }),
+      liveState({ exercise: "я".repeat(81) }),
+      liveState({ setsDone: 6, setsTotal: 5 }),
+      liveState({ setsTotal: 1.5 }),
+      liveState({ tonnageKg: -1 }),
+      liveState({ tonnageKg: 2_000_000 }),
+      liveState({ lastSet: { kg: -5, reps: 8 } }),
+      liveState({ lastSet: { kg: 60 } }),
+      liveState({ restEndsAt: "завтра" }),
+      liveState({ restEndsAt: "11 November 2026 10:00" }),
+      liveState({ restEndsAt: new Date(Date.now() + 3 * 3_600_000).toISOString() }),
+    ];
+    for (const state of invalid)
+      assert.equal((await live("PUT", "/state", state, "alpha")).status, 400, JSON.stringify(state));
+
+    // Самая большая тренировка, которую принимает приложение (30 × 30 подходов), комнату не ломает.
+    const biggest = liveState({
+      exercise: "я".repeat(80),
+      setsDone: 900,
+      setsTotal: 900,
+      tonnageKg: 1_000_000,
+      lastSet: { kg: 1000, reps: 200 },
+    });
+    assert.equal((await live("PUT", "/state", biggest, "alpha")).status, 200);
+
+    // Начало тренировки без подходов и идущий отдых допустимы.
+    const start = liveState({ phase: "idle", exercise: null, setsDone: 0, lastSet: null });
+    assert.equal((await live("PUT", "/state", start, "alpha")).status, 200);
+    const soon = new Date(Date.now() + 45_000).toISOString();
+    const resting = (await (await live("PUT", "/state", liveState({ phase: "resting", restEndsAt: soon }), "alpha")).json()) as any;
+    assert.equal(resting.room.members[0].state.restEndsAt, soon);
+  } finally {
+    await mf.dispose();
+  }
+});
+
+test("live rooms: six seats, one room per person, empty rooms vanish and silent ones expire", async () => {
+  const { mf, db, request } = await sandbox();
+  try {
+    const live = liveApi(request);
+    const roomOf = async (owner: string) => ((await (await live("GET", "", undefined, owner)).json()) as any).room;
+    const code = ((await (await live("POST", "", undefined, "p1")).json()) as any).room.code as string;
+    for (const name of ["p2", "p3", "p4", "p5", "p6"])
+      assert.equal((await live("POST", "/join", { code }, name)).status, 200, name);
+
+    // Седьмому места нет, но прежняя комната у него остаётся.
+    const own = ((await (await live("POST", "", undefined, "p7")).json()) as any).room.code as string;
+    const full = await live("POST", "/join", { code }, "p7");
+    assert.equal(full.status, 400);
+    assert.match(((await full.json()) as any).error, /заполнена/);
+    assert.equal((await roomOf("p7")).code, own);
+
+    // Один человек — одна комната: при переходе прежняя освобождает место, а старое состояние не едет следом.
+    assert.equal((await live("PUT", "/state", liveState(), "p6")).status, 200);
+    const moved = (await (await live("POST", "/join", { code: own }, "p6")).json()) as any;
+    assert.equal(moved.room.members.length, 2);
+    assert.equal(moved.room.members.find((m: any) => m.isMe).state, null);
+    assert.equal((await roomOf("p1")).members.length, 5);
+    assert.equal((await live("POST", "/join", { code }, "p7")).status, 200);
+    assert.equal((await roomOf("p1")).members.length, 6);
+
+    // Повторный вход в свою комнату ничего не меняет.
+    assert.equal((await roomOf("p1")).code, code);
+    assert.equal(((await (await live("POST", "/join", { code }, "p1")).json()) as any).room.members.length, 6);
+
+    // Когда уходит последний, комната исчезает вместе с кодом.
+    assert.deepEqual(await (await live("DELETE", "", undefined, "p6")).json(), { room: null });
+    const gone = await live("POST", "/join", { code: own }, "p1");
+    assert.equal(gone.status, 400);
+    assert.match(((await gone.json()) as any).error, /не найдена/);
+    assert.equal((await roomOf("p1")).code, code);
+
+    // Молчание дольше двенадцати часов выбрасывает из комнаты, вернуть её пушем нельзя.
+    const stale = new Date(Date.now() - 13 * 3_600_000).toISOString();
+    await db.prepare("UPDATE live_members SET updated_at=? WHERE owner_id=?").bind(stale, "p2").run();
+    assert.equal(await roomOf("p2"), null);
+    assert.equal((await live("PUT", "/state", liveState(), "p2")).status, 400);
+    assert.equal((await roomOf("p1")).members.length, 5);
+
+    // Комната, в которой давно никто не отвечает, закрыта целиком.
+    await db.prepare("UPDATE live_members SET updated_at=?").bind(stale).run();
+    const lonely = await live("POST", "/join", { code }, "p8");
+    assert.equal(lonely.status, 400);
+    assert.match(((await lonely.json()) as any).error, /не найдена/);
+  } finally {
+    await mf.dispose();
+  }
+});
+
+test("live rooms: creating never drops you into an occupied room, even when the generated code collides", async () => {
+  const { mf, db, request } = await sandbox();
+  try {
+    // Запрос регистрирует аккаунты, без них участников не показать.
+    for (const owner of ["alpha", "beta"]) await request("/api/social/live", "GET", undefined, owner);
+    // Генератор с заданными байтами: первая попытка даёт «ABCDE», вторая — «FGHJK».
+    const scripted = () => {
+      let call = 0;
+      return (count: number) => {
+        const base = call++ === 0 ? 0 : 5;
+        return Uint8Array.from({ length: count }, (_, i) => base + (i % 5));
+      };
+    };
+    const first = await new LiveRoomService(db as never, "alpha", scripted()).create();
+    assert.equal(first.code, "ABCDE");
+    const second = await new LiveRoomService(db as never, "beta", scripted()).create();
+    assert.equal(second.code, "FGHJK");
+    assert.equal(second.members.length, 1);
+    assert.equal((await new LiveRoomService(db as never, "alpha").current())!.members.length, 1);
+  } finally {
+    await mf.dispose();
+  }
+});
+
+test("live rooms: a member shows a tag only while their profile is open", async () => {
+  const { mf, request } = await sandbox();
+  try {
+    const live = liveApi(request);
+    const put = (body: unknown, owner: string) => request("/api/social/profile", "PUT", body, owner);
+    await put({ tag: "beta_lift", bio: "", isPublic: true }, "beta");
+    await put({ tag: "alpha_lift", bio: "", isPublic: false }, "alpha");
+    const code = ((await (await live("POST", "", undefined, "alpha")).json()) as any).room.code as string;
+    const joined = (await (await live("POST", "/join", { code }, "beta")).json()) as any;
+    assert.deepEqual(joined.room.members.map((m: any) => m.tag), [null, "beta_lift"]);
+
+    await put({ tag: "beta_lift", bio: "", isPublic: false }, "beta");
+    const closed = (await (await live("GET", "", undefined, "alpha")).json()) as any;
+    assert.deepEqual(closed.room.members.map((m: any) => m.tag), [null, null]);
   } finally {
     await mf.dispose();
   }

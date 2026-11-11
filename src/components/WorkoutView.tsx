@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import BiomechanicsPanel from "./BiomechanicsPanel";
 import NumberField from "./NumberField";
+import LiveStrip from "./LiveStrip";
 import {
   Check,
   ChevronDown,
@@ -78,6 +79,8 @@ type Props = {
   onDiscard: () => void;
   onExport: () => void;
   onMinimize: () => void;
+  /** Открыть комнату напарников: полоса «Вместе» над тренировкой ведёт туда. */
+  onOpenTogether: () => void;
 };
 const clock = (seconds: number) =>
   `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
@@ -215,6 +218,7 @@ export default function WorkoutView({
   onDiscard,
   onExport,
   onMinimize,
+  onOpenTogether,
 }: Props) {
   const reducedMotion = useReducedMotion();
   const [now, setNow] = useState(Date.now());
@@ -234,6 +238,14 @@ export default function WorkoutView({
   useEffect(() => {
     audioHaptics.setMuted(!soundEnabled);
   }, [soundEnabled]);
+
+  // Причина отказа при сохранении лежит над подходами. Человек в этот момент внизу страницы, поэтому показываем её сами.
+  // Зависимость от saving перезапускает эффект на каждую попытку, даже если текст ошибки не изменился.
+  const errorRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (!error || saving) return;
+    errorRef.current?.scrollIntoView({ block: "center", behavior: reducedMotion ? "auto" : "smooth" });
+  }, [error, saving, reducedMotion]);
 
   const restSeconds = draft?.workout.restSeconds ?? settings.restSeconds;
   const announcedTimer = useRef<number | null>(null);
@@ -483,12 +495,13 @@ export default function WorkoutView({
             <span className="hud-label">Рабочий тоннаж</span>
           </span>
         </div>
+        <LiveStrip onOpen={onOpenTogether} />
         <div className="workout-session-progress" aria-hidden="true">
           <span style={{ transform: `scaleX(${totalWorking ? doneWorking / totalWorking : 0})` }} />
         </div>
       </header>
       {error ? (
-        <p className="inline-error" role="alert">
+        <p className="inline-error" role="alert" ref={errorRef}>
           {error}
         </p>
       ) : null}
@@ -1347,8 +1360,17 @@ export default function WorkoutView({
           </button>
         </details>
       </fieldset>
+      <AnimatePresence initial={false}>
       {resting ? (
-        <section className="rest-bar" aria-label="Таймер отдыха">
+        <m.section
+          key="rest"
+          className="rest-bar"
+          aria-label="Таймер отдыха"
+          initial={{ opacity: 0, y: 28 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 28, transition: { duration: 0.2 } }}
+          transition={{ type: "spring", stiffness: 420, damping: 34 }}
+        >
           <div className="rest-progress">
             <span
               style={{
@@ -1404,8 +1426,9 @@ export default function WorkoutView({
               <X size={20} />
             </button>
           </div>
-        </section>
+        </m.section>
       ) : null}
+      </AnimatePresence>
       <span className="sr-only" role="status" aria-live="polite">
         {announcement}
       </span>

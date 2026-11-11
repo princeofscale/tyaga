@@ -1,5 +1,6 @@
-import { volumeSummary, workingSets, type Workout } from "../src/lib/model";
+import type { Workout } from "../src/lib/model";
 import { WorkoutPresenter } from "../src/domain/WorkoutPresenter";
+import { StandingsBoard, WorkoutTally } from "../src/domain/LiveSession";
 import {
   MAX_FOLLOWING,
   TAG_PATTERN,
@@ -7,12 +8,16 @@ import {
   type AthleteProfile,
   type FeedWorkout,
   type FollowedAthlete,
+  type IncomingAthlete,
   type SocialOverview,
 } from "../src/lib/social";
 import { InputError, object, str } from "./validation";
 
 const FEED_DAYS = 45;
 const FEED_LIMIT = 40;
+const INCOMING_LIMIT = 20;
+/** Потолок на чтение тренировок недели: 51 человек × 11 тренировок. */
+const WEEK_LIMIT = 600;
 const day = (offset: number) => new Date(Date.now() + offset * 86400000).toISOString().slice(0, 10);
 const NOT_FOUND = "Атлет с таким тегом не найден или закрыл профиль";
 
@@ -28,14 +33,14 @@ export class SocialService {
   ) {}
 
   async overview(): Promise<SocialOverview> {
-    const [profile, followers, following, week, feedRows] = await this.db.batch([
+    const [profile, followers, following, week, feedRows, incomingRows, me, weekRows] = await this.db.batch([
       this.db.prepare("SELECT tag,bio,is_public FROM athlete_profiles WHERE owner_id=?").bind(this.owner),
       this.db.prepare("SELECT COUNT(*) AS n FROM follows f JOIN athlete_profiles p ON p.owner_id=f.followee_id WHERE f.followee_id=? AND p.is_public=1").bind(this.owner),
       this.db
         .prepare(
-          "SELECT p.owner_id,p.tag,p.bio,a.display_name FROM follows f JOIN athlete_profiles p ON p.owner_id=f.followee_id AND p.is_public=1 JOIN accounts a ON a.platform_id=f.followee_id WHERE f.follower_id=? ORDER BY p.tag",
+          "SELECT p.owner_id,p.tag,p.bio,a.display_name,EXISTS(SELECT 1 FROM follows b WHERE b.follower_id=f.followee_id AND b.followee_id=?) AS mutual FROM follows f JOIN athlete_profiles p ON p.owner_id=f.followee_id AND p.is_public=1 JOIN accounts a ON a.platform_id=f.followee_id WHERE f.follower_id=? ORDER BY p.tag",
         )
-        .bind(this.owner),
+        .bind(this.owner, this.owner),
       this.db
         .prepare(
           "SELECT w.owner_id,MAX(w.date) AS last,SUM(w.date>=?) AS week FROM workouts w JOIN follows f ON f.followee_id=w.owner_id AND f.follower_id=? JOIN athlete_profiles p ON p.owner_id=w.owner_id AND p.is_public=1 GROUP BY w.owner_id",
@@ -46,6 +51,19 @@ export class SocialService {
           "SELECT w.id,w.owner_id,w.payload,p.tag,a.display_name FROM workouts w JOIN follows f ON f.followee_id=w.owner_id AND f.follower_id=? JOIN athlete_profiles p ON p.owner_id=w.owner_id AND p.is_public=1 JOIN accounts a ON a.platform_id=w.owner_id WHERE w.date>=? ORDER BY w.date DESC,w.updated_at DESC LIMIT ?",
         )
         .bind(this.owner, day(-FEED_DAYS), FEED_LIMIT),
+      // Подписчики с открытым профилем, на которых я ещё не подписан. Пока мой профиль закрыт, подписчиков для меня нет.
+      this.db
+        .prepare(
+          "SELECT p.tag,p.bio,a.display_name FROM follows f JOIN athlete_profiles me ON me.owner_id=f.followee_id AND me.is_public=1 JOIN athlete_profiles p ON p.owner_id=f.follower_id AND p.is_public=1 JOIN accounts a ON a.platform_id=f.follower_id WHERE f.followee_id=?1 AND NOT EXISTS (SELECT 1 FROM follows b WHERE b.follower_id=?1 AND b.followee_id=f.follower_id) ORDER BY f.created_at DESC LIMIT ?2",
+        )
+        .bind(this.owner, INCOMING_LIMIT),
+      this.db.prepare("SELECT display_name FROM accounts WHERE platform_id=?").bind(this.owner),
+      // Тренировки недели: мои и тех, за кем слежу при открытом профиле. Нужны только для итогов, наружу не уходят.
+      this.db
+        .prepare(
+          "SELECT w.owner_id,w.payload FROM workouts w WHERE w.date>=?1 AND (w.owner_id=?2 OR w.owner_id IN (SELECT f.followee_id FROM follows f JOIN athlete_profiles p ON p.owner_id=f.followee_id AND p.is_public=1 WHERE f.follower_id=?2)) LIMIT ?3",
+        )
+        .bind(day(-6), this.owner, WEEK_LIMIT),
     ]);
 
     const activity = new Map(
@@ -53,6 +71,31 @@ export class SocialService {
     );
     const ownProfile = profile.results[0] as { tag: string; bio: string; is_public: number } | undefined;
     const rows = feedRows.results as { id: string; payload: string; tag: string; display_name: string }[];
+    const followed = following.results as {
+      owner_id: string;
+      tag: string;
+      bio: string;
+      display_name: string;
+      mutual: number;
+    }[];
+
+    const weekly = new Map<string, Workout[]>();
+    for (const row of weekRows.results as { owner_id: string; payload: string }[])
+      weekly.set(row.owner_id, [...(weekly.get(row.owner_id) ?? []), JSON.parse(row.payload) as Workout]);
+    const standings = StandingsBoard.rank([
+      {
+        tag: ownProfile?.tag ?? "",
+        displayName: (me.results[0] as { display_name: string } | undefined)?.display_name ?? "Ты",
+        isMe: true,
+        ...WorkoutTally.of(weekly.get(this.owner) ?? []),
+      },
+      ...followed.map((r) => ({
+        tag: r.tag,
+        displayName: r.display_name,
+        isMe: false,
+        ...WorkoutTally.of(weekly.get(r.owner_id) ?? []),
+      })),
+    ]);
 
     const kudos = new Map<string, { n: number; mine: number }>();
     if (rows.length) {
@@ -68,24 +111,31 @@ export class SocialService {
     return {
       profile: ownProfile ? { tag: ownProfile.tag, bio: ownProfile.bio, isPublic: ownProfile.is_public === 1 } : null,
       followers: (followers.results[0] as { n: number }).n,
-      following: (following.results as { owner_id: string; tag: string; bio: string; display_name: string }[]).map(
+      following: followed.map(
         (r): FollowedAthlete => ({
           tag: r.tag,
           bio: r.bio,
           displayName: r.display_name,
           lastDate: activity.get(r.owner_id)?.last ?? null,
           workoutsLast7Days: activity.get(r.owner_id)?.week ?? 0,
+          // Пока мой профиль закрыт, меня никто не видит, и «взаимно» ничего не значит.
+          mutual: ownProfile?.is_public === 1 && r.mutual === 1,
         }),
       ),
+      incoming: (incomingRows.results as { tag: string; bio: string; display_name: string }[]).map(
+        (r): IncomingAthlete => ({ tag: r.tag, displayName: r.display_name, bio: r.bio }),
+      ),
+      standings,
       feed: rows.map((r): FeedWorkout => {
         const workout = JSON.parse(r.payload) as Workout;
         const count = kudos.get(r.id);
+        const tally = WorkoutTally.of([workout]);
         return {
           id: r.id,
           date: workout.date,
           title: WorkoutPresenter.title(workout),
-          sets: workingSets([workout]),
-          tonnageKg: Math.round(volumeSummary([workout], "all").total),
+          sets: tally.sets,
+          tonnageKg: tally.tonnageKg,
           duration: workout.duration,
           muscles: WorkoutPresenter.topMuscles(workout, 3),
           kudos: count?.n ?? 0,

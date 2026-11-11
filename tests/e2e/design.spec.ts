@@ -19,7 +19,8 @@ const ROUTINE = {
 };
 test.use({ timezoneId: "Europe/Saratov", reducedMotion: "reduce" });
 
-async function preview(page: Page, authenticated = true, savedTheme?: string) {
+/** `seen` собирает каждый запрос к API как «МЕТОД путь»: так тест может посчитать, сколько раз приложение спрашивало о чём-то. */
+async function preview(page: Page, authenticated = true, savedTheme?: string, seen: string[] = []) {
   let signedIn = authenticated;
   let profile = { ...PROFILE };
   const errors: string[] = [];
@@ -31,8 +32,11 @@ async function preview(page: Page, authenticated = true, savedTheme?: string) {
     const request = route.request();
     const path = new URL(request.url()).pathname;
     const method = request.method();
+    seen.push(`${method} ${path}`);
     const json = (value: unknown, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(value) });
     if (path === "/api/auth/session" && method === "GET") return json({ registered: true, profile: signedIn ? profile : null });
+    // Комната «Вместе»: приложение один раз спрашивает при входе, сидит ли человек в комнате. Здесь не сидит.
+    if (path === "/api/social/live" && method === "GET") return json({ room: null });
     if (path === "/api/data" && method === "GET") return json({ workouts: demoWorkouts(NOW, PROFILE.timeZone), settings: { ...DEFAULT_SETTINGS, timeZone: PROFILE.timeZone, revision: 1 } });
     if (path === "/api/product" && method === "GET") return json({ routines: [ROUTINE], customExercises: [], favorites: ["bench"] });
     if (path === "/api/auth/profile" && method === "PUT") {
@@ -74,7 +78,11 @@ test("dashboard stays readable at phone, tablet and desktop widths", async ({ pa
     await expect(page.getByRole("button", { name: "Начать тренировку", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Мой профиль", exact: true })).toBeVisible();
     const fonts = await page.locator("#plan-title").evaluate(el => getComputedStyle(el).fontFamily);
-    expect(fonts).toContain("Oswald");
+    expect(fonts).toContain("Tyaga Display");
+    // Не запасной системный шрифт: файлы гарнитур из fonts.css действительно загрузились (CSP пускает только свои).
+    const loaded = await page.evaluate(() => [...document.fonts]
+      .filter(face => face.status === "loaded").map(face => face.family.replaceAll('"', "")));
+    expect(loaded, "кириллические начертания заголовка и интерфейса").toEqual(expect.arrayContaining(["Tyaga Display", "Onest Variable"]));
     await expect(page.locator("html")).toHaveAttribute("data-theme-accent", "lime");
     if (width === 390 || width === 1440) await shot(page, `dashboard-${width}`);
     if (width === 390) await shot(page, "dashboard-390-viewport", false);
@@ -216,5 +224,33 @@ test("native motion renders a cold page and completes navigation without backgro
     animation.playState === "running" && animation.effect?.getTiming().iterations === Infinity
   ).length);
   expect(infiniteAnimations).toBe(0);
+  clean();
+});
+
+test("outside a room the app asks about rooms once and does not poll, even during a workout", async ({ page }) => {
+  const seen: string[] = [];
+  const clean = await preview(page, true, undefined, seen);
+  await page.goto("/");
+  await ready(page);
+  await page.getByRole("button", { name: "Начать тренировку", exact: true }).click();
+  await expect(page.locator(".workout-athletic")).toBeVisible();
+  // Полоса напарников подписана на комнату, но опрос (раз в 5 секунд) идёт только когда человек в ней сидит.
+  await page.waitForTimeout(5_500);
+  expect(seen.filter(call => call === "GET /api/social/live")).toHaveLength(1);
+  clean();
+});
+
+test("workout header buttons keep their labels inside on the narrowest phones", async ({ page }) => {
+  const clean = await preview(page);
+  await page.setViewportSize({ width: 320, height: 640 });
+  await page.goto("/");
+  await ready(page);
+  await page.getByRole("button", { name: "Начать тренировку", exact: true }).click();
+  await expect(page.locator(".workout-athletic")).toBeVisible();
+  const clipped = await page.locator(".workout-bar button").evaluateAll(buttons =>
+    buttons
+      .filter(button => button.scrollWidth > button.clientWidth)
+      .map(button => button.getAttribute("aria-label") ?? button.textContent?.trim()));
+  expect(clipped, "подпись выходит за край кнопки").toEqual([]);
   clean();
 });
