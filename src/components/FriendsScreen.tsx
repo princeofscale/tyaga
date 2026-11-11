@@ -1,3 +1,6 @@
+import TrainingMeetups, { WeeklyGoal } from "./TrainingMeetups";
+import type { TrainingMeetup } from "../domain/TrainingMeetups";
+import type { Workout } from "../lib/types";
 import {
   useCallback,
   useEffect,
@@ -76,8 +79,12 @@ function Avatar({
 
 export default function FriendsScreen({
   onProfile,
+  workouts = [],
+  onStartMeetup = () => {},
 }: {
   onProfile: () => void;
+  workouts?: Workout[];
+  onStartMeetup?: (m: TrainingMeetup) => void;
 }) {
   const [data, setData] = useState<FriendsData | null>(null);
   const [error, setError] = useState("");
@@ -492,6 +499,14 @@ export default function FriendsScreen({
               </AnimatePresence>
             </section>
           )}
+          <TrainingMeetups
+            error={error}
+            data={data}
+            workouts={workouts}
+            busy={busy}
+            mutate={perform}
+            onStart={onStartMeetup}
+          />
           <div className="friends-columns">
             <div className="friends-main">
               <section aria-labelledby="team-title">
@@ -690,7 +705,7 @@ export default function FriendsScreen({
                 <span className="eyebrow">ОБЩИЙ ОРИЕНТИР</span>
                 <h2 id="week-title">Неделя в движении</h2>
                 <p>
-                  По {FriendsService.weeklyTarget} тренировки на каждого.
+                  У каждого свой недельный ориентир.
                   <br />У каждого свой вес и свой темп.
                 </p>
                 <div className="friends-team-score">
@@ -716,6 +731,19 @@ export default function FriendsScreen({
                     transition={{ duration: reduced ? 0 : 0.6 }}
                   />
                 </div>
+                <WeeklyGoal
+                  key={data.me.weeklyTarget ?? 3}
+                  value={data.me.weeklyTarget ?? 3}
+                  busy={busy}
+                  onSave={(target) =>
+                    void perform(
+                      "/api/friends/goal",
+                      "PUT",
+                      { target },
+                      "Недельная цель сохранена",
+                    )
+                  }
+                />
                 <div className="friends-week-list">
                   {[...team]
                     .sort(
@@ -733,9 +761,10 @@ export default function FriendsScreen({
                         </span>
                         <b>
                           {athlete.weekWorkouts}
-                          <span> / 3</span>
+                          <span> / {athlete.weeklyTarget ?? 3}</span>
                         </b>
-                        {athlete.weekWorkouts >= 3 && (
+                        {athlete.weekWorkouts >=
+                          (athlete.weeklyTarget ?? 3) && (
                           <Check size={15} className="text-accent" />
                         )}
                       </div>

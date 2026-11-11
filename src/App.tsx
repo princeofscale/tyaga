@@ -1,3 +1,8 @@
+import type { TrainingMeetup } from "./domain/TrainingMeetups";
+import { friendsApi } from "./services/FriendsApi";
+import ProgressOverview from "./components/ProgressOverview";
+import MovementBalance from "./components/MovementBalance";
+import ToolsHub from "./components/ToolsHub";
 import {
   useCallback,
   lazy,
@@ -169,9 +174,10 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
   );
   const [mapping, setMapping] = useState<"recorded" | "current">("recorded");
   const [hardSetsOnly, setHardSetsOnly] = useState(false);
-  const [progressTab, setProgressTab] = useState<"balance" | "analytics" | "strength" | "anatomy" | "bodyweight">("balance");
+  const [progressTab, setProgressTab] = useState<"balance" | "analytics" | "strength" | "anatomy" | "bodyweight">("analytics");
   const [toast, setToast] = useState("");
   const [modal, setModal] = useState<
+    | "tools"
     | "picker"
     | "settings"
     | "method"
@@ -535,6 +541,13 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
     setMuscleFilter("all");
     setModal("picker");
   };
+  const startMeetup = (meetup:TrainingMeetup) => {
+    if(draft){go("workout");setToast("Сначала заверши или отмени текущую тренировку.");return;}
+    const workout=makeWorkout([],workouts,settings.timeZone);workout.name=meetup.name;
+    const gym=meetup.participants.find(p=>p.id===account.id)?.gym ?? (meetup.hostId===account.id?meetup.gym:"");
+    setDraft({...newDraft(workout),meetupId:meetup.id,meetupGym:gym});go("workout");
+    void friendsApi.request("/api/friends/status","PUT",{inGym:true,gym,focus:meetup.name}).catch(()=>setToast("Тренировка начата. Статус зала не обновился — проверь связь."));
+  };
   const saveWorkout = async () => {
     if (!draft || saving) return;
     setSaving(true);
@@ -571,6 +584,14 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
       setConflict(null);
       setDemo(false);
       setJustSaved(result.workout);
+      if(draft.meetupId && !draft.editing) {
+        const meetupId=draft.meetupId,gym=draft.meetupGym??"";
+        void (async()=>{
+          if(import.meta.env.MODE === "device")await (await import("./device/cloudSync")).syncCloud();
+          await friendsApi.request(`/api/friends/meetups/${meetupId}`,"PUT",{action:"finish",workoutId:result.workout.id,gym});
+          setToast("Тренировка сохранена, общий итог обновлён");
+        })().catch(()=>setToast("Тренировка сохранена. Добавь общий итог в разделе друзей, когда появится связь."));
+      }
       go("history");
       setToast(
         draft.editing
@@ -797,9 +818,9 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <button className="nav-item" onClick={openSettings}>
+          <button className="nav-item" onClick={()=>setModal("tools")}>
             <Settings2 size={19} />
-            Мои цели
+            Инструменты
           </button>
           <button className="profile-button" onClick={() => setModal("profile")}>
             <span className="profile-avatar">{account.displayName.slice(0, 1).toUpperCase()}</span>
@@ -1003,110 +1024,9 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                     </span>
                   </button>
                   </div>
-                  <section className="gym-tools" aria-labelledby="tools-title">
-                    <div className="section-head">
-                      <h2 id="tools-title">Для зала</h2>
-                      <span>Всё под рукой</span>
-                    </div>
-                  <div className="quick-gym-tools-panel" role="group" aria-label="Быстрые инструменты">
-                    <button
-                      type="button"
-                      className="quick-tool-card"
-                      onClick={() => setModal("bodyweight")}
-                    >
-                      <div className="tool-icon-circle accent-glow">
-                        <Scale size={20} />
-                      </div>
-                      <div className="tool-info">
-                        <b>Вес тела и тренд</b>
-                        <span>Динамика и цель</span>
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      className="quick-tool-card"
-                      onClick={() => setModal("deload")}
-                    >
-                      <div className="tool-icon-circle">
-                        <BatteryCharging size={20} />
-                      </div>
-                      <div className="tool-info">
-                        <b>Разгрузочная неделя</b>
-                        <span>Объём и восстановление</span>
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      className="quick-tool-card"
-                      onClick={() => setModal("warmup")}
-                    >
-                      <div className="tool-icon-circle">
-                        <Flame size={20} />
-                      </div>
-                      <div className="tool-info">
-                        <b>Разминочная лесенка</b>
-                        <span>Подготовка к весу</span>
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      className="quick-tool-card"
-                      onClick={() => setModal("plate")}
-                    >
-                      <div className="tool-icon-circle">
-                        <Dumbbell size={20} />
-                      </div>
-                      <div className="tool-info">
-                        <b>Калькулятор блинов</b>
-                        <span>Раскладка блинов на гриф</span>
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      className="quick-tool-card"
-                      onClick={() => setModal("orm")}
-                    >
-                      <div className="tool-icon-circle">
-                        <Target size={20} />
-                      </div>
-                      <div className="tool-info">
-                        <b>Калькулятор 1ПМ</b>
-                        <span>Расчёт максимума и проценты</span>
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      className="quick-tool-card ios-tool-card"
-                      onClick={() => setModal("ios_install")}
-                    >
-                      <div className="tool-icon-circle">
-                        <Smartphone size={20} />
-                      </div>
-                      <div className="tool-info">
-                        <b>Добавить на экран</b>
-                        <span>PWA-приложение iOS</span>
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      className="quick-tool-card"
-                      onClick={() => setModal("rp_volume")}
-                    >
-                      <div className="tool-icon-circle accent-glow">
-                        <Zap size={20} />
-                      </div>
-                      <div className="tool-info">
-                        <b>Объём по мышцам</b>
-                        <span>Ориентиры MEV / MAV / MRV</span>
-                      </div>
-                    </button>
-                  </div>
+                  <section className="daily-shortcuts" aria-label="Быстрые действия">
+                    <button onClick={()=>setModal("bodyweight")}><Scale size={21}/><span><b>Вес тела и тренд</b><small>Записать взвешивание</small></span><ChevronRight size={17}/></button>
+                    <button onClick={()=>setModal("tools")}><Settings2 size={21}/><span><b>Инструменты</b><small>Калькуляторы и настройки</small></span><ChevronRight size={17}/></button>
                   </section>
                   <section className="recent-panel" aria-labelledby="recent-title">
                     <div className="section-head">
@@ -1226,18 +1146,17 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                   <div className="tabs progress-tabs" role="tablist" aria-label="Раздел прогресса">
                     {(
                       [
-                        ["balance", "Баланс"],
-                        ["analytics", "Статистика"],
+                        ["analytics", "Обзор"],
                         ["strength", "Сила"],
-                        ["anatomy", "Карта мышц"],
+                        ["balance", "Мышцы"],
                         ["bodyweight", "Вес тела"],
                       ] as const
                     ).map(([id, label]) => (
                       <button
                         key={id}
                         role="tab"
-                        aria-selected={progressTab === id}
-                        tabIndex={progressTab === id ? 0 : -1}
+                        aria-selected={progressTab === id || (id === "balance" && progressTab === "anatomy")}
+                        tabIndex={progressTab === id || (id === "balance" && progressTab === "anatomy") ? 0 : -1}
                         className={progressTab === id ? "active" : ""}
                         onClick={() => setProgressTab(id)}
                         onKeyDown={(event) => {
@@ -1253,6 +1172,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                       </button>
                     ))}
                   </div>
+                  {(progressTab === "balance" || progressTab === "anatomy") && <div className="muscles-tabs" role="tablist" aria-label="Виды нагрузки"><button role="tab" aria-selected={progressTab==="balance"} onClick={()=>setProgressTab("balance")}>Нагрузка по зонам</button><button role="tab" aria-selected={progressTab==="anatomy"} onClick={()=>setProgressTab("anatomy")}>Карта мышц</button></div>}
                   {(progressTab === "balance" || progressTab === "anatomy") ? (
                     <div className="week-selector">
                       <button
@@ -1278,10 +1198,10 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                   ) : null}
                   {progressTab === "bodyweight" && <BodyweightModal key={account.id} accountId={account.id} timeZone={settings.timeZone} />}
                   {progressTab === "analytics" ? (
-                    <StatsAnalytics
+                    <ProgressOverview
                       workouts={workouts}
                       settings={settings}
-                      onOpenExerciseStrength={(key) => {
+                      onStrength={(key) => {
                         setProgressExercise(key);
                         setProgressTab("strength");
                       }}
@@ -1289,6 +1209,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                   ) : null}
                   {progressTab === "balance" ? (
                     <>
+                      <MovementBalance workouts={weekWorkouts}/>
                       <section className="panel zones-panel" aria-labelledby="zones-title">
                         <div className="panel-header">
                           <div>
@@ -1604,7 +1525,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                   {exerciseCards()}
                 </>
               ) : null}
-              {view === "friends" && <Suspense fallback={<p role="status">Открываем напарников…</p>}><FriendsScreen onProfile={() => setModal("profile")} /></Suspense>}
+              {view === "friends" && <Suspense fallback={<p role="status">Открываем напарников…</p>}><FriendsScreen onProfile={() => setModal("profile")} workouts={workouts} onStartMeetup={startMeetup} /></Suspense>}
               {view === "programs" ? (
                 <>
                   <header className="screen-head">
@@ -2179,6 +2100,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
           <OneRepMaxCalculator onClose={() => setModal(null)} />
         </Modal>
       ) : null}
+      {modal === "tools" && <Modal title="Инструменты и настройки" onClose={()=>setModal(null)}><ToolsHub onChoose={id=>id==="settings"?openSettings():setModal(id)}/></Modal>}
       {modal === "bodyweight" ? (
         <Modal title="Контроль массы тела" onClose={() => setModal(null)} wide>
           <BodyweightModal

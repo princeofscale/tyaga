@@ -1,3 +1,4 @@
+import { WorkoutUndo, type WorkoutRemoval } from "../domain/WorkoutUndo";
 import {
   exerciseForEntry,
   makeWorkout,
@@ -5,6 +6,9 @@ import {
   type WorkoutExercise,
 } from "./model";
 export type Draft = {
+  removals?: WorkoutRemoval[];
+  meetupId?: string;
+  meetupGym?: string;
   workout: Workout;
   startedAt: number;
   editing: boolean;
@@ -98,6 +102,9 @@ export function parseDraft(text: string | null): Draft | null {
       d.clock && Number.isFinite(d.clock.elapsedMs) && d.clock.elapsedMs >= 0;
     return {
       ...d,
+      removals: Array.isArray(d.removals) ? d.removals.filter((value:unknown)=>WorkoutUndo.valid(value)).slice(-10) : [],
+      meetupGym: typeof d.meetupGym === "string" ? d.meetupGym.slice(0,60) : undefined,
+      meetupId: typeof d.meetupId === "string" && d.meetupId.length <= 80 ? d.meetupId : undefined,
       clock: {
         elapsedMs: clockValid ? d.clock.elapsedMs : 0,
         runningSince: null,

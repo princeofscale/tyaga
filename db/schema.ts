@@ -96,26 +96,36 @@ export const favoriteExercises = sqliteTable(
 
 // The hosted ingress identity owns existing journal rows. An application account
 // adds password/session authentication without reassigning or rewriting history.
-export const accounts = sqliteTable("accounts", {
-  id: text("id").primaryKey(),
-  platformId: text("platform_id").notNull(),
-  email: text("email").notNull(),
-  displayName: text("display_name").notNull(),
-  passwordHash: text("password_hash").notNull(),
-  salt: text("salt").notNull(),
-  recoveryHash: text("recovery_hash").notNull(),
-  timeZone: text("time_zone").notNull(),
-  bodyMassKg: integer("body_mass_kg"),
-  revision: integer("revision").notNull().default(1),
-  createdAt: text("created_at").notNull(),
-}, (t) => [uniqueIndex("idx_accounts_platform").on(t.platformId)]);
+export const accounts = sqliteTable(
+  "accounts",
+  {
+    id: text("id").primaryKey(),
+    platformId: text("platform_id").notNull(),
+    email: text("email").notNull(),
+    displayName: text("display_name").notNull(),
+    passwordHash: text("password_hash").notNull(),
+    salt: text("salt").notNull(),
+    recoveryHash: text("recovery_hash").notNull(),
+    timeZone: text("time_zone").notNull(),
+    bodyMassKg: integer("body_mass_kg"),
+    revision: integer("revision").notNull().default(1),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [uniqueIndex("idx_accounts_platform").on(t.platformId)],
+);
 
-export const sessions = sqliteTable("sessions", {
-  tokenHash: text("token_hash").primaryKey(),
-  accountId: text("account_id").notNull().references(() => accounts.id),
-  expiresAt: integer("expires_at").notNull(),
-  createdAt: integer("created_at").notNull(),
-}, (t) => [index("idx_sessions_account_expiry").on(t.accountId, t.expiresAt)]);
+export const sessions = sqliteTable(
+  "sessions",
+  {
+    tokenHash: text("token_hash").primaryKey(),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => accounts.id),
+    expiresAt: integer("expires_at").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [index("idx_sessions_account_expiry").on(t.accountId, t.expiresAt)],
+);
 
 export const authLimits = sqliteTable("auth_limits", {
   platformId: text("platform_id").primaryKey(),
@@ -124,23 +134,99 @@ export const authLimits = sqliteTable("auth_limits", {
 });
 
 // Social data is server-owned, separate from journal replication and backups.
-export const socialProfiles = sqliteTable("social_profiles", {
-  accountId: text("account_id").primaryKey().references(() => accounts.id),
-  inviteCode: text("invite_code").notNull(),
-  gym: text("gym").notNull().default(""),
-  focus: text("focus").notNull().default(""),
-  activeUntil: integer("active_until").notNull().default(0),
-}, (t) => [uniqueIndex("idx_social_invite").on(t.inviteCode)]);
+export const socialProfiles = sqliteTable(
+  "social_profiles",
+  {
+    accountId: text("account_id")
+      .primaryKey()
+      .references(() => accounts.id),
+    inviteCode: text("invite_code").notNull(),
+    gym: text("gym").notNull().default(""),
+    focus: text("focus").notNull().default(""),
+    activeUntil: integer("active_until").notNull().default(0),
+    weeklyTarget: integer("weekly_target").notNull().default(3),
+  },
+  (t) => [uniqueIndex("idx_social_invite").on(t.inviteCode)],
+);
 
-export const friendships = sqliteTable("friendships", {
-  lowId: text("low_id").notNull().references(() => accounts.id),
-  highId: text("high_id").notNull().references(() => accounts.id),
-  senderId: text("sender_id").notNull().references(() => accounts.id),
-  status: text("status", { enum: ["pending", "accepted"] }).notNull(),
-  createdAt: integer("created_at").notNull(),
-}, (t) => [primaryKey({ columns: [t.lowId, t.highId] }), index("idx_friendships_high").on(t.highId)]);
+export const friendships = sqliteTable(
+  "friendships",
+  {
+    lowId: text("low_id")
+      .notNull()
+      .references(() => accounts.id),
+    highId: text("high_id")
+      .notNull()
+      .references(() => accounts.id),
+    senderId: text("sender_id")
+      .notNull()
+      .references(() => accounts.id),
+    status: text("status", { enum: ["pending", "accepted"] }).notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.lowId, t.highId] }),
+    index("idx_friendships_high").on(t.highId),
+  ],
+);
 
-export const workoutKudos = sqliteTable("workout_kudos", {
-  workoutId: text("workout_id").notNull().references(() => workouts.id, { onDelete: "cascade" }),
-  accountId: text("account_id").notNull().references(() => accounts.id),
-}, (t) => [primaryKey({ columns: [t.workoutId, t.accountId] })]);
+export const workoutKudos = sqliteTable(
+  "workout_kudos",
+  {
+    workoutId: text("workout_id")
+      .notNull()
+      .references(() => workouts.id, { onDelete: "cascade" }),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => accounts.id),
+  },
+  (t) => [primaryKey({ columns: [t.workoutId, t.accountId] })],
+);
+
+export const bodyweightDocuments = sqliteTable(
+  "bodyweight_documents",
+  {
+    ownerId: text("owner_id").notNull(),
+    docKey: text("doc_key").notNull(),
+    payload: text("payload").notNull(),
+    revision: integer("revision").notNull(),
+    mutationId: text("mutation_id").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    deleted: integer("deleted").notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.ownerId, t.docKey] })],
+);
+
+export const trainingMeetups = sqliteTable(
+  "training_meetups",
+  {
+    id: text("id").primaryKey(),
+    hostId: text("host_id")
+      .notNull()
+      .references(() => accounts.id),
+    name: text("name").notNull(),
+    startsAt: text("starts_at").notNull(),
+    gym: text("gym").notNull(),
+    cancelled: integer("cancelled").notNull().default(0),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [index("idx_meetups_host_start").on(t.hostId, t.startsAt)],
+);
+export const meetupParticipants = sqliteTable(
+  "meetup_participants",
+  {
+    meetupId: text("meetup_id")
+      .notNull()
+      .references(() => trainingMeetups.id),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => accounts.id),
+    response: text("response").notNull(),
+    gym: text("gym").notNull().default(""),
+    workoutId: text("workout_id"),
+  },
+  (t) => [
+    primaryKey({ columns: [t.meetupId, t.accountId] }),
+    index("idx_meetup_participant").on(t.accountId, t.meetupId),
+  ],
+);

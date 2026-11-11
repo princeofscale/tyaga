@@ -87,13 +87,23 @@ export default function ProgressChart({
             {points.length > 1 && (
               <m.path
                 key={points.map((p) => p.id).join()}
-                d={g.path(hasTrend)}
+                d={g.path()}
                 fill="none"
                 stroke="var(--accent)"
                 strokeWidth="2.5"
                 initial={reduced ? false : { pathLength: 0 }}
                 animate={{ pathLength: 1 }}
                 transition={{ duration: 0.5 }}
+              />
+            )}
+            {hasTrend && points.length > 1 && (
+              <path
+                d={g.path(true)}
+                fill="none"
+                stroke="var(--muted)"
+                strokeWidth="1.5"
+                strokeDasharray="5 5"
+                opacity="0.8"
               />
             )}
             {g.coords.map((p) => (
@@ -137,13 +147,13 @@ export default function ProgressChart({
           <div className="progress-chart-foot">
             <span>
               {hasTrend
-                ? "● Замеры · линия EMA с учётом дней"
+                ? "● Взвешивания — сплошная · EMA — пунктир"
                 : "Лучший рабочий подход за тренировку"}
             </span>
             <label>
-              Точка графика
+              Выбрать запись
               <select
-                aria-label="Точка графика"
+                aria-label="Выбрать запись"
                 value={active.id}
                 onChange={(e) => setSelected(e.target.value)}
               >

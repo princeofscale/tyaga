@@ -117,6 +117,7 @@ test("mobile tool dialogs and workout inputs retain their exact set targets", as
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/"); await ready(page);
   for (const [button, title] of [["Калькулятор блинов", "Калькулятор блинов"], ["Калькулятор 1ПМ", "Калькулятор 1ПМ"], ["Разминочная лесенка", "Разминочная лесенка (OpenGym)"]]) {
+    await page.getByRole("button",{name:/^Инструменты/}).last().click();
     await page.getByRole("button", { name: new RegExp(button) }).click();
     await expect(page.getByRole("dialog", { name: title, exact: true })).toBeVisible();
     await noOverflow(page);

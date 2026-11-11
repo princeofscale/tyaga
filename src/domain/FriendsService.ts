@@ -1,3 +1,4 @@
+import type { TrainingMeetup } from "./TrainingMeetups";
 import { addCalendarDays, localDate, weekStart } from "../lib/calendar";
 import { volumeSummary, workingSets } from "../lib/model";
 import type { Workout } from "../lib/types";
@@ -10,6 +11,7 @@ export interface GymStatus {
 export interface Athlete extends GymStatus {
   id: string;
   displayName: string;
+  weeklyTarget?: number;
   weekWorkouts: number;
 }
 export interface FriendRequest {
@@ -36,6 +38,7 @@ export interface FriendsData {
   feed: FriendWorkout[];
   weekStart: string;
   today: string;
+  meetups?: TrainingMeetup[];
   serverTime: number;
 }
 
@@ -77,9 +80,17 @@ export class FriendsService {
 
   /** Caps each contribution so one athlete cannot fill another’s weekly target. */
   static teamProgress(athletes: Athlete[]) {
-    const target = athletes.length * this.weeklyTarget;
+    const target = athletes.reduce(
+      (n, a) => n + (a.weeklyTarget ?? this.weeklyTarget),
+      0,
+    );
     const done = athletes.reduce(
-      (sum, athlete) => sum + Math.min(this.weeklyTarget, athlete.weekWorkouts),
+      (sum, athlete) =>
+        sum +
+        Math.min(
+          athlete.weeklyTarget ?? this.weeklyTarget,
+          athlete.weekWorkouts,
+        ),
       0,
     );
     return {

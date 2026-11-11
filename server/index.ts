@@ -18,6 +18,8 @@ import { BackupImportService } from "./BackupImportService";
 import { exerciseById } from "../src/lib/model";
 import { AccountService, AuthError } from "./AccountService";
 import { FriendsRepository } from "./FriendsRepository";
+import { MeetupRepository } from "./MeetupRepository";
+import { BodyweightRepository } from "./BodyweightRepository";
 export interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
@@ -63,10 +65,23 @@ export async function handleApi(request: Request, env: Env) {
     const authResponse = await accounts.handle(request);
     if (authResponse) return authResponse;
     const activeAccount = await accounts.require(request);
+    if (url.pathname === "/api/bodyweight" || url.pathname.startsWith("/api/bodyweight/")) {
+      const weights = new BodyweightRepository(env.DB, userId, activeAccount.timeZone,activeAccount.id);
+      if (request.method === "GET" && url.pathname === "/api/bodyweight") return json({...await weights.read(),accountId:activeAccount.id});
+      if (request.method === "PUT") {
+        const result=await weights.save(decodeURIComponent(url.pathname.slice("/api/bodyweight/".length)),await readBody(request));
+        return result.saved?json({document:result.saved}):json({error:"Замер изменён на другом устройстве. Выбери версию для сохранения.",document:result.current},409);
+      }
+      return json({error:"Не найдено"},404);
+    }
     if (url.pathname === "/api/friends" || url.pathname.startsWith("/api/friends/")) {
       const friends = new FriendsRepository(env.DB, activeAccount);
       const path = url.pathname;
-      if (path === "/api/friends" && request.method === "GET") return json(await friends.read());
+      const meetups=new MeetupRepository(env.DB,activeAccount);
+      if(path === "/api/friends" && request.method === "GET") return json({...await friends.read(),meetups:await meetups.read()});
+      if(path === "/api/friends/meetups" && request.method === "POST") return json(await meetups.create(await readBody(request)));
+      if(path.startsWith("/api/friends/meetups/") && request.method === "PUT") { await meetups.act(str(decodeURIComponent(path.slice("/api/friends/meetups/".length)),80,1),await readBody(request));return json({ok:true}); }
+      if(path === "/api/friends/goal" && request.method === "PUT") {await friends.goal(object(await readBody(request)).target);return json({ok:true});}
       if (path === "/api/friends/requests" && request.method === "POST") {
         await friends.request(object(await readBody(request)).code);
         return json({ ok: true });
