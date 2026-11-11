@@ -1,3 +1,4 @@
+import { mockWeights } from "./fixtures/bodyweight";
 import { test, expect, type Page } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 import { DEFAULT_SETTINGS, type Routine } from "../../src/lib/model";
@@ -118,6 +119,8 @@ async function fixture(
       routines = [...routines.filter((r) => r.id !== routine.id), routine];
       return json({ routine });
     }
+    if (path === "/api/challenges" && method === "GET")
+      return json({ accountId: profile.id, challenges: [] });
     if (path === "/api/friends" && method === "GET")
       return failReads
         ? json({ error: "Нет связи. Попробуй ещё раз." }, 503)
@@ -173,6 +176,7 @@ async function fixture(
     unexpected.push(`${method} ${path}`);
     return json({ error: "Unmocked request; never forwarded" }, 503);
   });
+  await mockWeights(page, profile.id);
   return {
     data,
     failReads: (value: boolean) => {

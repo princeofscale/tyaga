@@ -1,3 +1,5 @@
+import { BodyMass } from "../domain/BodyMass";
+import { JournalBackup, type WeightBackup } from "../domain/JournalBackup";
 import {
   BodyweightTracker,
   type BodyweightEntry,
@@ -89,12 +91,34 @@ export class BodyweightJournal {
     this.tracker = new BodyweightTracker(accountId, timeZone, {
       getItem: (key) => {
         if (this.blocked) throw new Error(this.blocked);
+        this.refreshCache();
         return JSON.stringify(
           key.includes("-goal:") ? this.state.goal : this.state.entries,
         );
       },
       setItem: (key, value) => this.write(key, JSON.parse(value)),
     });
+  }
+  private static queues = new Map<string, Promise<unknown>>();
+  /** Lock only short cache transactions; a network request never delays local input. */
+  async change<T>(action: () => T): Promise<T> {
+    const apply = () => {
+      if (this.blocked) throw new Error(this.blocked);
+      this.reload(true);
+      return action();
+    };
+    if (typeof navigator !== "undefined" && navigator.locks)
+      return navigator.locks.request(this.cacheKey, apply);
+    const prior =
+      BodyweightJournal.queues.get(this.cacheKey) ?? Promise.resolve();
+    const result = prior.then(apply, apply);
+    BodyweightJournal.queues.set(this.cacheKey, result);
+    try {
+      return await result;
+    } finally {
+      if (BodyweightJournal.queues.get(this.cacheKey) === result)
+        BodyweightJournal.queues.delete(this.cacheKey);
+    }
   }
   private parse(raw: string): State {
     const state = JSON.parse(raw) as State;
@@ -131,6 +155,33 @@ export class BodyweightJournal {
   private emit() {
     this.listeners.forEach((fn) => fn());
   }
+  massAt(date: string, legacy: number | null) {
+    try {
+      this.refreshCache();
+    } catch (e) {
+      this.error = e instanceof Error ? e.message : "Не удалось прочитать вес";
+    }
+    const hasHistory =
+      this.state.entries.length > 0 ||
+      [
+        ...Object.keys(this.state.revisions),
+        ...Object.keys(this.state.pending),
+      ].some((k) => k.startsWith("weight:"));
+    let legacyAllowed = this.binding === undefined;
+    try {
+      if (this.binding === "")
+        legacyAllowed = !localStorage.getItem(
+          `tyaga-bodyweight-bound:${this.accountId}`,
+        );
+    } catch {
+      legacyAllowed = false;
+    }
+    return BodyMass.at(
+      this.state.entries,
+      date,
+      hasHistory || !legacyAllowed ? null : legacy,
+    );
+  }
   get pendingCount() {
     return Object.keys(this.state.pending).length;
   }
@@ -149,6 +200,10 @@ export class BodyweightJournal {
     localStorage.setItem(this.cacheKey, JSON.stringify(next));
     this.state = next;
     this.emit();
+  }
+  private refreshCache() {
+    const raw = localStorage.getItem(this.cacheKey);
+    if (raw) this.state = this.parse(raw);
   }
   reload(throwOnError = false) {
     try {
@@ -207,6 +262,7 @@ export class BodyweightJournal {
     next.entries.sort((a, b) => a.date.localeCompare(b.date));
   }
   private receive(doc: WeightDocument) {
+    this.refreshCache();
     BodyweightDocument.value(doc.key, doc.value);
     const next = structuredClone(this.state),
       p = next.pending[doc.key];
@@ -252,15 +308,15 @@ export class BodyweightJournal {
     this.emit();
     try {
       if (this.blocked) throw new Error(this.blocked);
-      this.reload(true);
-      this.persist(structuredClone(this.state));
+      await this.change(() => this.persist(structuredClone(this.state)));
       const data = await this.client.request<{
         documents: WeightDocument[];
         accountId: string;
       }>("/api/bodyweight");
       if (this.binding === undefined && data.accountId !== this.accountId)
         throw new Error("Аккаунт изменился. Открой журнал веса заново.");
-      for (const doc of data.documents) this.receive(doc);
+      for (const doc of data.documents)
+        await this.change(() => this.receive(doc));
       for (const key of Object.keys(this.state.pending)) {
         if (key in this.state.conflicts) continue;
         const pending = this.state.pending[key];
@@ -271,32 +327,71 @@ export class BodyweightJournal {
             ...pending,
             accountId: data.accountId,
           });
-          // Edits made while awaiting this own write inherit its acknowledged revision.
-          const next = structuredClone(this.state);
-          if (next.pending[key]?.mutationId === pending.mutationId)
-            delete next.pending[key];
-          else if (next.pending[key])
-            next.pending[key].revision = result.document.revision;
-          next.revisions[key] = result.document.revision;
-          this.persist(next);
+          await this.change(() => {
+            // Edits made while awaiting this own write inherit its acknowledged revision.
+            this.refreshCache();
+            const next = structuredClone(this.state);
+            if (next.pending[key]?.mutationId === pending.mutationId)
+              delete next.pending[key];
+            else if (next.pending[key])
+              next.pending[key].revision = result.document.revision;
+            next.revisions[key] = result.document.revision;
+            this.persist(next);
+          });
         } catch (e) {
           if (e instanceof ApiError && e.status === 409) {
-            const next = structuredClone(this.state);
-            next.conflicts[key] = (
-              e.data as { document: WeightDocument | null }
-            ).document;
-            this.persist(next);
+            await this.change(() => {
+              const next = structuredClone(this.state);
+              next.conflicts[key] = (
+                e.data as { document: WeightDocument | null }
+              ).document;
+              this.persist(next);
+            });
           } else throw e;
         }
       }
-      const next = structuredClone(this.state);
-      next.lastSyncedAt = new Date().toISOString();
-      this.persist(next);
+      await this.change(() => {
+        const next = structuredClone(this.state);
+        next.lastSyncedAt = new Date().toISOString();
+        this.persist(next);
+      });
     } catch (e) {
       this.error =
         e instanceof Error ? e.message : "Нет связи. Изменения ждут отправки.";
       this.emit();
     }
+  }
+  restore(snapshot: WeightBackup, replace = false) {
+    if (this.blocked) throw new Error(this.blocked);
+    const valid = JournalBackup.weights(snapshot);
+    this.reload(true);
+    const plan = JournalBackup.merge(
+      this.state.entries,
+      valid.entries,
+      replace,
+    );
+    const next = structuredClone(this.state);
+    const values: Record<string, WeightValue> = {};
+    const before = new Map(this.state.entries.map((e) => [e.date, e]));
+    for (const e of plan.entries)
+      if (JSON.stringify(before.get(e.date)) !== JSON.stringify(e))
+        values[`weight:${e.date}`] = e;
+    next.entries = plan.entries;
+    if (
+      (replace || next.goal.targetWeightKg === null) &&
+      JSON.stringify(valid.goal) !== JSON.stringify(next.goal)
+    ) {
+      next.goal = valid.goal;
+      values.goal = valid.goal;
+    }
+    for (const [key, value] of Object.entries(values))
+      next.pending[key] = {
+        value,
+        revision: next.pending[key]?.revision ?? next.revisions[key] ?? 0,
+        mutationId: crypto.randomUUID(),
+      };
+    this.persist(next);
+    return plan;
   }
   export() {
     return {

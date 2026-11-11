@@ -1,6 +1,13 @@
 import { quantity } from "../lib/quantity";
-import { weightClient } from "../services/BodyweightApi";
-import { useEffect, useMemo, useState, useRef, useId, type FormEvent } from "react";
+import { useBodyweight } from "../state/BodyweightContext";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  useRef,
+  useId,
+  type FormEvent,
+} from "react";
 import { m, useReducedMotion } from "motion/react";
 import { Check, Pencil, Plus, Scale, Target, Trash2 } from "lucide-react";
 import {
@@ -9,7 +16,6 @@ import {
 } from "../domain/BodyweightTracker";
 import { addCalendarDays, browserTimeZone, localDate } from "../lib/calendar";
 import { dateLabel, fmt } from "../lib/model";
-import { BodyweightJournal } from "../services/BodyweightJournal";
 import { saveFile } from "../lib/saveFile";
 import { cloudState, syncCloud } from "../device/cloudSync";
 import ProgressChart from "./ProgressChart";
@@ -24,26 +30,10 @@ export function BodyweightModal({
   timeZone?: string;
   onClose?: () => void;
 }) {
-  const [weightCloud, setWeightCloud] = useState(() =>
-    import.meta.env.MODE === "device" ? cloudState() : null,
-  );
-  const weightBinding =
-    import.meta.env.MODE === "device" ? (weightCloud?.email ?? "") : undefined;
-  const weightToken = weightCloud?.token;
-  const journal = useMemo(
-    () =>
-      new BodyweightJournal(accountId, timeZone, weightClient(), weightBinding),
-    [accountId, timeZone, weightBinding, weightToken],
-  );
-  useEffect(() => {
-    if (import.meta.env.MODE !== "device") return;
-    const changed = () => setWeightCloud(cloudState());
-    window.addEventListener("tyaga:cloud", changed);
-    return () => window.removeEventListener("tyaga:cloud", changed);
-  }, []);
+  const journal = useBodyweight();
   const tracker = journal.tracker;
-  const weightInputId=useId();
-  const weightInputRef=useRef<HTMLInputElement>(null);
+  const weightInputId = useId();
+  const weightInputRef = useRef<HTMLInputElement>(null);
   const [, refreshSync] = useState(0);
   const [entries, setEntries] = useState(() => tracker.getEntries());
   const [goal, setGoal] = useState(() => tracker.getGoal());
@@ -63,6 +53,17 @@ export function BodyweightModal({
   const [deleting, setDeleting] = useState<string | null>(null),
     [all, setAll] = useState(false);
   const reduced = useReducedMotion();
+  useEffect(() => {
+    const latest = journal.tracker.getEntries();
+    setWeight(latest.at(-1)?.weightKg.toString() ?? "");
+    setDate(localDate(new Date(), timeZone));
+    setNote("");
+    setGoalInput(journal.tracker.getGoal().targetWeightKg?.toString() ?? "");
+    setGoalEditor(false);
+    setDeleting(null);
+    setError(journal.tracker.storageIssue());
+    setNotice("");
+  }, [journal]);
   const reload = () => {
     setEntries(tracker.getEntries());
     setGoal(tracker.getGoal());
@@ -73,31 +74,8 @@ export function BodyweightModal({
       refreshSync((n) => n + 1);
     };
     const off = journal.subscribe(changed);
-    const sync = () => {
-      if (
-        document.visibilityState === "visible" &&
-        (import.meta.env.MODE !== "device" || cloudState())
-      )
-        void journal.sync();
-    };
-    const storage = () => {
-      journal.reload();
-      sync();
-    };
-    window.addEventListener("storage", storage);
-    window.addEventListener("online", sync);
-    window.addEventListener("tyaga:synced", sync);
-    document.addEventListener("visibilitychange", sync);
-    const timer = window.setInterval(sync, 30000);
-    sync();
-    return () => {
-      off();
-      clearInterval(timer);
-      window.removeEventListener("storage", storage);
-      window.removeEventListener("online", sync);
-      window.removeEventListener("tyaga:synced", sync);
-      document.removeEventListener("visibilitychange", sync);
-    };
+    changed();
+    return off;
   }, [journal]);
   const stats = useMemo(() => tracker.getStats(), [entries, tracker]);
   const rate = useMemo(() => tracker.getWeeklyRate(), [entries, tracker]);
@@ -111,11 +89,11 @@ export function BodyweightModal({
       trend: p.emaKg,
       note: p.note,
     }));
-  const attempt = (action: () => void, message: string) => {
+  const attempt = async (action: () => void, message: string) => {
     setError("");
     setNotice("");
     try {
-      action();
+      await journal.change(action);
       reload();
       setNotice(message);
       if (import.meta.env.MODE !== "device" || cloudState())
@@ -166,13 +144,15 @@ export function BodyweightModal({
             ? "Синхронизируем вес…"
             : import.meta.env.MODE === "device" && !cloudState()
               ? "Сохранено на телефоне · облако не подключено"
-            : journal.conflicts.length
-              ? "Нужно выбрать версию замера"
-              : journal.pendingCount
-                ? `${quantity(journal.pendingCount,"изменение","изменения","изменений")} ${journal.pendingCount===1?"ждёт":"ждут"} отправки`
-                : journal.lastSyncedAt
-                  ? "Сохранено в аккаунте"
-                  : journal.error ? "Нет связи с аккаунтом" : "Загружаем вес из аккаунта…"}
+              : journal.conflicts.length
+                ? "Нужно выбрать версию замера"
+                : journal.pendingCount
+                  ? `${quantity(journal.pendingCount, "изменение", "изменения", "изменений")} ${journal.pendingCount === 1 ? "ждёт" : "ждут"} отправки`
+                  : journal.lastSyncedAt
+                    ? "Сохранено в аккаунте"
+                    : journal.error
+                      ? "Нет связи с аккаунтом"
+                      : "Загружаем вес из аккаунта…"}
         </div>
         <div className="weight-sync-actions">
           <button
@@ -222,8 +202,10 @@ export function BodyweightModal({
             <button
               className="button secondary"
               onClick={() => {
-                journal.resolve(key, false);
-                void journal.sync();
+                void attempt(
+                  () => journal.resolve(key, false),
+                  "Выбрана версия из аккаунта",
+                );
               }}
             >
               Принять версию из аккаунта
@@ -231,8 +213,10 @@ export function BodyweightModal({
             <button
               className="button primary"
               onClick={() => {
-                journal.resolve(key, true);
-                void journal.sync();
+                void attempt(
+                  () => journal.resolve(key, true),
+                  "Выбрана твоя версия",
+                );
               }}
             >
               Сохранить мою версию
@@ -401,7 +385,9 @@ export function BodyweightModal({
             <label htmlFor={weightInputId}>
               Вес, кг
               <input
-                id={weightInputId} ref={weightInputRef} className="weight-number-input"
+                id={weightInputId}
+                ref={weightInputRef}
+                className="weight-number-input"
                 inputMode="decimal"
                 autoComplete="off"
                 value={weight}
@@ -461,9 +447,9 @@ export function BodyweightModal({
             </p>
           )}
           <p className="tiny">
-            Вес и цель сохраняются отдельно от профиля атлета. Без сети
-            изменения остаются на устройстве и отправляются при восстановлении
-            связи.
+            Последний замер используется в новых упражнениях с весом тела. Масса
+            в сохранённых тренировках остаётся прежней. Без сети изменения
+            остаются на устройстве и отправляются при восстановлении связи.
           </p>
         </section>
       </div>

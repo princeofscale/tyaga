@@ -13,6 +13,7 @@ export type Draft = {
   startedAt: number;
   editing: boolean;
   clock: { elapsedMs: number; runningSince: number | null };
+  restFocus?: { exerciseId: string; setId: string };
   restUntil: number | null;
   pausedRest: number | null;
   manualDuration: boolean;
@@ -102,13 +103,27 @@ export function parseDraft(text: string | null): Draft | null {
       d.clock && Number.isFinite(d.clock.elapsedMs) && d.clock.elapsedMs >= 0;
     return {
       ...d,
-      removals: Array.isArray(d.removals) ? d.removals.filter((value:unknown)=>WorkoutUndo.valid(value)).slice(-10) : [],
-      meetupGym: typeof d.meetupGym === "string" ? d.meetupGym.slice(0,60) : undefined,
-      meetupId: typeof d.meetupId === "string" && d.meetupId.length <= 80 ? d.meetupId : undefined,
+      removals: Array.isArray(d.removals)
+        ? d.removals
+            .filter((value: unknown) => WorkoutUndo.valid(value))
+            .slice(-10)
+        : [],
+      meetupGym:
+        typeof d.meetupGym === "string" ? d.meetupGym.slice(0, 60) : undefined,
+      meetupId:
+        typeof d.meetupId === "string" && d.meetupId.length <= 80
+          ? d.meetupId
+          : undefined,
       clock: {
         elapsedMs: clockValid ? d.clock.elapsedMs : 0,
         runningSince: null,
       },
+      restFocus:
+        d.restFocus &&
+        typeof d.restFocus.exerciseId === "string" &&
+        typeof d.restFocus.setId === "string"
+          ? { exerciseId: d.restFocus.exerciseId, setId: d.restFocus.setId }
+          : undefined,
       restUntil: Number.isFinite(d.restUntil) ? d.restUntil : null,
       pausedRest: Number.isFinite(d.pausedRest) ? d.pausedRest : null,
       manualDuration: d.editing || !!d.manualDuration,

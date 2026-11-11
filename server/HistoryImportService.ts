@@ -156,7 +156,17 @@ export class HistoryImportService {
             })) as WorkoutExercise["sets"],
             ...(e.equipmentNote
               ? { equipmentNote: str(e.equipmentNote, 120) }
-              : {}),
+              : format === "tyaga" &&
+                  definition.catalogRevision === 3 &&
+                  !definition.source &&
+                  !definition.custom &&
+                  ["machine_stack", "assisted_bodyweight"].includes(
+                    definition.recording.loadMode,
+                  )
+                ? {
+                    equipmentNote: `Не указан · импорт ${source.date} · ${id.slice(-8)}`,
+                  }
+                : {}),
             ...(definition.recording.laterality === "unilateral"
               ? {
                   performedSides: (e.performedSides ??
@@ -194,7 +204,9 @@ export class HistoryImportService {
           timeZone: source.timeZone ?? timeZone,
           revision: 0,
           analysisVersion: 2,
-          ...(format === "tyaga" && source.wearable ? { wearable: source.wearable } : {}),
+          ...(format === "tyaga" && source.wearable
+            ? { wearable: source.wearable }
+            : {}),
           ...(source.routineId
             ? { routineId: routineMap.get(String(source.routineId)) }
             : {}),

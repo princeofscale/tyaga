@@ -18,14 +18,22 @@ const weeksLater = (weeks: number) => {
   return d.toISOString().slice(0, 10);
 };
 /** A saved workout of this routine where every planned working set is done. */
-function performed(program: TrainingProgram, date: string, weight = 100): Workout {
+function performed(
+  program: TrainingProgram,
+  date: string,
+  weight = 100,
+): Workout {
   const workout = program.start([], TZ, date);
   return {
     ...workout,
     date,
     exercises: workout.exercises.map((e) => ({
       ...e,
-      sets: e.sets.map((s) => ({ ...s, done: !s.warmup, weight: s.warmup ? 0 : weight })),
+      sets: e.sets.map((s) => ({
+        ...s,
+        done: !s.warmup,
+        weight: s.warmup ? 0 : weight,
+      })),
     })),
   };
 }
@@ -77,8 +85,14 @@ test("у каждого упражнения свой диапазон повт�
     lateral.sets.map((s) => s.reps),
     Array(6).fill(12),
   );
-  assert.equal(workout.exercises.find((e) => e.exerciseId === "ohp")!.repMin, 8);
-  assert.equal(workout.exercises.find((e) => e.exerciseId === "ohp")!.repMax, 10);
+  assert.equal(
+    workout.exercises.find((e) => e.exerciseId === "ohp")!.repMin,
+    8,
+  );
+  assert.equal(
+    workout.exercises.find((e) => e.exerciseId === "ohp")!.repMax,
+    10,
+  );
   assert.equal(program.range(routine.exercises[0]).max, 10);
 });
 test("каждая пятая неделя — разгрузка: половина подходов, 70% веса, RIR 4", () => {
@@ -168,10 +182,7 @@ test("ориентиры недели считаются из самой про�
 });
 test("сервер принимает программу v2 с движениями выпуска 3 и сохраняет разгрузку", () => {
   for (const routine of TrainingProgram.programV2()) {
-    const saved = validRoutine(
-      JSON.parse(JSON.stringify(routine)),
-      new Map(),
-    );
+    const saved = validRoutine(JSON.parse(JSON.stringify(routine)), new Map());
     assert.deepEqual(saved.cycle, DELOAD_CYCLE);
     assert.equal(saved.exercises.length, routine.exercises.length);
     for (const [index, entry] of saved.exercises.entries()) {
@@ -194,4 +205,56 @@ test("шаблон разгрузки не ломает программу бе�
   assert.equal(program.workingSets, 18);
   const custom = makeExerciseEntry("bench");
   assert.equal(custom.repMin, undefined);
+});
+
+test("изменение диапазона по цифрам не меняет соседнюю границу и требует правильную пару при сохранении", () => {
+  const r = TrainingProgram.empty();
+  r.repMin = 10;
+  r.repMax = 12;
+  r.exercises = [makeExerciseEntry("bench")];
+  const first = {
+    ...r.exercises[0],
+    ...TrainingProgram.editRange(r, r.exercises[0], "max", "1"),
+  };
+  assert.equal(first.repMin, 10);
+  assert.equal(first.repMax, 1);
+  assert.throws(
+    () => TrainingProgram.validateRanges({ ...r, exercises: [first] }),
+    /максимум/,
+  );
+  const final = {
+    ...first,
+    ...TrainingProgram.editRange(r, first, "max", "15"),
+  };
+  assert.equal(final.repMin, 10);
+  assert.equal(final.repMax, 15);
+  TrainingProgram.validateRanges({ ...r, exercises: [final] });
+  const cleared = {
+    ...final,
+    ...TrainingProgram.editRange(r, final, "max", ""),
+  };
+  assert.equal(cleared.repMin, 10);
+  assert.equal(cleared.repMax, undefined);
+  assert.throws(() =>
+    TrainingProgram.validateRanges({ ...r, exercises: [cleared] }),
+  );
+});
+test("повторение не создаёт выдуманный диапазон, а новый подход берёт вес последнего рабочего", () => {
+  const r = TrainingProgram.empty();
+  r.progression = "repeat";
+  r.exercises = [makeExerciseEntry("bench")];
+  const p = new TrainingProgram(r),
+    old = p.start([], TZ, WEEK0);
+  old.exercises[0].sets = old.exercises[0].sets
+    .slice(0, 2)
+    .map((s) => ({ ...s, done: true, weight: 75, reps: 11 }));
+  const next = p.start([old], TZ, weeksLater(1));
+  assert.equal(next.exercises[0].repMin, undefined);
+  assert.equal(next.exercises[0].repMax, undefined);
+  assert.ok(next.exercises[0].sets.every((s) => s.weight === 75));
+  r.exercises[0].repMin = 6;
+  r.exercises[0].repMax = 8;
+  const explicit = new TrainingProgram(r).start([], TZ, WEEK0);
+  assert.equal(explicit.exercises[0].repMin, 6);
+  assert.equal(explicit.exercises[0].repMax, 8);
 });

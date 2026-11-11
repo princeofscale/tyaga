@@ -36,6 +36,49 @@ export const DELOAD_CYCLE: RoutineCycle = {
 };
 export class TrainingProgram {
   constructor(public readonly routine: Routine) {}
+  /** Edits one bound without changing the opposite value while a number is being typed. */
+  static editRange(
+    routine: Routine,
+    entry: WorkoutExercise,
+    side: "min" | "max",
+    raw: string,
+  ) {
+    if (raw === "")
+      return side === "min"
+        ? { repMin: undefined, repMax: entry.repMax }
+        : { repMin: entry.repMin, repMax: undefined };
+    const value = Math.max(1, Math.min(200, Math.round(Number(raw))));
+    return side === "min"
+      ? { repMin: value, repMax: entry.repMax ?? routine.repMax }
+      : { repMin: entry.repMin ?? routine.repMin, repMax: value };
+  }
+  /** The editor may hold an incomplete pair; only complete, ordered ranges can be saved. */
+  static validateRanges(routine: Routine) {
+    if (
+      !Number.isInteger(routine.repMin) ||
+      !Number.isInteger(routine.repMax) ||
+      routine.repMin < 1 ||
+      routine.repMax > 200 ||
+      routine.repMax < routine.repMin
+    )
+      throw new Error(
+        "Общий максимум повторений должен быть не меньше минимума",
+      );
+    for (const e of routine.exercises) {
+      if (e.repMin === undefined && e.repMax === undefined) continue;
+      if (
+        !Number.isInteger(e.repMin) ||
+        !Number.isInteger(e.repMax) ||
+        e.repMin! < 1 ||
+        e.repMax! > 200 ||
+        e.repMax! < e.repMin!
+      )
+        throw new Error(
+          `У «${exerciseForEntry(e)?.name ?? e.exerciseId}» укажи обе границы повторений: максимум не меньше минимума`,
+        );
+    }
+  }
+
   get workingSets() {
     return this.routine.exercises.reduce(
       (n, e) => n + e.sets.filter((s) => !s.warmup).length,
@@ -147,17 +190,20 @@ export class TrainingProgram {
         const sets = deload && cycle ? this.deloadSets(plan, cycle) : plan.sets;
         return {
           ...structuredClone(plan),
-          repMin: range.min,
-          repMax: range.max,
+          ...(r.progression === "double"
+            ? { repMin: range.min, repMax: range.max }
+            : {}),
           progressionNote: deload
             ? undefined
             : r.progression === "double" && progressive && canIncrease
               ? `Все рабочие подходы прошлого раза достигли ${range.max} повторений. Предложен шаг +${r.incrementKg} кг; диапазон ${range.min}–${range.max}. Измени вес по самочувствию.`
               : undefined,
           sets: sets.map((s) => {
-            const ref = s.warmup ? undefined : work[index++];
+            const ref = s.warmup ? undefined : (work[index++] ?? work.at(-1));
             const raised =
-              canIncrease && !s.warmup ? work[0].weight + r.incrementKg : undefined;
+              canIncrease && !s.warmup
+                ? work[0].weight + r.incrementKg
+                : undefined;
             const base = raised ?? (ref ? ref.weight : s.weight);
             return {
               ...s,
@@ -436,9 +482,10 @@ export class TrainingProgram {
    * sets, so "покрытие ориентиров" means "выполнено против запланированного".
    */
   static programV2Goals(): Record<Muscle, number> {
-    const totals = Object.fromEntries(
-      MUSCLES.map((m) => [m.id, 0]),
-    ) as Record<Muscle, number>;
+    const totals = Object.fromEntries(MUSCLES.map((m) => [m.id, 0])) as Record<
+      Muscle,
+      number
+    >;
     for (const routine of TrainingProgram.programV2())
       for (const entry of routine.exercises) {
         const count = entry.sets.filter((s) => !s.warmup).length;

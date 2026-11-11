@@ -9,8 +9,12 @@ import {
   UserRound,
   ChevronRight,
   Scale,
+  Archive,
+  Bell,
 } from "lucide-react";
 export type ToolId =
+  | "backup"
+  | "rest_notifications"
   | "bodyweight"
   | "plate"
   | "orm"
@@ -29,6 +33,12 @@ export default function ToolsHub({
     {
       title: "Учёт",
       items: [
+        {
+          id: "backup",
+          name: "Резервная копия",
+          hint: "Все записи в одном файле и восстановление",
+          icon: Archive,
+        },
         {
           id: "bodyweight",
           name: "Вес тела и тренд",
@@ -80,6 +90,12 @@ export default function ToolsHub({
     {
       title: "Настройки",
       items: [
+        {
+          id: "rest_notifications",
+          name: "Уведомления отдыха",
+          hint: "Таймер при заблокированном телефоне",
+          icon: Bell,
+        },
         {
           id: "settings",
           name: "Мои цели",
