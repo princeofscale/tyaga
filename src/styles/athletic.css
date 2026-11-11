@@ -25,8 +25,6 @@
   --r-card: 20px;
   --r-btn: 12px;
   --r-field: 10px;
-  --font-display: "Oswald Variable", "Arial Narrow", sans-serif;
-  --font-body: "Manrope Variable", Manrope, system-ui, sans-serif;
   --ease-out: cubic-bezier(.22, 1, .36, 1);
   font-family: var(--font-body);
   font-variant-numeric: tabular-nums;
@@ -90,8 +88,8 @@ button, input { font-variant-numeric: tabular-nums; }
   padding: 0 16px 42px;
   font-family: var(--font-display);
   font-size: 3.3rem;
-  font-weight: 600;
-  letter-spacing: -.055em;
+  font-weight: 700;
+  letter-spacing: -0.015em;
   line-height: 1;
 }
 .brand-period { color: var(--accent); }
@@ -126,8 +124,8 @@ button, input { font-variant-numeric: tabular-nums; }
 .today-head h1, .screen-head h1 {
   font-family: var(--font-display);
   font-size: clamp(2.6rem, 4.3vw, 4rem);
-  font-weight: 500;
-  letter-spacing: -.035em;
+  font-weight: 600;
+  letter-spacing: -0.015em;
   line-height: 1.08;
 }
 .today-date { display: block; margin-bottom: 9px; color: var(--muted); font-size: .82rem; font-weight: 500; text-transform: none; }
@@ -183,9 +181,9 @@ button, input { font-variant-numeric: tabular-nums; }
   color: var(--text);
   font-family: var(--font-display);
   font-size: clamp(2.3rem, 3.7vw, 3.65rem);
-  font-weight: 500;
+  font-weight: 600;
   line-height: 1.13;
-  letter-spacing: -.025em;
+  letter-spacing: -0.015em;
   text-transform: uppercase;
   text-wrap: balance;
   overflow-wrap: anywhere;
@@ -232,7 +230,7 @@ button, input { font-variant-numeric: tabular-nums; }
 .week-summary-head { align-items: flex-start; }
 .week-summary-head > b { max-width: 110px; line-height: 1.5; font-size: .82rem; font-weight: 650; }
 .week-summary-head > span { font-size: .75rem; white-space: nowrap; }
-.week-summary-head strong { font-family: var(--font-display); font-size: 2.7rem; line-height: 1; font-weight: 500; margin-right: 3px; }
+.week-summary-head strong { font-family: var(--font-display); font-size: 2.7rem; line-height: 1; font-weight: 700; margin-right: 3px; }
 .week-summary .meter { height: 5px; background: var(--surface-3); }
 .week-summary .meter > span { background: var(--accent); transition: width .4s var(--ease-out); }
 .week-summary-foot { font-size: .7rem; line-height: 1.5; gap: 12px; }
@@ -258,12 +256,12 @@ button, input { font-variant-numeric: tabular-nums; }
 .session-item { padding: 18px 20px; border-radius: 14px; background: var(--surface); border-color: var(--line); box-shadow: none; }
 .session-item:hover { background: var(--surface-2); border-color: var(--line-strong); transform: none; }
 .session-item h3 { font-family: var(--font-body); font-size: .9rem; font-weight: 700; }
-.session-item-value > b { font-family: var(--font-display); font-size: 1.65rem; font-weight: 500; }
+.session-item-value > b { font-family: var(--font-display); font-size: 1.65rem; font-weight: 700; }
 .history-panel { padding: 0; background: var(--surface); overflow: hidden; }
 .history-panel .session-item { border-radius: 0; background: transparent; }
 .stat-card { border-radius: 17px; }
 .stat-card:hover, .stat-card.accent-glow:hover, .stat-card.streak-glow:hover { transform: none; box-shadow: none; border-color: var(--line-strong); }
-.stat-card .stat-value, .stat-card-value { font-family: var(--font-display); font-weight: 500; font-size: 2.8rem; letter-spacing: -.03em; text-shadow: none; }
+.stat-card .stat-value, .stat-card-value { font-family: var(--font-display); font-weight: 700; font-size: 2.8rem; letter-spacing: -0.015em; text-shadow: none; }
 .tabs { padding: 5px; border-radius: 13px; background: var(--surface); border-color: var(--line); }
 .tabs button { min-height: 43px; font-size: .82rem; transition: color .18s, background-color .18s; }
 .tabs button.active { background: var(--accent); color: var(--on-accent); box-shadow: none; }
@@ -273,12 +271,12 @@ button, input { font-variant-numeric: tabular-nums; }
 .routine-card { border-radius: 17px; }
 .program-day { border-color: var(--line); background: var(--bg); }
 .program-day.today { border-color: var(--accent-line); background: var(--accent-soft); }
-.program-day-label b { font-family: var(--font-display); font-size: 1.6rem; font-weight: 500; }
+.program-day-label b { font-family: var(--font-display); font-size: 1.6rem; font-weight: 700; }
 .search-field { border-radius: 11px; background: var(--surface); border: 1px solid var(--line-strong); }
 .search-field:focus-within { border-color: var(--accent); }
 .search-field input { border: 0; background: transparent; }
 .empty-state { min-height: 290px; padding: 32px 20px; }
-.empty-state h2 { font-family: var(--font-display); font-size: 2rem; font-weight: 500; letter-spacing: -.025em; }
+.empty-state h2 { font-family: var(--font-display); font-size: 2rem; font-weight: 600; letter-spacing: -0.015em; }
 .empty-state p { max-width: 430px; line-height: 1.7; }
 .empty-icon { background: var(--accent-soft); border: 1px solid var(--accent-line); color: var(--accent); box-shadow: none; }
 

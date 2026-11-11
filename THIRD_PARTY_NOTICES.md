@@ -14,8 +14,10 @@ an independently validated clinical atlas.
 
 ## Fonts and libraries
 
-Manrope, Oswald and Unbounded: SIL Open Font License 1.1. Oswald: Copyright 2016
-The Oswald Project Authors (https://github.com/googlefonts/OswaldFont).
+Fira Sans Extra Condensed, Onest and JetBrains Mono: SIL Open Font License 1.1.
+Onest: Copyright 2021 The Onest Project Authors (https://github.com/simpals/onest).
+JetBrains Mono: Copyright 2020 The JetBrains Mono Project Authors
+(https://github.com/JetBrains/JetBrainsMono).
 React, React DOM, Lucide, Motion/Framer Motion and TanStack Query retain their
 original notices. Apple Health import: fflate (MIT), saxes (ISC) and xmlchars (MIT).
 Full applicable notices copied from the pinned installed packages are included in

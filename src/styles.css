@@ -23,11 +23,9 @@
   --r-btn: 14px;
   --r-card: 20px;
   --r-pill: 999px;
-  --font-display: "Unbounded Variable", "Manrope Variable", sans-serif;
-  --font-body: "Manrope Variable", Manrope, system-ui, sans-serif;
 }
 :root {
-  font-family: Inter, Arial, system-ui, sans-serif;
+  font-family: var(--font-body);
   color: var(--text);
   background: var(--bg);
   font-synthesis: none;
@@ -2420,7 +2418,7 @@ dialog::-webkit-scrollbar {
 }
 .starter-card > span {
   color: var(--accent);
-  font-family: "Unbounded Variable", sans-serif;
+  font-family: var(--font-display); font-weight: 700;
   font-size: 1.5rem;
 }
 .starter-card small {
@@ -2673,7 +2671,7 @@ dialog::-webkit-scrollbar {
   gap: 6px;
 }
 .import-summary b {
-  font-family: "Unbounded Variable", sans-serif;
+  font-family: var(--font-display); font-weight: 700;
   font-size: 1.5rem;
   color: var(--accent);
 }
@@ -2846,7 +2844,7 @@ dialog::-webkit-scrollbar {
 
 /* ---- merged from design.css ---- */
 :root {
-  font-family: "Manrope Variable", Manrope, system-ui, sans-serif;
+  font-family: var(--font-body);
   background: var(--bg);
   color: var(--text);
 }
@@ -2856,8 +2854,8 @@ body {
 h1,
 .anatomy-selection h2,
 .stat-value {
-  font-family: "Unbounded Variable", "Manrope Variable", sans-serif;
-  font-weight: 550;
+  font-family: var(--font-display);
+  font-weight: 700;
 }
 .eyebrow {
   color: var(--text-soft);
@@ -3259,8 +3257,8 @@ dialog::backdrop {
   gap: 5px;
 }
 .anatomy-metrics b {
-  font-family: "Unbounded Variable", sans-serif;
-  font-weight: 500;
+  font-family: var(--font-display);
+  font-weight: 700;
   color: var(--accent);
   font-size: 1.6rem;
 }
@@ -3863,7 +3861,7 @@ dialog::backdrop {
 }
 /* Account surfaces share the journal's quiet graphite/lime visual language. */
 .account-page { min-height:100dvh; display:grid; justify-items:center; align-content:center; gap:1.75rem; padding:2rem 1rem; background:radial-gradient(ellipse at 50% 5%, color-mix(in srgb, var(--accent) 6%, transparent), transparent 55%), var(--bg); }
-.account-brand { display:flex; align-items:center; gap:.8rem; font-family:"Unbounded Variable",sans-serif; font-weight:750; letter-spacing:.08em; font-size:1.25rem; }
+.account-brand { display:flex; align-items:center; gap:.8rem; font-family:var(--font-display); font-weight: 800; letter-spacing:.08em; font-size:1.25rem; }
 .account-brand>span { display:grid; place-items:center; padding:.6rem; background:var(--accent); color:var(--bg); border-radius:13px; }
 .account-card { width:min(100%,440px); padding:2rem; border-radius:24px; }
 .account-icon { width:50px; height:50px; border:1px solid color-mix(in srgb, var(--accent) 19%, transparent); border-radius:15px; display:grid; place-items:center; color:var(--accent); margin-bottom:1.4rem; }
@@ -3900,7 +3898,7 @@ h1,
 .screen-head h1,
 .today-head h1 {
   font-family: var(--font-display);
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: -0.02em;
 }
 .button {
@@ -3968,8 +3966,8 @@ textarea:focus {
 .brand {
   font-family: var(--font-display);
   font-size: 2rem;
-  font-weight: 700;
-  letter-spacing: -0.03em;
+  font-weight: 800;
+  letter-spacing: -0.015em;
   padding: 0 12px 28px;
 }
 .sidebar nav {
@@ -4155,7 +4153,7 @@ textarea:focus {
 .plan-card h2 {
   font-family: var(--font-display);
   font-size: 1.375rem;
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: -0.01em;
 }
 .plan-meta {
@@ -4226,7 +4224,7 @@ textarea:focus {
 .week-summary-head strong {
   font-family: var(--font-display);
   font-size: 1.125rem;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text);
 }
 .meter {
@@ -4284,7 +4282,7 @@ textarea:focus {
 }
 .volume-total {
   font-family: var(--font-display);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 /* ---- progress ---- */
@@ -4336,7 +4334,7 @@ textarea:focus {
 .zones-panel .panel-header p strong {
   font-family: var(--font-display);
   font-size: 1.125rem;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text);
 }
 .analysis-controls {
@@ -4463,7 +4461,7 @@ textarea:focus {
 .planner-card h2 {
   font-family: var(--font-display);
   font-size: 1.125rem;
-  font-weight: 600;
+  font-weight: 700;
 }
 .planner-card p {
   margin-top: 4px;
@@ -4558,7 +4556,7 @@ textarea:focus {
 .stat-value {
   font-family: var(--font-display);
   font-size: 1.5rem;
-  font-weight: 600;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 .stat-value > span {
@@ -4967,7 +4965,7 @@ textarea:focus {
 .rest-digits {
   font-family: var(--font-display);
   font-size: 1.875rem;
-  font-weight: 600;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
   color: var(--text);
@@ -5943,7 +5941,7 @@ body::before {
   font-size: 2.25rem;
   font-weight: 800;
   color: var(--accent);
-  letter-spacing: -0.03em;
+  letter-spacing: -0.015em;
   font-family: var(--font-display);
 }
 
@@ -6229,7 +6227,7 @@ body::before {
   font-weight: 800;
   color: var(--accent);
   font-family: var(--font-display);
-  letter-spacing: -0.04em;
+  letter-spacing: -0.015em;
   text-shadow: 0 0 24px rgba(202, 250, 100, 0.35);
 }
 
@@ -9263,7 +9261,7 @@ body::before {
   font-size: 0.75rem;
   font-weight: 700;
   color: var(--accent, #cafa64);
-  font-family: monospace;
+  font-family: var(--font-mono);
 }
 
 .deload-card-desc {
@@ -9520,7 +9518,7 @@ body::before {
   font-size: 0.84rem;
   font-weight: 800;
   color: var(--accent, #cafa64);
-  font-family: monospace;
+  font-family: var(--font-mono);
 }
 
 .step-main-info {
@@ -9947,7 +9945,7 @@ body::before {
   display: flex;
   justify-content: space-between;
   font-size: 0.7rem;
-  font-family: monospace;
+  font-family: var(--font-mono);
   color: var(--muted);
 }
 
@@ -10564,7 +10562,7 @@ body::before {
 .rir-level-chip .rir-code {
   font-size: 1.05rem;
   font-weight: 800;
-  font-family: monospace;
+  font-family: var(--font-mono);
 }
 
 .rir-level-chip.rir-0 {

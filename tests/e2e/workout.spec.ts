@@ -524,9 +524,15 @@ test("anatomy atlas supports mouse, keyboard, mobile and enlarged text", async (
   await expect(page.locator(".body-figure")).toHaveCount(1);
   await page.getByRole("button", { name: "Оба вида", exact: true }).click();
   await page.evaluate(() => document.fonts.ready);
+  // `fonts.check` для гарнитуры, которой нет в @font-face, вхолостую возвращает true,
+  // поэтому смотрим на сами начертания: файл интерфейсного шрифта должен быть загружен.
   expect(
     await page.evaluate(() =>
-      document.fonts.check('16px "Manrope Variable"', "Тяга"),
+      [...document.fonts].some(
+        (face) =>
+          face.family.replaceAll('"', "") === "Onest Variable" &&
+          face.status === "loaded",
+      ),
     ),
   ).toBe(true);
   await page.screenshot({ path: "artifacts/anatomy-v3.png", fullPage: true });

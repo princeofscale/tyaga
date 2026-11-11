@@ -142,7 +142,17 @@ test("dashboard stays readable at phone, tablet and desktop widths", async ({
     const fonts = await page
       .locator("#plan-title")
       .evaluate((el) => getComputedStyle(el).fontFamily);
-    expect(fonts).toContain("Oswald");
+    expect(fonts).toContain("Tyaga Display");
+    // Не запасной системный шрифт: файлы гарнитур из fonts.css действительно загрузились (CSP пускает только свои).
+    const loaded = await page.evaluate(() =>
+      [...document.fonts]
+        .filter((face) => face.status === "loaded")
+        .map((face) => face.family.replaceAll('"', "")),
+    );
+    expect(
+      loaded,
+      "кириллические начертания заголовка и интерфейса",
+    ).toEqual(expect.arrayContaining(["Tyaga Display", "Onest Variable"]));
     await expect(page.locator("html")).toHaveAttribute(
       "data-theme-accent",
       "lime",
