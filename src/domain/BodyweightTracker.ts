@@ -1,3 +1,4 @@
+import { localDate, browserTimeZone, addCalendarDays } from "../lib/calendar";
 /**
  * BodyweightTracker
  *
@@ -5,7 +6,7 @@
  * analytics, inspired by OpenGym.
  *
  * Daily scale weights fluctuate due to water retention, glycogen, sodium, and digestion.
- * The 7-day EMA smoothing curve reveals true progress (surplus/deficit rate).
+ * The EMA is a visual smoothing aid, not a measurement of tissue or energy balance.
  */
 
 export interface BodyweightEntry {
@@ -42,9 +43,54 @@ export class BodyweightTracker {
   private storageKey: string;
   private goalKey: string;
 
-  constructor(private accountId: string) {
+  constructor(
+    private accountId: string,
+    private timeZone = browserTimeZone(),
+  ) {
     this.storageKey = `tyaga-bodyweight:${accountId}`;
     this.goalKey = `tyaga-bodyweight-goal:${accountId}`;
+  }
+
+  /** Accepts Russian decimal input without accepting trailing junk or non-finite values. */
+  static parseWeight(value: string): number {
+    const clean = value.trim().replace(",", ".");
+    const n = Number(clean);
+    if (
+      !/^\d+(?:\.\d+)?$/.test(clean) ||
+      !Number.isFinite(n) ||
+      n < 20 ||
+      n > 500
+    )
+      throw new Error("Введи вес от 20 до 500 кг, например 61,5");
+    return Math.round(n * 10) / 10;
+  }
+  static step(value: string, delta: number) {
+    return this.parseWeight(
+      String(Math.round((this.parseWeight(value) + delta) * 10) / 10),
+    );
+  }
+
+  /** Reports unreadable/corrupt storage before a mutation can replace existing bytes. */
+  public storageIssue(): string {
+    try {
+      const entries = localStorage.getItem(this.storageKey),
+        goal = localStorage.getItem(this.goalKey);
+      if (entries !== null) {
+        const data: unknown = JSON.parse(entries);
+        if (!Array.isArray(data) || !data.every((e) => this.isEntry(e)))
+          return "Сохранённые замеры повреждены. Исходные данные на устройстве не изменены.";
+      }
+      if (goal !== null && !this.isGoal(JSON.parse(goal)))
+        return "Сохранённая цель повреждена. Исходные данные на устройстве не изменены.";
+      return "";
+    } catch {
+      return "Не удалось прочитать замеры на устройстве. Проверь доступ к хранилищу браузера.";
+    }
+  }
+
+  private requireReadable() {
+    const issue = this.storageIssue();
+    if (issue) throw new Error(issue);
   }
 
   public getEntries(): BodyweightEntry[] {
@@ -52,7 +98,11 @@ export class BodyweightTracker {
       const raw = localStorage.getItem(this.storageKey);
       if (!raw) return [];
       const parsed: unknown = JSON.parse(raw);
-      if (!Array.isArray(parsed) || !parsed.every((entry) => this.isEntry(entry))) return [];
+      if (
+        !Array.isArray(parsed) ||
+        !parsed.every((entry) => this.isEntry(entry))
+      )
+        return [];
       return parsed.sort((a, b) => a.date.localeCompare(b.date));
     } catch {
       return [];
@@ -62,29 +112,51 @@ export class BodyweightTracker {
   private isEntry(value: unknown): value is BodyweightEntry {
     if (!value || typeof value !== "object") return false;
     const entry = value as Record<string, unknown>;
-    if (typeof entry.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(entry.date)) return false;
+    if (
+      typeof entry.date !== "string" ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(entry.date)
+    )
+      return false;
     const date = new Date(entry.date);
-    return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === entry.date
-      && typeof entry.id === "string"
-      && typeof entry.weightKg === "number" && Number.isFinite(entry.weightKg)
-      && typeof entry.createdAt === "number" && Number.isFinite(entry.createdAt)
-      && (entry.note === undefined || typeof entry.note === "string");
+    return (
+      Number.isFinite(date.getTime()) &&
+      date.toISOString().slice(0, 10) === entry.date &&
+      typeof entry.id === "string" &&
+      typeof entry.weightKg === "number" &&
+      Number.isFinite(entry.weightKg) &&
+      entry.weightKg >= 20 &&
+      entry.weightKg <= 500 &&
+      typeof entry.createdAt === "number" &&
+      Number.isFinite(entry.createdAt) &&
+      (entry.note === undefined || typeof entry.note === "string")
+    );
   }
 
   public saveEntries(entries: BodyweightEntry[]): void {
     try {
       localStorage.setItem(this.storageKey, JSON.stringify(entries));
     } catch {
-      // storage unavailable
+      throw new Error(
+        "Не удалось сохранить вес на устройстве. Данные в форме сохранены; повтори попытку.",
+      );
     }
   }
 
   public addEntry(weightKg: number, date?: string, note = ""): BodyweightEntry {
-    if (weightKg <= 20 || weightKg >= 500) {
+    this.requireReadable();
+    if (!Number.isFinite(weightKg) || weightKg < 20 || weightKg > 500) {
       throw new Error("Вес тела должен быть от 20 до 500 кг");
     }
 
-    const todayDate = date || new Date().toISOString().slice(0, 10);
+    const todayDate = date || localDate(new Date(), this.timeZone);
+    const parsed = new Date(todayDate + "T12:00:00Z");
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(todayDate) ||
+      !Number.isFinite(parsed.getTime()) ||
+      parsed.toISOString().slice(0, 10) !== todayDate ||
+      todayDate > localDate(new Date(), this.timeZone)
+    )
+      throw new Error("Проверь дату взвешивания: она не может быть в будущем");
     const entries = this.getEntries();
 
     // Check if entry for this date already exists; if so, update it
@@ -92,7 +164,7 @@ export class BodyweightTracker {
 
     if (existingIndex >= 0) {
       entries[existingIndex].weightKg = Math.round(weightKg * 10) / 10;
-      if (note) entries[existingIndex].note = note.trim();
+      entries[existingIndex].note = note.trim();
       this.saveEntries(entries);
       return entries[existingIndex];
     }
@@ -111,6 +183,7 @@ export class BodyweightTracker {
   }
 
   public removeEntry(id: string): void {
+    this.requireReadable();
     const entries = this.getEntries().filter((e) => e.id !== id);
     this.saveEntries(entries);
   }
@@ -131,7 +204,10 @@ export class BodyweightTracker {
       if (i === 0) {
         prevEma = e.weightKg;
       } else {
-        prevEma = alpha * e.weightKg + (1 - alpha) * prevEma;
+        const days =
+          (Date.parse(e.date) - Date.parse(entries[i - 1].date)) / 86400000;
+        const effectiveAlpha = 1 - Math.pow(1 - alpha, Math.max(1, days));
+        prevEma = effectiveAlpha * e.weightKg + (1 - effectiveAlpha) * prevEma;
       }
 
       result.push({
@@ -146,28 +222,40 @@ export class BodyweightTracker {
   }
 
   /**
-   * Estimates weekly rate of change based on the last 2-4 weeks of data.
+   * Regresses the last 28 days of actual measurements. Requires 3 dates spanning at least a week.
    */
   public getWeeklyRate(): {
     rateKgPerWeek: number;
     direction: "loss" | "gain" | "maintenance";
     label: string;
   } {
-    const entries = this.getEntries();
-    if (entries.length < 2) {
-      return { rateKgPerWeek: 0, direction: "maintenance", label: "Мало данных" };
+    const all = this.getEntries();
+    const cutoff = addCalendarDays(localDate(new Date(), this.timeZone), -27);
+    const entries = all.filter((e) => e.date >= cutoff);
+    if (
+      entries.length < 3 ||
+      Date.parse(entries[entries.length - 1].date) -
+        Date.parse(entries[0].date) <
+        7 * 86400000
+    ) {
+      return {
+        rateKgPerWeek: 0,
+        direction: "maintenance",
+        label: "Мало данных",
+      };
     }
 
-    const first = entries[0];
-    const last = entries[entries.length - 1];
-
-    const d1 = new Date(first.date).getTime();
-    const d2 = new Date(last.date).getTime();
-    const daysDiff = Math.max(1, (d2 - d1) / (1000 * 60 * 60 * 24));
-    const weeks = daysDiff / 7;
-
-    const diffKg = last.weightKg - first.weightKg;
-    const rate = Math.round((diffKg / Math.max(0.5, weeks)) * 100) / 100;
+    const xs = entries.map(
+      (e) => (Date.parse(e.date) - Date.parse(entries[0].date)) / 86400000,
+    );
+    const meanX = xs.reduce((n, x) => n + x, 0) / xs.length;
+    const meanY = entries.reduce((n, e) => n + e.weightKg, 0) / entries.length;
+    const numerator = entries.reduce(
+      (n, e, i) => n + (xs[i] - meanX) * (e.weightKg - meanY),
+      0,
+    );
+    const denominator = xs.reduce((n, x) => n + (x - meanX) ** 2, 0);
+    const rate = Math.round((numerator / denominator) * 7 * 100) / 100;
 
     if (rate <= -0.15) {
       return {
@@ -230,19 +318,34 @@ export class BodyweightTracker {
   private isGoal(value: unknown): value is BodyweightGoal {
     if (!value || typeof value !== "object") return false;
     const goal = value as Record<string, unknown>;
-    return [goal.targetWeightKg, goal.startWeightKg].every((weight) =>
-      weight === null || (typeof weight === "number" && Number.isFinite(weight))
+    return [goal.targetWeightKg, goal.startWeightKg].every(
+      (weight) =>
+        weight === null ||
+        (typeof weight === "number" &&
+          Number.isFinite(weight) &&
+          weight >= 20 &&
+          weight <= 500),
     );
   }
 
   public setGoal(targetWeightKg: number | null): void {
+    this.requireReadable();
+    if (
+      targetWeightKg !== null &&
+      (!Number.isFinite(targetWeightKg) ||
+        targetWeightKg < 20 ||
+        targetWeightKg > 500)
+    )
+      throw new Error("Цель: от 20 до 500 кг");
     const currentStats = this.getStats();
     const startWeightKg = currentStats ? currentStats.currentKg : null;
     const goal: BodyweightGoal = { targetWeightKg, startWeightKg };
     try {
       localStorage.setItem(this.goalKey, JSON.stringify(goal));
     } catch {
-      // storage unavailable
+      throw new Error(
+        "Не удалось сохранить вес на устройстве. Данные в форме сохранены; повтори попытку.",
+      );
     }
   }
 }

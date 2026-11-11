@@ -119,6 +119,8 @@ import { AccountProfileForm } from "./components/AccountProfileForm";
 import type { AccountProfile } from "./lib/account";
 import SessionInsights from "./components/SessionInsights";
 import { saveFile } from "./lib/saveFile";
+import { ProgressSeries } from "./domain/ProgressSeries";
+import "./styles/progress.css";
 import type { Release } from "./device/appUpdate";
 
 type ProductView =
@@ -167,7 +169,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
   );
   const [mapping, setMapping] = useState<"recorded" | "current">("recorded");
   const [hardSetsOnly, setHardSetsOnly] = useState(false);
-  const [progressTab, setProgressTab] = useState<"balance" | "analytics" | "strength" | "anatomy">("balance");
+  const [progressTab, setProgressTab] = useState<"balance" | "analytics" | "strength" | "anatomy" | "bodyweight">("balance");
   const [toast, setToast] = useState("");
   const [modal, setModal] = useState<
     | "picker"
@@ -689,39 +691,9 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
   const progressEntry = progressOptions.find((o) => o.key === progressExercise)
     ?.we ?? { ...entrySpec("bench"), sets: [] };
   const progressSpec = exerciseForEntry(progressEntry)!.recording;
-  const progressPoints = displayed
-    .filter((w) => w.exercises.some((e) => progressKey(e) === progressExercise))
-    .sort(
-      (a, b) =>
-        a.date.localeCompare(b.date) ||
-        (a.createdAt ?? "").localeCompare(b.createdAt ?? "") ||
-        a.id.localeCompare(b.id),
-    )
-    .map((w) => {
-      const we = w.exercises.find((e) => progressKey(e) === progressExercise)!;
-      const sets = we.sets.filter((s) => s.done && !s.warmup);
-      return {
-        date: w.date,
-        max: Math.max(
-          0,
-          ...sets.map((s) =>
-            progressSpec.type === "duration"
-              ? (s.durationSeconds ?? 0)
-              : recordedLoad(we, s),
-          ),
-        ),
-        e1rm: Math.max(0, ...sets.map((s) => estimatedOneRepMax(s, we) ?? 0)),
-        reps: sets.reduce(
-          (n, s) =>
-            n +
-            (progressSpec.type === "duration"
-              ? (s.durationSeconds ?? 0)
-              : s.reps),
-          0,
-        ),
-        sets,
-      };
-    });
+  const progressPoints = ProgressSeries.strength(displayed, progressExercise);
+  const progressMetric = ProgressSeries.metric(progressEntry);
+  const progressBest = ProgressSeries.best(progressPoints, progressMetric.lowerIsBetter);
   const lastProgress = progressPoints.at(-1);
   const firstProgress = progressPoints[0];
   useTrainingTools({
@@ -1232,8 +1204,8 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
               ) : null}
               {view === "progress" ? (
                 <>
-                  <header className="screen-head">
-                    <h1>Прогресс</h1>
+                  <header className="screen-head progress-screen-head">
+                    <div><span className="eyebrow">ТВОЯ РАБОТА В ЦИФРАХ</span><h1>Прогресс</h1><p>Нагрузка, сила и вес — каждый показатель на своём месте.</p></div>
                     <div className="screen-actions">
                       <button
                         className="icon-button"
@@ -1251,27 +1223,37 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                       </button>
                     </div>
                   </header>
-                  <div className="tabs" role="tablist" aria-label="Раздел прогресса">
+                  <div className="tabs progress-tabs" role="tablist" aria-label="Раздел прогресса">
                     {(
                       [
                         ["balance", "Баланс"],
                         ["analytics", "Статистика"],
                         ["strength", "Сила"],
                         ["anatomy", "Карта мышц"],
+                        ["bodyweight", "Вес тела"],
                       ] as const
                     ).map(([id, label]) => (
                       <button
                         key={id}
                         role="tab"
                         aria-selected={progressTab === id}
+                        tabIndex={progressTab === id ? 0 : -1}
                         className={progressTab === id ? "active" : ""}
                         onClick={() => setProgressTab(id)}
+                        onKeyDown={(event) => {
+                          if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+                          event.preventDefault();
+                          const tabs = Array.from(event.currentTarget.parentElement!.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
+                          const current = tabs.indexOf(event.currentTarget);
+                          const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (current + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+                          tabs[next].click(); tabs[next].focus();
+                        }}
                       >
                         {label}
                       </button>
                     ))}
                   </div>
-                  {progressTab !== "strength" && progressTab !== "analytics" ? (
+                  {(progressTab === "balance" || progressTab === "anatomy") ? (
                     <div className="week-selector">
                       <button
                         className="icon-button"
@@ -1294,6 +1276,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                       </button>
                     </div>
                   ) : null}
+                  {progressTab === "bodyweight" && <BodyweightModal key={account.id} accountId={account.id} timeZone={settings.timeZone} />}
                   {progressTab === "analytics" ? (
                     <StatsAnalytics
                       workouts={workouts}
@@ -1543,8 +1526,8 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                       <div className="stats-grid progress-stats">
                         <Stat
                           label="Лучшее значение"
-                          value={fmt(Math.max(0, ...progressPoints.map((p) => p.max)))}
-                          unit={progressSpec.type === "duration" ? "с" : "кг"}
+                          value={progressBest === null ? "—" : fmt(progressBest)}
+                          unit={progressMetric.unit}
                         />
                         <Stat
                           label={progressSpec.type === "duration" ? "Изменение, с" : "Изменение веса"}
@@ -1553,7 +1536,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                               ? `${lastProgress.max - firstProgress.max >= 0 ? "+" : ""}${fmt(lastProgress.max - firstProgress.max)}`
                               : "—"
                           }
-                          unit={lastProgress ? (progressSpec.type === "duration" ? "с" : "кг") : ""}
+                          unit={lastProgress ? (progressMetric.unit) : ""}
                         />
                         <Stat
                           label="Расчётный 1ПМ"
@@ -1573,7 +1556,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                           <>
                             <InteractiveStrengthChart
                               points={progressPoints}
-                              unit={progressSpec.type === "duration" ? "с" : "кг"}
+                              unit={progressMetric.unit}
                               isDuration={progressSpec.type === "duration"}
                               exerciseName={entryName(progressEntry)}
                             />
@@ -1586,7 +1569,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                                     {progressSpec.type === "duration" ? "с" : "повт."}
                                   </span>
                                   <b>
-                                    {fmt(p.max)} {progressSpec.type === "duration" ? "с" : "кг"}
+                                    {fmt(p.max)} {progressMetric.unit}
                                   </b>
                                 </div>
                               ))}
@@ -2199,7 +2182,8 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
       {modal === "bodyweight" ? (
         <Modal title="Контроль массы тела" onClose={() => setModal(null)} wide>
           <BodyweightModal
-            accountId={account?.id || "local-user"}
+            accountId={account.id}
+            timeZone={settings.timeZone}
             onClose={() => setModal(null)}
           />
         </Modal>

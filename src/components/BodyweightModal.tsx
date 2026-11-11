@@ -1,501 +1,409 @@
-import { useState, useMemo, type FormEvent } from "react";
-import {
-  Scale,
-  TrendingDown,
-  TrendingUp,
-  Minus,
-  Target,
-  Plus,
-  Trash2,
-  Calendar,
-  Sparkles,
-  Info,
-} from "lucide-react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { m, useReducedMotion } from "motion/react";
+import { Check, Pencil, Plus, Scale, Target, Trash2 } from "lucide-react";
 import {
   BodyweightTracker,
   type BodyweightEntry,
-  type BodyweightTrendPoint,
 } from "../domain/BodyweightTracker";
+import { addCalendarDays, browserTimeZone, localDate } from "../lib/calendar";
+import { dateLabel, fmt } from "../lib/model";
+import ProgressChart from "./ProgressChart";
+import "../styles/progress.css";
 
+/** Account-scoped weighing journal, reused by Progress and the quick tool dialog. */
 export function BodyweightModal({
   accountId,
-  onClose,
+  timeZone = browserTimeZone(),
 }: {
   accountId: string;
-  onClose: () => void;
+  timeZone?: string;
+  onClose?: () => void;
 }) {
-  const tracker = useMemo(() => new BodyweightTracker(accountId), [accountId]);
-  const [entries, setEntries] = useState<BodyweightEntry[]>(() =>
-    tracker.getEntries()
+  const tracker = useMemo(
+    () => new BodyweightTracker(accountId, timeZone),
+    [accountId, timeZone],
   );
+  const [entries, setEntries] = useState(() => tracker.getEntries());
   const [goal, setGoal] = useState(() => tracker.getGoal());
-
-  const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
-
-  const latestWeight = entries.length ? entries[entries.length - 1].weightKg : 75.0;
-  const [inputWeight, setInputWeight] = useState(latestWeight.toString());
-  const [inputDate, setInputDate] = useState(todayStr);
-  const [inputNote, setInputNote] = useState("");
-  const [goalInput, setGoalInput] = useState(
-    goal.targetWeightKg ? goal.targetWeightKg.toString() : ""
+  const [weight, setWeight] = useState(
+    () => entries.at(-1)?.weightKg.toString() ?? "",
   );
-  const [editingGoal, setEditingGoal] = useState(false);
-  const [hoveredPoint, setHoveredPoint] = useState<BodyweightTrendPoint | null>(null);
-
-  const stats = useMemo(() => tracker.getStats(), [entries, tracker]);
-  const weeklyRate = useMemo(() => tracker.getWeeklyRate(), [entries, tracker]);
-  const trend = useMemo(() => tracker.getTrend(), [entries, tracker]);
-
-  const handleAdd = (e: FormEvent) => {
-    e.preventDefault();
-    const w = parseFloat(inputWeight);
-    if (isNaN(w) || w <= 20 || w >= 500) return;
-
-    tracker.addEntry(w, inputDate, inputNote);
-    const updated = tracker.getEntries();
-    setEntries(updated);
-    setInputNote("");
-  };
-
-  const handleRemove = (id: string) => {
-    tracker.removeEntry(id);
+  const today = localDate(new Date(), timeZone);
+  const [date, setDate] = useState(today),
+    [note, setNote] = useState("");
+  const [goalInput, setGoalInput] = useState(
+      () => goal.targetWeightKg?.toString() ?? "",
+    ),
+    [goalEditor, setGoalEditor] = useState(false);
+  const [period, setPeriod] = useState(90),
+    [error, setError] = useState(() => tracker.storageIssue()),
+    [notice, setNotice] = useState("");
+  const [deleting, setDeleting] = useState<string | null>(null),
+    [all, setAll] = useState(false);
+  const reduced = useReducedMotion();
+  const reload = () => {
     setEntries(tracker.getEntries());
+    setGoal(tracker.getGoal());
   };
-
-  const handleStep = (delta: number) => {
-    const cur = parseFloat(inputWeight) || 75.0;
-    const next = Math.round((cur + delta) * 10) / 10;
-    if (next >= 20 && next <= 500) {
-      setInputWeight(next.toFixed(1));
+  useEffect(() => {
+    const sync = () => reload();
+    window.addEventListener("storage", sync);
+    return () => window.removeEventListener("storage", sync);
+  }, [tracker]);
+  const stats = useMemo(() => tracker.getStats(), [entries, tracker]);
+  const rate = useMemo(() => tracker.getWeeklyRate(), [entries, tracker]);
+  const trend = useMemo(() => tracker.getTrend(), [entries, tracker]);
+  const points = trend
+    .filter((p) => !period || p.date >= addCalendarDays(today, -period + 1))
+    .map((p) => ({
+      id: p.date,
+      date: p.date,
+      value: p.weightKg,
+      trend: p.emaKg,
+      note: p.note,
+    }));
+  const attempt = (action: () => void, message: string) => {
+    setError("");
+    setNotice("");
+    try {
+      action();
+      reload();
+      setNotice(message);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось сохранить");
     }
   };
-
-  const handleSaveGoal = () => {
-    const val = parseFloat(goalInput);
-    if (!isNaN(val) && val >= 20 && val <= 500) {
-      tracker.setGoal(val);
-      setGoal(tracker.getGoal());
-    } else if (!goalInput.trim()) {
-      tracker.setGoal(null);
-      setGoal({ targetWeightKg: null, startWeightKg: null });
+  const save = (e: FormEvent) => {
+    e.preventDefault();
+    attempt(() => {
+      tracker.addEntry(BodyweightTracker.parseWeight(weight), date, note);
+      setNote("");
+    }, "Замер сохранён");
+  };
+  const edit = (entry: BodyweightEntry) => {
+    setWeight(String(entry.weightKg));
+    setDate(entry.date);
+    setNote(entry.note ?? "");
+    document.getElementById("bw-weight")?.focus();
+  };
+  const step = (delta: number) => {
+    try {
+      setWeight(String(BodyweightTracker.step(weight, delta)));
+      setError("");
+    } catch (e) {
+      setError((e as Error).message);
     }
-    setEditingGoal(false);
   };
-
-  // SVG Chart Dimensions & Scaling
-  const chartHeight = 220;
-  const chartWidth = 520;
-  const padX = 40;
-  const padY = 30;
-
-  const minVal = useMemo(() => {
-    if (!trend.length) return 60;
-    const rawMin = Math.min(...trend.map((p) => p.weightKg));
-    const goalVal = goal.targetWeightKg || rawMin;
-    return Math.floor(Math.min(rawMin, goalVal) - 1);
-  }, [trend, goal.targetWeightKg]);
-
-  const maxVal = useMemo(() => {
-    if (!trend.length) return 100;
-    const rawMax = Math.max(...trend.map((p) => p.weightKg));
-    const goalVal = goal.targetWeightKg || rawMax;
-    return Math.ceil(Math.max(rawMax, goalVal) + 1);
-  }, [trend, goal.targetWeightKg]);
-
-  const valRange = Math.max(1, maxVal - minVal);
-
-  const getX = (idx: number) => {
-    if (trend.length <= 1) return chartWidth / 2;
-    return padX + (idx / (trend.length - 1)) * (chartWidth - padX * 2);
-  };
-
-  const getY = (val: number) => {
-    const normalized = (val - minVal) / valRange;
-    return chartHeight - padY - normalized * (chartHeight - padY * 2);
-  };
-
-  // Generate SVG path for EMA curve
-  const emaPath = useMemo(() => {
-    if (trend.length < 2) return "";
-    return trend.reduce((acc, p, idx) => {
-      const x = getX(idx);
-      const y = getY(p.emaKg);
-      return idx === 0 ? `M ${x} ${y}` : `${acc} L ${x} ${y}`;
-    }, "");
-  }, [trend, minVal, maxVal]);
-
-  const goalY = goal.targetWeightKg ? getY(goal.targetWeightKg) : null;
-
   return (
-    <div className="bodyweight-modal-content">
-      {/* Top Hero Stats */}
-      {stats && (
-        <div className="bw-hero-grid">
-          <div className="bw-hero-card current">
-            <span className="bw-card-label">Текущий вес</span>
-            <div className="bw-card-val-row">
-              <b className="bw-card-val">{stats.currentKg}</b>
-              <span className="bw-unit">кг</span>
-            </div>
-            <span
-              className={`bw-diff-pill ${
-                stats.totalChangeKg < 0
-                  ? "loss"
-                  : stats.totalChangeKg > 0
-                    ? "gain"
-                    : "flat"
-              }`}
-            >
-              {stats.totalChangeKg < 0 ? (
-                <TrendingDown size={13} />
-              ) : stats.totalChangeKg > 0 ? (
-                <TrendingUp size={13} />
-              ) : (
-                <Minus size={13} />
-              )}
-              {stats.totalChangeKg > 0 ? `+${stats.totalChangeKg}` : stats.totalChangeKg} кг
-            </span>
-          </div>
-
-          <div className="bw-hero-card">
-            <span className="bw-card-label">Темп в неделю</span>
-            <div className="bw-card-val-row">
-              <b className="bw-card-val">
-                {weeklyRate.rateKgPerWeek > 0
-                  ? `+${weeklyRate.rateKgPerWeek}`
-                  : weeklyRate.rateKgPerWeek}
-              </b>
-              <span className="bw-unit">кг/нед</span>
-            </div>
-            <span className="bw-sublabel">{weeklyRate.label}</span>
-          </div>
-
-          <div className="bw-hero-card">
-            <span className="bw-card-label">Диапазон</span>
-            <div className="bw-card-val-row">
-              <b className="bw-card-val">
-                {stats.minKg} – {stats.maxKg}
-              </b>
-              <span className="bw-unit">кг</span>
-            </div>
-            <span className="bw-sublabel">За {stats.count} замеров</span>
-          </div>
+    <m.div
+      className="weight-journal"
+      initial={reduced ? false : { opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25 }}
+    >
+      <div className="progress-section-title">
+        <div>
+          <span className="eyebrow">МАССА ТЕЛА</span>
+          <h2>Вес и его динамика</h2>
+          <p>Сравнивай замеры в похожих условиях — например, утром до еды.</p>
         </div>
-      )}
-
-      {/* Target Goal Banner */}
-      <div className="bw-goal-banner">
-        <div className="bw-goal-left">
-          <Target size={18} className="text-accent" />
-          {editingGoal ? (
-            <div className="bw-goal-edit-wrap">
-              <input
-                type="number"
-                step="0.1"
-                min="30"
-                max="300"
-                placeholder="Например: 75.0"
-                value={goalInput}
-                onChange={(e) => setGoalInput(e.target.value)}
-                autoFocus
-              />
-              <button
-                type="button"
-                className="button primary mini-btn"
-                onClick={handleSaveGoal}
-              >
-                ОК
-              </button>
-              <button
-                type="button"
-                className="button secondary mini-btn"
-                onClick={() => setEditingGoal(false)}
-              >
-                Отмена
-              </button>
-            </div>
-          ) : (
+        <Scale size={25} />
+      </div>
+      <div className="progress-metrics">
+        <article className="progress-metric accent">
+          <span>Последний замер</span>
+          <strong>
+            {stats ? fmt(stats.currentKg) : "—"}
+            <small> кг</small>
+          </strong>
+          <p>
+            {entries.length
+              ? dateLabel(entries.at(-1)!.date, true)
+              : "Запиши первый вес"}
+          </p>
+        </article>
+        <article className="progress-metric">
+          <span>Изменение за историю</span>
+          <strong>
+            {stats
+              ? `${stats.totalChangeKg > 0 ? "+" : ""}${fmt(stats.totalChangeKg)}`
+              : "—"}
+            <small> кг</small>
+          </strong>
+          <p>
+            {entries.length > 1
+              ? `С ${dateLabel(entries[0].date)}`
+              : "Нужны хотя бы два замера"}
+          </p>
+        </article>
+        <article className="progress-metric">
+          <span>Темп за последние 28 дней</span>
+          <strong>
+            {rate.label === "Мало данных"
+              ? "—"
+              : `${rate.rateKgPerWeek > 0 ? "+" : ""}${fmt(rate.rateKgPerWeek)}`}
+            <small> кг/нед</small>
+          </strong>
+          <p>
+            {rate.label === "Мало данных"
+              ? "От 3 замеров за 7 дней и больше"
+              : "По фактическим замерам, без прогноза"}
+          </p>
+        </article>
+      </div>
+      <div className="weight-layout">
+        <section
+          className="progress-card weight-chart-card"
+          aria-label="Динамика веса"
+        >
+          <div className="progress-card-head">
             <div>
-              <span className="bw-goal-title">
-                {goal.targetWeightKg
-                  ? `Цель: ${goal.targetWeightKg} кг`
-                  : "Целевой вес не установлен"}
-              </span>
-              {goal.targetWeightKg && stats && (
-                <p className="bw-goal-desc">
-                  {stats.currentKg > goal.targetWeightKg
-                    ? `Осталось сбросить ${(stats.currentKg - goal.targetWeightKg).toFixed(1)} кг`
-                    : stats.currentKg < goal.targetWeightKg
-                      ? `Осталось набрать ${(goal.targetWeightKg - stats.currentKg).toFixed(1)} кг`
-                      : "Цель достигнута! 🏆"}
+              <h3>Динамика веса</h3>
+              <p>Точки — замеры. Линия — сглаженный вес.</p>
+            </div>
+            <div
+              className="progress-period"
+              role="group"
+              aria-label="Период веса"
+            >
+              {[
+                [30, "30 дней"],
+                [90, "90 дней"],
+                [0, "Всё"],
+              ].map(([value, label]) => (
+                <button
+                  key={value}
+                  aria-pressed={period === value}
+                  onClick={() => setPeriod(Number(value))}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <ProgressChart
+            points={points}
+            unit="кг"
+            label="Замеры и сглаженный вес по календарным датам"
+            goal={goal.targetWeightKg}
+          />
+          <div className="weight-goal">
+            <Target size={20} />
+            <div>
+              <b>
+                {goal.targetWeightKg === null
+                  ? "Цель по весу"
+                  : `Цель: ${fmt(goal.targetWeightKg)} кг`}
+              </b>
+              <p>
+                {goal.targetWeightKg === null
+                  ? "Необязательно. Помогает держать ориентир."
+                  : "Цель показана отдельно и не сжимает график."}
+              </p>
+            </div>
+            <button
+              className="text-button"
+              onClick={() => {
+                setGoalInput(goal.targetWeightKg?.toString() ?? "");
+                setGoalEditor((v) => !v);
+              }}
+            >
+              {goal.targetWeightKg === null ? "Задать цель" : "Изменить цель"}
+            </button>
+          </div>
+          {goalEditor && (
+            <form
+              className="weight-goal-form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                attempt(() => {
+                  tracker.setGoal(BodyweightTracker.parseWeight(goalInput));
+                  setGoalEditor(false);
+                }, "Цель сохранена");
+              }}
+            >
+              <label>
+                Целевой вес, кг
+                <input
+                  aria-label="Целевой вес, кг"
+                  inputMode="decimal"
+                  value={goalInput}
+                  onChange={(e) => setGoalInput(e.target.value)}
+                  required
+                />
+              </label>
+              <button className="button primary">Сохранить цель</button>
+              {goal.targetWeightKg !== null && (
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() =>
+                    attempt(() => {
+                      tracker.setGoal(null);
+                      setGoalEditor(false);
+                    }, "Цель убрана")
+                  }
+                >
+                  Убрать цель
+                </button>
+              )}
+              {error && (
+                <p className="form-error" role="alert">
+                  {error}
                 </p>
               )}
-            </div>
+            </form>
           )}
-        </div>
-        {!editingGoal && (
-          <button
-            type="button"
-            className="text-button edit-goal-btn"
-            onClick={() => {
-              setGoalInput(goal.targetWeightKg ? goal.targetWeightKg.toString() : "");
-              setEditingGoal(true);
-            }}
-          >
-            {goal.targetWeightKg ? "Изменить цель" : "Задать цель"}
-          </button>
-        )}
+        </section>
+        <section
+          className="progress-card weight-entry-card"
+          aria-labelledby="weight-form-title"
+        >
+          <span className="weight-form-icon">
+            <Plus size={22} />
+          </span>
+          <h3 id="weight-form-title">Записать вес</h3>
+          <p>Один замер на дату. Повторное сохранение обновит запись.</p>
+          <form onSubmit={save}>
+            <label htmlFor="bw-weight">
+              Вес, кг
+              <input
+                id="bw-weight"
+                inputMode="decimal"
+                autoComplete="off"
+                value={weight}
+                onChange={(e) => setWeight(e.target.value)}
+                placeholder="Например, 61,5"
+                required
+              />
+            </label>
+            <div className="weight-steppers">
+              {[-0.5, -0.1, 0.1, 0.5].map((n) => (
+                <button
+                  type="button"
+                  key={n}
+                  onClick={() => step(n)}
+                  disabled={!weight.trim()}
+                  aria-label={`Изменить вес на ${n > 0 ? "+" : ""}${n} кг`}
+                >
+                  {n > 0 ? "+" : ""}
+                  {fmt(n)}
+                </button>
+              ))}
+            </div>
+            <label>
+              Дата взвешивания
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                max={today}
+                required
+              />
+            </label>
+            <label>
+              Заметка
+              <input
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                maxLength={200}
+                placeholder="Утром, до еды"
+              />
+            </label>
+            <button className="button primary" type="submit">
+              <Check size={17} />
+              {entries.some((e) => e.date === date)
+                ? "Обновить замер"
+                : "Сохранить замер"}
+            </button>
+          </form>
+          {error && !goalEditor && (
+            <p className="form-error" role="alert">
+              {error}
+            </p>
+          )}
+          {notice && (
+            <p className="success-message" role="status">
+              {notice}
+            </p>
+          )}
+          <p className="tiny">
+            Замеры и цель хранятся в этом браузере, отдельно для аккаунта.
+            Облачной синхронизации веса пока нет.
+          </p>
+        </section>
       </div>
-
-      {/* Interactive Trend Chart */}
-      <div className="bw-chart-box">
-        <div className="bw-chart-legend">
-          <div className="legend-item">
-            <span className="legend-dot raw" />
-            <span>Замеры веса</span>
-          </div>
-          <div className="legend-item">
-            <span className="legend-line ema" />
-            <span>Тренд (EMA 7 дней)</span>
-          </div>
-          {goal.targetWeightKg && (
-            <div className="legend-item">
-              <span className="legend-line goal" />
-              <span>Цель ({goal.targetWeightKg} кг)</span>
-            </div>
-          )}
+      <section className="progress-card weight-history">
+        <div className="progress-card-head">
+          <h3>
+            История взвешиваний <span>{entries.length}</span>
+          </h3>
+          <span className="tiny">Новые сверху</span>
         </div>
-
-        {trend.length === 0 ? (
-          <div className="bw-chart-empty">Нет данных о весе</div>
+        {!entries.length ? (
+          <p className="progress-empty-copy">
+            История пока пустая. Сохрани первый замер в форме выше.
+          </p>
         ) : (
-          <div className="bw-svg-wrapper">
-            <svg
-              viewBox={`0 0 ${chartWidth} ${chartHeight}`}
-              className="bw-svg-chart"
-              preserveAspectRatio="xMidYMid meet"
-            >
-              {/* Horizontal grid lines */}
-              {[minVal, Math.round((minVal + maxVal) / 2), maxVal].map((val) => {
-                const y = getY(val);
-                return (
-                  <g key={`grid-${val}`}>
-                    <line
-                      x1={padX}
-                      y1={y}
-                      x2={chartWidth - padX}
-                      y2={y}
-                      stroke="rgba(255,255,255,0.07)"
-                      strokeDasharray="3 3"
-                    />
-                    <text
-                      x={padX - 8}
-                      y={y + 4}
-                      textAnchor="end"
-                      fill="var(--muted)"
-                      fontSize={10}
-                      fontFamily="monospace"
-                    >
-                      {val}
-                    </text>
-                  </g>
-                );
-              })}
-
-              {/* Goal line */}
-              {goalY !== null && (
-                <line
-                  x1={padX}
-                  y1={goalY}
-                  x2={chartWidth - padX}
-                  y2={goalY}
-                  stroke="#ffd15c"
-                  strokeWidth={1.5}
-                  strokeDasharray="4 4"
-                />
-              )}
-
-              {/* EMA Trend Line */}
-              {emaPath && (
-                <path
-                  d={emaPath}
-                  fill="none"
-                  stroke="#cafa64"
-                  strokeWidth={2.5}
-                  strokeLinecap="round"
-                />
-              )}
-
-              {/* Raw weigh-in dots */}
-              {trend.map((p, idx) => {
-                const cx = getX(idx);
-                const cy = getY(p.weightKg);
-                const isHovered = hoveredPoint?.date === p.date;
-
-                return (
-                  <g
-                    key={`dot-${p.date}-${idx}`}
-                    className="bw-node"
-                    onMouseEnter={() => setHoveredPoint(p)}
-                    onClick={() => setHoveredPoint(p)}
-                  >
-                    <circle
-                      cx={cx}
-                      cy={cy}
-                      r={isHovered ? 6 : 4}
-                      fill={isHovered ? "#ffffff" : "var(--accent)"}
-                      stroke="var(--bg)"
-                      strokeWidth={1.5}
-                      style={{ cursor: "pointer", transition: "all 0.15s" }}
-                    />
-                  </g>
-                );
-              })}
-            </svg>
-
-            {/* Hover Tooltip */}
-            {hoveredPoint && (
-              <div className="bw-tooltip">
-                <span className="bw-tooltip-date">{hoveredPoint.date}</span>
-                <span className="bw-tooltip-val">
-                  Вес: <b>{hoveredPoint.weightKg} кг</b>
-                </span>
-                <span className="bw-tooltip-ema">
-                  Тренд: {hoveredPoint.emaKg} кг
-                </span>
-                {hoveredPoint.note && (
-                  <span className="bw-tooltip-note">«{hoveredPoint.note}»</span>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Quick Add Weigh-in Form */}
-      <form onSubmit={handleAdd} className="bw-add-form">
-        <h4 className="bw-form-title">Записать вес</h4>
-
-        <div className="bw-form-row">
-          <div className="bw-weight-input-box">
-            <input
-              type="number"
-              step="0.1"
-              min="20"
-              max="500"
-              value={inputWeight}
-              onChange={(e) => setInputWeight(e.target.value)}
-              className="bw-weight-main-input"
-              required
-            />
-            <span className="bw-kg-label">кг</span>
-          </div>
-
-          <div className="bw-steppers">
-            <button
-              type="button"
-              className="bw-step-btn"
-              onClick={() => handleStep(-0.5)}
-            >
-              −0.5
-            </button>
-            <button
-              type="button"
-              className="bw-step-btn"
-              onClick={() => handleStep(-0.1)}
-            >
-              −0.1
-            </button>
-            <button
-              type="button"
-              className="bw-step-btn"
-              onClick={() => handleStep(+0.1)}
-            >
-              +0.1
-            </button>
-            <button
-              type="button"
-              className="bw-step-btn"
-              onClick={() => handleStep(+0.5)}
-            >
-              +0.5
-            </button>
-          </div>
-        </div>
-
-        <div className="bw-secondary-inputs">
-          <div className="bw-date-wrap">
-            <Calendar size={15} />
-            <input
-              type="date"
-              value={inputDate}
-              onChange={(e) => setInputDate(e.target.value)}
-              max={todayStr}
-              required
-            />
-          </div>
-
-          <input
-            type="text"
-            placeholder="Заметка (натощак, после зала)..."
-            value={inputNote}
-            onChange={(e) => setInputNote(e.target.value)}
-            maxLength={60}
-            className="bw-note-input"
-          />
-
-          <button type="submit" className="button primary add-bw-submit">
-            <Plus size={16} />
-            <span>Сохранить</span>
-          </button>
-        </div>
-      </form>
-
-      {/* History Log Table */}
-      <div className="bw-history-box">
-        <h4 className="bw-history-title">История взвешиваний ({entries.length})</h4>
-        <div className="bw-history-list">
-          {entries
-            .slice()
+          [...entries]
             .reverse()
-            .map((entry, idx, arr) => {
-              const prev = arr[idx + 1];
-              const diff = prev ? Math.round((entry.weightKg - prev.weightKg) * 10) / 10 : null;
-
-              return (
-                <div key={entry.id} className="bw-history-item">
-                  <div className="bw-history-left">
-                    <b className="bw-item-weight">{entry.weightKg} кг</b>
-                    {diff !== null && (
-                      <span
-                        className={`bw-diff-tag ${
-                          diff < 0 ? "loss" : diff > 0 ? "gain" : "flat"
-                        }`}
-                      >
-                        {diff > 0 ? `+${diff}` : diff}
-                      </span>
-                    )}
-                    {entry.note && (
-                      <span className="bw-item-note">«{entry.note}»</span>
-                    )}
-                  </div>
-
-                  <div className="bw-history-right">
-                    <span className="bw-item-date">{entry.date}</span>
+            .slice(0, all ? undefined : 30)
+            .map((entry) => (
+              <div className="weight-history-row" key={entry.id}>
+                <div>
+                  <b>
+                    {fmt(entry.weightKg)} <small>кг</small>
+                  </b>
+                  <span>{dateLabel(entry.date, true)}</span>
+                </div>
+                <p>{entry.note || "Без заметки"}</p>
+                {deleting === entry.id ? (
+                  <div className="weight-row-actions">
                     <button
-                      type="button"
-                      className="bw-del-btn"
-                      onClick={() => handleRemove(entry.id)}
-                      title="Удалить запись"
+                      className="text-button"
+                      onClick={() =>
+                        attempt(() => {
+                          tracker.removeEntry(entry.id);
+                          setDeleting(null);
+                        }, "Замер удалён")
+                      }
                     >
-                      <Trash2 size={13} />
+                      Подтвердить удаление
+                    </button>
+                    <button
+                      className="text-button"
+                      onClick={() => setDeleting(null)}
+                    >
+                      Отмена
                     </button>
                   </div>
-                </div>
-              );
-            })}
-        </div>
-      </div>
-    </div>
+                ) : (
+                  <div className="weight-row-actions">
+                    <button
+                      className="icon-button"
+                      aria-label={`Изменить замер ${entry.date}`}
+                      onClick={() => edit(entry)}
+                    >
+                      <Pencil size={16} />
+                    </button>
+                    <button
+                      className="icon-button"
+                      aria-label={`Удалить замер ${entry.date}`}
+                      onClick={() => setDeleting(entry.id)}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))
+        )}
+        {entries.length > 30 && !all && (
+          <button className="text-button" onClick={() => setAll(true)}>
+            Показать всю историю
+          </button>
+        )}
+      </section>
+    </m.div>
   );
 }
