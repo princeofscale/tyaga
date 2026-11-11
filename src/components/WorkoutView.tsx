@@ -62,6 +62,8 @@ import { WarmupPlanner } from "../domain/WarmupPlanner";
 import Select from "./Select";
 
 type Props = {
+  focusRequest?: {exerciseId:string;setId:string;id:string}|null;
+  notificationError?:string;
   draft: Draft | null;
   update: (draft: Draft) => void;
   settings: Settings;
@@ -199,6 +201,7 @@ function getExerciseHeadBadges(exerciseId: string, exerciseName: string) {
 }
 
 export default function WorkoutView({
+  focusRequest, notificationError,
   draft,
   update,
   settings,
@@ -231,6 +234,15 @@ export default function WorkoutView({
     audioHaptics.setMuted(!soundEnabled);
   }, [soundEnabled]);
 
+  useEffect(()=>{
+    if(!focusRequest)return;
+    const timer=window.setTimeout(()=>{
+      const row=document.querySelector<HTMLElement>(`.set-row[data-exercise-id="${CSS.escape(focusRequest.exerciseId)}"][data-set-id="${CSS.escape(focusRequest.setId)}"]`);
+      row?.querySelector<HTMLInputElement>('input[type="number"]')?.focus();
+      row?.scrollIntoView({block:"center",behavior:"instant"});
+    },100);
+    return ()=>clearTimeout(timer);
+  },[focusRequest?.id]);
   const restSeconds = draft?.workout.restSeconds ?? settings.restSeconds;
   const announcedTimer = useRef<number | null>(null);
   const lastTickSecond = useRef<number | null>(null);
@@ -338,6 +350,7 @@ export default function WorkoutView({
       },
       ...(patch.done
         ? {
+            restFocus: (()=>{const candidates=w.exercises.flatMap(e=>e.sets.map(s=>({exerciseId:e.exerciseId,setId:s.id,done:s.done})));const next=candidates.find(s=>!s.done&&s.setId!==w.exercises[ei].sets[si].id);return next?{exerciseId:next.exerciseId,setId:next.setId}:undefined;})(),
             restUntil: Date.now() + effectiveRest * 1000,
             pausedRest: null,
           }
@@ -479,6 +492,7 @@ export default function WorkoutView({
           <span style={{ transform: `scaleX(${totalWorking ? doneWorking / totalWorking : 0})` }} />
         </div>
       </header>
+      {notificationError && <p className="inline-error" role="alert">{notificationError}. Таймер на экране продолжает работать.</p>}
       {error ? (
         <p className="inline-error" role="alert">
           {error}
@@ -913,7 +927,7 @@ export default function WorkoutView({
                     <input
                       type="number"
                       min="20"
-                      max="400"
+                      max="500"
                       step="0.1"
                       value={we.bodyMassKg ?? ""}
                       onChange={(e) =>
@@ -1070,6 +1084,7 @@ export default function WorkoutView({
                   return (
                     <div key={s.id} className="set-row-wrapper">
                       <div
+                        data-exercise-id={we.exerciseId} data-set-id={s.id}
                         className={`set-row ${s.done ? "done" : ""} ${isRowActive ? "row-active" : ""}`}
                         onClick={() => setActiveSetKey(isRowActive ? null : `${ei}-${si}`)}
                       >

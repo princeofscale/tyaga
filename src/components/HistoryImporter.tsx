@@ -1,3 +1,6 @@
+import { useBodyweight } from "../state/BodyweightContext";
+import { JournalBackup, type ProfileBackup } from "../domain/JournalBackup";
+import type { ThemeId } from "../lib/theme";
 import { useState } from "react";
 import { Check, FileUp, Import, ShieldCheck } from "lucide-react";
 import {
@@ -17,6 +20,9 @@ type Props = {
     imported: number;
     skipped: number;
     settings?: Settings;
+    theme?: ThemeId;
+    weightCount?: number;
+    profile?: ProfileBackup;
   }) => Promise<void>;
   onBusy: (busy: boolean) => void;
 };
@@ -25,6 +31,10 @@ export default function HistoryImporter({
   onComplete,
   onBusy,
 }: Props) {
+  const journal = useBodyweight();
+  const [restoreProfile, setRestoreProfile] = useState(false);
+  const [restoreWeight, setRestoreWeight] = useState(true),
+    [replaceWeight, setReplaceWeight] = useState(false);
   const [text, setText] = useState(""),
     [fileName, setFileName] = useState("");
   const [format, setFormat] = useState<ImportFormat>("strong");
@@ -93,6 +103,12 @@ export default function HistoryImporter({
         throw new Error(
           "Файл содержит будущие даты. Проверь порядок дня и месяца.",
         );
+      if (
+        data.extras?.bodyweight?.entries.some(
+          (e) => e.date > localDate(new Date(), timeZone),
+        )
+      )
+        throw new Error("В копии есть взвешивания за будущую дату");
       const resolved =
         format === "tyaga"
           ? {}
@@ -174,7 +190,27 @@ export default function HistoryImporter({
         await importService.restoreExtras(prepared, result.idMap, (phase) =>
           setProgress((p) => ({ ...p!, phase })),
         );
+      const restored =
+        restoreWeight && prepared.extras?.bodyweight
+          ? await journal.change(() =>
+              journal.restore(prepared.extras!.bodyweight!, replaceWeight),
+            )
+          : null;
+      if (restored) void journal.sync();
       await onComplete({
+        ...(restoreProfile && prepared.extras?.profile
+          ? { profile: prepared.extras.profile }
+          : {}),
+        ...(restored
+          ? {
+              weightCount:
+                restored.added +
+                (replaceWeight ? restored.conflictDates.length : 0),
+            }
+          : {}),
+        ...(restoreSettings && prepared.extras?.theme
+          ? { theme: prepared.extras.theme }
+          : {}),
         ...result,
         ...(restoreSettings && prepared.extras?.settings
           ? { settings: prepared.extras.settings }
@@ -228,7 +264,10 @@ export default function HistoryImporter({
               <Select
                 value={options.dateOrder}
                 onChange={(v) => {
-                  setOptions({ ...options, dateOrder: v as ImportOptions["dateOrder"] });
+                  setOptions({
+                    ...options,
+                    dateOrder: v as ImportOptions["dateOrder"],
+                  });
                   reset();
                 }}
                 options={[
@@ -242,7 +281,10 @@ export default function HistoryImporter({
               <Select
                 value={options.weightUnit}
                 onChange={(v) => {
-                  setOptions({ ...options, weightUnit: v as ImportOptions["weightUnit"] });
+                  setOptions({
+                    ...options,
+                    weightUnit: v as ImportOptions["weightUnit"],
+                  });
                   reset();
                 }}
                 options={[
@@ -256,7 +298,10 @@ export default function HistoryImporter({
               <Select
                 value={options.distanceUnit}
                 onChange={(v) => {
-                  setOptions({ ...options, distanceUnit: v as ImportOptions["distanceUnit"] });
+                  setOptions({
+                    ...options,
+                    distanceUnit: v as ImportOptions["distanceUnit"],
+                  });
                   reset();
                 }}
                 options={[
@@ -294,6 +339,84 @@ export default function HistoryImporter({
               <span>названий</span>
             </div>
           </div>
+          {preview.extras?.bodyweight && (
+            <section
+              className="backup-weight-preview"
+              aria-label="Вес в резервной копии"
+            >
+              <h3>Взвешивания: {preview.extras.bodyweight.entries.length}</h3>
+              <p className="tiny">
+                Новых:{" "}
+                {
+                  JournalBackup.merge(
+                    journal.tracker.getEntries(),
+                    preview.extras.bodyweight.entries,
+                  ).added
+                }{" "}
+                · Совпадают:{" "}
+                {
+                  JournalBackup.merge(
+                    journal.tracker.getEntries(),
+                    preview.extras.bodyweight.entries,
+                  ).same
+                }{" "}
+                · Различаются:{" "}
+                {
+                  JournalBackup.merge(
+                    journal.tracker.getEntries(),
+                    preview.extras.bodyweight.entries,
+                  ).conflictDates.length
+                }
+              </p>
+              <p className="tiny">
+                Цель из файла:{" "}
+                {preview.extras.bodyweight.goal.targetWeightKg ?? "не задана"}
+                {preview.extras.bodyweight.goal.targetWeightKg !== null
+                  ? " кг"
+                  : ""}
+              </p>
+              <label className="check-label">
+                <input
+                  type="checkbox"
+                  checked={restoreWeight}
+                  disabled={busy}
+                  onChange={(e) => setRestoreWeight(e.target.checked)}
+                />
+                Восстановить вес и цель
+              </label>
+              {restoreWeight && (
+                <label className="check-label">
+                  <input
+                    type="checkbox"
+                    checked={replaceWeight}
+                    disabled={busy}
+                    onChange={(e) => setReplaceWeight(e.target.checked)}
+                  />
+                  При различиях использовать замеры и цель из файла
+                </label>
+              )}
+              <p className="tiny">
+                По умолчанию остаются твои замеры за совпадающие даты и уже
+                заданная цель. Восстановленный вес синхронизируется с аккаунтом.
+              </p>
+              {JournalBackup.merge(
+                journal.tracker.getEntries(),
+                preview.extras.bodyweight.entries,
+              ).conflictDates.length > 0 && (
+                <details>
+                  <summary>Даты с разными записями</summary>
+                  <p className="tiny">
+                    {JournalBackup.merge(
+                      journal.tracker.getEntries(),
+                      preview.extras.bodyweight.entries,
+                    )
+                      .conflictDates.slice(0, 20)
+                      .join(", ")}
+                  </p>
+                </details>
+              )}
+            </section>
+          )}
           <div className="import-sessions">
             {preview.workouts.slice(0, 5).map((w) => (
               <div key={w.sourceKey}>
@@ -345,9 +468,14 @@ export default function HistoryImporter({
                           <Select
                             value={choices[name] ?? ""}
                             disabled={busy}
-                            onChange={(v) => setChoices({ ...choices, [name]: v })}
+                            onChange={(v) =>
+                              setChoices({ ...choices, [name]: v })
+                            }
                             options={[
-                              { value: "", label: "Своя запись с неизвестным правилом" },
+                              {
+                                value: "",
+                                label: "Своя запись с неизвестным правилом",
+                              },
                               ...options.map((e) => ({
                                 value: e.id,
                                 label: e.source ? `${e.name} · база` : e.name,
@@ -384,10 +512,16 @@ export default function HistoryImporter({
                               value={sides[name] ?? "both"}
                               disabled={busy}
                               onChange={(v) =>
-                                setSides({ ...sides, [name]: v as "both" | "left" | "right" })
+                                setSides({
+                                  ...sides,
+                                  [name]: v as "both" | "left" | "right",
+                                })
                               }
                               options={[
-                                { value: "both", label: "Обе: число повторов на каждую" },
+                                {
+                                  value: "both",
+                                  label: "Обе: число повторов на каждую",
+                                },
                                 { value: "left", label: "Только левая" },
                                 { value: "right", label: "Только правая" },
                               ]}
@@ -408,18 +542,35 @@ export default function HistoryImporter({
           ) : null}
           {preview.extras ? (
             <div className="import-backup-options">
-              <label className="check-label">
-                <input
-                  type="checkbox"
-                  disabled={busy}
-                  checked={restoreExtras}
-                  onChange={(e) => setRestoreExtras(e.target.checked)}
-                />
-                Перенести программы ({preview.extras.routines.length}), свои
-                упражнения ({preview.extras.customExercises.length}) и избранное
-                ({preview.extras.favorites.length})
-              </label>
-              {preview.extras.settings ? (
+              {preview.extras.profile && (
+                <label className="check-label">
+                  <input
+                    type="checkbox"
+                    disabled={busy}
+                    checked={restoreProfile}
+                    onChange={(e) => setRestoreProfile(e.target.checked)}
+                  />
+                  Восстановить профиль: {preview.extras.profile.displayName},{" "}
+                  {preview.extras.profile.timeZone}
+                </label>
+              )}
+              {preview.extras.routines.length +
+                preview.extras.customExercises.length +
+                preview.extras.favorites.length >
+                0 && (
+                <label className="check-label">
+                  <input
+                    type="checkbox"
+                    disabled={busy}
+                    checked={restoreExtras}
+                    onChange={(e) => setRestoreExtras(e.target.checked)}
+                  />
+                  Перенести программы ({preview.extras.routines.length}), свои
+                  упражнения ({preview.extras.customExercises.length}) и
+                  избранное ({preview.extras.favorites.length})
+                </label>
+              )}
+              {preview.extras.settings || preview.extras.theme ? (
                 <label className="check-label">
                   <input
                     type="checkbox"

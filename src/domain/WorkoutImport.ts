@@ -1,3 +1,9 @@
+import {
+  JournalBackup,
+  type WeightBackup,
+  type ProfileBackup,
+} from "./JournalBackup";
+import type { ThemeId } from "../lib/theme";
 import type { Exercise, Routine, Settings, Workout } from "../lib/types";
 import { normalizeSearch } from "../lib/search";
 export type ImportFormat = "strong" | "hevy" | "fitnotes" | "tyaga";
@@ -52,6 +58,9 @@ export type ImportPreview = {
     customExercises: Exercise[];
     favorites: string[];
     settings?: Settings;
+    bodyweight?: WeightBackup;
+    theme?: ThemeId;
+    profile?: ProfileBackup;
   };
 };
 const months = [
@@ -355,18 +364,31 @@ export class WorkoutImport {
     ]);
   }
   private native(text: string): ImportPreview {
-    let data: any;
+    let data: {
+      version?: number;
+      workouts?: Workout[];
+      routines?: Routine[];
+      customExercises?: Exercise[];
+      favorites?: string[];
+      settings?: Settings;
+      bodyweight?: unknown;
+      theme?: unknown;
+      profile?: unknown;
+    };
     try {
       data = JSON.parse(text);
     } catch {
       throw new Error("Не удалось прочитать JSON.");
     }
     if (
-      ![1, 2, 3].includes(data.version) ||
+      !data ||
+      typeof data !== "object" ||
+      typeof data.version !== "number" ||
+      ![1, 2, 3, 4].includes(data.version) ||
       !Array.isArray(data.workouts) ||
       data.workouts.length > 2000
     )
-      throw new Error("Это не поддерживаемый экспорт Тяги (версии 1–3).");
+      throw new Error("Это не поддерживаемый экспорт Тяги (версии 1–4).");
     const workouts: ImportedWorkout[] = data.workouts.map((w: Workout) => ({
       sourceKey: `tyaga|${w.id}`,
       nativeId: w.id,
@@ -397,7 +419,8 @@ export class WorkoutImport {
         data.routines?.length ||
         data.customExercises?.length ||
         data.favorites?.length ||
-        data.settings
+        data.settings ||
+        data.bodyweight
       )
     )
       throw new Error("Экспорт пуст.");
@@ -411,6 +434,12 @@ export class WorkoutImport {
         : [],
       favorites: Array.isArray(data.favorites) ? data.favorites : [],
       settings: data.settings,
+      bodyweight:
+        data.bodyweight === undefined
+          ? undefined
+          : JournalBackup.weights(data.bodyweight),
+      theme: JournalBackup.theme(data.theme),
+      profile: JournalBackup.profile(data.profile),
     };
     return result;
   }

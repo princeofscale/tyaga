@@ -84,6 +84,7 @@ export default function ProgramsScreen(props: Props) {
     setBusy(true);
     setError("");
     try {
+      TrainingProgram.validateRanges(editor);
       await props.onSave(
         asCopy
           ? {
@@ -140,8 +141,8 @@ export default function ProgramsScreen(props: Props) {
     );
   /**
    * A movement range is stored as a pair: the API accepts two bounds or none.
-   * The first edit fills the missing bound from the routine range, and clearing
-   * a field drops both so the routine-wide range applies again.
+   * The first edit fills a missing opposite bound from the routine. Clearing
+   * keeps the other field intact; clearing both restores the routine range.
    */
   const setRepRange = (
     index: number,
@@ -150,20 +151,7 @@ export default function ProgramsScreen(props: Props) {
     raw: string,
   ) => {
     if (!editor) return;
-    if (raw === "") {
-      updateExercise(index, { repMin: undefined, repMax: undefined });
-      return;
-    }
-    const bound = (n: number) => Math.max(1, Math.min(200, Math.round(n)));
-    const value = bound(Number(raw)),
-      min = Math.min(entry.repMin ?? editor.repMin, value),
-      max = Math.max(entry.repMax ?? editor.repMax, value);
-    updateExercise(
-      index,
-      side === "min"
-        ? { repMin: value, repMax: max }
-        : { repMax: value, repMin: min },
-    );
+    updateExercise(index, TrainingProgram.editRange(editor, entry, side, raw));
   };
   const move = (i: number, direction: number) =>
     setEditor((r) => {
@@ -534,7 +522,10 @@ export default function ProgramsScreen(props: Props) {
                   <Select
                     value={editor.progression}
                     onChange={(v) =>
-                      setEditor({ ...editor, progression: v as Routine["progression"] })
+                      setEditor({
+                        ...editor,
+                        progression: v as Routine["progression"],
+                      })
                     }
                     options={[
                       { value: "repeat", label: "Повторять веса и повторы" },

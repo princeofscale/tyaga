@@ -1,3 +1,4 @@
+import TeamChallenges from "./TeamChallenges";
 import TrainingMeetups, { WeeklyGoal } from "./TrainingMeetups";
 import type { TrainingMeetup } from "../domain/TrainingMeetups";
 import type { Workout } from "../lib/types";
@@ -348,22 +349,13 @@ export default function FriendsScreen({
         </div>
       ) : (
         <>
-          <m.section className="friends-hero" {...entrance()}>
+          <m.section
+            className="friends-hero friends-hero-compact"
+            {...entrance()}
+          >
             <div>
-              <span className="friends-kicker">
-                <span />
-                НА СВЯЗИ, ДАЖЕ НА РАССТОЯНИИ
-              </span>
-              <h2>
-                Разные залы.
-                <br />
-                <span>Одна команда.</span>
-              </h2>
-              <p>
-                Следите за тренировками друг друга.
-                <br />
-                Поддерживайте каждый рабочий подход.
-              </p>
+              <h2>Твоя команда</h2>
+              <p>Тренируйтесь в своём ритме, оставайтесь на связи.</p>
             </div>
             <div
               className="friends-hero-team"
@@ -507,6 +499,7 @@ export default function FriendsScreen({
             mutate={perform}
             onStart={onStartMeetup}
           />
+          <TeamChallenges key={data.me.id} data={data} />
           <div className="friends-columns">
             <div className="friends-main">
               <section aria-labelledby="team-title">
@@ -777,7 +770,7 @@ export default function FriendsScreen({
               </section>
               <section className="friends-invite-card">
                 <UserPlus size={22} />
-                <h2>Тренироваться интереснее вместе</h2>
+                <h2>Код приглашения</h2>
                 <p>Твой код напарника</p>
                 <code className="friend-invite-code">
                   {data.me.inviteCode.match(/.{1,4}/g)?.join("–")}

@@ -230,3 +230,36 @@ export const meetupParticipants = sqliteTable(
     index("idx_meetup_participant").on(t.accountId, t.meetupId),
   ],
 );
+
+export const teamChallenges = sqliteTable(
+  "team_challenges",
+  {
+    id: text("id").primaryKey(),
+    hostId: text("host_id")
+      .notNull()
+      .references(() => accounts.id),
+    name: text("name").notNull(),
+    startDate: text("start_date").notNull(),
+    cancelled: integer("cancelled").notNull().default(0),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [index("idx_challenge_host_start").on(t.hostId, t.startDate)],
+);
+export const challengeParticipants = sqliteTable(
+  "challenge_participants",
+  {
+    challengeId: text("challenge_id")
+      .notNull()
+      .references(() => teamChallenges.id),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => accounts.id),
+    response: text("response").notNull(),
+    target: integer("target").notNull(),
+    joinedAt: text("joined_at"),
+  },
+  (t) => [
+    primaryKey({ columns: [t.challengeId, t.accountId] }),
+    index("idx_challenge_participant").on(t.accountId, t.challengeId),
+  ],
+);

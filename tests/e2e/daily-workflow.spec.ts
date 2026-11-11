@@ -1,3 +1,8 @@
+import { readFile } from "node:fs/promises";
+import {
+  TeamChallengeProgress,
+  type TeamChallenge,
+} from "../../src/domain/TeamChallenge";
 import { test, expect, type Page } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 import { DEFAULT_SETTINGS, makeWorkout } from "../../src/lib/model";
@@ -44,6 +49,15 @@ async function fixture(page: Page, weights = weightFixture(), data = social()) {
   const errors: string[] = [],
     unexpected: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
+  const profile = {
+    id: data.me.id,
+    email: "daily@example.test",
+    displayName: "Саша",
+    timeZone: "Europe/Saratov",
+    bodyMassKg: null as number | null,
+    revision: 1,
+    createdAt: NOW.toISOString(),
+  };
   await page.route("**/api/**", async (route) => {
     const r = route.request(),
       path = new URL(r.url()).pathname,
@@ -55,18 +69,15 @@ async function fixture(page: Page, weights = weightFixture(), data = social()) {
         body: JSON.stringify(body),
       });
     if (path === "/api/auth/session")
-      return json({
-        registered: true,
-        profile: {
-          id: data.me.id,
-          email: "daily@example.test",
-          displayName: "Саша",
-          timeZone: "Europe/Saratov",
-          bodyMassKg: null,
-          revision: 1,
-          createdAt: NOW.toISOString(),
-        },
+      return json({ registered: true, profile });
+    if (path === "/api/auth/profile" && method === "PUT") {
+      Object.assign(profile, r.postDataJSON(), {
+        revision: profile.revision + 1,
       });
+      return json({ profile });
+    }
+    if (path === "/api/challenges" && method === "GET")
+      return json({ accountId: profile.id, challenges: [] });
     if (path === "/api/data")
       return json({
         workouts,
@@ -143,6 +154,8 @@ async function fixture(page: Page, weights = weightFixture(), data = social()) {
   return {
     data,
     weights,
+    workouts,
+    profile,
     clean: () => {
       expect(errors).toEqual([]);
       expect(unexpected).toEqual([]);
@@ -380,5 +393,469 @@ test("personal goals, meetup invitation, workout start and shared completion are
     ),
   ).toBeLessThanOrEqual(1);
   await shot(page, "meetup-390");
+  f.clean();
+});
+
+test("profile and new bodyweight sets share the weighing journal; complete export retains old snapshots", async ({
+  page,
+}) => {
+  const f = await fixture(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openWeight(page);
+  await page.getByLabel("Вес, кг", { exact: true }).fill("73.5");
+  await page
+    .getByRole("button", { name: "Сохранить замер", exact: true })
+    .click();
+  await nav(page, "Сегодня").click();
+  await page.getByRole("button", { name: "Мой профиль", exact: true }).click();
+  const profile = page.getByRole("dialog", {
+    name: "Мой профиль",
+    exact: true,
+  });
+  await expect(profile.getByLabel("Вес тела, кг", { exact: true })).toHaveValue(
+    "73.5",
+  );
+  await profile.getByLabel("Вес тела, кг", { exact: true }).fill("74.5");
+  await profile
+    .getByRole("button", { name: "Сохранить профиль", exact: true })
+    .click();
+  await expect(
+    profile.getByText("Профиль сохранён", { exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await nav(page, "Сегодня").click();
+  await page
+    .getByRole("button", { name: "Начать тренировку", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Добавить упражнение", exact: true })
+    .click();
+  await page
+    .getByRole("button", {
+      name: "Добавить Подтягивания прямым хватом",
+      exact: true,
+    })
+    .click();
+  await page.getByRole("button", { name: "Готово", exact: true }).click();
+  await page
+    .getByText("Записать массу тела (по желанию)", { exact: true })
+    .click();
+  await expect(page.getByLabel("Масса тела, кг", { exact: true })).toHaveValue(
+    "74.5",
+  );
+  await page
+    .getByRole("button", {
+      name: "Отметить выполненным: Подтягивания прямым хватом, подход 1",
+      exact: true,
+    })
+    .click();
+  await page
+    .getByRole("button", { name: "Завершить тренировку", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "История тренировок", exact: true }),
+  ).toBeVisible();
+  await openWeight(page);
+  await page.getByLabel("Вес, кг", { exact: true }).fill("75");
+  await page
+    .getByRole("button", { name: "Обновить замер", exact: true })
+    .click();
+  expect(f.workouts[0].exercises[0].bodyMassKg).toBe(74.5);
+  await nav(page, "Сегодня").click();
+  await page
+    .getByRole("button", { name: /^Инструменты/ })
+    .last()
+    .click();
+  await page.getByRole("button", { name: /^Резервная копия/ }).click();
+  const download = page.waitForEvent("download");
+  await page
+    .getByRole("button", { name: "Скачать полную копию", exact: true })
+    .click();
+  const file = await download;
+  const backup = JSON.parse(await readFile((await file.path())!, "utf8"));
+  expect(backup.version).toBe(4);
+  expect(backup.workouts[0].exercises[0].bodyMassKg).toBe(74.5);
+  expect(backup.bodyweight.entries.at(-1).weightKg).toBe(75);
+  expect(backup.profile.bodyMassKg).toBe(75);
+  expect(backup.routines).toEqual([]);
+  expect(backup.theme).toBe("lime");
+  expect(JSON.stringify(backup)).not.toMatch(/password|token|email/);
+  await shot(page, "backup-390");
+  f.clean();
+});
+
+test("full restore previews weights and keeps existing conflicting dates unless selected", async ({
+  page,
+}) => {
+  const f = await fixture(page);
+  await openWeight(page);
+  await page.getByLabel("Вес, кг", { exact: true }).fill("70");
+  await page
+    .getByRole("button", { name: "Сохранить замер", exact: true })
+    .click();
+  const backup = {
+    version: 4,
+    workouts: [],
+    routines: [],
+    customExercises: [],
+    favorites: [],
+    settings: DEFAULT_SETTINGS,
+    theme: "lime",
+    bodyweight: {
+      entries: [
+        {
+          id: "restore-old",
+          date: "2026-11-08",
+          weightKg: 68,
+          createdAt: 1,
+          note: "из копии",
+        },
+        {
+          id: "restore-today",
+          date: "2026-11-10",
+          weightKg: 80,
+          createdAt: 2,
+          note: "другая версия",
+        },
+      ],
+      goal: { targetWeightKg: 82, startWeightKg: 68 },
+    },
+  };
+  const restore = async (replace = false) => {
+    await nav(page, "История").click();
+    await page
+      .getByRole("button", { name: "Импорт истории", exact: true })
+      .click();
+    const dialog = page.getByRole("dialog", {
+      name: "Импорт истории",
+      exact: true,
+    });
+    await dialog
+      .getByLabel("Файл истории тренировок", { exact: true })
+      .setInputFiles({
+        name: "full-backup.json",
+        mimeType: "application/json",
+        buffer: Buffer.from(JSON.stringify(backup)),
+      });
+    await dialog
+      .getByRole("button", { name: "Показать предпросмотр", exact: true })
+      .click();
+    await expect(
+      dialog.getByRole("region", { name: "Вес в резервной копии" }),
+    ).toContainText("Различаются: 1");
+    if (replace)
+      await dialog
+        .getByLabel("При различиях использовать замеры и цель из файла", {
+          exact: true,
+        })
+        .check();
+    await shot(page, replace ? "restore-replace-1440" : "restore-preview-1440");
+    await dialog
+      .getByRole("button", { name: "Импортировать", exact: true })
+      .click();
+    await expect(dialog).toHaveCount(0);
+  };
+  await restore();
+  await openWeight(page);
+  await expect(page.locator(".weight-history-row").first()).toContainText("70");
+  await expect(page.locator(".weight-history-row")).toHaveCount(2);
+  await restore(true);
+  await openWeight(page);
+  await expect(page.locator(".weight-history-row").first()).toContainText("80");
+  await expect(page.locator(".weight-history-row")).toHaveCount(2);
+  f.clean();
+});
+
+test("four-week challenge creation, individual goals, compact friends layout and result card", async ({
+  page,
+}) => {
+  const f = await fixture(page),
+    rooms: TeamChallenge[] = [];
+  await page.route("**/api/challenges**", (route) => {
+    const req = route.request(),
+      input = req.method() === "GET" ? null : req.postDataJSON();
+    const json = (body: unknown) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(body),
+      });
+    if (req.method() === "GET")
+      return json({ accountId: f.data.me.id, challenges: rooms });
+    if (req.method() === "POST") {
+      rooms.push({
+        id: input.id,
+        name: input.name,
+        hostId: f.data.me.id,
+        startDate: input.startDate,
+        endDate: "2026-12-06",
+        today: "2026-11-10",
+        cancelled: false,
+        myResponse: "accepted",
+        participants: [
+          {
+            id: f.data.me.id,
+            displayName: "Саша",
+            response: "accepted",
+            target: input.target,
+            weeks: TeamChallengeProgress.weeks(
+              input.startDate,
+              "2026-11-10",
+              input.target,
+              [{ date: "2026-11-10", n: 2 }],
+            ),
+          },
+          { id: "friend", displayName: "Дима", response: "invited", target: 3 },
+        ],
+      });
+      return json({ id: input.id });
+    }
+    rooms[0].cancelled = true;
+    return json({ ok: true });
+  });
+  await nav(page, "Друзья").click();
+  await page
+    .getByRole("button", { name: "Создать челлендж", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog", {
+    name: "Челлендж на четыре недели",
+    exact: true,
+  });
+  await dialog.getByLabel("Название", { exact: true }).fill("Ноябрь в ритме");
+  await dialog
+    .getByLabel("Начало — понедельник", { exact: true })
+    .fill("2026-11-09");
+  await dialog
+    .getByLabel("Моя цель: тренировок в неделю", { exact: true })
+    .fill("2");
+  await dialog.getByLabel("Дима", { exact: true }).check();
+  await dialog
+    .getByRole("button", { name: "Пригласить на четыре недели", exact: true })
+    .click();
+  await expect(dialog).toHaveCount(0);
+  const room = page.locator(".challenge-card");
+  await expect(room).toContainText("Ноябрь в ритме");
+  rooms[0].participants[1] = {
+    id: "friend",
+    displayName: "Дима",
+    response: "accepted",
+    target: 4,
+    weeks: TeamChallengeProgress.weeks("2026-11-09", "2026-11-10", 4, [
+      { date: "2026-11-10", n: 1 },
+    ]),
+  };
+  await page
+    .getByRole("button", { name: "Обновить челленджи", exact: true })
+    .click();
+  await expect(room).toContainText("4 в неделю");
+  await expect(room.locator(".challenge-score")).toContainText("1 / 8");
+  const download = page.waitForEvent("download");
+  await page
+    .getByRole("button", { name: "Моя карточка прогресса", exact: true })
+    .click();
+  expect((await download).suggestedFilename()).toMatch(/\.svg$/);
+  await shot(page, "challenges-1440");
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    (await page.locator(".friends-hero").boundingBox())!.height,
+  ).toBeLessThan(120);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth - innerWidth,
+    ),
+  ).toBeLessThanOrEqual(1);
+  await shot(page, "challenges-390");
+  f.clean();
+});
+
+test("Android notification controls are opt-in and a native action restores the matching workout and next set", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const state: {
+      supported: boolean;
+      enabled: boolean;
+      permission: boolean;
+      exact: boolean;
+      action: Record<string, unknown> | null;
+    } = {
+      supported: true,
+      enabled: false,
+      permission: false,
+      exact: false,
+      action: null,
+    };
+    const commands: Record<string, unknown>[] = [],
+      settings: string[] = [],
+      listeners = new Map<string, () => void>();
+    let enabledCalls = 0,
+      sequence = 0;
+    Object.assign(window, {
+      CapacitorCustomPlatform: { name: "android" },
+      Capacitor: {
+        PluginHeaders: [
+          {
+            name: "RestTimer",
+            methods: [
+              ...[
+                "getState",
+                "enable",
+                "disable",
+                "sync",
+                "acknowledge",
+                "openSettings",
+                "removeListener",
+              ].map((name) => ({ name, rtype: "promise" })),
+              { name: "addListener", rtype: "callback" },
+            ],
+          },
+        ],
+        nativePromise: async (
+          _plugin: string,
+          method: string,
+          input: Record<string, unknown> = {},
+        ) => {
+          if (method === "getState") return structuredClone(state);
+          if (method === "enable") {
+            enabledCalls++;
+            state.enabled = true;
+            state.permission = true;
+            return structuredClone(state);
+          }
+          if (method === "disable") {
+            state.enabled = false;
+            return structuredClone(state);
+          }
+          if (method === "sync") {
+            commands.push(structuredClone(input));
+            return;
+          }
+          if (method === "acknowledge") {
+            if (state.action?.id === input.id) state.action = null;
+            return;
+          }
+          if (method === "openSettings") {
+            settings.push(String(input.kind));
+            return;
+          }
+          if (method === "removeListener") {
+            listeners.delete(String(input.callbackId));
+            return;
+          }
+          throw new Error("Unexpected native call " + method);
+        },
+        nativeCallback: (
+          _plugin: string,
+          method: string,
+          _input: unknown,
+          callback: () => void,
+        ) => {
+          if (method !== "addListener") throw new Error(method);
+          const id = String(++sequence);
+          listeners.set(id, callback);
+          return id;
+        },
+      },
+      __restTest: {
+        state,
+        commands,
+        settings,
+        get enabledCalls() {
+          return enabledCalls;
+        },
+        notify: () => listeners.forEach((callback) => callback()),
+      },
+    });
+  });
+  const f = await fixture(page);
+  expect(
+    await page.evaluate(() => Reflect.get(window, "__restTest").enabledCalls),
+  ).toBe(0);
+  await page
+    .getByRole("button", { name: /^Инструменты/ })
+    .last()
+    .click();
+  await page.getByRole("button", { name: /^Уведомления отдыха/ }).click();
+  await page
+    .getByRole("button", { name: "Включить уведомления", exact: true })
+    .click();
+  await expect(
+    page.getByText("Уведомления включены", { exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Разрешить точный таймер", exact: true })
+    .click();
+  expect(
+    await page.evaluate(() => Reflect.get(window, "__restTest").settings),
+  ).toEqual(["exact"]);
+  await page.keyboard.press("Escape");
+  await page
+    .getByRole("button", { name: "Начать тренировку", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Добавить упражнение", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Добавить Жим штанги лёжа", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Готово", exact: true }).click();
+  await page
+    .getByLabel("Жим штанги лёжа, подход 1, вес", { exact: true })
+    .fill("80");
+  await page
+    .getByRole("button", {
+      name: "Отметить выполненным: Жим штанги лёжа, подход 1",
+      exact: true,
+    })
+    .click();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        Reflect.get(window, "__restTest").commands.some(
+          (c: { until: number | null }) => c.until !== null,
+        ),
+      ),
+    )
+    .toBe(true);
+  await page
+    .getByRole("button", { name: "Свернуть тренировку", exact: true })
+    .click();
+  const until = await page.evaluate(() => {
+    const t = Reflect.get(window, "__restTest");
+    const command = t.commands
+      .filter((c: { until: number | null }) => c.until !== null)
+      .at(-1);
+    t.state.action = {
+      ...command,
+      type: "extend",
+      id: "extend-30",
+      until: command.until + 30000,
+    };
+    t.notify();
+    return command.until + 30000;
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          JSON.parse(localStorage.getItem("tyaga-draft-account:daily-user")!)
+            .restUntil,
+      ),
+    )
+    .toBe(until);
+  await page.evaluate(() => {
+    const t = Reflect.get(window, "__restTest");
+    const command = t.commands
+      .filter((c: { until: number | null }) => c.until !== null)
+      .at(-1);
+    t.state.action = { ...command, type: "open", id: "open-from-notification" };
+    t.notify();
+  });
+  await expect(
+    page.getByLabel("Жим штанги лёжа, подход 2, вес", { exact: true }),
+  ).toBeFocused();
+  await expect(
+    page.getByLabel("Жим штанги лёжа, подход 1, вес", { exact: true }),
+  ).toHaveValue("80");
   f.clean();
 });

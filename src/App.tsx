@@ -1,3 +1,9 @@
+import { useRestNotifications } from "./hooks/useRestNotifications";
+import RestNotificationSettings from "./components/RestNotificationSettings";
+import { JournalBackup } from "./domain/JournalBackup";
+import { applyTheme, getCurrentTheme } from "./lib/theme";
+import { BodyweightProvider, useBodyweight } from "./state/BodyweightContext";
+import { BodyMass } from "./domain/BodyMass";
 import type { TrainingMeetup } from "./domain/TrainingMeetups";
 import { friendsApi } from "./services/FriendsApi";
 import ProgressOverview from "./components/ProgressOverview";
@@ -149,7 +155,10 @@ const dateLabel = (date: string, long = false) =>
     day: "numeric",
     month: long ? "long" : "short",
   });
-export default function App({ account, onAccountChange, onLogout }: { account: AccountProfile; onAccountChange: (p: AccountProfile) => void; onLogout: () => void }) {
+type AppProps = { account: AccountProfile; onAccountChange: (p: AccountProfile) => void; onLogout: () => void };
+export default function App(props:AppProps) {return <BodyweightProvider accountId={props.account.id} timeZone={props.account.timeZone}><JournalApp {...props}/></BodyweightProvider>;}
+function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
+  const weights=useBodyweight();
   const draftKey = `tyaga-draft-account:${account.id}`;
   const [view, setView] = useState<ProductView>(() => new URLSearchParams(location.search).has("friend") ? "friends" : "overview");
   const [product, setProduct] = useState<ProductData>({
@@ -178,6 +187,8 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
   const [toast, setToast] = useState("");
   const [modal, setModal] = useState<
     | "tools"
+    | "backup"
+    | "rest_notifications"
     | "picker"
     | "settings"
     | "method"
@@ -442,6 +453,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, []);
+  const restNotification=useRestNotifications(account.id,draft,setDraft,()=>go("workout"),view==="workout");
   const start = (ids: string[] = [], name?: string, template?: Workout) => {
     if (draft) {
       go("workout");
@@ -450,8 +462,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
       return;
     }
     const workout = template ?? makeWorkout(ids, workouts, settings.timeZone);
-    if (!template && account.bodyMassKg !== null) workout.exercises = workout.exercises.map(e =>
-      ["bodyweight","added_bodyweight","assisted_bodyweight"].includes(exerciseForEntry(e)?.recording.loadMode ?? "") ? { ...e, bodyMassKg: account.bodyMassKg! } : e);
+    workout.exercises = BodyMass.workout(workout, weights.massAt(workout.date,account.bodyMassKg)).exercises;
     if (name) workout.name = name;
     setDraft(newDraft(workout));
     setConflict(null);
@@ -475,8 +486,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
         ? {
             ...d,
             workout: new WorkoutSession(d.workout).add(
-              { ...makeExerciseEntry(id, workouts),
-                ...(account.bodyMassKg !== null && ["bodyweight","added_bodyweight","assisted_bodyweight"].includes(exerciseById(id)?.recording.loadMode ?? "") ? {bodyMassKg:account.bodyMassKg} : {}) },
+              BodyMass.entry(makeExerciseEntry(id, workouts), weights.massAt(d.workout.date, account.bodyMassKg)),
             ),
           }
         : null,
@@ -647,17 +657,7 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
     saveFile(
       `tyaga-${localDate()}.json`,
       JSON.stringify(
-        {
-          version: 3,
-          analysisVersion: 2,
-          e1rmFormulaVersion: "epley-1",
-          exportedAt: new Date().toISOString(),
-          workouts,
-          settings,
-          routines: product.routines,
-          customExercises: product.customExercises,
-          favorites: product.favorites,
-        },
+        JournalBackup.create(workouts,settings,product,{entries:weights.tracker.getEntries(),goal:weights.tracker.getGoal()},getCurrentTheme(),{displayName:account.displayName,timeZone:account.timeZone,bodyMassKg:weights.massAt(localDate(new Date(),account.timeZone),account.bodyMassKg)}),
         null,
         2,
       ),
@@ -1046,6 +1046,8 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
               ) : null}
               {view === "workout" ? (
                 <WorkoutView
+                  focusRequest={restNotification.focus}
+                  notificationError={restNotification.error}
                   draft={draft}
                   update={setDraft}
                   settings={settings}
@@ -1983,6 +1985,8 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
           </div>
         </Modal>
       ) : null}
+      {modal === "rest_notifications" && <Modal title="Уведомления отдыха" onClose={()=>setModal(null)}><RestNotificationSettings/></Modal>}
+      {modal === "backup" && <Modal title="Резервная копия" onClose={()=>setModal(null)}><div className="backup-tools"><p>В одном файле: тренировки, программы, личные упражнения, избранное, вес, цели и настройки. Пароли и сессии в копию не входят.</p><button className="button primary" onClick={()=>void exportHistory()}><Download size={18}/>Скачать полную копию</button><button className="button secondary" onClick={()=>setModal("import")}>Восстановить из файла</button><p className="tiny">Перед восстановлением можно просмотреть содержимое и выбрать, как поступить с разными замерами за один день.</p></div></Modal>}
       {modal === "import" ? (
         <Modal
           title="Импорт истории"
@@ -2003,12 +2007,14 @@ export default function App({ account, onAccountChange, onLogout }: { account: A
                     revision: latest.settings.revision ?? 0,
                   });
                 }
+                if(result.profile){const latest=await api<{profile:AccountProfile}>("/api/auth/session");const restored=await api<{profile:AccountProfile}>("/api/auth/profile","PUT",{...result.profile,revision:latest.profile.revision});onAccountChange(restored.profile);}
                 await load();
+                if(result.theme)applyTheme(result.theme);
                 setModal(null);
                 setDemo(false);
                 go("history");
                 setToast(
-                  `Импорт завершён: добавлено ${result.imported}, пропущено ${result.skipped}`,
+                  `Импорт завершён: добавлено ${result.imported}, пропущено ${result.skipped}${result.weightCount!==undefined?`; замеров веса: ${result.weightCount}`:""}`,
                 );
               }}
             />

@@ -1,3 +1,4 @@
+import { ChallengeRepository } from "./ChallengeRepository";
 import { DEFAULT_SETTINGS, type Workout } from "../src/lib/model";
 import {
   validWorkout,
@@ -65,6 +66,13 @@ export async function handleApi(request: Request, env: Env) {
     const authResponse = await accounts.handle(request);
     if (authResponse) return authResponse;
     const activeAccount = await accounts.require(request);
+    if(url.pathname==="/api/challenges"||url.pathname.startsWith("/api/challenges/")) {
+      const challenges=new ChallengeRepository(env.DB,activeAccount);
+      if(url.pathname==="/api/challenges"&&request.method==="GET")return json(await challenges.read());
+      if(url.pathname==="/api/challenges"&&request.method==="POST")return json(await challenges.create(await readBody(request)));
+      if(request.method==="PUT"&&url.pathname.startsWith("/api/challenges/")){await challenges.act(str(decodeURIComponent(url.pathname.slice("/api/challenges/".length)),80,1),await readBody(request));return json({ok:true});}
+      return json({error:"Не найдено"},404);
+    }
     if (url.pathname === "/api/bodyweight" || url.pathname.startsWith("/api/bodyweight/")) {
       const weights = new BodyweightRepository(env.DB, userId, activeAccount.timeZone,activeAccount.id);
       if (request.method === "GET" && url.pathname === "/api/bodyweight") return json({...await weights.read(),accountId:activeAccount.id});

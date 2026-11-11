@@ -214,3 +214,51 @@ test("native cloud bindings never seed a second account from the first account's
   assert.equal(journal.tracker.getEntries().length, 0);
   assert.equal(journal.pendingCount, 0);
 });
+
+test("two journals in one browser keep the other tab's new dates and deletion never revives the legacy mass", async () => {
+  const storage = memory();
+  use(storage);
+  const remote = backend();
+  const a = new BodyweightJournal("user", "UTC", remote.client),
+    b = new BodyweightJournal("user", "UTC", remote.client);
+  a.tracker.addEntry(70, "2026-11-01");
+  b.tracker.addEntry(71, "2026-11-02");
+  a.tracker.addEntry(72, "2026-11-03");
+  assert.equal(a.tracker.getEntries().length, 3);
+  assert.equal(b.tracker.getEntries().length, 3);
+  assert.equal(a.massAt("2026-10-01", 65), null);
+  for (const entry of a.tracker.getEntries()) a.tracker.removeEntry(entry.id);
+  assert.equal(a.massAt("2026-11-11", 65), null);
+  const restored = new BodyweightJournal("user", "UTC", remote.client);
+  assert.equal(restored.massAt("2026-11-11", 65), null);
+  restored.restore({
+    entries: [{ id: "backup", date: "2026-11-04", weightKg: 73, createdAt: 1 }],
+    goal: { targetWeightKg: 75, startWeightKg: 70 },
+  });
+  await restored.sync();
+  assert.equal(restored.massAt("2026-11-11", 65), 73);
+  assert.equal(restored.tracker.getGoal().targetWeightKg, 75);
+});
+
+test("cache transactions keep concurrent tab edits while network acknowledgements are in flight", async () => {
+  use(memory());
+  const remote = backend();
+  const a = new BodyweightJournal("user", "UTC", remote.client),
+    b = new BodyweightJournal("user", "UTC", remote.client);
+  await Promise.all([
+    a.change(() => a.tracker.addEntry(70, "2026-11-01")),
+    b.change(() => b.tracker.addEntry(71, "2026-11-02")),
+  ]);
+  await Promise.all([
+    a.sync(),
+    b.change(() => b.tracker.addEntry(72, "2026-11-03")),
+  ]);
+  await b.sync();
+  await a.sync();
+  assert.deepEqual(
+    a.tracker.getEntries().map((e) => e.weightKg),
+    [70, 71, 72],
+  );
+  assert.equal(a.pendingCount, 0);
+  assert.equal(a.conflicts.length, 0);
+});
