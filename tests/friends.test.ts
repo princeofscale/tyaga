@@ -1,66 +1,75 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { FriendsService } from "../src/domain/FriendsService";
+import { FriendsService, type Athlete } from "../src/domain/FriendsService";
+import { makeWorkout } from "../src/lib/model";
 
-// Mock localStorage for node environment
-const store = new Map<string, string>();
-const mockStorage = {
-  getItem: (key: string) => store.get(key) ?? null,
-  setItem: (key: string, value: string) => store.set(key, value),
-  removeItem: (key: string) => store.delete(key),
-  clear: () => store.clear(),
-};
-globalThis.localStorage = mockStorage as any;
-
-test("FriendsService returns default starter friends and saves to storage", () => {
-  store.clear();
-  const service = new FriendsService("user-1");
-  const friends = service.getFriends();
-  assert.equal(friends.length, 3);
-  assert.equal(friends[0].tag, "@dmitry_titan");
+test("invite codes accept copied formatting and links, reject arbitrary names and malformed links", () => {
+  for (const input of [
+    "a1b2c3d4e5f6",
+    "A1B2–C3D4–E5F6",
+    " A1B2 C3D4 E5F6 ",
+    "https://tyaga.example/?friend=A1B2C3D4E5F6",
+  ])
+    assert.equal(FriendsService.inviteCode(input), "A1B2C3D4E5F6");
+  for (const input of [
+    "",
+    "@ivan",
+    "not a code",
+    "A1B2C3D4E5F678",
+    "https://bad:link",
+    "https://tyaga.example/?other=A1B2C3D4E5F6",
+  ])
+    assert.equal(FriendsService.inviteCode(input), null);
 });
 
-test("FriendsService adds a new friend with proper tag formatting", () => {
-  store.clear();
-  const service = new FriendsService("user-1");
-  const newFriend = service.addFriend("ivan_power");
-  assert.equal(newFriend.tag, "@ivan_power");
-  assert.equal(newFriend.displayName, "Ivan_power");
-
-  const friends = service.getFriends();
-  assert.equal(friends.length, 4);
-
-  // Re-adding same friend throws error
-  assert.throws(() => service.addFriend("@ivan_power"), /уже в твоём списке/);
+test("social week and 30-day feed use the viewer's calendar across timezone and year boundaries", () => {
+  const now = new Date("2027-01-03T22:30:00Z");
+  assert.deepEqual(FriendsService.week(now, "Europe/Moscow"), {
+    today: "2027-01-04",
+    start: "2027-01-04",
+    feedStart: "2026-12-06",
+  });
+  assert.deepEqual(FriendsService.week(now, "America/Los_Angeles"), {
+    today: "2027-01-03",
+    start: "2026-12-28",
+    feedStart: "2026-12-05",
+  });
 });
 
-test("FriendsService toggles kudos with count changes", () => {
-  store.clear();
-  const service = new FriendsService("user-1");
-  const initial = service.getFriends()[0];
-  const initialCount = initial.kudosCount;
-
-  const result1 = service.giveKudos(initial.id);
-  assert.equal(result1.kudosCount, initialCount + 1);
-  assert.equal(result1.hasGivenKudos, true);
-
-  const result2 = service.giveKudos(initial.id);
-  assert.equal(result2.kudosCount, initialCount);
-  assert.equal(result2.hasGivenKudos, false);
+test("team goal caps contributions so one athlete cannot complete everyone's target", () => {
+  const athlete = (weekWorkouts: number): Athlete => ({
+    id: "a",
+    displayName: "Атлет",
+    gym: "",
+    focus: "",
+    activeUntil: 0,
+    weekWorkouts,
+  });
+  assert.deepEqual(FriendsService.teamProgress([athlete(8), athlete(0)]), {
+    done: 3,
+    target: 6,
+    percent: 50,
+  });
+  assert.deepEqual(FriendsService.teamProgress([]), {
+    done: 0,
+    target: 0,
+    percent: 0,
+  });
 });
 
-test("FriendsService manages athlete profile", () => {
-  store.clear();
-  const service = new FriendsService("user-1");
-  const profile = service.getAthleteProfile("Иван Петров");
-  assert.ok(profile.tag.startsWith("@"));
-  assert.equal(profile.isPublic, true);
-
-  profile.bio = "Мастер спорта по пауэрлифтингу";
-  profile.isPublic = false;
-  service.saveAthleteProfile(profile);
-
-  const reloaded = service.getAthleteProfile("Иван Петров");
-  assert.equal(reloaded.bio, "Мастер спорта по пауэрлифтингу");
-  assert.equal(reloaded.isPublic, false);
+test("workout summary counts only completed working sets and supported free-weight volume", () => {
+  const w = makeWorkout(["bench"], [], "UTC");
+  w.exercises[0].sets = [
+    { id: "working", weight: 60, reps: 8, done: true, warmup: false, rir: 2 },
+    { id: "warmup", weight: 20, reps: 10, done: true, warmup: true, rir: 5 },
+    {
+      id: "incomplete",
+      weight: 80,
+      reps: 5,
+      done: false,
+      warmup: false,
+      rir: null,
+    },
+  ];
+  assert.deepEqual(FriendsService.workout(w), { setsCount: 1, volumeKg: 480 });
 });

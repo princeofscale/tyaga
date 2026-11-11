@@ -15,6 +15,7 @@ export class ApiError extends Error {
 export class ApiClient {
   constructor(
     private transport: typeof fetch = (input, init) => fetch(input, init),
+    private expireLocalSession = true,
   ) {}
   async request<T>(
     path: string,
@@ -49,7 +50,7 @@ export class ApiClient {
     } catch {
       throw new Error("Сервис временно недоступен. Попробуй ещё раз.");
     }
-    if (response.status === 401 && !path.startsWith("/api/auth/") && typeof window !== "undefined")
+    if (response.status === 401 && this.expireLocalSession && !path.startsWith("/api/auth/") && typeof window !== "undefined")
       window.dispatchEvent(new Event("tyaga:auth-expired"));
     if (!response.ok)
       throw new ApiError(

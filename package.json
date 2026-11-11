@@ -17,7 +17,8 @@
     "preview:server": "wrangler dev --config wrangler.jsonc --ip 0.0.0.0",
     "catalog:import": "node scripts/import-wger.mjs",
     "catalog:localize": "node scripts/localize-wger.mjs",
-    "catalog:review": "tsx scripts/review-wger.ts"
+    "catalog:review": "tsx scripts/review-wger.ts",
+    "pretest": "node scripts/build-worker.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.3",

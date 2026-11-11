@@ -122,3 +122,25 @@ export const authLimits = sqliteTable("auth_limits", {
   attempts: integer("attempts").notNull(),
   windowStart: integer("window_start").notNull(),
 });
+
+// Social data is server-owned, separate from journal replication and backups.
+export const socialProfiles = sqliteTable("social_profiles", {
+  accountId: text("account_id").primaryKey().references(() => accounts.id),
+  inviteCode: text("invite_code").notNull(),
+  gym: text("gym").notNull().default(""),
+  focus: text("focus").notNull().default(""),
+  activeUntil: integer("active_until").notNull().default(0),
+}, (t) => [uniqueIndex("idx_social_invite").on(t.inviteCode)]);
+
+export const friendships = sqliteTable("friendships", {
+  lowId: text("low_id").notNull().references(() => accounts.id),
+  highId: text("high_id").notNull().references(() => accounts.id),
+  senderId: text("sender_id").notNull().references(() => accounts.id),
+  status: text("status", { enum: ["pending", "accepted"] }).notNull(),
+  createdAt: integer("created_at").notNull(),
+}, (t) => [primaryKey({ columns: [t.lowId, t.highId] }), index("idx_friendships_high").on(t.highId)]);
+
+export const workoutKudos = sqliteTable("workout_kudos", {
+  workoutId: text("workout_id").notNull().references(() => workouts.id, { onDelete: "cascade" }),
+  accountId: text("account_id").notNull().references(() => accounts.id),
+}, (t) => [primaryKey({ columns: [t.workoutId, t.accountId] })]);
