@@ -1,17 +1,35 @@
 import { useState, useRef, useEffect } from "react";
-import {
-  Download,
-  Share2,
-  Copy,
-  Check,
-  Sparkles,
-  Camera,
-  X,
-  Layers,
-} from "lucide-react";
+import { Download, Image as ImageIcon, Share2, Smartphone } from "lucide-react";
 import type { Workout } from "../lib/model";
 import type { AccountProfile } from "../lib/account";
 import { volumeSummary, fmt } from "../lib/model";
+import { TextFitter } from "../domain/TextFitter";
+
+const DISPLAY = '"Tyaga Display", "Arial Narrow", sans-serif';
+const BODY = '"Onest Variable", system-ui, sans-serif';
+const MONO = '"JetBrains Mono Variable", ui-monospace, monospace';
+const font = (weight: number, size: number, family = BODY) => `${weight} ${size}px ${family}`;
+
+/** Canvas рисует только уже загруженные шрифты, поэтому подгружаем их заранее. */
+const FONT_FACES = [
+  font(700, 64, DISPLAY),
+  font(800, 64, DISPLAY),
+  font(500, 24),
+  font(600, 24),
+  font(700, 24),
+  font(700, 26, MONO),
+];
+const FONT_SAMPLE = "Тяга ТЯГА тренировка 0123456789 кг мин";
+
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
 
 export function ShareStoryCardModal({
   workout,
@@ -24,16 +42,16 @@ export function ShareStoryCardModal({
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [format, setFormat] = useState<"story" | "post">("story");
-  const [copied, setCopied] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [fontsReady, setFontsReady] = useState(false);
 
   const summary = volumeSummary([workout]);
   const workingSetsCount = workout.exercises.reduce(
     (acc, e) => acc + e.sets.filter((s) => !s.warmup && s.done).length,
-    0
+    0,
   );
 
-  // Find best working set highlight
+  // Самый сильный рабочий подход по оценке 1ПМ
   const bestSet = workout.exercises
     .flatMap((e) =>
       e.sets
@@ -43,24 +61,41 @@ export function ShareStoryCardModal({
           weight: s.weight,
           reps: s.reps,
           e1rm: Math.round(s.weight * (1 + s.reps / 30)),
-        }))
+        })),
     )
     .sort((a, b) => b.e1rm - a.e1rm)[0];
 
   const durationMin = Math.max(1, workout.duration || 1);
+
+  useEffect(() => {
+    let live = true;
+    void Promise.all(FONT_FACES.map((face) => document.fonts.load(face, FONT_SAMPLE)))
+      .catch(() => undefined)
+      .then(() => {
+        if (live) setFontsReady(true);
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
 
   const drawCard = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+    const fitter = new TextFitter((face, text) => {
+      ctx.font = face;
+      return ctx.measureText(text).width;
+    });
 
     const width = 1080;
     const height = format === "story" ? 1920 : 1350;
+    const inner = width - 160;
     canvas.width = width;
     canvas.height = height;
 
-    // Background gradient
+    // Фон
     const bgGrad = ctx.createLinearGradient(0, 0, 0, height);
     bgGrad.addColorStop(0, "#161b17");
     bgGrad.addColorStop(0.5, "#0f1310");
@@ -68,21 +103,12 @@ export function ShareStoryCardModal({
     ctx.fillStyle = bgGrad;
     ctx.fillRect(0, 0, width, height);
 
-    // Subtle radial glow in the center
-    const radial = ctx.createRadialGradient(
-      width / 2,
-      height * 0.38,
-      50,
-      width / 2,
-      height * 0.38,
-      500
-    );
+    const radial = ctx.createRadialGradient(width / 2, height * 0.38, 50, width / 2, height * 0.38, 500);
     radial.addColorStop(0, "rgba(202, 250, 100, 0.08)");
     radial.addColorStop(1, "rgba(0, 0, 0, 0)");
     ctx.fillStyle = radial;
     ctx.fillRect(0, 0, width, height);
 
-    // Grid texture lines
     ctx.strokeStyle = "rgba(255, 255, 255, 0.02)";
     ctx.lineWidth = 1;
     for (let x = 60; x < width; x += 120) {
@@ -92,21 +118,21 @@ export function ShareStoryCardModal({
       ctx.stroke();
     }
 
-    // Top Header: Brand Logo
+    // Шапка: марка слева, имя и дата справа
+    ctx.textBaseline = "alphabetic";
     ctx.fillStyle = "#cafa64";
-    ctx.font = "900 52px system-ui, -apple-system, sans-serif";
+    ctx.font = font(800, 68, DISPLAY);
     ctx.textAlign = "left";
     ctx.fillText("тяга.", 80, 140);
 
-    // Athlete Tag & Date
-    ctx.fillStyle = "#8a9a8d";
-    ctx.font = "600 32px system-ui, -apple-system, sans-serif";
     ctx.textAlign = "right";
-    const athleteHandle = `@${account.displayName.toLowerCase().replace(/\s+/g, "_")}`;
-    ctx.fillText(athleteHandle, width - 80, 130);
+    ctx.fillStyle = "#a4af9e";
+    ctx.font = font(600, 32);
+    const nameText = fitter.ellipsize(account.displayName, 480, font(600, 32));
+    ctx.fillText(nameText, width - 80, 128);
 
-    ctx.font = "500 26px system-ui, -apple-system, sans-serif";
-    ctx.fillStyle = "#617164";
+    ctx.font = font(500, 26);
+    ctx.fillStyle = "#768271";
     const dateStr = new Date(workout.date + "T12:00:00").toLocaleDateString("ru-RU", {
       day: "numeric",
       month: "long",
@@ -114,7 +140,6 @@ export function ShareStoryCardModal({
     });
     ctx.fillText(dateStr, width - 80, 170);
 
-    // Top horizontal divider
     ctx.strokeStyle = "rgba(202, 250, 100, 0.25)";
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -122,49 +147,30 @@ export function ShareStoryCardModal({
     ctx.lineTo(width - 80, 210);
     ctx.stroke();
 
-    // Session Title
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "900 68px system-ui, -apple-system, sans-serif";
+    // Название тренировки подгоняем по ширине, а не даём вылезти за край
     ctx.textAlign = "left";
-    const titleText = workout.name.toUpperCase();
-    ctx.fillText(titleText, 80, 310);
+    ctx.fillStyle = "#ffffff";
+    const titleText = (workout.name.trim() || "Тренировка").toUpperCase();
+    const titleSize = fitter.fitSize(titleText, inner, 104, 44, (size) => font(800, size, DISPLAY));
+    ctx.font = font(800, titleSize, DISPLAY);
+    ctx.fillText(fitter.ellipsize(titleText, inner, font(800, titleSize, DISPLAY)), 80, 215 + titleSize * 0.95);
 
-    // Subtitle badge
     ctx.fillStyle = "#cafa64";
-    ctx.font = "700 28px system-ui, -apple-system, sans-serif";
-    ctx.fillText("СИЛОВАЯ ТРЕНИРОВКА ЗАВЕРШЕНА ⚡", 80, 370);
+    ctx.font = font(700, 28);
+    ctx.fillText("Силовая тренировка завершена", 80, 215 + titleSize * 0.95 + 56);
 
-    // 3 Big Metric Cards
+    // Три крупные метрики
     const cardY = 440;
     const cardW = 280;
     const cardH = 220;
-    const gap = (width - 160 - cardW * 3) / 2;
-
+    const gap = (inner - cardW * 3) / 2;
     const metrics = [
-      {
-        val: `${fmt(summary.total)}`,
-        unit: "кг",
-        label: "ОБЩИЙ ТОННАЖ",
-        accent: "#cafa64",
-      },
-      {
-        val: `${durationMin}`,
-        unit: "мин",
-        label: "ДЛИТЕЛЬНОСТЬ",
-        accent: "#ffffff",
-      },
-      {
-        val: `${workingSetsCount}`,
-        unit: "сетов",
-        label: "РАБОЧИЙ ОБЪЁМ",
-        accent: "#58c0ff",
-      },
+      { val: `${fmt(summary.total)}`, unit: "кг", label: "Тоннаж", accent: "#cafa64" },
+      { val: `${durationMin}`, unit: "мин", label: "Время", accent: "#ffffff" },
+      { val: `${workingSetsCount}`, unit: "подходов", label: "Рабочий объём", accent: "#58c0ff" },
     ];
-
     metrics.forEach((m, i) => {
       const cx = 80 + i * (cardW + gap);
-
-      // Card box
       ctx.fillStyle = "rgba(255, 255, 255, 0.04)";
       ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
       ctx.lineWidth = 2;
@@ -172,116 +178,104 @@ export function ShareStoryCardModal({
       ctx.fill();
       ctx.stroke();
 
-      // Number value
-      ctx.fillStyle = m.accent;
-      ctx.font = "900 64px system-ui, -apple-system, sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText(m.val, cx + cardW / 2, cardY + 105);
+      ctx.fillStyle = m.accent;
+      const valueSize = fitter.fitSize(m.val, cardW - 40, 92, 48, (size) => font(800, size, DISPLAY));
+      ctx.font = font(800, valueSize, DISPLAY);
+      ctx.fillText(m.val, cx + cardW / 2, cardY + 108);
 
-      // Unit
-      ctx.fillStyle = "#8a9a8d";
-      ctx.font = "600 24px system-ui, -apple-system, sans-serif";
-      ctx.fillText(m.unit, cx + cardW / 2, cardY + 145);
+      ctx.fillStyle = "#a4af9e";
+      ctx.font = font(600, 24);
+      ctx.fillText(m.unit, cx + cardW / 2, cardY + 148);
 
-      // Label
-      ctx.fillStyle = "#617164";
-      ctx.font = "700 20px system-ui, -apple-system, sans-serif";
-      ctx.fillText(m.label, cx + cardW / 2, cardY + 185);
+      ctx.fillStyle = "#768271";
+      ctx.font = font(600, 22);
+      ctx.fillText(m.label, cx + cardW / 2, cardY + 188);
     });
 
-    // Best PR / Highlight Banner
+    // Главный результат
     if (bestSet) {
       const prY = 720;
       ctx.fillStyle = "rgba(202, 250, 100, 0.08)";
       ctx.strokeStyle = "rgba(202, 250, 100, 0.4)";
       ctx.lineWidth = 2;
-      roundRect(ctx, 80, prY, width - 160, 180, 24);
+      roundRect(ctx, 80, prY, inner, 180, 24);
       ctx.fill();
       ctx.stroke();
 
+      ctx.fillStyle = "#cafa64";
+      roundRect(ctx, 80, prY, 10, 180, 5);
+      ctx.fill();
+
       ctx.textAlign = "left";
       ctx.fillStyle = "#cafa64";
-      ctx.font = "800 26px system-ui, -apple-system, sans-serif";
-      ctx.fillText("🏆 ГЛАВНЫЙ СИЛОВОЙ РЕЗУЛЬТАТ", 120, prY + 60);
+      ctx.font = font(700, 26);
+      ctx.fillText("Лучший подход", 120, prY + 58);
 
       ctx.fillStyle = "#ffffff";
-      ctx.font = "800 48px system-ui, -apple-system, sans-serif";
-      ctx.fillText(
-        `${bestSet.name}: ${bestSet.weight} кг × ${bestSet.reps}`,
-        120,
-        prY + 130
-      );
+      const result = `${bestSet.name}: ${bestSet.weight} кг × ${bestSet.reps}`;
+      const resultSize = fitter.fitSize(result, inner - 80, 48, 28, (size) => font(700, size, BODY));
+      ctx.font = font(700, resultSize, BODY);
+      ctx.fillText(fitter.ellipsize(result, inner - 80, font(700, resultSize, BODY)), 120, prY + 128);
     }
 
-    // Exercise breakdown table
+    // Выполненные упражнения: название режем по месту, чтобы не налезало на вес
     const exY = 960;
-    ctx.textAlign = "left";
-    ctx.fillStyle = "#8a9a8d";
-    ctx.font = "700 26px system-ui, -apple-system, sans-serif";
-    ctx.fillText("ВЫПОЛНЕННЫЕ ДВИЖЕНИЯ:", 80, exY);
-
-    const shownExercises = workout.exercises.slice(0, format === "story" ? 6 : 4);
-    shownExercises.forEach((e, idx) => {
+    // Упражнение без единого выполненного подхода на карточку не попадает
+    const shown = workout.exercises
+      .filter((e) => e.sets.some((s) => !s.warmup && s.done))
+      .slice(0, format === "story" ? 6 : 4);
+    if (shown.length) {
+      ctx.textAlign = "left";
+      ctx.fillStyle = "#a4af9e";
+      ctx.font = font(700, 26);
+      ctx.fillText("Упражнения", 80, exY);
+    }
+    shown.forEach((e, idx) => {
       const ey = exY + 60 + idx * 75;
       const doneSets = e.sets.filter((s) => !s.warmup && s.done);
       const topWeight = Math.max(...doneSets.map((s) => s.weight), 0);
 
       ctx.fillStyle = "rgba(255, 255, 255, 0.03)";
-      roundRect(ctx, 80, ey - 40, width - 160, 60, 14);
+      roundRect(ctx, 80, ey - 40, inner, 60, 14);
       ctx.fill();
 
-      // Number
+      ctx.textAlign = "left";
       ctx.fillStyle = "#cafa64";
-      ctx.font = "800 26px monospace";
-      ctx.fillText(`0${idx + 1}`, 105, ey);
+      ctx.font = font(700, 26, MONO);
+      ctx.fillText(String(idx + 1).padStart(2, "0"), 105, ey);
 
-      // Name
-      ctx.fillStyle = "#ffffff";
-      ctx.font = "700 30px system-ui, -apple-system, sans-serif";
-      const exName = (e.displayNameSnapshot || e.exerciseId).slice(0, 32);
-      ctx.fillText(exName, 170, ey);
-
-      // Sets & Top Weight
+      // Правая часть: «N подх.» и вес; левая — название в оставшемся месте
       ctx.textAlign = "right";
       ctx.fillStyle = "#cafa64";
-      ctx.font = "800 30px system-ui, -apple-system, sans-serif";
-      ctx.fillText(`${topWeight} кг`, width - 110, ey);
+      ctx.font = font(700, 30);
+      const weightText = `${topWeight} кг`;
+      ctx.fillText(weightText, width - 110, ey);
+      const weightWidth = ctx.measureText(weightText).width;
 
-      ctx.fillStyle = "#8a9a8d";
-      ctx.font = "600 24px system-ui, -apple-system, sans-serif";
-      ctx.fillText(`${doneSets.length} подх. ×`, width - 230, ey);
+      ctx.fillStyle = "#a4af9e";
+      ctx.font = font(600, 24);
+      const setsText = `${doneSets.length} подх.`;
+      ctx.fillText(setsText, width - 110 - weightWidth - 28, ey);
+      const setsWidth = ctx.measureText(setsText).width;
 
       ctx.textAlign = "left";
+      ctx.fillStyle = "#ffffff";
+      ctx.font = font(600, 30);
+      const room = width - 110 - weightWidth - 28 - setsWidth - 24 - 170;
+      ctx.fillText(fitter.ellipsize(e.displayNameSnapshot || e.exerciseId, room, font(600, 30)), 170, ey);
     });
 
-    // Footer Watermark
-    const footY = height - 100;
+    // Подпись
     ctx.textAlign = "center";
-    ctx.fillStyle = "#49554b";
-    ctx.font = "600 24px system-ui, -apple-system, sans-serif";
-    ctx.fillText("ТЯГА • НАУЧНЫЙ СИЛОВОЙ ЖУРНАЛ ТРЕНИРОВОК", width / 2, footY);
+    ctx.fillStyle = "#5f6b5c";
+    ctx.font = font(600, 24);
+    ctx.fillText("Тяга · силовой журнал", width / 2, height - 100);
   };
 
-  function roundRect(
-    ctx: CanvasRenderingContext2D,
-    x: number,
-    y: number,
-    w: number,
-    h: number,
-    r: number
-  ) {
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.arcTo(x + w, y, x + w, y + h, r);
-    ctx.arcTo(x + w, y + h, x, y + h, r);
-    ctx.arcTo(x, y + h, x, y, r);
-    ctx.arcTo(x, y, x + w, y, r);
-    ctx.closePath();
-  }
-
   useEffect(() => {
-    drawCard();
-  }, [workout, format]);
+    if (fontsReady) drawCard();
+  }, [workout, format, fontsReady]);
 
   const handleDownload = () => {
     const canvas = canvasRef.current;
@@ -310,9 +304,7 @@ export function ShareStoryCardModal({
     canvas.toBlob(async (blob) => {
       if (!blob) return;
 
-      const file = new File([blob], `tyaga-${workout.date}.png`, {
-        type: "image/png",
-      });
+      const file = new File([blob], `tyaga-${workout.date}.png`, { type: "image/png" });
 
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
         try {
@@ -322,10 +314,9 @@ export function ShareStoryCardModal({
             text: `Тоннаж: ${fmt(summary.total)} кг • ${workingSetsCount} рабочих подходов`,
           });
         } catch {
-          // user cancelled
+          // человек закрыл окно «Поделиться»
         }
       } else {
-        // Fallback: download
         handleDownload();
       }
     }, "image/png");
@@ -333,49 +324,36 @@ export function ShareStoryCardModal({
 
   return (
     <div className="story-card-modal-content">
-      {/* Format Selector Pills */}
       <div className="story-format-pills">
         <button
           type="button"
           className={`format-pill ${format === "story" ? "active" : ""}`}
+          aria-pressed={format === "story"}
           onClick={() => setFormat("story")}
         >
-          📱 9:16 Сторис (1080×1920)
+          <Smartphone size={16} aria-hidden="true" /> Сторис 9:16
         </button>
         <button
           type="button"
           className={`format-pill ${format === "post" ? "active" : ""}`}
+          aria-pressed={format === "post"}
           onClick={() => setFormat("post")}
         >
-          🖼️ 4:5 Пост (1080×1350)
+          <ImageIcon size={16} aria-hidden="true" /> Пост 4:5
         </button>
       </div>
 
-      {/* Canvas Live Preview Box */}
       <div className="story-canvas-preview-wrap">
-        <canvas
-          ref={canvasRef}
-          className={`story-render-canvas ${format}`}
-        />
+        <canvas ref={canvasRef} className={`story-render-canvas ${format}`} role="img" aria-label="Предпросмотр карточки тренировки" />
       </div>
 
-      {/* Action Buttons */}
       <div className="story-card-actions">
-        <button
-          type="button"
-          className="button primary story-action-btn"
-          onClick={handleShare}
-        >
+        <button type="button" className="button primary story-action-btn" onClick={handleShare} disabled={!fontsReady}>
           <Share2 size={18} />
           <span>Поделиться карточкой</span>
         </button>
 
-        <button
-          type="button"
-          className="button secondary story-action-btn"
-          onClick={handleDownload}
-          disabled={downloading}
-        >
+        <button type="button" className="button secondary story-action-btn" onClick={handleDownload} disabled={downloading || !fontsReady}>
           <Download size={18} />
           <span>{downloading ? "Сохраняем…" : "Скачать PNG"}</span>
         </button>

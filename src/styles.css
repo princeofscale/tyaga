@@ -9702,6 +9702,10 @@ body::before {
 }
 
 .format-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 40px;
   padding: 0.4rem 0.85rem;
   border-radius: 8px;
   background: transparent;
