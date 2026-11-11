@@ -34,6 +34,10 @@ jobs:
           java-version: "21"
           cache: gradle
       - uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: "13114758"
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: "false"
       - run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
       - run: npm ci
       - run: npm run build:android
