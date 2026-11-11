@@ -40,6 +40,8 @@ import { CLOUD_URL, cloudState } from "../device/cloudSync";
 import { fmt } from "../lib/model";
 import { quantity } from "../lib/quantity";
 import Modal from "./Modal";
+import RoomInvite from "./RoomInvite";
+import TogetherCard from "./TogetherCard";
 import "../styles/friends.css";
 
 const initialCode = () =>
@@ -82,10 +84,22 @@ export default function FriendsScreen({
   onProfile,
   workouts = [],
   onStartMeetup = () => {},
+  roomInvite = null,
+  onRoomInviteHandled = () => {},
+  onToast = () => {},
+  workoutActive = false,
+  onWorkout = () => {},
 }: {
   onProfile: () => void;
   workouts?: Workout[];
   onStartMeetup?: (m: TrainingMeetup) => void;
+  /** Код комнаты из ссылки-приглашения: сначала спрашиваем, потом входим. */
+  roomInvite?: string | null;
+  onRoomInviteHandled?: () => void;
+  onToast?: (text: string) => void;
+  workoutActive?: boolean;
+  /** Перейти к тренировке (открыть текущую или начать новую). */
+  onWorkout?: () => void;
 }) {
   const [data, setData] = useState<FriendsData | null>(null);
   const [error, setError] = useState("");
@@ -426,6 +440,19 @@ export default function FriendsScreen({
               <ArrowUpRight size={16} />
             </button>
           </section>
+          {roomInvite && (
+            <RoomInvite
+              code={roomInvite}
+              onDone={onRoomInviteHandled}
+              onToast={onToast}
+            />
+          )}
+          <TogetherCard
+            workoutActive={workoutActive}
+            onWorkout={onWorkout}
+            onToast={onToast}
+            quietErrors={!!roomInvite}
+          />
           {data.requests.length > 0 && (
             <section
               className="friend-requests"

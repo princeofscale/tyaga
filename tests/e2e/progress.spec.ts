@@ -1,4 +1,5 @@
 import { mockWeights } from "./fixtures/bodyweight";
+import { mockLive } from "./fixtures/live";
 import { test, expect, type Page } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 import { makeWorkout, DEFAULT_SETTINGS } from "../../src/lib/model";
@@ -83,6 +84,7 @@ async function setup(page: Page, empty = false) {
     return route.fulfill({ status: 503, body: "{}" });
   });
   await mockWeights(page,profile.id);
+  await mockLive(page);
   await page.goto("/");
   await page
     .getByRole("navigation")

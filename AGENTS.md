@@ -25,13 +25,15 @@ tyaga/
 │   │   ├── BodyweightTracker.ts      # Экспоненциальное сглаживание веса тела (EMA)
 │   │   ├── DeloadEngine.ts           # Анализ усталости и масштабирование нагрузок
 │   │   ├── FriendsService.ts         # Напарники, респекты (Kudos), профиль
+│   │   ├── LiveSession.ts            # Комнаты «Вместе»: снимок тренировки, политика отправки, показ, код и ссылка
 │   │   ├── PersonalRecords.ts        # Личные рекорды, e1RM, стрик, баланс
+│   │   ├── TextFitter.ts             # Подбор кегля под ширину (карточка для сторис)
 │   │   ├── TrainingAnalytics.ts      # Аналитика объёма и нагрузок
 │   │   └── WarmupLadderCalculator.ts # Алгоритм пирамиды разминки и раскладки блинов
 │   ├── lib/                # Вспомогательные утилиты, календарь, черновики, типы
 │   ├── services/           # ApiClient, ProductService, Sync
 │   └── styles.css          # Дизайн-система на CSS-токенах
-├── server/                 # Cloudflare Worker API & D1 SQLite
+├── server/                 # Cloudflare Worker API & D1 SQLite (LiveRoomService.ts — комнаты «Вместе»)
 ├── tests/                  # Модульные и интеграционные тесты (Node.js test runner)
 └── tests/e2e/              # Playwright сквозные E2E тесты
 ```

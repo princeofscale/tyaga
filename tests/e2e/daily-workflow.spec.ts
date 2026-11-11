@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { mockLive } from "./fixtures/live";
 import {
   TeamChallengeProgress,
   type TeamChallenge,
@@ -147,6 +148,7 @@ async function fixture(page: Page, weights = weightFixture(), data = social()) {
     return json({ error: "Unmocked request; nothing forwarded" }, 503);
   });
   await mockWeights(page, data.me.id, weights);
+  await mockLive(page);
   await page.goto("/");
   await expect(
     page.getByRole("heading", { name: "Сегодня", exact: true }),

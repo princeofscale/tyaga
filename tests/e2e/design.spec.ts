@@ -1,4 +1,5 @@
 import { mockWeights } from "./fixtures/bodyweight";
+import { mockLive } from "./fixtures/live";
 import { test, expect, type Page } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 import {
@@ -97,6 +98,7 @@ async function preview(page: Page, authenticated = true, savedTheme?: string) {
     );
   });
   await mockWeights(page, profile.id);
+  await mockLive(page);
   return () => {
     expect(errors, "No browser runtime errors").toEqual([]);
     expect(unexpected, "All API calls explicitly mocked").toEqual([]);

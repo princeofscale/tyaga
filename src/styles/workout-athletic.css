@@ -1105,6 +1105,16 @@
   }
 }
 
+/* Телефон в ландшафте (подпёрт на стойке): липкая шапка занимала больше половины экрана, поэтому она едет вместе с подходами. */
+@media (max-height: 520px) and (orientation: landscape) {
+  .workout-athletic .workout-bar {
+    position: static;
+  }
+  .workout-screen.workout-athletic {
+    --workout-header-space: 16px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .workout-athletic *,
   .workout-athletic *::before,

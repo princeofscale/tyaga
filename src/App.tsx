@@ -6,6 +6,10 @@ import { BodyweightProvider, useBodyweight } from "./state/BodyweightContext";
 import { BodyMass } from "./domain/BodyMass";
 import type { TrainingMeetup } from "./domain/TrainingMeetups";
 import { friendsApi } from "./services/FriendsApi";
+import { LiveStateBuilder } from "./domain/LiveSession";
+import { takeRoomInvite } from "./lib/invite";
+import { useLiveBroadcast } from "./lib/useLiveBroadcast";
+import { useLiveRoom } from "./components/LiveRoomProvider";
 import ProgressOverview from "./components/ProgressOverview";
 import MovementBalance from "./components/MovementBalance";
 import ToolsHub from "./components/ToolsHub";
@@ -160,7 +164,10 @@ export default function App(props:AppProps) {return <BodyweightProvider accountI
 function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
   const weights=useBodyweight();
   const draftKey = `tyaga-draft-account:${account.id}`;
-  const [view, setView] = useState<ProductView>(() => new URLSearchParams(location.search).has("friend") ? "friends" : "overview");
+  const live = useLiveRoom();
+  // Ссылка в комнату (?r=) прочитана при загрузке страницы; здесь её только предъявляем и спрашиваем согласие.
+  const [roomInvite, setRoomInvite] = useState<string | null>(() => takeRoomInvite());
+  const [view, setView] = useState<ProductView>(() => (roomInvite || new URLSearchParams(location.search).has("friend") ? "friends" : "overview"));
   const [product, setProduct] = useState<ProductData>({
     routines: [],
     customExercises: [],
@@ -176,6 +183,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
   const [loadError, setLoadError] = useState("");
   const [demo, setDemo] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(() => readDraft(draftKey));
+  useLiveBroadcast(draft);
   const [persistence, setPersistence] = useState<PersistenceStatus>("pending");
   const [legacyDraft, setLegacyDraft] = useState(() => readDraft(DRAFT_KEY));
   const [conflict, setConflict] = useState<{ current: Workout | null } | null>(
@@ -594,6 +602,9 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
       setConflict(null);
       setDemo(false);
       setJustSaved(result.workout);
+      // Напарники по комнате видят итог сразу. Правка старой тренировки в комнату не попадает.
+      if (!draft.editing)
+        live.finish(LiveStateBuilder.fromWorkout(result.workout, { now: Date.now(), nameOf: entryName, finished: true }));
       if(draft.meetupId && !draft.editing) {
         const meetupId=draft.meetupId,gym=draft.meetupGym??"";
         void (async()=>{
@@ -1060,6 +1071,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                   onSave={() => void saveWorkout()}
                   onDiscard={() => setModal("discard")}
                   onMinimize={() => go("overview")}
+                  onOpenTogether={() => go("friends")}
                 />
               ) : null}
               {view === "history" ? (
@@ -1527,7 +1539,16 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                   {exerciseCards()}
                 </>
               ) : null}
-              {view === "friends" && <Suspense fallback={<p role="status">Открываем напарников…</p>}><FriendsScreen onProfile={() => setModal("profile")} workouts={workouts} onStartMeetup={startMeetup} /></Suspense>}
+              {view === "friends" && <Suspense fallback={<p role="status">Открываем напарников…</p>}><FriendsScreen
+                onProfile={() => setModal("profile")}
+                workouts={workouts}
+                onStartMeetup={startMeetup}
+                roomInvite={roomInvite}
+                onRoomInviteHandled={() => setRoomInvite(null)}
+                onToast={setToast}
+                workoutActive={!!draft}
+                onWorkout={() => (draft ? go("workout") : start())}
+              /></Suspense>}
               {view === "programs" ? (
                 <>
                   <header className="screen-head">

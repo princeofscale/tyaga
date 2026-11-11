@@ -1,4 +1,5 @@
 import { mockWeights } from "./fixtures/bodyweight";
+import { mockLive } from "./fixtures/live";
 import { test, expect, type Page } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 import { DEFAULT_SETTINGS, type Routine } from "../../src/lib/model";
@@ -177,6 +178,7 @@ async function fixture(
     return json({ error: "Unmocked request; never forwarded" }, 503);
   });
   await mockWeights(page, profile.id);
+  await mockLive(page);
   return {
     data,
     failReads: (value: boolean) => {

@@ -3,6 +3,7 @@ import { Dumbbell, LockKeyhole, LoaderCircle, ShieldCheck, Download, Smartphone,
 import { m, useReducedMotion } from "motion/react";
 import App from "../App";
 import Modal from "./Modal";
+import { LiveRoomProvider } from "./LiveRoomProvider";
 import { api } from "../services/ApiClient";
 import { browserTimeZone } from "../lib/calendar";
 import type { AccountProfile, AccountState } from "../lib/account";
@@ -18,9 +19,9 @@ export default function AccountGate() {
   useEffect(() => { void refresh(); window.addEventListener("tyaga:auth-expired", refresh); return () => window.removeEventListener("tyaga:auth-expired", refresh); }, [refresh]);
   if (!state) return <main className="account-loading auth-loading"><div className="auth-loading-mark"><Dumbbell size={32} aria-hidden="true" /></div><h1>Тяга</h1>{error ? <><p role="alert">{error}</p><button className="button primary" onClick={() => void refresh()}>Повторить</button></> : <p role="status">Открываем твой журнал…</p>}</main>;
   return <>
-    {state.profile ? <App key={state.profile.id} account={state.profile}
+    {state.profile ? <LiveRoomProvider key={state.profile.id}><App account={state.profile}
       onAccountChange={profile => setState({ registered: true, profile })}
-      onLogout={() => setState({ registered: true, profile: null })} />
+      onLogout={() => setState({ registered: true, profile: null })} /></LiveRoomProvider>
       : <SignIn registered={state.registered} onSignedIn={(profile, recoveryCode) => { setState({ registered: true, profile }); if (recoveryCode) setRecovery(recoveryCode); history.replaceState(null, "", location.pathname + location.search); }} />}
     {recovery && <Modal title="Код восстановления" onClose={() => setRecovery("")}>
       <p className="modal-intro">Сохрани этот код. Он позволит установить новый пароль, если забудешь старый. Почту мы используем для входа; письма восстановления пока не отправляем.</p>

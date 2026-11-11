@@ -1,0 +1,379 @@
+/* «Вместе»: карточка комнаты на экране напарников, полоса над тренировкой и приглашение по ссылке. */
+.together,
+.live-strip {
+  --rest: #ff9d42;
+}
+
+.live-avatar {
+  --avatar-color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 42px;
+  height: 42px;
+  border: 1px solid color-mix(in srgb, var(--avatar-color) 28%, transparent);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--avatar-color) 15%, var(--bg));
+  color: var(--avatar-color);
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+.live-avatar.sm {
+  width: 28px;
+  height: 28px;
+  font-size: 0.64rem;
+}
+
+.together {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background:
+    radial-gradient(ellipse at 0 0, color-mix(in srgb, var(--accent) 10%, transparent), transparent 62%),
+    var(--surface);
+}
+.together.live {
+  border-color: var(--accent-line);
+}
+.together h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1;
+}
+.together > p {
+  margin: 0;
+  max-width: 40ch;
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.55;
+}
+.together .form-error {
+  margin: 0;
+  line-height: 1.5;
+}
+.together-icon {
+  color: var(--accent);
+}
+.together-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  color: var(--muted);
+}
+.together-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.together-actions .button {
+  flex: 1 1 auto;
+  justify-content: center;
+}
+.together-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.together-join {
+  display: grid;
+  gap: 6px;
+  overflow: hidden;
+}
+.together-join label {
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+.join-field {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+.join-field input {
+  flex: 1 1 0;
+  width: 0;
+  min-width: 0;
+  height: 46px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-align: center;
+  text-transform: uppercase;
+  outline: none;
+}
+.join-field input:focus {
+  border-color: var(--accent);
+}
+.join-field input[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+.join-field .button {
+  flex: none;
+  min-height: 46px;
+}
+
+.room-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px 12px;
+}
+.room-label {
+  grid-row: 1;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 650;
+}
+.room-tools {
+  grid-row: 1;
+  grid-column: 2;
+  display: flex;
+  gap: 6px;
+}
+.room-code {
+  grid-row: 2;
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  max-width: 340px;
+}
+.room-code span {
+  display: grid;
+  place-items: center;
+  height: 58px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--bg);
+  font-family: var(--font-mono);
+  font-size: 1.8rem;
+  font-weight: 700;
+}
+
+.live-members {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.live-member {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 14px;
+  background: var(--bg);
+}
+.live-member.me {
+  border-color: var(--accent-line);
+}
+.live-member.away {
+  opacity: 0.6;
+}
+.live-member-text {
+  display: grid;
+  flex: 1;
+  gap: 3px;
+  min-width: 0;
+}
+.live-member-text b {
+  overflow: hidden;
+  font-size: 0.92rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.live-member-text b i {
+  color: var(--muted);
+  font-style: normal;
+  font-weight: 500;
+}
+.live-member-text small {
+  overflow: hidden;
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.live-bar {
+  display: block;
+  height: 4px;
+  margin-top: 3px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-3);
+}
+.live-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transform-origin: 0 50%;
+}
+.live-member.resting .live-bar > span {
+  background: var(--rest);
+}
+.live-member-side {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+.live-member.done .live-member-side {
+  color: var(--accent);
+}
+.live-tonnage {
+  color: var(--text-soft);
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+.live-rest {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--rest) 16%, transparent);
+  color: var(--rest);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+/* Приглашение: то же поле, что и карточка, но с акцентом, чтобы его нельзя было пропустить. */
+.invite-banner {
+  border-color: var(--accent-line);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+}
+.invite-banner h2 {
+  font-size: 1.6rem;
+  line-height: 1.05;
+}
+.invite-banner > div:first-child > p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+/* Полоса напарников живёт внутри липкой шапки тренировки, поэтому видна при прокрутке подходов.
+   Отрицательный нижний отступ гасит row-gap шапки, пока полоса схлопнута, и экран не прыгает. */
+.live-strip {
+  grid-column: 1 / -1;
+  margin-bottom: -12px;
+  overflow: hidden;
+}
+.live-strip-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0 10px;
+  border-top: 1px solid var(--line-soft);
+}
+.live-strip-room {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--accent-line);
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+.live-strip ul {
+  display: flex;
+  flex: 1;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  overflow-x: auto;
+  list-style: none;
+  scrollbar-width: none;
+}
+.live-strip ul::-webkit-scrollbar {
+  display: none;
+}
+.live-strip li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding: 3px 10px 3px 3px;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  background: var(--bg);
+}
+.live-strip li.resting {
+  border-color: color-mix(in srgb, var(--rest) 45%, transparent);
+}
+.live-strip li > span:not(.live-avatar) {
+  display: grid;
+  line-height: 1.15;
+}
+.live-strip li b {
+  font-size: 0.76rem;
+}
+.live-strip li small {
+  color: var(--text-soft);
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.live-strip li i {
+  display: inline-flex;
+  color: var(--rest);
+}
+
+/* Шапка тренировки липкая: когда в ней есть полоса напарников, отступ прокрутки к полям растёт на её высоту. */
+.workout-screen.workout-athletic:has(.live-strip) {
+  --workout-header-space: 222px;
+}
+
+@media (max-width: 640px) {
+  .live-strip {
+    margin-bottom: -8px;
+  }
+  .workout-screen.workout-athletic:has(.live-strip) {
+    --workout-header-space: 254px;
+  }
+}
+@media (max-width: 420px) {
+  .room-code span {
+    height: 52px;
+    font-size: 1.6rem;
+  }
+}
+
+/* Телефон в ландшафте: шапка там не липкая (см. workout-athletic.css), отступ прокрутки к полям не нужен и с полосой. */
+@media (max-height: 520px) and (orientation: landscape) {
+  .workout-screen.workout-athletic:has(.live-strip) {
+    --workout-header-space: 16px;
+  }
+}
