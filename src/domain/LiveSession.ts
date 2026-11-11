@@ -1,5 +1,5 @@
 import { fmt, volumeSummary, type Workout, type WorkoutExercise } from "../lib/model";
-import type { LiveMember, LivePhase, LiveState } from "../lib/liveRoom";
+import { LIVE_EXERCISE_MAX, type LiveMember, type LivePhase, type LiveState } from "../lib/liveRoom";
 
 /** Как часто повторять неизменившееся состояние, чтобы напарники видели: человек на связи. */
 export const LIVE_HEARTBEAT_MS = 45_000;
@@ -14,6 +14,15 @@ export type LiveBuildOptions = {
   restEndsAt?: number | null;
   finished?: boolean;
 };
+
+/** Название, которое влезает в предел комнаты: длиннее обрезается с многоточием, пустое — это «нет названия». */
+function roomName(name: string): string | null {
+  const text = name.trim();
+  if (text.length <= LIVE_EXERCISE_MAX) return text || null;
+  let end = LIVE_EXERCISE_MAX - 1;
+  if (/[\ud800-\udbff]/.test(text[end - 1])) end--; // не рвём суррогатную пару
+  return `${text.slice(0, end).trimEnd()}…`;
+}
 
 /** Снимок тренировки для комнаты «Вместе»: где человек сейчас и сколько уже сделал. */
 export class LiveStateBuilder {
@@ -30,7 +39,7 @@ export class LiveStateBuilder {
     const phase: LivePhase = finished ? "done" : resting ? "resting" : done.length > 0 ? "lifting" : "idle";
     return {
       phase,
-      exercise: current ? nameOf(current.entry) : null,
+      exercise: current ? roomName(nameOf(current.entry)) : null,
       setsDone: done.length,
       setsTotal: sets.length,
       // Тот же рабочий тоннаж, что показан в шапке тренировки, но целыми килограммами.

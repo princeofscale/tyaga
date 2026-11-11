@@ -28,5 +28,7 @@ export type LiveMember = {
 export type LiveRoom = { code: string; members: LiveMember[] };
 
 export const MAX_ROOM_MEMBERS = 6;
+/** Самое длинное название упражнения, которое принимает комната; снимок тренировки обрезает длиннее. */
+export const LIVE_EXERCISE_MAX = 80;
 /** Сколько часов тишины терпит комната, прежде чем участник из неё выпадает. */
 export const ROOM_IDLE_HOURS = 12;

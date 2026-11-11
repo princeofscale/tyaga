@@ -1,5 +1,6 @@
 import { RoomCode } from "../src/domain/LiveSession";
 import {
+  LIVE_EXERCISE_MAX,
   MAX_ROOM_MEMBERS,
   ROOM_IDLE_HOURS,
   type LivePhase,
@@ -40,7 +41,7 @@ export function validLiveState(input: unknown, now = Date.now()): LiveState {
   const lastSet = v.lastSet === null ? null : object(v.lastSet);
   return {
     phase: v.phase as LivePhase,
-    exercise: v.exercise === null ? null : str(v.exercise, 80, 1),
+    exercise: v.exercise === null ? null : str(v.exercise, LIVE_EXERCISE_MAX, 1),
     setsDone,
     setsTotal,
     tonnageKg: num(v.tonnageKg, 0, 1_000_000, true),

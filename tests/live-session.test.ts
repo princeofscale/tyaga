@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { makeWorkout } from "../src/lib/model";
 import type { Workout, WorkoutExercise } from "../src/lib/model";
 import type { LiveState } from "../src/lib/liveRoom";
+import { validLiveState } from "../server/LiveRoomService";
 import {
   LIVE_HEARTBEAT_MS,
   LivePresenter,
@@ -98,6 +99,27 @@ test("live state: finished wins over everything else and drops the rest timer", 
   const state = LiveStateBuilder.fromWorkout(w, { now: NOW, nameOf, restEndsAt: NOW + 30_000, finished: true });
   assert.equal(state.phase, "done");
   assert.equal(state.restEndsAt, null);
+});
+
+test("live state: whatever the builder makes of a long name, a rest or a finish, the room accepts it", () => {
+  const w = twoLifts();
+  w.exercises[0].displayNameSnapshot = "Т".repeat(120); // личное упражнение может называться до 120 знаков
+  finish(w, 0, 1);
+  const resting = LiveStateBuilder.fromWorkout(w, { now: NOW, nameOf, restEndsAt: NOW + 90_000 });
+  assert.equal(resting.phase, "resting");
+  assert.doesNotThrow(() => validLiveState(resting, NOW));
+  assert.doesNotThrow(() => validLiveState(LiveStateBuilder.fromWorkout(w, { now: NOW, nameOf, finished: true }), NOW));
+  assert.ok(resting.exercise!.endsWith("…") && resting.exercise!.length <= 80);
+  // Эмодзи (две кодовые единицы) не разрезаются посередине, и результат всё равно проходит проверку.
+  w.exercises[0].displayNameSnapshot = "💪".repeat(60);
+  const emoji = LiveStateBuilder.fromWorkout(w, { now: NOW, nameOf });
+  assert.doesNotThrow(() => validLiveState(emoji, NOW));
+  assert.doesNotMatch(emoji.exercise!, /[\ud800-\udbff](?![\udc00-\udfff])/);
+  // Имя, которое помещается, остаётся как есть; пустое — не название.
+  w.exercises[0].displayNameSnapshot = "Жим штанги лёжа";
+  assert.equal(LiveStateBuilder.fromWorkout(w, { now: NOW, nameOf }).exercise, "Жим штанги лёжа");
+  w.exercises[0].displayNameSnapshot = "   ";
+  assert.equal(LiveStateBuilder.fromWorkout(w, { now: NOW, nameOf }).exercise, null);
 });
 
 test("room code: normalized input is upper-case without separators", () => {
