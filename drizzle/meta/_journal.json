@@ -71,6 +71,13 @@
       "when": 1794399174183,
       "tag": "0009_noisy_iron_lad",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1794424045113,
+      "tag": "0010_live_rooms",
+      "breakpoints": true
     }
   ]
 }

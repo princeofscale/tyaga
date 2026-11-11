@@ -263,3 +263,23 @@ export const challengeParticipants = sqliteTable(
     index("idx_challenge_participant").on(t.accountId, t.challengeId),
   ],
 );
+
+/** Комнаты «Вместе»: один человек — одна строка; комната живёт, пока в ней кто-то отвечает. */
+export const liveMembers = sqliteTable(
+  "live_members",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    code: text("code").notNull(),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => accounts.id),
+    /** Короткий JSON с итогами подходов, без заметок и истории. */
+    state: text("state"),
+    joinedAt: text("joined_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("idx_live_members_account").on(t.accountId),
+    index("idx_live_members_code").on(t.code),
+  ],
+);

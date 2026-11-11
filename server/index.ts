@@ -20,6 +20,7 @@ import { exerciseById } from "../src/lib/model";
 import { AccountService, AuthError } from "./AccountService";
 import { FriendsRepository } from "./FriendsRepository";
 import { MeetupRepository } from "./MeetupRepository";
+import { LiveRoomService } from "./LiveRoomService";
 import { BodyweightRepository } from "./BodyweightRepository";
 export interface Env {
   DB: D1Database;
@@ -81,6 +82,23 @@ export async function handleApi(request: Request, env: Env) {
         return result.saved?json({document:result.saved}):json({error:"Замер изменён на другом устройстве. Выбери версию для сохранения.",document:result.current},409);
       }
       return json({error:"Не найдено"},404);
+    }
+    if (url.pathname === "/api/friends/live" || url.pathname.startsWith("/api/friends/live/")) {
+      const live = new LiveRoomService(env.DB, activeAccount.id);
+      switch (`${request.method} ${url.pathname}`) {
+        case "GET /api/friends/live":
+          return json({ room: await live.current() });
+        case "POST /api/friends/live":
+          return json({ room: await live.create() });
+        case "POST /api/friends/live/join":
+          return json({ room: await live.join(await readBody(request)) });
+        case "PUT /api/friends/live/state":
+          return json({ room: await live.push(await readBody(request)) });
+        case "DELETE /api/friends/live":
+          await live.leave();
+          return json({ room: null });
+      }
+      return json({ error: "Не найдено" }, 404);
     }
     if (url.pathname === "/api/friends" || url.pathname.startsWith("/api/friends/")) {
       const friends = new FriendsRepository(env.DB, activeAccount);
