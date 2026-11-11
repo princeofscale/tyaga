@@ -33,9 +33,15 @@ export default function StatsAnalytics({
   workouts,
   settings,
   onOpenExerciseStrength,
+  compact = false,
+  weeks = 16,
+  rangeStart,
 }: {
   workouts: Workout[];
   settings: Settings;
+  compact?: boolean;
+  weeks?: number;
+  rangeStart?: string;
   onOpenExerciseStrength?: (key: string) => void;
 }) {
   const [filterCategory, setFilterCategory] = useState<
@@ -60,8 +66,8 @@ export default function StatsAnalytics({
   );
   const ratios = useMemo(() => calc.calculateRatios(), [calc]);
   const heatmap = useMemo(
-    () => calc.calculateHeatmap(16, settings.timeZone),
-    [calc, settings.timeZone],
+    () => calc.calculateHeatmap(weeks + (compact ? 1 : 0), settings.timeZone),
+    [calc, settings.timeZone, weeks, compact],
   );
 
   const totalVolume = useMemo(() => volumeSummary(workouts).total, [workouts]);
@@ -136,82 +142,93 @@ export default function StatsAnalytics({
       transition={{ duration: 0.25 }}
     >
       {/* 1. Hero Highlights Grid */}
-      <section className="analytics-hero-grid" aria-label="Сводные показатели">
-        <div className="stat-card accent-glow">
-          <div className="stat-card-icon">
-            <Zap size={22} />
+      {!compact && (
+        <section
+          className="analytics-hero-grid"
+          aria-label="Сводные показатели"
+        >
+          <div className="stat-card accent-glow">
+            <div className="stat-card-icon">
+              <Zap size={22} />
+            </div>
+            <div className="stat-card-content">
+              <span className="stat-label">Тоннаж свободных весов</span>
+              <b className="stat-value">
+                {fmt(
+                  totalVolume >= 10000
+                    ? Math.round(totalVolume / 100) / 10
+                    : totalVolume,
+                )}{" "}
+                <small>{totalVolume >= 10000 ? "т" : "кг"}</small>
+              </b>
+              {trends.priorVolume > 0 && trends.growthPct !== 0 && (
+                <span
+                  className={`stat-trend ${trends.growthPct > 0 ? "positive" : "negative"}`}
+                >
+                  {trends.growthPct > 0
+                    ? `+${trends.growthPct}%`
+                    : `${trends.growthPct}%`}{" "}
+                  за 4 нед.
+                </span>
+              )}
+            </div>
           </div>
-          <div className="stat-card-content">
-            <span className="stat-label">Тоннаж свободных весов</span>
-            <b className="stat-value">
-              {fmt(
-                totalVolume >= 10000
-                  ? Math.round(totalVolume / 100) / 10
-                  : totalVolume,
-              )}{" "}
-              <small>{totalVolume >= 10000 ? "т" : "кг"}</small>
-            </b>
-            {trends.priorVolume > 0 && trends.growthPct !== 0 && (
-              <span
-                className={`stat-trend ${trends.growthPct > 0 ? "positive" : "negative"}`}
-              >
-                {trends.growthPct > 0
-                  ? `+${trends.growthPct}%`
-                  : `${trends.growthPct}%`}{" "}
-                за 4 нед.
+
+          <div className="stat-card streak-glow">
+            <div className="stat-card-icon streak">
+              <Flame size={22} />
+            </div>
+            <div className="stat-card-content">
+              <span className="stat-label">Серия тренировок</span>
+              <b className="stat-value">
+                {streak.currentWeekStreak} <small>нед. подряд</small>
+              </b>
+              <span className="stat-sub">
+                Рекорд: {streak.bestWeekStreak} нед.
               </span>
-            )}
+            </div>
           </div>
-        </div>
 
-        <div className="stat-card streak-glow">
-          <div className="stat-card-icon streak">
-            <Flame size={22} />
+          <div className="stat-card">
+            <div className="stat-card-icon">
+              <Clock size={22} />
+            </div>
+            <div className="stat-card-content">
+              <span className="stat-label">Время в зале</span>
+              <b className="stat-value">
+                {totalHours} <small>ч</small> {totalMinutes} <small>мин</small>
+              </b>
+              <span className="stat-sub">
+                ~{avgWorkoutDuration} мин / тренировка
+              </span>
+            </div>
           </div>
-          <div className="stat-card-content">
-            <span className="stat-label">Серия тренировок</span>
-            <b className="stat-value">
-              {streak.currentWeekStreak} <small>нед. подряд</small>
-            </b>
-            <span className="stat-sub">
-              Рекорд: {streak.bestWeekStreak} нед.
-            </span>
-          </div>
-        </div>
 
-        <div className="stat-card">
-          <div className="stat-card-icon">
-            <Clock size={22} />
+          <div className="stat-card">
+            <div className="stat-card-icon">
+              <Layers size={22} />
+            </div>
+            <div className="stat-card-content">
+              <span className="stat-label">Рабочих подходов</span>
+              <b className="stat-value">{totalWorkingSets}</b>
+              <span className="stat-sub">
+                {workouts.length} тренировок всего
+              </span>
+            </div>
           </div>
-          <div className="stat-card-content">
-            <span className="stat-label">Время в зале</span>
-            <b className="stat-value">
-              {totalHours} <small>ч</small> {totalMinutes} <small>мин</small>
-            </b>
-            <span className="stat-sub">
-              ~{avgWorkoutDuration} мин / тренировка
-            </span>
-          </div>
-        </div>
-
-        <div className="stat-card">
-          <div className="stat-card-icon">
-            <Layers size={22} />
-          </div>
-          <div className="stat-card-content">
-            <span className="stat-label">Рабочих подходов</span>
-            <b className="stat-value">{totalWorkingSets}</b>
-            <span className="stat-sub">{workouts.length} тренировок всего</span>
-          </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* 2. Interactive Activity Calendar Heatmap */}
       <section className="panel heatmap-panel">
         <div className="panel-header">
           <div>
             <h2>Календарь активности</h2>
-            <p>16 недель регулярности тренировок</p>
+            <p>
+              {compact
+                ? "Тренировки за выбранный период"
+                : `${weeks} недель регулярности тренировок`}
+            </p>
           </div>
           <div className="heatmap-legend">
             <span>Меньше</span>
@@ -241,7 +258,10 @@ export default function StatsAnalytics({
                 className={`heat-cell lvl-${day.intensity} ${selectedDay?.date === day.date ? "selected" : ""}`}
                 aria-label={`${day.date}: ${day.workingSets} рабочих подходов`}
                 aria-pressed={selectedDay?.date === day.date}
-                disabled={day.date > localDate(new Date(), settings.timeZone)}
+                disabled={
+                  day.date > localDate(new Date(), settings.timeZone) ||
+                  !!(rangeStart && day.date < rangeStart)
+                }
                 title={`${day.date}: ${day.workingSets} подходов (${fmt(day.totalVolume)} кг)`}
                 onClick={() => setSelectedDay(day)}
               />
@@ -272,80 +292,6 @@ export default function StatsAnalytics({
         )}
       </section>
 
-      {/* 3. Muscle Balance & Push/Pull Ratios */}
-      <section className="panel ratios-panel">
-        <div className="panel-header">
-          <div>
-            <h2>Соотношение рабочих подходов</h2>
-            <p>Жимы и тяги, верх и низ тела</p>
-          </div>
-        </div>
-
-        <div className="ratios-grid">
-          <div className="ratio-badge-card">
-            <div className="ratio-icon">
-              <Scale size={20} />
-            </div>
-            <div className="ratio-copy">
-              <span className="ratio-title">Толкай / Тяни</span>
-              {ratios.pushPullRatio !== null ? (
-                <b className="ratio-numbers">
-                  {ratios.pushPullRatio} <small>: 1.0</small>
-                </b>
-              ) : (
-                <b className="ratio-numbers empty-ratio">—</b>
-              )}
-              <span className={`ratio-status ${ratios.pushPullStatus}`}>
-                {ratios.pushPullStatus === "no-data"
-                  ? "Нет данных"
-                  : ratios.pushPullStatus === "balanced"
-                    ? "✓ Отличный баланс"
-                    : ratios.pushPullStatus === "push-dominant"
-                      ? "Преобладают жимы"
-                      : "Преобладают тяги"}
-              </span>
-            </div>
-            <p className="tiny ratio-note">
-              {ratios.pushSets === 0 && ratios.pullSets === 0
-                ? "Запиши тренировку для расчёта баланса"
-                : `${ratios.pushSets} жимовых подх. против ${ratios.pullSets} тяговых`}
-            </p>
-          </div>
-
-          <div className="ratio-badge-card">
-            <div className="ratio-icon">
-              <Dumbbell size={20} />
-            </div>
-            <div className="ratio-copy">
-              <span className="ratio-title">Верх / Низ тела</span>
-              {ratios.upperLowerRatio !== null ? (
-                <b className="ratio-numbers">
-                  {ratios.upperLowerRatio} <small>: 1.0</small>
-                </b>
-              ) : (
-                <b className="ratio-numbers empty-ratio">—</b>
-              )}
-              <span
-                className={`ratio-status ${ratios.upperLowerStatus === "no-data" ? "no-data" : "info"}`}
-              >
-                {ratios.upperLowerStatus === "no-data"
-                  ? "Нет данных"
-                  : ratios.upperLowerStatus === "upper-dominant"
-                    ? "Акцент на верх тела"
-                    : ratios.upperLowerStatus === "lower-dominant"
-                      ? "Акцент на ноги"
-                      : "Гармоничное распределение"}
-              </span>
-            </div>
-            <p className="tiny ratio-note">
-              {ratios.upperSets === 0 && ratios.lowerSets === 0
-                ? "Запиши тренировку для анализа распределения"
-                : `${ratios.upperSets} подх. на верх тела против ${ratios.lowerSets} на ноги`}
-            </p>
-          </div>
-        </div>
-      </section>
-
       {/* 4. Personal Records (PR) Hall of Fame */}
       <section className="panel pr-panel">
         <div className="panel-header">
@@ -355,7 +301,11 @@ export default function StatsAnalytics({
             </div>
             <div>
               <h2>Зал личных рекордов</h2>
-              <p>Твои лучшие результаты за всю историю тренировок</p>
+              <p>
+                {compact
+                  ? "Лучшие подходы за выбранный период"
+                  : "Лучшие подходы за всю историю"}
+              </p>
             </div>
           </div>
         </div>

@@ -7,13 +7,14 @@ import {
 } from "../src/domain/FriendsService";
 import type { Workout } from "../src/lib/types";
 import { AuthError } from "./AccountService";
-import { InputError, str } from "./validation";
+import { InputError, str, num } from "./validation";
 
 type SocialRow = {
   invite_code: string;
   gym: string;
   focus: string;
   active_until: number;
+  weekly_target: number;
 };
 type ConnectionRow = Omit<SocialRow, "invite_code"> & {
   id: string;
@@ -60,7 +61,7 @@ export class FriendsRepository {
     const connections = await this.db
       .prepare(
         `SELECT a.id, a.display_name, f.sender_id, f.status,
-      COALESCE(p.gym, '') AS gym, COALESCE(p.focus, '') AS focus, COALESCE(p.active_until, 0) AS active_until,
+      COALESCE(p.weekly_target,3) AS weekly_target, COALESCE(p.gym, '') AS gym, COALESCE(p.focus, '') AS focus, COALESCE(p.active_until, 0) AS active_until,
       (SELECT COUNT(*) FROM workouts w WHERE w.owner_id = a.platform_id AND w.date >= ? AND w.date <= ?) AS week_workouts
       FROM friendships f JOIN accounts a ON a.id = CASE WHEN f.low_id = ? THEN f.high_id ELSE f.low_id END
       LEFT JOIN social_profiles p ON p.account_id = a.id
@@ -108,6 +109,7 @@ export class FriendsRepository {
       focus: row.focus,
       activeUntil: row.active_until,
       weekWorkouts: row.week_workouts,
+      weeklyTarget: row.weekly_target,
     });
     return {
       me: {
@@ -118,6 +120,7 @@ export class FriendsRepository {
         focus: me.focus,
         activeUntil: me.active_until,
         weekWorkouts: myCount?.n ?? 0,
+        weeklyTarget: me.weekly_target,
       },
       friends: connections.results
         .filter((row) => row.status === "accepted")
@@ -147,6 +150,14 @@ export class FriendsRepository {
       today,
       serverTime: now.getTime(),
     };
+  }
+
+  async goal(value: unknown) {
+    await this.profile();
+    await this.db
+      .prepare("UPDATE social_profiles SET weekly_target=? WHERE account_id=?")
+      .bind(num(value, 1, 14, true), this.account.id)
+      .run();
   }
 
   /** Creates a pending invitation without auto-accepting reverse requests; limits guessing. */

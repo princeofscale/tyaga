@@ -1,0 +1,515 @@
+/* Daily flow: actionable summaries, recoverable edits and consensual shared sessions. */
+.daily-shortcuts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 24px;
+}
+.daily-shortcuts > button {
+  display: flex;
+  align-items: center;
+  text-align: left;
+  gap: 14px;
+  padding: 22px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  min-width: 0;
+}
+.daily-shortcuts > button > svg:first-child {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.daily-shortcuts > button > span {
+  flex: 1;
+  min-width: 0;
+}
+.daily-shortcuts b {
+  display: block;
+  font-size: 0.86rem;
+}
+.daily-shortcuts small {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.7rem;
+  color: var(--muted);
+  line-height: 1.7;
+}
+.tools-hub {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.tools-hub h3 {
+  margin: 0 0 10px;
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-weight: 650;
+  letter-spacing: 0.06em;
+}
+.tools-hub section > button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  text-align: left;
+  border-top: 1px solid var(--line);
+  padding: 16px 0;
+  min-height: 64px;
+}
+.tools-hub button > svg:first-child {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.tools-hub button > span {
+  min-width: 0;
+  flex: 1;
+}
+.tools-hub b {
+  font-size: 0.85rem;
+}
+.tools-hub small {
+  display: block;
+  font-size: 0.7rem;
+  line-height: 1.6;
+  color: var(--muted);
+  margin-top: 5px;
+}
+.progress-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.overview-period {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+.overview-period h2 {
+  font-size: 1.1rem;
+  margin: 0 0 8px;
+}
+.overview-period p {
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.7;
+  margin: 0;
+}
+.muscles-tabs {
+  display: flex;
+  gap: 8px;
+}
+.muscles-tabs button {
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  min-height: 42px;
+  padding: 10px 14px;
+  font-size: 0.76rem;
+}
+.muscles-tabs button[aria-selected="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+.movement-balance h2 {
+  font-size: 0.95rem;
+  margin: 0 0 16px;
+}
+.movement-balance > div {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.movement-balance > div > p {
+  font-size: 0.74rem;
+  color: var(--muted);
+  margin: 0;
+}
+.movement-balance strong {
+  display: block;
+  font-size: 1.7rem;
+  color: var(--text);
+  margin-top: 9px;
+}
+.movement-balance > .tiny {
+  margin-top: 18px;
+}
+.weight-sync-panel {
+  padding: 16px 20px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+}
+.weight-sync-panel > div[role="status"] {
+  font-size: 0.78rem;
+  flex: 1;
+  line-height: 1.6;
+}
+.weight-sync-actions {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.weight-sync-actions button {
+  font-size: 0.72rem;
+  min-height: 36px;
+}
+.weight-sync-panel > p {
+  width: 100%;
+  margin: 0;
+  line-height: 1.8;
+}
+.weight-conflict {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-top: 12px;
+  width: 100%;
+  border-top: 1px solid var(--line);
+}
+.weight-conflict > b {
+  width: 100%;
+  font-size: 0.76rem;
+}
+.weight-conflict .button {
+  font-size: 0.7rem;
+  padding: 10px 14px;
+}
+.workout-undo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 18px;
+  margin-bottom: 20px;
+  border: 1px solid var(--accent-line);
+  border-radius: 14px;
+  background: var(--surface);
+  font-size: 0.78rem;
+}
+.workout-undo .button {
+  font-size: 0.73rem;
+  padding: 10px 12px;
+  min-height: 42px;
+}
+.exercise-more-tools {
+  margin: 8px 0 16px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.exercise-more-tools > summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  list-style: none;
+}
+.exercise-more-tools > summary::after {
+  content: "＋";
+  margin-left: auto;
+}
+.exercise-more-tools[open] > summary::after {
+  content: "−";
+}
+.exercise-more-tools .exercise-toolbar-pills {
+  margin: 0 0 12px;
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+.workout-athletic .set-row input {
+  min-height: 44px;
+}
+.workout-athletic .set-check {
+  min-height: 44px;
+  min-width: 44px;
+}
+.meetups-panel {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+  padding: 24px;
+}
+.meetups-panel .section-head {
+  align-items: center;
+  flex-wrap: wrap;
+}
+.meetups-panel .section-head p {
+  font-size: 0.72rem;
+  color: var(--muted);
+  line-height: 1.8;
+  margin: 7px 0 0;
+}
+.meetups-panel .section-head .button {
+  font-size: 0.74rem;
+  padding: 10px 14px;
+}
+.meetup-empty {
+  font-size: 0.76rem;
+  color: var(--muted);
+  line-height: 1.8;
+  margin: 0;
+  padding-top: 12px;
+}
+.meetup-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.meetup-card {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  background: var(--bg);
+}
+.meetup-card h3 {
+  font-size: 1rem;
+  margin: 16px 0 7px;
+  overflow-wrap: anywhere;
+}
+.meetup-card > p {
+  font-size: 0.7rem;
+  color: var(--muted);
+  line-height: 1.8;
+  margin: 5px 0;
+}
+.meetup-date {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.7rem;
+  color: var(--accent);
+}
+.meetup-date span {
+  font-size: 0.61rem;
+  color: var(--muted);
+  margin-left: auto;
+}
+.meetup-gym {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.meetup-members {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 20px 0;
+  padding-block: 16px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.meetup-members > div {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+.meetup-members b {
+  font-size: 0.74rem;
+}
+.meetup-members span {
+  font-size: 0.66rem;
+  color: var(--muted);
+  margin-left: auto;
+}
+.meetup-members small {
+  width: 100%;
+  font-size: 0.65rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.meetup-summary {
+  display: flex;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--accent-line);
+  border-radius: 12px;
+  background: var(--accent-soft);
+  margin-bottom: 16px;
+}
+.meetup-summary > svg {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.meetup-summary b {
+  display: block;
+  font-size: 0.75rem;
+}
+.meetup-summary small {
+  display: block;
+  font-size: 0.65rem;
+  color: var(--muted);
+  margin-top: 7px;
+}
+.meetup-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.meetup-actions .button {
+  font-size: 0.7rem;
+  padding: 10px 12px;
+  min-height: 44px;
+}
+.meetup-actions label {
+  width: 100%;
+  font-size: 0.72rem;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.meetup-actions input {
+  width: 100%;
+  font-size: 1rem;
+}
+.meetup-actions > .tiny {
+  width: 100%;
+  margin: 0;
+}
+.meetup-actions > .text-button {
+  font-size: 0.65rem;
+  min-height: 40px;
+}
+.meetup-form fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+.meetup-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+.meetup-form input,
+.meetup-form select {
+  min-height: 46px;
+  width: 100%;
+  font-size: 1rem;
+  min-width: 0;
+}
+.meetup-form p {
+  font-size: 0.75rem;
+  line-height: 1.8;
+  color: var(--muted);
+}
+.meetup-form legend {
+  font-size: 0.78rem;
+  padding: 0;
+  margin-bottom: 12px;
+}
+.meetup-invitees {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.meetup-invitees label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  min-height: 44px;
+  font-size: 0.8rem;
+  gap: 10px;
+}
+.meetup-invitees input {
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
+}
+.weekly-goal-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  margin: 18px 0;
+  flex-wrap: wrap;
+}
+.weekly-goal-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 80px;
+  flex: 1;
+  font-size: 0.68rem;
+}
+.weekly-goal-form input {
+  font-size: 1rem;
+  min-height: 42px;
+  width: 100%;
+}
+.weekly-goal-form .button {
+  font-size: 0.65rem;
+  padding: 10px 12px;
+  min-height: 42px;
+}
+@media (max-width: 760px) {
+  .meetup-grid {
+    grid-template-columns: 1fr;
+  }
+  .overview-period {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .progress-overview .progress-metric:first-child {
+    grid-column: auto;
+  }
+  .progress-overview .progress-metrics {
+    grid-template-columns: 1fr;
+  }
+  .daily-shortcuts {
+    gap: 10px;
+  }
+  .daily-shortcuts > button {
+    padding: 16px;
+    gap: 10px;
+  }
+  .daily-shortcuts b {
+    font-size: 0.75rem;
+  }
+  .daily-shortcuts small {
+    font-size: 0.65rem;
+  }
+  .daily-shortcuts > button > svg:last-child {
+    display: none;
+  }
+}
+@media (max-width: 480px) {
+  .daily-shortcuts {
+    grid-template-columns: 1fr;
+  }
+  .daily-shortcuts > button {
+    min-height: 78px;
+  }
+  .workout-undo {
+    align-items: flex-start;
+    padding: 12px;
+    font-size: 0.7rem;
+  }
+  .meetups-panel {
+    padding: 18px;
+  }
+  .meetup-card {
+    padding: 16px;
+  }
+  .weight-sync-panel {
+    padding: 14px 16px;
+  }
+}
+.workout-undo { position: sticky; top: calc(var(--sat) + 8px); z-index: 15; box-shadow: 0 8px 24px #0003; }

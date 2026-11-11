@@ -46,10 +46,13 @@ export class BodyweightTracker {
   constructor(
     private accountId: string,
     private timeZone = browserTimeZone(),
+    private adapter?: Pick<Storage,"getItem"|"setItem">,
   ) {
     this.storageKey = `tyaga-bodyweight:${accountId}`;
     this.goalKey = `tyaga-bodyweight-goal:${accountId}`;
   }
+
+  private get storage() { return this.adapter ?? localStorage; }
 
   /** Accepts Russian decimal input without accepting trailing junk or non-finite values. */
   static parseWeight(value: string): number {
@@ -73,8 +76,8 @@ export class BodyweightTracker {
   /** Reports unreadable/corrupt storage before a mutation can replace existing bytes. */
   public storageIssue(): string {
     try {
-      const entries = localStorage.getItem(this.storageKey),
-        goal = localStorage.getItem(this.goalKey);
+      const entries = this.storage.getItem(this.storageKey),
+        goal = this.storage.getItem(this.goalKey);
       if (entries !== null) {
         const data: unknown = JSON.parse(entries);
         if (!Array.isArray(data) || !data.every((e) => this.isEntry(e)))
@@ -95,7 +98,7 @@ export class BodyweightTracker {
 
   public getEntries(): BodyweightEntry[] {
     try {
-      const raw = localStorage.getItem(this.storageKey);
+      const raw = this.storage.getItem(this.storageKey);
       if (!raw) return [];
       const parsed: unknown = JSON.parse(raw);
       if (
@@ -134,7 +137,7 @@ export class BodyweightTracker {
 
   public saveEntries(entries: BodyweightEntry[]): void {
     try {
-      localStorage.setItem(this.storageKey, JSON.stringify(entries));
+      this.storage.setItem(this.storageKey, JSON.stringify(entries));
     } catch {
       throw new Error(
         "Не удалось сохранить вес на устройстве. Данные в форме сохранены; повтори попытку.",
@@ -304,7 +307,7 @@ export class BodyweightTracker {
 
   public getGoal(): BodyweightGoal {
     try {
-      const raw = localStorage.getItem(this.goalKey);
+      const raw = this.storage.getItem(this.goalKey);
       if (raw) {
         const parsed: unknown = JSON.parse(raw);
         if (this.isGoal(parsed)) return parsed;
@@ -341,7 +344,7 @@ export class BodyweightTracker {
     const startWeightKg = currentStats ? currentStats.currentKg : null;
     const goal: BodyweightGoal = { targetWeightKg, startWeightKg };
     try {
-      localStorage.setItem(this.goalKey, JSON.stringify(goal));
+      this.storage.setItem(this.goalKey, JSON.stringify(goal));
     } catch {
       throw new Error(
         "Не удалось сохранить вес на устройстве. Данные в форме сохранены; повтори попытку.",

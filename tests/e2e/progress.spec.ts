@@ -1,3 +1,4 @@
+import { mockWeights } from "./fixtures/bodyweight";
 import { test, expect, type Page } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 import { makeWorkout, DEFAULT_SETTINGS } from "../../src/lib/model";
@@ -81,6 +82,7 @@ async function setup(page: Page, empty = false) {
     unexpected.push(path);
     return route.fulfill({ status: 503, body: "{}" });
   });
+  await mockWeights(page,profile.id);
   await page.goto("/");
   await page
     .getByRole("navigation")
@@ -99,7 +101,7 @@ async function weightTab(page: Page) {
 }
 async function shot(page: Page, name: string) {
   await page.evaluate(() => document.fonts.ready.then(() => undefined));
-  const path = page.locator(".progress-chart path");
+  const path = page.locator(".progress-chart path").first();
   if (await path.count())
     await expect(path).toHaveCSS("stroke-dashoffset", "0px");
   await mkdir("artifacts/progress", { recursive: true });
@@ -128,7 +130,7 @@ test("bodyweight: remote goal keeps a compact chart, long notes and point select
     "230px",
   );
   await page
-    .getByLabel("Точка графика", { exact: true })
+    .getByLabel("Выбрать запись", { exact: true })
     .selectOption("2026-11-08");
   await expect(page.locator(".progress-chart-readout strong")).toContainText(
     "60,5",
@@ -225,11 +227,11 @@ test("statistics and strength share volume rules, keyboard navigation and settle
 }) => {
   const clean = await setup(page);
   await page.emulateMedia({ reducedMotion: "no-preference" });
-  await page.getByRole("tab", { name: "Статистика", exact: true }).click();
+  await page.getByRole("tab", { name: "Обзор", exact: true }).click();
   await expect(page.locator(".progress-analytics")).toHaveCSS("opacity", "1");
   await expect(
-    page.locator(".stat-card").filter({ hasText: "Тоннаж свободных весов" }),
-  ).toContainText("790");
+    page.locator(".progress-metric").filter({ hasText: "Нагрузка" }),
+  ).toContainText("0,8");
   for (const width of [390, 1440]) {
     await page.setViewportSize({ width, height: 1000 });
     await noOverflow(page);
@@ -245,7 +247,7 @@ test("statistics and strength share volume rules, keyboard navigation and settle
     "5 повторений",
   );
   await page
-    .getByLabel("Точка графика", { exact: true })
+    .getByLabel("Выбрать запись", { exact: true })
     .selectOption("workout-0");
   await expect(page.locator(".progress-chart-readout b")).toContainText(
     "8 повторений",

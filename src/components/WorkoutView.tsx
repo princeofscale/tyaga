@@ -1,5 +1,6 @@
+import { WorkoutUndo } from "../domain/WorkoutUndo";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { m, useReducedMotion } from "motion/react";
+import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import {
   Check,
   ChevronDown,
@@ -211,6 +212,7 @@ export default function WorkoutView({
   onExport,
   onMinimize,
 }: Props) {
+  const [undoError,setUndoError] = useState("");
   const reducedMotion = useReducedMotion();
   const [now, setNow] = useState(Date.now());
   const [announcement, setAnnouncement] = useState("");
@@ -492,10 +494,12 @@ export default function WorkoutView({
           </button>
         </div>
       ) : null}
+        <AnimatePresence initial={false}>{!!draft.removals?.length && <m.div className="workout-undo" key="undo" initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} exit={{opacity:0,y:8}} role="status"><span>Удаление можно отменить · {draft.removals.length}</span><button className="button secondary" onClick={()=>{try{update(WorkoutUndo.restore(draft));setUndoError("");}catch(e){setUndoError((e as Error).message);}}}><RotateCcw size={16}/>Отменить удаление</button></m.div>}</AnimatePresence>
+      {undoError && <p className="form-error" role="alert">{undoError}</p>}
       <fieldset
         className="workout-main"
         disabled={saving}
-        aria-label="Поля тренировки"
+        aria-label="Поля тренировки" onKeyDown={event=>{if(event.key!=="Enter"||!(event.target instanceof HTMLInputElement)||event.target.type!=="number")return;event.preventDefault();const inputs=Array.from(event.currentTarget.querySelectorAll<HTMLInputElement>('input[type="number"]:not(:disabled)')).filter(input=>input.getClientRects().length>0);const index=inputs.indexOf(event.target);inputs[index+1]?.focus();inputs[index+1]?.select();}}
       >
         {!w.exercises.length ? (
           <p className="workout-empty">
@@ -678,10 +682,7 @@ export default function WorkoutView({
                   aria-label={`Убрать ${entryName(we)}`}
                   title="Убрать упражнение"
                   onClick={() =>
-                    setWorkout({
-                      ...w,
-                      exercises: w.exercises.filter((_, i) => i !== ei),
-                    })
+                    update(WorkoutUndo.exercise(draft,ei))
                   }
                 >
                   <Trash2 size={16} />
@@ -689,7 +690,7 @@ export default function WorkoutView({
               </div>
 
               {/* Dedicated Compact Toolbar Pills Row (Always inside card, never overflows) */}
-              <div className="exercise-toolbar-pills">
+              <details className="exercise-more-tools"><summary>Ещё для упражнения</summary><div className="exercise-toolbar-pills">
                 <button
                   type="button"
                   className="quick-calc-btn"
@@ -767,7 +768,7 @@ export default function WorkoutView({
                     <span>1ПМ</span>
                   </button>
                 )}
-              </div>
+              </div></details>
 
               {/* Upgraded Anatomy Drawer */}
               {expandedAnatomy === we.exerciseId && (
@@ -1259,7 +1260,7 @@ export default function WorkoutView({
                   className="add-set remove-last"
                   disabled={we.sets.length <= 1}
                   aria-label="Убрать последний подход"
-                  onClick={() => patchExercise(ei, { sets: we.sets.slice(0, -1) })}
+                  onClick={() => update(WorkoutUndo.set(draft,ei))}
                 >
                   <Minus size={16} />
                 </button>
@@ -1420,7 +1421,7 @@ export default function WorkoutView({
         </details>
       </fieldset>
       {resting ? (
-        <section className="rest-bar" aria-label="Таймер отдыха">
+      <section className="rest-bar" aria-label="Таймер отдыха">
           <div className="rest-progress">
             <span
               style={{

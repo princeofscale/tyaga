@@ -151,6 +151,7 @@ test("save/reload/edit/export/settings/repeat preserve the actual workout and ti
     .getByRole("navigation")
     .getByRole("button", { name: "Прогресс", exact: true })
     .click();
+  await page.getByRole("tab", { name: "Мышцы", exact: true }).click();
   await page.getByRole("button", { name: "20 мин", exact: true }).click();
   await expect(page.locator(".plan-item")).not.toHaveCount(0);
   expect(await page.locator(".plan-item").count()).toBeLessThanOrEqual(2);
@@ -500,6 +501,7 @@ test("anatomy atlas supports mouse, keyboard, mobile and enlarged text", async (
     .getByRole("navigation")
     .getByRole("button", { name: "Прогресс", exact: true })
     .click();
+  await page.getByRole("tab", { name: "Мышцы", exact: true }).click();
   await page.getByRole("tab", { name: "Карта мышц", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Анатомия движения", exact: true }),

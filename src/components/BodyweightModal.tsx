@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { quantity } from "../lib/quantity";
+import { weightClient } from "../services/BodyweightApi";
+import { useEffect, useMemo, useState, useRef, useId, type FormEvent } from "react";
 import { m, useReducedMotion } from "motion/react";
 import { Check, Pencil, Plus, Scale, Target, Trash2 } from "lucide-react";
 import {
@@ -7,6 +9,9 @@ import {
 } from "../domain/BodyweightTracker";
 import { addCalendarDays, browserTimeZone, localDate } from "../lib/calendar";
 import { dateLabel, fmt } from "../lib/model";
+import { BodyweightJournal } from "../services/BodyweightJournal";
+import { saveFile } from "../lib/saveFile";
+import { cloudState, syncCloud } from "../device/cloudSync";
 import ProgressChart from "./ProgressChart";
 import "../styles/progress.css";
 
@@ -19,10 +24,27 @@ export function BodyweightModal({
   timeZone?: string;
   onClose?: () => void;
 }) {
-  const tracker = useMemo(
-    () => new BodyweightTracker(accountId, timeZone),
-    [accountId, timeZone],
+  const [weightCloud, setWeightCloud] = useState(() =>
+    import.meta.env.MODE === "device" ? cloudState() : null,
   );
+  const weightBinding =
+    import.meta.env.MODE === "device" ? (weightCloud?.email ?? "") : undefined;
+  const weightToken = weightCloud?.token;
+  const journal = useMemo(
+    () =>
+      new BodyweightJournal(accountId, timeZone, weightClient(), weightBinding),
+    [accountId, timeZone, weightBinding, weightToken],
+  );
+  useEffect(() => {
+    if (import.meta.env.MODE !== "device") return;
+    const changed = () => setWeightCloud(cloudState());
+    window.addEventListener("tyaga:cloud", changed);
+    return () => window.removeEventListener("tyaga:cloud", changed);
+  }, []);
+  const tracker = journal.tracker;
+  const weightInputId=useId();
+  const weightInputRef=useRef<HTMLInputElement>(null);
+  const [, refreshSync] = useState(0);
   const [entries, setEntries] = useState(() => tracker.getEntries());
   const [goal, setGoal] = useState(() => tracker.getGoal());
   const [weight, setWeight] = useState(
@@ -46,10 +68,37 @@ export function BodyweightModal({
     setGoal(tracker.getGoal());
   };
   useEffect(() => {
-    const sync = () => reload();
-    window.addEventListener("storage", sync);
-    return () => window.removeEventListener("storage", sync);
-  }, [tracker]);
+    const changed = () => {
+      reload();
+      refreshSync((n) => n + 1);
+    };
+    const off = journal.subscribe(changed);
+    const sync = () => {
+      if (
+        document.visibilityState === "visible" &&
+        (import.meta.env.MODE !== "device" || cloudState())
+      )
+        void journal.sync();
+    };
+    const storage = () => {
+      journal.reload();
+      sync();
+    };
+    window.addEventListener("storage", storage);
+    window.addEventListener("online", sync);
+    window.addEventListener("tyaga:synced", sync);
+    document.addEventListener("visibilitychange", sync);
+    const timer = window.setInterval(sync, 30000);
+    sync();
+    return () => {
+      off();
+      clearInterval(timer);
+      window.removeEventListener("storage", storage);
+      window.removeEventListener("online", sync);
+      window.removeEventListener("tyaga:synced", sync);
+      document.removeEventListener("visibilitychange", sync);
+    };
+  }, [journal]);
   const stats = useMemo(() => tracker.getStats(), [entries, tracker]);
   const rate = useMemo(() => tracker.getWeeklyRate(), [entries, tracker]);
   const trend = useMemo(() => tracker.getTrend(), [entries, tracker]);
@@ -69,6 +118,8 @@ export function BodyweightModal({
       action();
       reload();
       setNotice(message);
+      if (import.meta.env.MODE !== "device" || cloudState())
+        void journal.sync();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось сохранить");
     }
@@ -84,7 +135,7 @@ export function BodyweightModal({
     setWeight(String(entry.weightKg));
     setDate(entry.date);
     setNote(entry.note ?? "");
-    document.getElementById("bw-weight")?.focus();
+    weightInputRef.current?.focus();
   };
   const step = (delta: number) => {
     try {
@@ -109,6 +160,86 @@ export function BodyweightModal({
         </div>
         <Scale size={25} />
       </div>
+      <section className="weight-sync-panel" aria-label="Сохранение веса">
+        <div role="status">
+          {journal.syncing
+            ? "Синхронизируем вес…"
+            : import.meta.env.MODE === "device" && !cloudState()
+              ? "Сохранено на телефоне · облако не подключено"
+            : journal.conflicts.length
+              ? "Нужно выбрать версию замера"
+              : journal.pendingCount
+                ? `${quantity(journal.pendingCount,"изменение","изменения","изменений")} ${journal.pendingCount===1?"ждёт":"ждут"} отправки`
+                : journal.lastSyncedAt
+                  ? "Сохранено в аккаунте"
+                  : journal.error ? "Нет связи с аккаунтом" : "Загружаем вес из аккаунта…"}
+        </div>
+        <div className="weight-sync-actions">
+          <button
+            className="text-button"
+            disabled={journal.syncing}
+            onClick={async () => {
+              await journal.sync();
+              if (import.meta.env.MODE === "device") {
+                await syncCloud();
+                await journal.sync();
+              }
+            }}
+          >
+            Синхронизировать
+          </button>
+          <button
+            className="text-button"
+            onClick={() =>
+              void saveFile(
+                "tyaga-bodyweight.json",
+                JSON.stringify(journal.export(), null, 2),
+                "application/json",
+              )
+            }
+          >
+            Экспорт веса
+          </button>
+        </div>
+        {journal.error && !error && (
+          <p className="form-error" role="alert">
+            {journal.error} Изменения на устройстве сохранены.
+          </p>
+        )}
+        {import.meta.env.MODE === "device" && (
+          <p className="tiny">
+            {cloudState()
+              ? "Облако подключено. Вес синхронизируется с аккаунтом напрямую."
+              : "Для переноса на другие устройства подключи облако в профиле."}
+          </p>
+        )}
+        {journal.conflicts.map((key) => (
+          <div className="weight-conflict" key={key}>
+            <b>
+              {key === "goal" ? "Цель по весу" : `Взвешивание ${key.slice(7)}`}{" "}
+              изменено на другом устройстве.
+            </b>
+            <button
+              className="button secondary"
+              onClick={() => {
+                journal.resolve(key, false);
+                void journal.sync();
+              }}
+            >
+              Принять версию из аккаунта
+            </button>
+            <button
+              className="button primary"
+              onClick={() => {
+                journal.resolve(key, true);
+                void journal.sync();
+              }}
+            >
+              Сохранить мою версию
+            </button>
+          </div>
+        ))}
+      </section>
       <div className="progress-metrics">
         <article className="progress-metric accent">
           <span>Последний замер</span>
@@ -159,7 +290,9 @@ export function BodyweightModal({
           <div className="progress-card-head">
             <div>
               <h3>Динамика веса</h3>
-              <p>Точки — замеры. Линия — сглаженный вес.</p>
+              <p>
+                Сплошная линия соединяет взвешивания. Пунктир — сглаживание.
+              </p>
             </div>
             <div
               className="progress-period"
@@ -265,10 +398,10 @@ export function BodyweightModal({
           <h3 id="weight-form-title">Записать вес</h3>
           <p>Один замер на дату. Повторное сохранение обновит запись.</p>
           <form onSubmit={save}>
-            <label htmlFor="bw-weight">
+            <label htmlFor={weightInputId}>
               Вес, кг
               <input
-                id="bw-weight"
+                id={weightInputId} ref={weightInputRef} className="weight-number-input"
                 inputMode="decimal"
                 autoComplete="off"
                 value={weight}
@@ -328,8 +461,9 @@ export function BodyweightModal({
             </p>
           )}
           <p className="tiny">
-            Замеры и цель хранятся в этом браузере, отдельно для аккаунта.
-            Облачной синхронизации веса пока нет.
+            Вес и цель сохраняются отдельно от профиля атлета. Без сети
+            изменения остаются на устройстве и отправляются при восстановлении
+            связи.
           </p>
         </section>
       </div>
