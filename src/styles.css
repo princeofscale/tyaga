@@ -11171,3 +11171,23 @@ body::before {
   font-size: 0.78rem;
   color: var(--muted);
 }
+
+/* Explicit execution context and machine identity. */
+.execution-fields, .set-context { margin: .6rem 0; padding: .5rem .75rem; border: 1px solid var(--line); border-radius: 8px; }
+.execution-fields summary, .set-context summary { cursor: pointer; color: var(--muted); font-size: .8rem; }
+.execution-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .75rem; margin-top:.75rem; }
+.execution-grid label, .machine-manager label { display:flex; flex-direction:column; gap:.35rem; min-width:0; font-size:.8rem; }
+.execution-grid input, .machine-manager input { width:100%; min-width:0; }
+.machine-list { display:flex; flex-direction:column; gap:.5rem; margin:1rem 0; }
+.machine-list > div { display:flex; flex-direction:column; align-items:flex-start; border-bottom:1px solid var(--line); padding:.5rem 0; }
+.machine-picker { display:flex; flex-direction:column; gap:.4rem; margin:.75rem 0; }
+.set-context .execution-grid { padding:.5rem 0; }
+@media(max-width:520px) { .execution-grid { grid-template-columns:minmax(0,1fr); } }
+.pose-analysis { display:flex; flex-direction:column; gap:.8rem; }
+.pose-preview { position:relative; width:100%; background:#111512; border-radius:8px; overflow:hidden; }
+.pose-preview video { width:100%; display:block; max-height:480px; object-fit:contain; }
+.pose-preview canvas { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; pointer-events:none; }
+.pose-joints { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.75rem; }
+.pose-joints > div { display:flex; flex-direction:column; gap:.4rem; padding:.75rem; border:1px solid var(--line); border-radius:8px; }
+.pose-joints small { color:var(--muted); }
+@media(max-width:520px){.pose-joints{grid-template-columns:minmax(0,1fr);}}

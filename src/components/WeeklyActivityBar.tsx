@@ -1,3 +1,6 @@
+import { AnalyticsFacts } from "../domain/AnalyticsFacts";
+import { calendarWeek, addCalendarDays, localDate } from "../lib/calendar";
+import { TrainingVolume } from "../domain/TrainingVolume";
 import { useMemo } from "react";
 import { Check, Flame, Trophy, Calendar } from "lucide-react";
 import { type Workout, fmt } from "../lib/model";
@@ -11,12 +14,9 @@ export default function WeeklyActivityBar({
 }) {
   const weekData = useMemo(() => {
     const now = new Date();
-    // Find current Monday
-    const dayOfWeek = (now.getDay() + 6) % 7; // 0 = Mon, 6 = Sun
-    const monday = new Date(now);
-    monday.setDate(now.getDate() - dayOfWeek);
-    monday.setHours(0, 0, 0, 0);
-
+    const today = localDate(now,timeZone);
+    const monday = calendarWeek(today).from;
+    const eligible = new AnalyticsFacts(workouts,{from:monday,timeZone,now}).workouts();
     const days: {
       dateStr: string;
       dayName: string;
@@ -33,34 +33,18 @@ export default function WeeklyActivityBar({
     let totalWorkingSets = 0;
 
     for (let i = 0; i < 7; i++) {
-      const d = new Date(monday);
-      d.setDate(monday.getDate() + i);
-      const yyyy = d.getFullYear();
-      const mm = String(d.getMonth() + 1).padStart(2, "0");
-      const dd = String(d.getDate()).padStart(2, "0");
-      const dateStr = `${yyyy}-${mm}-${dd}`;
-
-      const isToday = i === dayOfWeek;
-      const dayWorkouts = workouts.filter((w) => w.date === dateStr);
-
-      let dayTonnage = 0;
-      for (const w of dayWorkouts) {
-        totalWorkouts += 1;
-        for (const e of w.exercises) {
-          for (const s of e.sets) {
-            if (s.done) {
-              dayTonnage += (s.weight || 0) * (s.reps || 0);
-              if (!s.warmup) totalWorkingSets += 1;
-            }
-          }
-        }
-      }
+      const dateStr = addCalendarDays(monday,i);
+      const isToday = dateStr === today;
+      const dayWorkouts = eligible.filter((w)=>w.date===dateStr);
+      totalWorkouts += dayWorkouts.length;
+      const dayTonnage = TrainingVolume.summarize(dayWorkouts,"working",{timeZone,now}).total;
+      totalWorkingSets += new AnalyticsFacts(dayWorkouts,{timeZone,now}).sets().length;
       totalTonnage += dayTonnage;
 
       days.push({
         dateStr,
         dayName: dayNames[i],
-        dayNum: d.getDate(),
+        dayNum: Number(dateStr.slice(-2)),
         isToday,
         workouts: dayWorkouts,
         tonnage: dayTonnage,

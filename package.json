@@ -18,7 +18,8 @@
     "catalog:import": "node scripts/import-wger.mjs",
     "catalog:localize": "node scripts/localize-wger.mjs",
     "catalog:review": "tsx scripts/review-wger.ts",
-    "pretest": "node scripts/build-worker.mjs"
+    "pretest": "node scripts/build-worker.mjs",
+    "test:e2e:prepare": "node scripts/fetch-pose-test-model.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.3",
@@ -28,6 +29,7 @@
     "@fontsource-variable/manrope": "^5.3.0",
     "@fontsource-variable/oswald": "5.3.0",
     "@fontsource-variable/unbounded": "^5.3.0",
+    "@mediapipe/tasks-vision": "0.10.35",
     "@tanstack/react-query": "^5.104.1",
     "drizzle-orm": "^0.44.5",
     "fflate": "^0.8.3",

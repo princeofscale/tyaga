@@ -263,3 +263,12 @@ export const challengeParticipants = sqliteTable(
     index("idx_challenge_participant").on(t.accountId, t.challengeId),
   ],
 );
+
+export const machineModels = sqliteTable("machine_models", {
+  ownerId: text("owner_id").notNull(), id: text("id").notNull(), payload: text("payload").notNull(),
+}, (t) => [primaryKey({ columns: [t.ownerId, t.id] })]);
+export const machineInstances = sqliteTable("machine_instances", {
+  ownerId: text("owner_id").notNull(), id: text("id").notNull(), modelId: text("model_id").notNull(),
+  payload: text("payload").notNull(), revision: integer("revision").notNull().default(1),
+  active: integer("active").notNull().default(1), updatedAt: text("updated_at").notNull(),
+}, (t) => [primaryKey({ columns: [t.ownerId, t.id] }), index("idx_machines_owner").on(t.ownerId, t.active)]);

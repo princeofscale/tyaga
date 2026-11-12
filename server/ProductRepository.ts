@@ -1,3 +1,4 @@
+import { MachineRepository } from "./MachineRepository";
 import type { Exercise, ProductData, Routine } from "../src/lib/types";
 import { InputError } from "./validation";
 
@@ -30,6 +31,7 @@ export class ProductRepository {
         .bind(this.owner, this.owner),
     ]);
     return {
+      machines: await new MachineRepository(this.db, this.owner).read(),
       routines: (routines.results as {payload:string;revision:number;updated_at:string}[]).map((r) => ({
         ...JSON.parse(r.payload),
         revision: r.revision,

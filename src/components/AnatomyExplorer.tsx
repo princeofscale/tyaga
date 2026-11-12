@@ -1,3 +1,4 @@
+import type { AnalysisOptions } from "../domain/TrainingAnalytics";
 import { useMemo, useState } from "react";
 import { m, AnimatePresence } from "motion/react";
 import { Activity, BookOpen, Dumbbell, Flame, Info, Target, Sparkles, AlertCircle } from "lucide-react";
@@ -35,7 +36,7 @@ export default function AnatomyExplorer({
 }: {
   loads: MuscleLoad[];
   workouts: Workout[];
-  options: { mapping?: "recorded" | "current"; maxRir?: number };
+  options: AnalysisOptions;
   onExercise: (id: string) => void;
   onLibrary: (zone: Muscle) => void;
 }) {
@@ -57,8 +58,8 @@ export default function AnatomyExplorer({
   );
   const activity = presenter.activity(part);
   const warmupPresenter = useMemo(
-    () => new AnatomyPresenter(loads, workouts, { mapping: options.mapping, setKind: "warmup" }),
-    [loads, workouts, options.mapping],
+    () => new AnatomyPresenter(loads, workouts, { ...options, maxRir: undefined, setKind: "warmup" }),
+    [loads, workouts, options],
   );
   const warmup = warmupPresenter.activity(part);
 

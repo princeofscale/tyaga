@@ -4,7 +4,7 @@ import {
   type ProfileBackup,
 } from "./JournalBackup";
 import type { ThemeId } from "../lib/theme";
-import type { Exercise, Routine, Settings, Workout } from "../lib/types";
+import type { Exercise, Routine, Settings, Workout, MachineInstance, ExecutionProfile } from "../lib/types";
 import { normalizeSearch } from "../lib/search";
 export type ImportFormat = "strong" | "hevy" | "fitnotes" | "tyaga";
 export type ImportOptions = {
@@ -21,6 +21,10 @@ export type ImportedSet = {
   done: boolean;
   durationSeconds?: number;
   distanceKm?: number;
+  performedSides?: "both" | "left" | "right";
+  execution?: ExecutionProfile;
+  kind?: import("../lib/types").SetKind;
+  assistanceKg?: number;
 };
 export type ImportedExercise = {
   sourceName: string;
@@ -32,11 +36,17 @@ export type ImportedExercise = {
   equipmentNote?: string;
   performedSides?: "both" | "left" | "right";
   bodyMassKg?: number;
+  machineInstanceId?: string;
+  machineSnapshot?: MachineInstance;
+  execution?: ExecutionProfile;
+  supersetId?: string;
   catalogRevision?: 1 | 2 | 3;
+  muscleModelRevision?: 1;
 };
 export type ImportedWorkout = {
   sourceKey: string;
   nativeId?: string;
+  analysisVersion?: 1 | 2;
   name: string;
   date: string;
   duration: number;
@@ -54,6 +64,7 @@ export type ImportPreview = {
   setCount: number;
   warnings: string[];
   extras?: {
+    machines?: MachineInstance[];
     routines: Routine[];
     customExercises: Exercise[];
     favorites: string[];
@@ -367,6 +378,7 @@ export class WorkoutImport {
     let data: {
       version?: number;
       workouts?: Workout[];
+      machines?: MachineInstance[];
       routines?: Routine[];
       customExercises?: Exercise[];
       favorites?: string[];
@@ -384,14 +396,15 @@ export class WorkoutImport {
       !data ||
       typeof data !== "object" ||
       typeof data.version !== "number" ||
-      ![1, 2, 3, 4].includes(data.version) ||
+      ![1, 2, 3, 4, 5].includes(data.version) ||
       !Array.isArray(data.workouts) ||
       data.workouts.length > 2000
     )
-      throw new Error("Это не поддерживаемый экспорт Тяги (версии 1–4).");
+      throw new Error("Это не поддерживаемый экспорт Тяги (версии 1–5).");
     const workouts: ImportedWorkout[] = data.workouts.map((w: Workout) => ({
       sourceKey: `tyaga|${w.id}`,
       nativeId: w.id,
+      analysisVersion: w.analysisVersion,
       name: w.name,
       date: w.date,
       duration: w.duration,
@@ -408,14 +421,20 @@ export class WorkoutImport {
         type: e.externalDefinition?.recording.type ?? "reps",
         sets: e.sets.map(({ id: _id, ...s }) => s),
         catalogRevision: e.catalogRevision ?? 1,
+        muscleModelRevision: e.muscleModelRevision,
         equipmentNote: e.equipmentNote,
         performedSides: e.performedSides,
         bodyMassKg: e.bodyMassKg,
+        machineInstanceId: e.machineInstanceId,
+        machineSnapshot: e.machineSnapshot,
+        execution: e.execution,
+        supersetId: e.supersetId,
       })),
     }));
     if (
       !workouts.length &&
       !(
+        data.machines?.length ||
         data.routines?.length ||
         data.customExercises?.length ||
         data.favorites?.length ||
@@ -428,6 +447,7 @@ export class WorkoutImport {
       "Существующие записи не заменяются. Версии упражнения и исходные правила веса сохраняются.",
     ]);
     result.extras = {
+      machines: Array.isArray(data.machines) ? data.machines : [],
       routines: Array.isArray(data.routines) ? data.routines : [],
       customExercises: Array.isArray(data.customExercises)
         ? data.customExercises

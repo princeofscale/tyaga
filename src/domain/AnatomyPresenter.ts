@@ -201,8 +201,8 @@ export class AnatomyPresenter {
   }
   activity(part: AnatomyPart) {
     const result = { direct: 0, assisting: 0, stabilizing: 0 };
-    for (const { exercise, count } of new TrainingAnalytics(this.workouts, this.options).observations()) {
-      const role = MuscleParticipation.role(exercise, part.muscles);
+    for (const { exercise, count, muscleModelRevision } of new TrainingAnalytics(this.workouts, this.options).observations()) {
+      const role = MuscleParticipation.role(exercise, part.muscles,muscleModelRevision);
       if (role === "primary") result.direct += count;
       else if (role === "assistant") result.assisting += count;
       else if (role === "stabilizer") result.stabilizing += count;
