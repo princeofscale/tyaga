@@ -934,8 +934,9 @@ export default function WorkoutView({
                     className="autofill-pill-btn repeat"
                     title="Заполнить рабочие подходы весами и повторениями с прошлой тренировки"
                     onClick={() => {
-                      const newSets = we.sets.map((s, idx) => {
+                      const newSets = we.sets.map((s) => {
                         if (s.warmup) return s;
+                        const idx = ExecutionIdentity.setIndex(we, s);
                         const prevW = before.working[idx] || before.working[before.working.length - 1];
                         if (!prevW) return s;
                         return {
@@ -950,17 +951,18 @@ export default function WorkoutView({
                     }}
                   >
                     <RotateCcw size={13} />
-                    <span>Повторить прошлые: {before.working[0]?.weight} кг × {before.working[0]?.reps}</span>
+                    <span>Повторить прошлые: {previousLabel(we, before.working[0])}</span>
                   </button>
 
-                  {!noLoad && (
+                  {!noLoad && !assistance && !timed && (
                     <button
                       type="button"
                       className="autofill-pill-btn progress"
                       title="Добавить +2.5 кг к рабочим подходам с прошлой тренировки (прогрессивная перегрузка)"
                       onClick={() => {
-                        const newSets = we.sets.map((s, idx) => {
+                        const newSets = we.sets.map((s) => {
                           if (s.warmup) return s;
+                          const idx = ExecutionIdentity.setIndex(we, s);
                           const prevW = before.working[idx] || before.working[before.working.length - 1];
                           if (!prevW) return s;
                           return {

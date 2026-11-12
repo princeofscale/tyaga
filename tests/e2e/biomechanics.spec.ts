@@ -384,6 +384,39 @@ test("machine picker and per-set execution survive draft reload and save with se
   clean();
 });
 
+test("bulk previous-work autofill keeps warmups outside the working-set order", async ({ page }) => {
+  const previous = fixture("bench", addCalendarDays(today, -1), 2);
+  previous.exercises[0].sets[1].weight = 70;
+  previous.exercises[0].sets[1].reps = 8;
+  const workout = makeWorkout(["bench"], [], "UTC");
+  const base = workout.exercises[0].sets[0];
+  workout.exercises[0].sets = [
+    { ...base, id: "warm", weight: 20, reps: 5, warmup: true },
+    { ...base, id: "work-1", weight: 50, reps: 6, warmup: false },
+    { ...base, id: "work-2", weight: 50, reps: 6, warmup: false },
+  ];
+  await page.addInitScript((value) => {
+    localStorage.setItem("tyaga-draft-account:biomechanics", JSON.stringify(value));
+  }, newDraft(workout));
+  const clean = await preview(page, [previous]);
+  await page.getByRole("button", { name: "Продолжить тренировку", exact: true }).click();
+  const first = page.locator(".exercise-card").first();
+  const weights = first.locator("input[aria-label$=', вес']");
+  const reps = first.locator("input[aria-label$=', повторы']");
+  await first.locator(".autofill-pill-btn.repeat").click();
+  await expect(weights.nth(0)).toHaveValue("20");
+  await expect(weights.nth(1)).toHaveValue("60");
+  await expect(weights.nth(2)).toHaveValue("70");
+  await expect(reps.nth(0)).toHaveValue("5");
+  await expect(reps.nth(1)).toHaveValue("10");
+  await expect(reps.nth(2)).toHaveValue("8");
+  await first.locator(".autofill-pill-btn.progress").click();
+  await expect(weights.nth(0)).toHaveValue("20");
+  await expect(weights.nth(1)).toHaveValue("62.5");
+  await expect(weights.nth(2)).toHaveValue("72.5");
+  clean();
+});
+
 test("real MediaPipe detects visible joints in an official pose fixture", async ({
   page,
 }) => {
