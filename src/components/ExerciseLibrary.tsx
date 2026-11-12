@@ -23,29 +23,7 @@ import { WGER_ZONES } from "../domain/WgerExercise";
 import { matchesSearch } from "../lib/search";
 import { quantity } from "../lib/quantity";
 import { exerciseLibraryService } from "../services/ExerciseLibraryService";
-import { inferExactMuscleHeadRole } from "../domain/AnatomyPresenter";
-
-function getExerciseHeadBadge(e: Exercise): string | null {
-  if (inferExactMuscleHeadRole("chest-upper", e) === "primary") return "Верх груди";
-  if (inferExactMuscleHeadRole("chest-lower", e) === "primary") return "Низ груди";
-  if (inferExactMuscleHeadRole("chest-mid", e) === "primary") return "Середина груди";
-  if (inferExactMuscleHeadRole("deltoid-posterior", e) === "primary") return "Задняя дельта";
-  if (inferExactMuscleHeadRole("deltoid-middle", e) === "primary") return "Средняя дельта";
-  if (inferExactMuscleHeadRole("deltoid-anterior", e) === "primary") return "Передняя дельта";
-
-  const full = `${e.id} ${e.name} ${e.nameEn}`.toLowerCase();
-  if (/overhead|из-за головы|француз|french|skull/i.test(full)) return "Длинная головка трицепса";
-  if (/hammer|молот|нейтральн|брахиалис|brachialis/i.test(full)) return "Брахиалис";
-  if (/pull[- ]?up|pulldown|подтягиван|верхнего блока|тяга блока к груди/i.test(full)) return "Широчайшая спины";
-  if (/shrug|шраги|трапец/i.test(full)) return "Верх трапеции";
-  if (/row|тяга в наклоне|горизонтальная тяга|к поясу/i.test(full)) return "Середина спины";
-  if (/squat|присед|leg press|жим ногами|hack|гакк|выпады/i.test(full)) return "Квадрицепс";
-  if (/leg curl|сгибан.*ног|deadlift|румынск|rdl/i.test(full)) return "Задняя поверхность бедра";
-  if (/hip thrust|ягодичн|мостик/i.test(full)) return "Ягодицы";
-  if (/носки стоя|standing calf/i.test(full)) return "Икроножная";
-  if (/носки сидя|seated calf/i.test(full)) return "Камбаловидная";
-  return null;
-}
+import { MuscleParticipation } from "../domain/MuscleParticipation";
 
 function LibraryContent({
   picker = false,
@@ -130,7 +108,7 @@ function LibraryContent({
 
   const exercises =
     subheadFilter !== "all"
-      ? baseExercises.filter((e) => inferExactMuscleHeadRole(subheadFilter, e) !== undefined)
+      ? baseExercises.filter((e) => MuscleParticipation.headRole(subheadFilter, e) !== undefined)
       : baseExercises;
   const count = source !== "wger" ? exercises.length : (query.data?.total ?? 0);
   const zones = (e: Exercise) =>
@@ -354,7 +332,7 @@ function LibraryContent({
                       </span>
                     ) : null}
                     {(() => {
-                      const badge = getExerciseHeadBadge(e);
+                      const badge = MuscleParticipation.primaryLabel(e);
                       return badge ? (
                         <span className="library-head-tag">{badge}</span>
                       ) : null;

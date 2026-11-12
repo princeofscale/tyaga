@@ -62,32 +62,10 @@ export default function AnatomyExplorer({
   );
   const warmup = warmupPresenter.activity(part);
 
-  // Filter exercises relevant to the active part / head
-  const related = useMemo(() => {
-    return EXERCISES.filter((e) => {
-      // If a specific chest head is selected
-      if (part.slug === "chest-upper") {
-        const id = e.id.toLowerCase();
-        const n = e.name.toLowerCase();
-        return (id.includes("incline") || n.includes("наклон") || id.includes("pullover")) &&
-          e.muscles.some((m) => m.muscleId.startsWith("pectoralis") || m.muscleId === "deltoid-anterior");
-      }
-      if (part.slug === "chest-lower") {
-        const id = e.id.toLowerCase();
-        const n = e.name.toLowerCase();
-        return (id.includes("decline") || id.includes("dip") || id.includes("high-cable-fly") || n.includes("брусь") || n.includes("сверху"));
-      }
-      if (part.slug === "chest-mid") {
-        const id = e.id.toLowerCase();
-        const n = e.name.toLowerCase();
-        return (id.includes("bench") || id.includes("fly") || id.includes("pushup") || n.includes("жим лежа") || n.includes("разведение")) &&
-          !id.includes("incline");
-      }
-      return e.muscles.some(
-        (m) => part.muscles.includes(m.muscleId) && m.role === "primary",
-      );
-    }).slice(0, 5);
-  }, [part]);
+  const related = useMemo(
+    () => EXERCISES.filter((e) => presenter.exerciseRole(part, e) === "primary").slice(0, 5),
+    [part, presenter],
+  );
 
   // Subhead analytics for Chest & Shoulders
   const headStats: HeadStat[] | null = useMemo(() => {
@@ -244,13 +222,13 @@ export default function AnatomyExplorer({
                       {zone === "chest" ? "Отделы груди" : "Пучки дельтовидных мышц"}
                     </h4>
                     <span className="tiny muted">
-                      {totalHeadDirect > 0 ? `${totalHeadDirect} подх. всего` : "нет подходов"}
+                      {totalHeadDirect > 0 ? `${totalHeadDirect} участий пучков` : "нет подходов"}
                     </span>
                   </div>
 
                   {/* Volume distribution bar */}
                   {totalHeadDirect > 0 && (
-                    <div className="head-balance-bar" title="Распределение объёма по пучкам">
+                    <div className="head-balance-bar" title="Доли записей участия пучков; один подход может учитываться в нескольких пучках">
                       {headStats.map((h, i) => {
                         const pct = Math.round((h.direct / totalHeadDirect) * 100);
                         const colors = ["#cafa64", "#70d6ff", "#ff9770"];
@@ -323,8 +301,8 @@ export default function AnatomyExplorer({
                   ))}
               </div>
               <p className="tiny">
-                Один подход считается один раз в области. Роли отдельных мышц
-                приведены в упражнениях.
+                Один подход считается один раз в области, но может нагружать несколько пучков.
+                Акцент на отделе груди — анатомический ориентир, а не изоляция волокон или доля нагрузки.
               </p>
             </m.section>
           </AnimatePresence>

@@ -19,16 +19,18 @@ import type { Workout } from "../lib/model";
 
 export function DeloadModal({
   workouts,
+  timeZone,
   onApplyDeload,
   onClose,
 }: {
   workouts: Workout[];
+  timeZone?: string;
   onApplyDeload: (mode: DeloadMode) => void;
   onClose: () => void;
 }) {
   const assessment: FatigueAssessment = useMemo(
-    () => DeloadEngine.assessFatigue(workouts),
-    [workouts]
+    () => DeloadEngine.assessFatigue(workouts, new Date(), timeZone),
+    [workouts, timeZone]
   );
 
   const [selectedMode, setSelectedMode] = useState<DeloadMode>(
@@ -84,6 +86,7 @@ export function DeloadModal({
               </span>
             </div>
             <p className="fatigue-reason-text">{assessment.reason}</p>
+            <p className="tiny">Индекс записанного объёма, не измерение усталости или восстановления.</p>
           </div>
         </div>
 

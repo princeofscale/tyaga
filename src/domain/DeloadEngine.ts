@@ -1,12 +1,13 @@
 /**
  * DeloadEngine
  *
- * OOP Domain Service for intelligent athletic deload programming.
- * Implements evidence-based recovery strategies (Volume Deload, Intensity Deload, Active Recovery)
- * by evaluating fatigue markers from training history.
+ * Recorded-workload summary and optional deload templates.
+ * Set counts alone do not establish fatigue or an individual need for a deload.
  */
 
-import type { Workout, SetEntry } from "../lib/model";
+import type { Workout, SetEntry } from "../lib/types";
+import { exerciseForEntry } from "../lib/catalog";
+import { addCalendarDays, browserTimeZone, localDate } from "../lib/calendar";
 
 export type DeloadMode = "volume" | "intensity" | "recovery";
 
@@ -27,7 +28,7 @@ export const DELOAD_PRESETS: Record<DeloadMode, DeloadConfig> = {
     volumeMultiplier: 0.5, // 50% рабочих подходов
     intensityMultiplier: 0.85, // 85% веса
     targetRir: 3, // запас 3 повторения
-    description: "Снижение общего тоннажа и подходов на 50%. Оптимально для восстановления суставов и связок.",
+    description: "Примерно вдвое меньше рабочих подходов и 85% привычного веса. Итоговый тоннаж зависит от округления и повторов.",
     bestFor: "Базовый силовой тренинг и гипертрофия после 4-6 недель тяжёлой работы",
   },
   intensity: {
@@ -45,13 +46,13 @@ export const DELOAD_PRESETS: Record<DeloadMode, DeloadConfig> = {
     volumeMultiplier: 0.5,
     intensityMultiplier: 0.65, // 65% веса
     targetRir: 4,
-    description: "Лёгкие веса, работа на технику, улучшение кровообращения и подвижности без утомления ЦНС.",
+    description: "Лёгкие веса и меньше подходов для спокойной работы над техникой.",
     bestFor: "Высокая накопленная усталость, недосып, стресс или возвращение после перерыва",
   },
 };
 
 export interface FatigueAssessment {
-  fatigueScore: number; // 0-100
+  fatigueScore: number; // 0-100 heuristic of recorded workload, not measured fatigue
   status: "fresh" | "optimal" | "fatigued" | "overreaching";
   statusLabel: string;
   recommendedMode: DeloadMode;
@@ -63,20 +64,25 @@ export interface FatigueAssessment {
 
 export class DeloadEngine {
   /**
-   * Evaluates training fatigue over the past 30 days based on:
+   * Summarizes recorded workload over 30 calendar dates. It cannot measure
+   * fatigue, CNS state, recovery or diagnose overreaching from set counts.
    * - Workout frequency
    * - Total working sets
    * - Frequency of failure sets (RIR = 0)
    * - Training density
    */
-  public static assessFatigue(workouts: Workout[]): FatigueAssessment {
-    const now = Date.now();
-    const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
+  public static assessFatigue(
+    workouts: Workout[],
+    now = new Date(),
+    timeZone = browserTimeZone(),
+  ): FatigueAssessment {
+    const today = localDate(now, timeZone);
+    const startDate = addCalendarDays(today, -29);
 
     // Filter workouts from last 30 days
     const recent = workouts.filter((w) => {
-      const ts = new Date(w.date).getTime();
-      return ts >= thirtyDaysAgo;
+      return w.date >= startDate && w.date <= today &&
+        w.exercises.some((e) => e.sets.some((s) => s.done && !s.warmup));
     });
 
     let totalWorkingSets = 0;
@@ -85,7 +91,7 @@ export class DeloadEngine {
     for (const w of recent) {
       for (const e of w.exercises) {
         for (const s of e.sets) {
-          if (!s.warmup) {
+          if (s.done && !s.warmup) {
             totalWorkingSets++;
             if (s.rir === 0) {
               failureSets++;
@@ -99,7 +105,7 @@ export class DeloadEngine {
     // Workouts count > 14 in 30 days (+20)
     // Working sets > 120 in 30 days (+30)
     // Failure sets > 20 in 30 days (+30)
-    let score = 15;
+    let score = totalWorkingSets ? 15 : 0;
     if (recent.length >= 12) score += 20;
     if (recent.length >= 18) score += 15;
     if (totalWorkingSets >= 100) score += 25;
@@ -112,9 +118,9 @@ export class DeloadEngine {
       return {
         fatigueScore: score,
         status: "overreaching",
-        statusLabel: "Высокая усталость ЦНС (Оверричинг)",
+        statusLabel: "Очень высокий записанный объём",
         recommendedMode: "volume",
-        reason: `За последние 30 дней выполнено ${totalWorkingSets} рабочих подходов (${failureSets} до отказа). ЦНС и суставам необходима разгрузка для суперкомпенсации.`,
+        reason: `За 30 дней записано ${totalWorkingSets} рабочих подходов (${failureSets} с RIR 0). Если результаты падают и усталость сохраняется, попробуй уменьшить объём. По журналу нельзя определить состояние ЦНС или перетренированность.`,
         recentWorkoutsCount: recent.length,
         recentSetsCount: totalWorkingSets,
         recentFailureSetsCount: failureSets,
@@ -123,9 +129,9 @@ export class DeloadEngine {
       return {
         fatigueScore: score,
         status: "fatigued",
-        statusLabel: "Накопление рабочей усталости",
+        statusLabel: "Высокий записанный объём",
         recommendedMode: "volume",
-        reason: "Оптимальный момент для плановой разгрузочной недели перед новым тренировочным мезоциклом.",
+        reason: "Сопоставь объём с самочувствием и прогрессом. При накопленной усталости можно сократить подходы; сам объём не доказывает необходимость разгрузки.",
         recentWorkoutsCount: recent.length,
         recentSetsCount: totalWorkingSets,
         recentFailureSetsCount: failureSets,
@@ -134,9 +140,9 @@ export class DeloadEngine {
       return {
         fatigueScore: score,
         status: "optimal",
-        statusLabel: "Рабочий тонус в норме",
+        statusLabel: "Умеренный записанный объём",
         recommendedMode: "intensity",
-        reason: "Текущая нагрузка хорошо переносится. Разгрузку можно провести в поддерживающем формате.",
+        reason: "Журнал показывает умеренный объём, но не измеряет восстановление. Решение о разгрузке зависит от самочувствия и динамики результатов.",
         recentWorkoutsCount: recent.length,
         recentSetsCount: totalWorkingSets,
         recentFailureSetsCount: failureSets,
@@ -145,9 +151,9 @@ export class DeloadEngine {
       return {
         fatigueScore: score,
         status: "fresh",
-        statusLabel: "Организм свеж и готов к нагрузкам",
+        statusLabel: totalWorkingSets ? "Небольшой записанный объём" : "Нет записанной работы за 30 дней",
         recommendedMode: "intensity",
-        reason: "Объём тренировок умеренный. Полная разгрузка не требуется, можно продолжать прогрессию весов.",
+        reason: "Недостаток записей не означает готовность к нагрузке. Учитывай пропущенные тренировки, сон, самочувствие и прогресс.",
         recentWorkoutsCount: recent.length,
         recentSetsCount: totalWorkingSets,
         recentFailureSetsCount: failureSets,
@@ -162,6 +168,7 @@ export class DeloadEngine {
     const config = DELOAD_PRESETS[mode];
 
     const deloadExercises = workout.exercises.map((e) => {
+      const spec = exerciseForEntry(e)?.recording;
       // Separate warmups and working sets
       const warmups = e.sets.filter((s) => s.warmup);
       const working = e.sets.filter((s) => !s.warmup);
@@ -172,13 +179,26 @@ export class DeloadEngine {
 
       // Scale weight and assign deload RIR
       const scaledWorking: SetEntry[] = slicedWorking.map((s, idx) => {
-        const scaledWeight = Math.max(1, Math.round((s.weight * config.intensityMultiplier) / 2.5) * 2.5);
+        // Never turn bodyweight/unknown loads into invented external kilograms,
+        // or round a light working weight up beyond the original load.
+        const canScale = spec && ["total_external", "per_implement", "machine_stack", "added_bodyweight"].includes(spec.loadMode);
+        const scaledWeight = canScale
+          ? Math.min(s.weight, Math.max(0, Math.round((s.weight * config.intensityMultiplier) / 2.5) * 2.5))
+          : s.weight;
+        const bodyMass = e.bodyMassKg;
+        const assistance = s.assistanceKg ?? 0;
+        const assistedLoad = (bodyMass ?? 0) + s.weight;
+        const scaledAssistance = spec?.loadMode === "assisted_bodyweight" &&
+          bodyMass !== undefined && Number.isFinite(bodyMass) && bodyMass > 0
+          ? Math.max(assistance, Math.min(assistedLoad, assistance + Math.max(0, assistedLoad - assistance) * (1 - config.intensityMultiplier)))
+          : s.assistanceKg;
 
         return {
           ...s,
           id: `deload-set-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 5)}`,
           weight: scaledWeight,
-          rir: config.targetRir,
+          ...(scaledAssistance !== undefined ? { assistanceKg: scaledAssistance } : {}),
+          rir: spec?.type === "duration" ? null : config.targetRir,
           done: false,
         };
       });

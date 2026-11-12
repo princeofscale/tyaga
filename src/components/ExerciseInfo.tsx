@@ -2,7 +2,8 @@ import { useMemo } from "react";
 import { ANATOMICAL_MUSCLES, evidenceById, type Exercise } from "../lib/model";
 import BodyMap from "./BodyMap";
 import { ExternalLink, Globe2, Sparkles } from "lucide-react";
-import { inferExactMuscleHeadRole } from "../domain/AnatomyPresenter";
+import { MuscleParticipation } from "../domain/MuscleParticipation";
+import { CHEST_HEADS, DELTOID_HEADS } from "../data/muscles";
 const ROLE_NAMES = {
   primary: "Движители",
   assistant: "Помогающие мышцы",
@@ -38,59 +39,16 @@ export default function ExerciseInfo({
     .map((id) => evidenceById(id))
     .filter((x) => !!x);
 
-  const highlightedHeads = useMemo(() => {
-    const list: { name: string; role: string }[] = [];
-
-    const upperChest = inferExactMuscleHeadRole("chest-upper", e);
-    if (upperChest) {
-      list.push({
-        name: "Верх груди (ключичный пучок)",
-        role: upperChest === "primary" ? "Основной акцент" : "Синергист",
-      });
-    }
-
-    const midChest = inferExactMuscleHeadRole("chest-mid", e);
-    if (midChest) {
-      list.push({
-        name: "Середина груди (грудинный пучок)",
-        role: midChest === "primary" ? "Основной акцент" : "Синергист",
-      });
-    }
-
-    const lowerChest = inferExactMuscleHeadRole("chest-lower", e);
-    if (lowerChest) {
-      list.push({
-        name: "Низ груди (брюшной пучок)",
-        role: lowerChest === "primary" ? "Основной акцент" : "Синергист",
-      });
-    }
-
-    const antDelt = inferExactMuscleHeadRole("deltoid-anterior", e);
-    if (antDelt) {
-      list.push({
-        name: "Передняя дельта",
-        role: antDelt === "primary" ? "Движитель" : "Ассистент",
-      });
-    }
-
-    const midDelt = inferExactMuscleHeadRole("deltoid-middle", e);
-    if (midDelt) {
-      list.push({
-        name: "Средняя дельта",
-        role: midDelt === "primary" ? "Движитель" : "Ассистент",
-      });
-    }
-
-    const postDelt = inferExactMuscleHeadRole("deltoid-posterior", e);
-    if (postDelt) {
-      list.push({
-        name: "Задняя дельта",
-        role: postDelt === "primary" ? "Движитель" : "Ассистент",
-      });
-    }
-
-    return list;
-  }, [e]);
+  const highlightedHeads = useMemo(
+    () => [...CHEST_HEADS, ...DELTOID_HEADS].flatMap((head) => {
+      const role = MuscleParticipation.headRole(head.slug, e);
+      return role ? [{
+        name: head.name,
+        role: role === "primary" ? "Движитель" : role === "assistant" ? "Помощь" : "Стабилизация",
+      }] : [];
+    }),
+    [e],
+  );
 
   return (
     <div className="exercise-technique">
