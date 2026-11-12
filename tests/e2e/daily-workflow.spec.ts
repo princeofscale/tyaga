@@ -473,7 +473,8 @@ test("profile and new bodyweight sets share the weighing journal; complete expor
     .click();
   const file = await download;
   const backup = JSON.parse(await readFile((await file.path())!, "utf8"));
-  expect(backup.version).toBe(4);
+  expect(backup.version).toBe(5);
+  expect(backup.machines).toBeInstanceOf(Array);
   expect(backup.workouts[0].exercises[0].bodyMassKg).toBe(74.5);
   expect(backup.bodyweight.entries.at(-1).weightKg).toBe(75);
   expect(backup.profile.bodyMassKg).toBe(75);

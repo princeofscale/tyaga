@@ -1,3 +1,7 @@
+import ExecutionFields from "./ExecutionFields";
+import { MuscleParticipation } from "../domain/MuscleParticipation";
+import { ExecutionIdentity } from "../domain/ExecutionIdentity";
+import type { MachineInstance } from "../lib/types";
 import { WorkoutUndo } from "../domain/WorkoutUndo";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
@@ -68,6 +72,8 @@ type Props = {
   update: (draft: Draft) => void;
   settings: Settings;
   history: Workout[];
+  machines?: MachineInstance[];
+  onMachines?: () => void;
   saving: boolean;
   error: string;
   persistence: PersistenceStatus;
@@ -164,43 +170,8 @@ const playSetDoneChime = () => {
   }
 };
 
-function getExerciseHeadBadges(exerciseId: string, exerciseName: string) {
-  const id = exerciseId.toLowerCase();
-  const name = exerciseName.toLowerCase();
-  const badges: { text: string; kind: string }[] = [];
-
-  // Chest Heads
-  if (id.includes("incline") || name.includes("наклон") || id.includes("pullover")) {
-    badges.push({ text: "Верх груди", kind: "head-upper" });
-  } else if (id.includes("decline") || id.includes("dip") || id.includes("high-cable-fly") || name.includes("брусь") || name.includes("сверху")) {
-    badges.push({ text: "Низ груди", kind: "head-lower" });
-  } else if (id.includes("bench") || id.includes("fly") || id.includes("pushup") || name.includes("жим лежа") || name.includes("разведение") || name.includes("грудь")) {
-    badges.push({ text: "Середина груди", kind: "head-mid" });
-  }
-
-  // Shoulder Heads
-  if (id.includes("ohp") || id.includes("shoulder-press") || name.includes("армейский") || name.includes("жим стоя") || name.includes("жим сидя") || name.includes("передняя")) {
-    badges.push({ text: "Передняя дельта", kind: "head-ant" });
-    badges.push({ text: "Средняя дельта", kind: "head-mid-delt" });
-  } else if (id.includes("lateral") || name.includes("махи в стороны") || name.includes("боковые")) {
-    badges.push({ text: "Средняя дельта", kind: "head-mid-delt" });
-  } else if (id.includes("rear-delt") || id.includes("facepull") || name.includes("задн") || name.includes("фейспул")) {
-    badges.push({ text: "Задняя дельта", kind: "head-post" });
-  }
-
-  // Back & Lower Body Focal Zones
-  if (id.includes("pulldown") || id.includes("pullup") || name.includes("подтягивания") || name.includes("верхнего блока") || name.includes("тяга штанги в наклоне")) {
-    badges.push({ text: "Широчайшие", kind: "head-lats" });
-  } else if (id.includes("squat") || id.includes("legpress") || name.includes("присед") || name.includes("жим ногами") || name.includes("квадрицепс")) {
-    badges.push({ text: "Квадрицепс", kind: "head-quads" });
-  } else if (id.includes("deadlift") || id.includes("rdl") || (name.includes("тяга") && (name.includes("становая") || name.includes("румынская")))) {
-    badges.push({ text: "Задняя цепь", kind: "head-chain" });
-  }
-
-  return badges;
-}
-
 export default function WorkoutView({
+  machines = [], onMachines,
   focusRequest, notificationError,
   draft,
   update,
@@ -280,10 +251,10 @@ export default function WorkoutView({
   const previous = useMemo(
     () =>
       new Map(
-        (exercises ?? []).map((e) => {
-          const sets = lastEntry(history, e, workoutId)?.sets.filter((s) => s.done) ?? [];
+        (exercises ?? []).flatMap((e)=>[e,...ExecutionIdentity.split(e)]).map((e) => {
+          const sets = lastEntry(history, e, workoutId, draft?.workout.date, {timeZone:settings.timeZone})?.sets.filter((s) => s.done) ?? [];
           return [
-            e.exerciseId,
+            ExecutionIdentity.key(e),
             {
               working: sets.filter((s) => !s.warmup),
               warmup: sets.filter((s) => s.warmup),
@@ -291,7 +262,7 @@ export default function WorkoutView({
           ];
         }),
       ),
-    [history, exercises, workoutId],
+    [history, exercises, workoutId, draft?.workout.date, settings.timeZone],
   );
   if (!draft)
     return (
@@ -485,7 +456,7 @@ export default function WorkoutView({
           </span>
           <span className="hud-metric hud-tonnage">
             <b>{fmt(summary.total)}<small> кг</small></b>
-            <span className="hud-label">Рабочий тоннаж</span>
+            <span className="hud-label">Тоннаж свободных весов</span>
           </span>
         </div>
         <div className="workout-session-progress" aria-hidden="true">
@@ -526,7 +497,7 @@ export default function WorkoutView({
           const timed = spec.type === "duration";
           const assistance = spec.loadMode === "assisted_bodyweight";
           const noLoad = spec.loadMode === "bodyweight";
-          const before = previous.get(we.exerciseId);
+          const before = ExecutionIdentity.split(we).length===1 ? previous.get(ExecutionIdentity.key(we)) : undefined;
           const heading =
             spec.loadMode === "per_implement"
               ? "кг / гант."
@@ -557,7 +528,8 @@ export default function WorkoutView({
                 ? String(we.repMin)
                 : `${we.repMin}–${we.repMax}`
               : null;
-          const headBadges = getExerciseHeadBadges(we.exerciseId, entryName(we));
+          const label = MuscleParticipation.primaryLabel(exercise);
+          const headBadges = label ? [{ text: label, kind: "head-explicit" }] : [];
           const allSetsDone = we.sets.length > 0 && we.sets.every((s) => s.done);
           const completedSets = we.sets.filter((set) => set.done).length;
           const quickSetIndex = we.sets.findIndex((_, si) => activeSetKey === `${ei}-${si}`);
@@ -879,6 +851,15 @@ export default function WorkoutView({
                   <span>{we.progressionNote}</span>
                 </div>
               ) : null}
+              <ExecutionFields value={we.execution} onChange={(execution) => patchExercise(ei, { execution })} label={`Упражнение ${ei + 1}`} />
+              {["machine_stack", "assisted_bodyweight"].includes(spec.loadMode) && <div className="machine-picker">
+                <label>Сохранённый тренажёр<Select aria-label="Сохранённый тренажёр" value={we.machineInstanceId ?? ""}
+                  options={[{value:"",label:"Текстовая пометка / не выбран"}, ...machines.map((m)=>({value:m.id,label:`${m.nickname} · ${m.gym || m.model.model}`})),
+                    ...(we.machineSnapshot && !machines.some((m)=>m.id===we.machineInstanceId) ? [{value:we.machineSnapshot.id,label:we.machineSnapshot.nickname+" · из истории"}] : [])]}
+                  onChange={(id) => patchExercise(ei, { machineInstanceId: id || undefined,
+                    machineSnapshot: machines.find((m)=>m.id===id) ?? (we.machineSnapshot?.id===id ? we.machineSnapshot : undefined) })} /></label>
+                {onMachines && <button type="button" className="text-button" onClick={onMachines}>Добавить или изменить тренажёр</button>}
+              </div>}
               {spec.laterality === "unilateral" ? (
                 <label className="recording-field">
                   Выполненные стороны
@@ -911,7 +892,7 @@ export default function WorkoutView({
                     onChange={(e) =>
                       patchExercise(ei, { equipmentNote: e.target.value })
                     }
-                    required
+                    required={!we.machineInstanceId}
                   />
                   <small className="tiny">
                     Нужно для сохранения: вес сравнивается только на этой
@@ -953,8 +934,9 @@ export default function WorkoutView({
                     className="autofill-pill-btn repeat"
                     title="Заполнить рабочие подходы весами и повторениями с прошлой тренировки"
                     onClick={() => {
-                      const newSets = we.sets.map((s, idx) => {
+                      const newSets = we.sets.map((s) => {
                         if (s.warmup) return s;
+                        const idx = ExecutionIdentity.setIndex(we, s);
                         const prevW = before.working[idx] || before.working[before.working.length - 1];
                         if (!prevW) return s;
                         return {
@@ -969,17 +951,18 @@ export default function WorkoutView({
                     }}
                   >
                     <RotateCcw size={13} />
-                    <span>Повторить прошлые: {before.working[0]?.weight} кг × {before.working[0]?.reps}</span>
+                    <span>Повторить прошлые: {previousLabel(we, before.working[0])}</span>
                   </button>
 
-                  {!noLoad && (
+                  {!noLoad && !assistance && !timed && (
                     <button
                       type="button"
                       className="autofill-pill-btn progress"
                       title="Добавить +2.5 кг к рабочим подходам с прошлой тренировки (прогрессивная перегрузка)"
                       onClick={() => {
-                        const newSets = we.sets.map((s, idx) => {
+                        const newSets = we.sets.map((s) => {
                           if (s.warmup) return s;
+                          const idx = ExecutionIdentity.setIndex(we, s);
                           const prevW = before.working[idx] || before.working[before.working.length - 1];
                           if (!prevW) return s;
                           return {
@@ -1049,15 +1032,15 @@ export default function WorkoutView({
                       </div>
                       <div className="rir-level-chip rir-1">
                         <b className="rir-code">1–2</b>
-                        <span className="rir-meaning">Идеально для гипертрофии</span>
+                        <span className="rir-meaning">Близко к отказу</span>
                       </div>
                       <div className="rir-level-chip rir-3">
                         <b className="rir-code">3</b>
-                        <span className="rir-meaning">Умеренная нагрузка</span>
+                        <span className="rir-meaning">Есть запас</span>
                       </div>
                       <div className="rir-level-chip rir-4">
                         <b className="rir-code">4+</b>
-                        <span className="rir-meaning">Разминка / лёгкий запас</span>
+                        <span className="rir-meaning">Большой запас</span>
                       </div>
                     </div>
                     <div className="rir-popover-footer">
@@ -1076,9 +1059,9 @@ export default function WorkoutView({
                 )}
                 {we.sets.map((s, si) => {
                   const index = s.warmup ? warm++ : working++;
-                  const last = s.warmup
-                    ? before?.warmup[index]
-                    : before?.working[index];
+                  const comparable = previous.get(ExecutionIdentity.key(we,s));
+                  const comparableIndex = ExecutionIdentity.setIndex(we,s);
+                  const last = (s.warmup ? comparable?.warmup : comparable?.working)?.[comparableIndex];
                   const lastText = previousLabel(we, last);
                   const isRowActive = activeSetKey === `${ei}-${si}`;
                   return (
@@ -1239,6 +1222,13 @@ export default function WorkoutView({
                         </button>
                       </div>
                       {isRowActive ? quickControls : null}
+                      <details className="set-context"><summary>Контекст подхода {si + 1}</summary>
+                        {spec.laterality === "unilateral" && <label>Стороны этого подхода<Select
+                          aria-label={`${entryName(we)}, подход ${si + 1}, стороны`} value={s.performedSides ?? ""}
+                          onChange={(side) => changeSet(ei, si, { performedSides: side ? side as SetEntry["performedSides"] : undefined })}
+                          options={[{value:"",label:"Как в упражнении"},{value:"both",label:"Обе стороны"},{value:"left",label:"Только левая"},{value:"right",label:"Только правая"}]} /></label>}
+                        <ExecutionFields value={s.execution} label={`Подход ${si + 1}`} onChange={(execution)=>changeSet(ei,si,{execution})}/>
+                      </details>
                     </div>
                   );
                 })}

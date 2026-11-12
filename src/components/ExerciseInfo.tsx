@@ -1,3 +1,5 @@
+import { ExerciseTaxonomy } from "../domain/ExerciseTaxonomy";
+import { EXERCISES } from "../lib/catalog";
 import { useMemo } from "react";
 import { ANATOMICAL_MUSCLES, evidenceById, type Exercise } from "../lib/model";
 import BodyMap from "./BodyMap";
@@ -92,6 +94,10 @@ export default function ExerciseInfo({
         </div>
       )}
       <p>{e.variant}</p>
+      <p className="tiny">Семейство: {e.familyId} · вариантов в каталоге: {new ExerciseTaxonomy(EXERCISES).variants(e.familyId).length}. Разметка описывает участие мышц; параметры техники не измеряют индивидуальный стимул.</p>
+      <details><summary>Модель участия мышц и основания</summary>{MuscleParticipation.evidence(e).map((record,i)=><p className="tiny" key={i}>
+        {ANATOMICAL_MUSCLES.find((m)=>m.id===record.muscleId)?.name}: {record.role} · уверенность {record.confidence} · {record.evidenceLevel} · модель {record.modelRevision}. Источники: {record.evidenceIds.join(", ")}.
+      </p>)}</details>
       <p className="exercise-instructions">{e.tip}</p>
       {e.aliases?.length ? (
         <details className="exercise-aliases">

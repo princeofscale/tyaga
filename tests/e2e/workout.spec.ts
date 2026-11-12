@@ -207,7 +207,8 @@ test("save/reload/edit/export/settings/repeat preserve the actual workout and ti
   const exported = JSON.parse(
     await (await import("node:fs/promises")).readFile(file!, "utf8"),
   );
-  expect(exported.version).toBe(4);
+  expect(exported.version).toBe(5);
+  expect(exported.machines).toBeInstanceOf(Array);
   expect(exported.bodyweight.entries).toBeInstanceOf(Array);
   expect(exported.bodyweight.goal).toHaveProperty("targetWeightKg");
   expect(

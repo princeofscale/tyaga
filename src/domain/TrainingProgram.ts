@@ -1,3 +1,4 @@
+import { WorkoutReference } from "./WorkoutReference";
 import {
   makeWorkout,
   makeExerciseEntry,
@@ -131,17 +132,13 @@ export class TrainingProgram {
     history: Workout[],
     plan: WorkoutExercise,
     skipDeload: boolean,
+    today: string,
+    timeZone: string,
   ) {
-    return [...history]
-      .filter((w) => !skipDeload || !this.isDeload(history, w.date))
-      .sort(
-        (a, b) =>
-          b.date.localeCompare(a.date) ||
-          (b.createdAt ?? "").localeCompare(a.createdAt ?? "") ||
-          b.id.localeCompare(a.id),
-      )
-      .flatMap((w) => w.exercises)
-      .find((e) => progressKey(e) === progressKey(plan));
+    return WorkoutReference.latest(
+      history.filter((w) => !skipDeload || !this.isDeload(history, w.date)),
+      plan, undefined, today, { timeZone },
+    );
   }
   start(
     history: Workout[],
@@ -154,6 +151,7 @@ export class TrainingProgram {
     const deload = this.isDeload(history, today);
     return {
       ...workout,
+      date: today,
       name: r.name,
       notes:
         deload && cycle
@@ -173,7 +171,7 @@ export class TrainingProgram {
       exercises: r.exercises.map((plan) => {
         const definition = exerciseForEntry(plan)!;
         const range = this.range(plan);
-        const previous = this.reference(history, plan, !!cycle);
+        const previous = this.reference(history, plan, !!cycle, today,timeZone);
         const work = previous?.sets.filter((s) => !s.warmup && s.done) ?? [];
         const plannedCount = plan.sets.filter((s) => !s.warmup).length;
         const progressive = definition.catalogRevision !== 1;

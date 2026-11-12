@@ -53,7 +53,7 @@ test("volume separates missing RIR from known close-to-failure work; warmups and
   w.exercises[0].sets = [
     { ...base, rir: 0 }, { ...base, rir: 3 }, { ...base, rir: 4 }, { ...base, rir: null },
     { ...base, warmup: true }, { ...base, done: false },
-  ];
+  ].map((set, i) => ({ ...set, id: `set-${i}` }));
   const report = Volume.assessWeek([w], w.date);
   assert.equal(report.workingSets, 4);
   assert.equal(report.unknownRirSets, 1);

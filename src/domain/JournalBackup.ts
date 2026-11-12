@@ -105,12 +105,13 @@ export class JournalBackup {
   ) {
     return {
       format: "tyaga-backup",
-      version: 4,
+      version: 5,
       analysisVersion: 2,
       e1rmFormulaVersion: "epley-1",
       exportedAt: new Date().toISOString(),
       workouts,
       settings,
+      machines: product.machines ?? [],
       routines: product.routines,
       customExercises: product.customExercises,
       favorites: product.favorites,

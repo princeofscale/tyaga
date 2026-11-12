@@ -70,6 +70,8 @@ export type SetEntry = {
   assistanceKg?: number;
   durationSeconds?: number;
   distanceKm?: number;
+  performedSides?: "both" | "left" | "right";
+  execution?: ExecutionProfile;
 };
 export type WorkoutExercise = {
   exerciseId: string;
@@ -81,12 +83,16 @@ export type WorkoutExercise = {
   catalogRevision?: 1 | 2 | 3;
   recordingSpecRevision?: 1 | 2 | 3;
   muscleMappingRevision?: 1 | 2 | 3;
+  muscleModelRevision?: 1;
   externalDefinition?: Exercise;
   displayNameSnapshot?: string;
   equipmentNote?: string;
   performedSides?: "both" | "left" | "right";
   bodyMassKg?: number;
   progressionNote?: string;
+  machineInstanceId?: string;
+  machineSnapshot?: MachineInstance;
+  execution?: ExecutionProfile;
 };
 export type Workout = {
   id: string;
@@ -146,6 +152,7 @@ export type Routine = {
   updatedAt?: string;
 };
 export type ProductData = {
+  machines?: MachineInstance[];
   routines: Routine[];
   customExercises: Exercise[];
   favorites: string[];
@@ -168,4 +175,47 @@ export type MuscleLoad = {
   total: number;
   goal: number;
   ratio: number;
+};
+
+export type ExecutionProfile = {
+  rom?: "full" | "lengthened_partial" | "shortened_partial" | "custom";
+  grip?: string;
+  stance?: string;
+  attachment?: string;
+  benchAngle?: number;
+  torsoAngle?: number;
+  startAngle?: number;
+  endAngle?: number;
+  tempo?: string;
+};
+export type MachineModel = {
+  id: string;
+  manufacturer: string;
+  model: string;
+  mechanism: "selectorized" | "plate_loaded" | "cable" | "lever" | "smith" | "other";
+  loadSemantics: "stack_marking" | "plates_added" | "total_external";
+};
+export type MachineInstance = {
+  id: string;
+  model: MachineModel;
+  gym: string;
+  nickname: string;
+  stationId?: string;
+  aliases: string[];
+  calibration?: { stackRatio?: number; pulleyRatio?: number; notes?: string };
+  revision: number;
+};
+
+export type ExerciseFamily = { id: string; name: string; variantIds: string[] };
+export type ExerciseVariant = { id: string; familyId: string; catalogRevision: Exercise["catalogRevision"]; definition: Exercise };
+export type MuscleInvolvement = {
+  exerciseVariantId: string;
+  catalogRevision: Exercise["catalogRevision"];
+  muscleId: AnatomicalMuscle;
+  role: MuscleRole["role"];
+  confidence: "high" | "moderate" | "low" | "unknown";
+  evidenceLevel: "longitudinal" | "biomechanical" | "emg" | "anatomical" | "editorial";
+  context?: ExecutionProfile;
+  evidenceIds: string[];
+  modelRevision: number;
 };

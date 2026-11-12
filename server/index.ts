@@ -1,3 +1,5 @@
+import { MachineRepository } from "./MachineRepository";
+import { validMachine } from "./validation";
 import { ChallengeRepository } from "./ChallengeRepository";
 import { DEFAULT_SETTINGS, type Workout } from "../src/lib/model";
 import {
@@ -109,12 +111,22 @@ export async function handleApi(request: Request, env: Env) {
       }
       return json({ error: "Не найдено" }, 404);
     }
+    const machines = new MachineRepository(env.DB, userId);
     const product = new ProductRepository(env.DB, userId);
     const definitions = async (ids: string[]) => {
       const wger = await new ExerciseRepository(env.DB).findByIds(ids);
       const custom = await product.definitions(ids);
       return new Map([...wger, ...custom]);
     };
+    if (request.method === "PUT" && url.pathname === "/api/machines") {
+      const result = await machines.save(validMachine(await readBody(request)));
+      return result.saved ? json({ machine: result.saved }) : json({ error: "Тренажёр изменён на другом устройстве", currentMachine: result.current }, 409);
+    }
+    if (request.method === "DELETE" && url.pathname.startsWith("/api/machines/")) {
+      const v = object(await readBody(request));
+      const archived = await machines.archive(str(decodeURIComponent(url.pathname.slice("/api/machines/".length)),80,1), validRevision(v.revision));
+      return archived ? json({ ok: true }) : json({ error: "Тренажёр изменён на другом устройстве" }, 409);
+    }
     if (request.method === "GET" && url.pathname === "/api/product")
       return json(await product.read());
     if (
@@ -176,7 +188,7 @@ export async function handleApi(request: Request, env: Env) {
         ? input.exercises.map((e: { exerciseId: string }) => e.exerciseId)
         : [];
       const result = await product.saveRoutine(
-        validRoutine(input, await definitions(ids)),
+        validRoutine(input, await definitions(ids), await machines.definitions()),
       );
       return result.saved
         ? json({ routine: result.saved })
@@ -220,6 +232,7 @@ export async function handleApi(request: Request, env: Env) {
       return json(
         await new SyncService(env.DB, userId).changes(
           num(Number(url.searchParams.get("since") ?? 0), 0, Number.MAX_SAFE_INTEGER, true),
+          200, url.searchParams.get("capabilities") === "machines-v1",
         ),
       );
     if (request.method === "POST" && url.pathname === "/api/sync/apply")
@@ -301,6 +314,7 @@ export async function handleApi(request: Request, env: Env) {
       const w = validWorkout(input, {
         timeZone: profile ? JSON.parse(profile.payload).timeZone : activeAccount.timeZone,
         importedExercises,
+        machines: await machines.definitions(),
       });
       const { revision = 0, updatedAt: _updatedAt, ...content } = w;
       const payload = JSON.stringify(content);

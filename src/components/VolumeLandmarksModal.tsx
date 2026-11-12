@@ -4,14 +4,15 @@ import { VolumeLandmarksCalculator, type VolumeStatusKind } from "../domain/Volu
 import { dateLabel, fmt } from "../lib/model";
 import type { Workout } from "../lib/types";
 
-export function VolumeLandmarksModal({ workouts, today, mapping }: {
+export function VolumeLandmarksModal({ workouts, today, mapping, timeZone }: {
   workouts: Workout[];
   today: string;
   mapping: "recorded" | "current";
+  timeZone?: string;
 }) {
   const report = useMemo(
-    () => VolumeLandmarksCalculator.assessWeek(workouts, today, { mapping }),
-    [workouts, today, mapping],
+    () => VolumeLandmarksCalculator.assessWeek(workouts, today, { mapping, timeZone }),
+    [workouts, today, mapping, timeZone],
   );
   const count = (status: VolumeStatusKind) => report.assessments.filter((a) => a.status === status).length;
   return (

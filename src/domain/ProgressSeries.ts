@@ -1,3 +1,4 @@
+import { AnalyticsFacts, type FactsOptions } from "./AnalyticsFacts";
 import {
   estimatedOneRepMax,
   progressKey,
@@ -54,8 +55,8 @@ export class ProgressSeries {
         : recordedLoad(entry, set);
   }
   /** Omits uncompleted sessions; reps refer to the best set, never the sum of the workout. */
-  static strength(workouts: Workout[], key: string): StrengthPoint[] {
-    return [...workouts]
+  static strength(workouts: Workout[], key: string, options: FactsOptions = {}): StrengthPoint[] {
+    return new AnalyticsFacts(workouts, options).workouts()
       .sort(
         (a, b) =>
           a.date.localeCompare(b.date) ||
@@ -63,10 +64,10 @@ export class ProgressSeries {
           a.id.localeCompare(b.id),
       )
       .flatMap((w) => {
-        const entries = w.exercises.filter((e) => progressKey(e) === key);
+        const entries = w.exercises;
         const candidates = entries.flatMap((entry) =>
           entry.sets
-            .filter((s) => s.done && !s.warmup)
+            .filter((s) => progressKey(entry, s) === key)
             .map((set) => ({ entry, set, value: this.value(entry, set) })),
         );
         if (!candidates.length) return [];

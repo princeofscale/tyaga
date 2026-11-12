@@ -196,7 +196,7 @@ test("anatomy and atlas apply identical RIR and set-kind filters", () => {
   w.exercises[0].sets = [
     { ...base, rir: 0 }, { ...base, rir: 3 }, { ...base, rir: 4 },
     { ...base, rir: null }, { ...base, rir: -1 }, { ...base, warmup: true }, { ...base, done: false },
-  ];
+  ].map((set, i) => ({ ...set, id: `set-${i}` }));
   for (const options of [{}, { maxRir: 3 }, { setKind: "warmup" as const }, { setKind: "all" as const }]) {
     const presenter = new AnatomyPresenter([], [w], options);
     const row = anatomicalLoad([w], options).find((m) => m.id === "pectoralis-clavicular")!;

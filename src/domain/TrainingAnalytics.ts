@@ -1,8 +1,9 @@
 import { MUSCLES, ANATOMICAL_MUSCLES } from "../data/muscles";
 import { exerciseById, exerciseForEntry } from "../lib/catalog";
 import type { Workout, Settings, MuscleLoad, Exercise } from "../lib/types";
+import { AnalyticsFacts, type FactsOptions } from "./AnalyticsFacts";
 import { MuscleParticipation } from "./MuscleParticipation";
-export interface AnalysisOptions {
+export interface AnalysisOptions extends FactsOptions {
   mapping?: "recorded" | "current";
   maxRir?: number;
   setKind?: "working" | "warmup" | "all";
@@ -12,23 +13,11 @@ export class TrainingAnalytics {
     private workouts: Workout[],
     private options: AnalysisOptions = {},
   ) {}
-  *observations(): Generator<{ exercise: Exercise; count: number }> {
-    for (const workout of this.workouts)
-      for (const entry of workout.exercises) {
-        const exercise =
-          this.options.mapping === "current"
-            ? exerciseById(entry.exerciseId)
-            : exerciseForEntry(entry);
-        if (!exercise) continue;
-        const count = entry.sets.filter(
-          (s) =>
-            s.done &&
-            (this.options.setKind === "all" || (this.options.setKind === "warmup" ? s.warmup : !s.warmup)) &&
-            (this.options.maxRir === undefined ||
-              (s.rir !== null && Number.isFinite(s.rir) && s.rir >= 0 && s.rir <= this.options.maxRir)),
-        ).length;
-        if (count) yield { exercise, count };
-      }
+  *observations(): Generator<{ exercise: Exercise; count: number; muscleModelRevision: number }> {
+    for (const fact of new AnalyticsFacts(this.workouts, this.options).sets()) {
+      const exercise = this.options.mapping === "current" ? exerciseById(fact.entry.exerciseId) : fact.exercise;
+      if (exercise) yield { exercise, count: 1, muscleModelRevision: this.options.mapping === "current" ? 1 : fact.entry.muscleModelRevision ?? 1 };
+    }
   }
   zoneLoad(settings?: Settings): MuscleLoad[] {
     const loads = MUSCLES.map((m) => ({
@@ -67,8 +56,8 @@ export class TrainingAnalytics {
       stabilizing: 0,
     }));
     const byId = new Map(rows.map((r) => [r.id, r]));
-    for (const { exercise, count } of this.observations()) {
-      for (const role of MuscleParticipation.roles(exercise)) {
+    for (const { exercise, count, muscleModelRevision } of this.observations()) {
+      for (const role of MuscleParticipation.roles(exercise,muscleModelRevision)) {
         const row = byId.get(role.muscleId);
         if (!row) continue;
         row[

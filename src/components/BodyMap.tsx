@@ -1,3 +1,4 @@
+import type { AnalysisOptions } from "../domain/TrainingAnalytics";
 import { useMemo, useState } from "react";
 import { m } from "motion/react";
 import { RotateCw, Layers } from "lucide-react";
@@ -28,7 +29,7 @@ export default function BodyMap({
   selected: Muscle | null;
   onSelect: (muscle: Muscle) => void;
   workouts?: Workout[];
-  options?: { mapping?: "recorded" | "current"; maxRir?: number };
+  options?: AnalysisOptions;
   exercise?: Exercise;
   onPartSelect?: (part: AnatomyPart) => void;
   selectedPart?: string;

@@ -3,7 +3,7 @@ import { InputError, object, str, num } from "./validation";
 // Device ↔ cloud replication. Triggers (drizzle/0006_sync.sql) record every
 // write in sync_versions; a document's version time travels with it, so the
 // newer edit wins on both sides and replaying a change is a no-op.
-export type SyncKind = "workout" | "routine" | "custom_exercise" | "settings" | "favorite";
+export type SyncKind = "workout" | "routine" | "custom_exercise" | "settings" | "favorite" | "machine_model" | "machine";
 export type SyncDoc = {
   kind: SyncKind;
   id: string;
@@ -13,6 +13,18 @@ export type SyncDoc = {
 };
 type Column = [name: string, type: "text" | "int"];
 const TABLES: Record<SyncKind, { columns: Column[]; key: string; read: string; upsert: string; remove: string }> = {
+  machine_model: {
+    columns: [["id", "text"], ["payload", "text"]], key: "id",
+    read: "SELECT id,payload FROM machine_models WHERE owner_id=? AND id=?",
+    upsert: "INSERT INTO machine_models(owner_id,id,payload) VALUES (?,?,?) ON CONFLICT(owner_id,id) DO NOTHING",
+    remove: "DELETE FROM machine_models WHERE owner_id=? AND id=?",
+  },
+  machine: {
+    columns: [["id", "text"], ["model_id", "text"], ["payload", "text"], ["revision", "int"], ["active", "int"], ["updated_at", "text"]], key: "id",
+    read: "SELECT id,model_id,payload,revision,active,updated_at FROM machine_instances WHERE owner_id=? AND id=?",
+    upsert: "INSERT INTO machine_instances(owner_id,id,model_id,payload,revision,active,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(owner_id,id) DO UPDATE SET model_id=excluded.model_id,payload=excluded.payload,revision=excluded.revision,active=excluded.active,updated_at=excluded.updated_at",
+    remove: "DELETE FROM machine_instances WHERE owner_id=? AND id=?",
+  },
   workout: {
     columns: [["id", "text"], ["date", "text"], ["payload", "text"], ["updated_at", "text"], ["revision", "int"]],
     key: "id",
@@ -56,11 +68,12 @@ export class SyncService {
   constructor(private db: D1Database, private ownerId: string) {}
 
   /** Documents changed after `since` (a seq cursor), oldest first. */
-  async changes(since: number, limit = 200) {
-    const versions = (await this.db
+  async changes(since: number, limit = 200, includeMachines = true) {
+    const page = (await this.db
       .prepare("SELECT seq, kind, doc_id, version_at, deleted FROM sync_versions WHERE owner_id = ? AND seq > ? ORDER BY seq LIMIT ?")
       .bind(this.ownerId, since, limit)
-      .all<VersionRow>()).results.filter((v) => v.kind in TABLES);
+      .all<VersionRow>()).results;
+    const versions = page.filter((v) => Object.hasOwn(TABLES, v.kind) && (includeMachines || !["machine", "machine_model"].includes(v.kind)));
     const live = versions.filter((v) => !v.deleted);
     const rows = live.length
       ? await this.db.batch(live.map((v) => this.db.prepare(TABLES[v.kind].read).bind(this.ownerId, v.doc_id)))
@@ -72,7 +85,7 @@ export class SyncService {
         ? { kind: v.kind, id: v.doc_id, versionAt: v.version_at, deleted: false, row }
         : { kind: v.kind, id: v.doc_id, versionAt: v.version_at, deleted: true };
     });
-    return { docs, cursor: versions.at(-1)?.seq ?? since, more: versions.length === limit };
+    return { docs, cursor: page.at(-1)?.seq ?? since, more: page.length === limit };
   }
 
   /** Writes each document that is newer than the local copy; older ones are skipped. */

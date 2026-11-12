@@ -1,3 +1,4 @@
+import { AnalyticsFacts } from "./AnalyticsFacts";
 /**
  * DeloadEngine
  *
@@ -80,10 +81,7 @@ export class DeloadEngine {
     const startDate = addCalendarDays(today, -29);
 
     // Filter workouts from last 30 days
-    const recent = workouts.filter((w) => {
-      return w.date >= startDate && w.date <= today &&
-        w.exercises.some((e) => e.sets.some((s) => s.done && !s.warmup));
-    });
+    const recent = new AnalyticsFacts(workouts, { from: startDate, through: today, now, timeZone }).workouts();
 
     let totalWorkingSets = 0;
     let failureSets = 0;

@@ -115,13 +115,14 @@ export class ImportService {
   ) {
     if (!preview.extras) return;
     for (const [kind, items, size] of [
+      ["machines", preview.extras.machines ?? [], 5],
       ["custom", preview.extras.customExercises, 5],
       ["routines", preview.extras.routines, 1],
       ["favorites", preview.extras.favorites, 10],
     ] as const) {
       for (let i = 0; i < items.length; i += size) {
         onPhase(
-          kind === "custom"
+          kind === "machines" ? "Восстанавливаем тренажёры" : kind === "custom"
             ? "Восстанавливаем личный каталог"
             : kind === "routines"
               ? "Восстанавливаем программы"

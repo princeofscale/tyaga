@@ -1,3 +1,7 @@
+import { AnalyticsFacts } from "./AnalyticsFacts";
+import { ExecutionIdentity } from "./ExecutionIdentity";
+import { calendarWeek } from "../lib/calendar";
+import { TrainingVolume } from "./TrainingVolume";
 import { ProgressSeries } from "./ProgressSeries";
 import {
   volumeSummary,
@@ -16,6 +20,7 @@ import {
 export interface ExercisePR {
   unit: string;
   category: string[];
+  context?: string;
   exerciseId: string;
   name: string;
   key: string;
@@ -42,6 +47,8 @@ export interface ExercisePR {
   totalSets: number;
   totalReps: number;
   totalVolume: number;
+  machineVolume?: number;
+  machineLabel?: string;
   workoutCount: number;
   lastTrained: string;
 }
@@ -80,21 +87,22 @@ export interface BalanceRatios {
 }
 
 export class PersonalRecordsCalculator {
-  constructor(private workouts: Workout[]) {}
+  constructor(private workouts: Workout[], private now = new Date()) {}
+
+  private eligible(timeZone?: string) {
+    return new AnalyticsFacts(this.workouts, { now: this.now, timeZone }).workouts();
+  }
 
   private dateWeek(date: string) {
-    return addCalendarDays(
-      date,
-      -((new Date(date + "T12:00:00Z").getUTCDay() + 6) % 7),
-    );
+    return calendarWeek(date).from;
   }
 
   /** Calculates all personal records (1RM, max weight, set volume) across workout history. */
-  calculateRecords(): ExercisePR[] {
+  calculateRecords(timeZone?: string): ExercisePR[] {
     const recordMap = new Map<string, ExercisePR>();
 
-    for (const w of this.workouts) {
-      for (const we of w.exercises) {
+    for (const w of this.eligible(timeZone)) {
+      for (const we of w.exercises.flatMap((e) => ExecutionIdentity.split(e))) {
         const key = progressKey(we);
         const name = entryName(we);
         const spec = exerciseForEntry(we)?.recording;
@@ -105,6 +113,7 @@ export class PersonalRecordsCalculator {
         let pr = recordMap.get(key);
         if (!pr) {
           pr = {
+            context: ExecutionIdentity.describe(we),
             unit: ProgressSeries.metric(we).unit,
             category: exerciseForEntry(we)?.primary ?? [],
             exerciseId: we.exerciseId,
@@ -127,6 +136,8 @@ export class PersonalRecordsCalculator {
             totalSets: 0,
             totalReps: 0,
             totalVolume: 0,
+            machineVolume: spec?.loadMode === "machine_stack" ? 0 : undefined,
+            machineLabel: we.machineSnapshot?.nickname ?? we.equipmentNote,
             workoutCount: 0,
             lastTrained: w.date,
           };
@@ -147,8 +158,9 @@ export class PersonalRecordsCalculator {
           const load = ProgressSeries.value(we, s);
           const setVolume = volumeSummary([
             { ...w, exercises: [{ ...we, sets: [s] }] },
-          ]).total;
+          ], "working", { now: this.now, timeZone }).total;
           pr.totalVolume += setVolume;
+          if (pr.machineVolume !== undefined) pr.machineVolume += TrainingVolume.setLoadVolume(we, s);
 
           // Max weight PR
           if (
@@ -209,13 +221,12 @@ export class PersonalRecordsCalculator {
       return { currentWeekStreak: 0, bestWeekStreak: 0, totalWeeks: 0 };
     }
 
-    const today = localDate(new Date(), timeZone);
-    const thisWeek = weekStart(new Date(), timeZone);
+    const today = localDate(this.now, timeZone);
+    const thisWeek = weekStart(this.now, timeZone);
 
     const weekSet = new Set<string>();
-    for (const w of this.workouts) {
-      if (w.exercises.some((e) => e.sets.some((s) => s.done))) {
-        const d = new Date(w.date + "T12:00:00");
+    for (const w of this.eligible(timeZone)) {
+      if (w.exercises.some((e) => e.sets.some((s) => s.done && !s.warmup))) {
         weekSet.add(this.dateWeek(w.date));
       }
     }
@@ -268,7 +279,7 @@ export class PersonalRecordsCalculator {
 
   /** Calculates volume trends (recent 4 weeks vs prior 4 weeks) and weekly volume averages. */
   calculateVolumeTrends(timeZone?: string): VolumeTrends {
-    const today = localDate(new Date(), timeZone);
+    const today = localDate(this.now, timeZone);
     const day28 = addCalendarDays(today, -28);
     const day56 = addCalendarDays(today, -56);
 
@@ -277,8 +288,8 @@ export class PersonalRecordsCalculator {
 
     const weeklyMap = new Map<string, { volume: number; sets: number }>();
 
-    for (const w of this.workouts) {
-      const vol = volumeSummary([w]).total;
+    for (const w of this.eligible(timeZone)) {
+      const vol = volumeSummary([w], "working", { now: this.now, timeZone }).total;
       const setsCount = w.exercises.reduce(
         (sum, e) => sum + e.sets.filter((s) => s.done && !s.warmup).length,
         0,
@@ -291,9 +302,8 @@ export class PersonalRecordsCalculator {
       }
 
       // Group into 12 recent weeks
-      const d = new Date(w.date + "T12:00:00");
       const wStart = this.dateWeek(w.date);
-      if (wStart >= addCalendarDays(today, -84)) {
+      if (wStart >= addCalendarDays(weekStart(this.now, timeZone), -77)) {
         const cur = weeklyMap.get(wStart) ?? { volume: 0, sets: 0 };
         cur.volume += vol;
         cur.sets += setsCount;
@@ -323,13 +333,13 @@ export class PersonalRecordsCalculator {
   }
 
   /** Calculates Push vs Pull and Upper vs Lower muscle balance ratios. */
-  calculateRatios(): BalanceRatios {
+  calculateRatios(timeZone?: string): BalanceRatios {
     let pushSets = 0;
     let pullSets = 0;
     let upperSets = 0;
     let lowerSets = 0;
 
-    for (const w of this.workouts) {
+    for (const w of this.eligible(timeZone)) {
       for (const we of w.exercises) {
         const ex = exerciseForEntry(we);
         if (!ex) continue;
@@ -338,7 +348,7 @@ export class PersonalRecordsCalculator {
 
         const isPush =
           ex.primary.some((p) =>
-            ["chest", "triceps", "shoulders"].includes(p),
+            ["chest", "triceps"].includes(p),
           ) ||
           ex.muscles.some(
             (m) =>
@@ -433,8 +443,8 @@ export class PersonalRecordsCalculator {
 
   /** Generates data for a GitHub-style activity calendar heatmap (e.g. 16 weeks). */
   calculateHeatmap(weeksCount = 16, timeZone?: string): ActivityHeatmapDay[] {
-    const today = localDate(new Date(), timeZone);
-    const thisWeekStart = weekStart(new Date(), timeZone);
+    const today = localDate(this.now, timeZone);
+    const thisWeekStart = weekStart(this.now, timeZone);
     const startWeek = addCalendarDays(thisWeekStart, -(weeksCount - 1) * 7);
 
     // Map workouts by date
@@ -442,7 +452,7 @@ export class PersonalRecordsCalculator {
       string,
       { workouts: Workout[]; volume: number; workingSets: number }
     >();
-    for (const w of this.workouts) {
+    for (const w of this.eligible(timeZone)) {
       if (w.date >= startWeek && w.date <= today) {
         const cur = dateMap.get(w.date) ?? {
           workouts: [],
@@ -450,7 +460,7 @@ export class PersonalRecordsCalculator {
           workingSets: 0,
         };
         cur.workouts.push(w);
-        cur.volume += volumeSummary([w]).total;
+        cur.volume += volumeSummary([w], "working", { now: this.now, timeZone }).total;
         cur.workingSets += w.exercises.reduce(
           (sum, e) => sum + e.sets.filter((s) => s.done && !s.warmup).length,
           0,

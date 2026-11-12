@@ -1,3 +1,4 @@
+import { ExecutionIdentity } from "../domain/ExecutionIdentity";
 import { CATALOG_V1 } from "../data/catalog-v1";
 import { CATALOG_V2 } from "../data/catalog-v2";
 import { CATALOG_V3 } from "../data/catalog-v3";
@@ -53,6 +54,7 @@ export function entrySpec(id: string): Omit<WorkoutExercise, "sets"> {
     catalogRevision: e.catalogRevision,
     recordingSpecRevision: e.catalogRevision,
     muscleMappingRevision: e.catalogRevision,
+    muscleModelRevision: 1,
     displayNameSnapshot: e.name,
     ...(e.source || e.custom ? { externalDefinition: e } : {}),
     ...(e.recording.laterality === "unilateral"
@@ -72,13 +74,8 @@ export function recordingLabel(we: WorkoutExercise) {
   if (spec.loadMode === "per_implement") return "кг одной гантели";
   return "кг общего веса";
 }
-export const progressKey = (we: WorkoutExercise) =>
-  JSON.stringify([
-    we.exerciseId,
-    we.catalogRevision ?? 1,
-    we.equipmentNote ?? "",
-    we.performedSides ?? "both",
-  ]);
+export const progressKey = (we: WorkoutExercise, set?: WorkoutExercise["sets"][number]) =>
+  ExecutionIdentity.key(we, set);
 export const recordedLoad = (
   we: WorkoutExercise,
   set: WorkoutExercise["sets"][number],

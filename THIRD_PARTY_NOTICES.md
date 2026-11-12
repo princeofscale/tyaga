@@ -46,3 +46,17 @@ OpenGym AGPL source or media are redistributed.
 The reviewed Russian release in `data/wger/catalog-v3-reviewed.json` adds explicit
 AI-assisted editorial reviews to 26 records, retaining original source records
 and applicable CC licences. The review layer does not relicense the data.
+
+## MediaPipe local pose analysis
+
+MediaPipe Tasks Vision **0.10.35**, Google LLC, Apache License 2.0.
+The SDK and its WASM loader/binary are bundled locally from the pinned npm package.
+The full Apache license is in [public/licenses/mediapipe-apache-2.0.txt](public/licenses/mediapipe-apache-2.0.txt).
+This version is pinned and covered by a network-behavior browser test; upgrading it
+requires rechecking telemetry and local input processing.
+
+Pose Landmarker Lite float16 v1 is downloaded only when analysis starts, from the
+[official versioned Google model URL](https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task).
+Model files and the official `mediapipe-assets/pose.jpg` browser-test fixture are
+not checked into the repository. Test preparation verifies their SHA-256 hashes.
+Source and usage documentation: [Google AI Edge](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker/web_js).

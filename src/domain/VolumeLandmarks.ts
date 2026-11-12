@@ -1,3 +1,5 @@
+import { AnalyticsFacts } from "./AnalyticsFacts";
+import { trailingWindow } from "../lib/calendar";
 import { MUSCLES } from "../data/muscles";
 import { addCalendarDays } from "../lib/calendar";
 import type { Muscle, MuscleLoad, Workout } from "../lib/types";
@@ -94,9 +96,9 @@ export class VolumeLandmarksCalculator {
   }
 
   /** Always seven calendar dates ending today, independent of the atlas week/filter. */
-  static assessWeek(workouts: Workout[], endDate: string, options: Pick<AnalysisOptions, "mapping"> = {}) {
-    const startDate = addCalendarDays(endDate, -6);
-    const selected = workouts.filter((w) => w.date >= startDate && w.date <= endDate);
+  static assessWeek(workouts: Workout[], endDate: string, options: Pick<AnalysisOptions, "mapping" | "timeZone" | "now"> = {}) {
+    const startDate = trailingWindow(endDate, 7).from;
+    const selected = new AnalyticsFacts(workouts, { ...options, from: startDate, through: endDate }).workouts();
     const loads = new TrainingAnalytics(selected, options).zoneLoad();
     const hardLoads = new TrainingAnalytics(selected, { ...options, maxRir: 3 }).zoneLoad();
     const sets = selected.flatMap((w) => w.exercises.flatMap((e) => e.sets))
