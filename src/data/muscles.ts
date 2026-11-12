@@ -249,7 +249,7 @@ export const CHEST_HEADS = [
     slug: "chest-upper",
     name: "Верх груди",
     latin: "m. pectoralis major, pars clavicularis",
-    desc: "Ключичный пучок: наклонный жим штанги/гантелей, пуловер",
+    desc: "Ключичный пучок: акцент в жиме на скамье 30°. Отделы груди работают совместно.",
   },
   {
     id: "pectoralis-sternal" as const,

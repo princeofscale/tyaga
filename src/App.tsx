@@ -1018,7 +1018,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                     </span>
                     <span className="week-summary-foot">
                       {lagging.length
-                        ? `Отстают: ${lagging.map((m) => m.short.toLowerCase()).join(", ")}`
+                        ? `Ниже твоей цели: ${lagging.map((m) => m.short.toLowerCase()).join(", ")}`
                         : "Все зоны в работе — так держать"}
                       <ChevronRight size={18} />
                     </span>
@@ -1307,11 +1307,11 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                           <h2 id="planner-title">Закрыть пробелы</h2>
                           <p>
                             {currentLagging.length
-                              ? `На этой неделе отстают: ${currentLagging
+                              ? `Меньше прямых подходов, чем в твоих целях: ${currentLagging
                                   .slice(0, 2)
                                   .map((m) => m.short.toLowerCase())
                                   .join(" и ")}. Соберём короткую тренировку под твоё время.`
-                              : "Подходы этой недели покрывают твои цели. Можно отдыхать или добавить объём."}
+                              : "Прямые подходы этой недели покрывают твои цели. Решение о дополнительной работе зависит от прогресса и самочувствия."}
                           </p>
                         </div>
                         <div className="planner-controls">
@@ -1754,7 +1754,9 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
               <li>Разминка записывается и входит в общий тоннаж и количество выполненных подходов. Её участие в мышцах показывается отдельно; недельные ориентиры считают рабочие подходы. Невыполненные подходы исключаются.</li>
               <li>
                 Роли движителя, помощника и стабилизатора разделены. Помощь не
-                прибавляется как «0,5»; стабилизация не заполняет ориентир.
+                прибавляется к прямым целям; стабилизация не заполняет ориентир.
+                В инструменте «Объём по мышцам» отдельно показана дробная оценка:
+                прямые + 0,5 × помощь, с указанным периодом и ограничениями.
               </li>
               <li>
                 RIR хранится отдельно. Можно включить фильтр ≤3, без
@@ -2120,6 +2122,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
         <Modal title="Настройка разгрузочной недели" onClose={() => setModal(null)} wide>
           <DeloadModal
             workouts={workouts}
+            timeZone={settings.timeZone}
             onApplyDeload={(mode) => {
               if (draft) {
                 setDraft((d) => (d ? { ...d, workout: DeloadEngine.transformWorkoutForDeload(d.workout, mode) } : null));
@@ -2141,13 +2144,14 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
       ) : null}
       {modal === "rp_volume" ? (
         <Modal
-          title="Ориентиры объёма по доктору Майку Израэтелю (RP)"
+          title="Ориентиры недельного объёма"
           onClose={() => setModal(null)}
           wide
         >
           <VolumeLandmarksModal
-            loads={loads}
-            onClose={() => setModal(null)}
+            workouts={displayed}
+            today={today}
+            mapping={mapping}
           />
         </Modal>
       ) : null}
