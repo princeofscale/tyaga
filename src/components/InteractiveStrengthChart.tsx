@@ -1,4 +1,5 @@
 import ProgressChart from "./ProgressChart";
+import { quantity } from "../lib/quantity";
 import type { StrengthPoint } from "../domain/ProgressSeries";
 export type { StrengthPoint } from "../domain/ProgressSeries";
 export default function InteractiveStrengthChart({
@@ -22,7 +23,7 @@ export default function InteractiveStrengthChart({
         value: p.max,
         detail: isDuration
           ? "Время лучшего подхода"
-          : `${p.reps} повторений · ${p.sets.length} рабочих подходов`,
+          : `${quantity(p.reps, "повторение", "повторения", "повторений")} · ${quantity(p.sets.length, "рабочий подход", "рабочих подхода", "рабочих подходов")}`,
       }))}
     />
   );

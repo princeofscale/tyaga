@@ -254,45 +254,36 @@ test("mobile tool dialogs and workout inputs retain their exact set targets", as
   const first = page.locator(".exercise-card").first();
   const weights = first.locator("input[aria-label$=', вес']");
   await expect(weights.first()).toBeVisible();
-  let secondWeight = await weights.nth(1).inputValue();
   const dock = first.locator(".set-quick-controls-dock");
-  const geometry = () =>
+  // Касание строки не должно сдвигать саму строку: панель быстрой правки появляется под ней.
+  const rowBox = () =>
     first.evaluate((el) => {
-      const row = el.querySelector(".set-row")!;
-      const tray = el.querySelector(".set-quick-controls-dock")!;
-      return [
-        el.getBoundingClientRect().height,
-        row.getBoundingClientRect().height,
-        tray.getBoundingClientRect().height,
-      ];
+      const row = el.querySelector(".set-row")!.getBoundingClientRect();
+      return [Math.round(row.top + window.scrollY), row.height];
     });
-  const beforeFocus = await geometry();
-  await expect(
-    dock.getByRole("button", { name: "+2.5", exact: true }),
-  ).toBeDisabled();
+  await expect(dock).toHaveCount(0);
+  const beforeFocus = await rowBox();
   await weights.first().fill("60");
-  // Раунд 1 (R01-REQ04): набранный вес переходит на нетронутые строки ниже, поэтому «второй» вес теперь тоже 60.
-  // Дальше важно другое: кнопки быстрой правки по-прежнему меняют только выбранный подход.
+  await expect(dock).toHaveCount(1);
+  expect(await rowBox()).toEqual(beforeFocus);
+  // Раунд 1 (R01-REQ04): нетронутые строки ниже берут набранное, а также шаги веса, RIR и «прошлый результат».
   await expect(weights.nth(1)).toHaveValue("60");
-  secondWeight = "60";
-  expect(await geometry()).toEqual(beforeFocus);
   await dock.getByRole("button", { name: "+2.5", exact: true }).click();
   await expect(weights.first()).toHaveValue("62.5");
-  await expect(weights.nth(1)).toHaveValue(secondWeight);
+  await expect(weights.nth(1)).toHaveValue("62.5");
   const rirs = first.locator("input[aria-label$=', RIR']");
-  const secondRir = await rirs.nth(1).inputValue();
   await dock
     .locator(".rir-quick-group")
     .getByRole("button", { name: "0", exact: true })
     .click();
   await expect(rirs.first()).toHaveValue("0");
-  await expect(rirs.nth(1)).toHaveValue(secondRir);
+  await expect(rirs.nth(1)).toHaveValue("0");
   await first.locator(".set-check").first().focus();
   await page.keyboard.press("Tab");
   await expect(dock.locator(".stepper-btn").first()).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(weights.first()).toHaveValue("57.5");
-  await expect(weights.nth(1)).toHaveValue(secondWeight);
+  await expect(weights.nth(1)).toHaveValue("57.5");
   await dock.getByRole("button", { name: "+5", exact: true }).click();
   await expect(weights.first()).toHaveValue("62.5");
   await first.locator(".set-check").first().click();

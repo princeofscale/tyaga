@@ -240,7 +240,7 @@ export function BodyweightModal({
         <article className="progress-metric">
           <span>Изменение за историю</span>
           <strong>
-            {stats
+            {stats && entries.length > 1
               ? `${stats.totalChangeKg > 0 ? "+" : ""}${fmt(stats.totalChangeKg)}`
               : "—"}
             <small> кг</small>

@@ -109,3 +109,50 @@ test("R01-REQ07/10: штанга подписывается обычным «к�
     assert.match(sentence, /^[А-ЯЁ].*[.]$/, `${mode}: законченная фраза`);
   }
 });
+
+/** Набор числа по цифрам: снимок последователей берётся один раз — на фокус поля. */
+const typeDigits = (sets: SetEntry[], index: number, field: "weight" | "reps" | "rir", steps: (number | null)[]) => {
+  const snapshot = SetPropagation.followers(sets, index);
+  return steps.reduce((acc, value) => SetPropagation.apply(acc, index, { [field]: value }, snapshot), sets);
+};
+
+test("R01 D3: промежуточные цифры при наборе не затирают строку, поправленную вручную", () => {
+  const reps = [set({ reps: 10 }), set({ reps: 10 }), set({ reps: 1 })];
+  assert.deepEqual(typeDigits(reps, 0, "reps", [1, 12]).map((s) => s.reps), [12, 12, 1], "повторы: «1», затем «12»");
+  const weight = [set({ weight: 100 }), set({ weight: 100 }), set({ weight: 10 })];
+  assert.deepEqual(typeDigits(weight, 0, "weight", [1, 10, 105]).map((s) => s.weight), [105, 105, 10], "вес: «1», «10», «105»");
+});
+
+test("R01 D3: стёртый вручную RIR не перетирается набором RIR в первой строке через «пусто»", () => {
+  const sets = [set({ rir: 2 }), set({ rir: 2 }), set({ rir: null })];
+  assert.deepEqual(typeDigits(sets, 0, "rir", [null, 3]).map((s) => s.rir), [3, 3, null]);
+});
+
+test("R01 D2: кнопки — шаг веса, RIR, «прошлый результат» — идут по тому же правилу, что и набор", () => {
+  let sets = [set({ weight: 100 }), set({ weight: 100 }), set({ weight: 90 })];
+  sets = SetPropagation.apply(sets, 0, { weight: 102.5 });
+  assert.deepEqual(sets.map((s) => s.weight), [102.5, 102.5, 90], "строка с другим весом остаётся");
+  sets = SetPropagation.apply(sets, 0, { weight: 105 });
+  assert.deepEqual(sets.map((s) => s.weight), [105, 105, 90], "второе нажатие снова ведёт нетронутую строку");
+  const rir = SetPropagation.apply([set({ rir: null }), set({ rir: null }), set({ rir: 1 })], 0, { rir: 2 });
+  assert.deepEqual(rir.map((s) => s.rir), [2, 2, 1]);
+  const past = SetPropagation.apply([set({ weight: 60, reps: 10 }), set({ weight: 60, reps: 12 })], 0, { weight: 62.5, reps: 8 });
+  assert.deepEqual(past.map((s) => [s.weight, s.reps]), [[62.5, 8], [62.5, 12]]);
+});
+
+test("R01 D2/D3: снимок чужой строки игнорируется, выполненные подходы не следуют", () => {
+  const sets = [set({ weight: 100 }), set({ weight: 100, done: true }), set({ weight: 100 })];
+  const foreign = SetPropagation.followers(sets, 2);
+  const next = SetPropagation.apply(sets, 0, { weight: 110 }, foreign);
+  assert.deepEqual(next.map((s) => s.weight), [110, 100, 110]);
+});
+
+import { zoneCreditNote } from "../src/lib/zoneCredit";
+
+test("R01 D6: пояснение «число больше» не показывается при нуле и когда оно неверно", () => {
+  assert.equal(zoneCreditNote(0, 0), "");
+  assert.match(zoneCreditNote(14, 7), /Поэтому число больше, чем подходов в записи/);
+  const same = zoneCreditNote(4, 4);
+  assert.match(same, /Один подход засчитывается каждой зоне/);
+  assert.doesNotMatch(same, /Поэтому число больше/);
+});

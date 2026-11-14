@@ -1073,7 +1073,7 @@
 
   /* «Прошлый» получает ширину под «102,5 × 10»; остальные колонки уже не нужны шире цифр. */
   .workout-athletic :is(.sets-header, .set-row) {
-    grid-template-columns: 34px minmax(58px, 1.15fr) minmax(0, 1fr) minmax(0, 1fr) 40px 44px;
+    grid-template-columns: 34px minmax(50px, 1fr) minmax(60px, 1.1fr) minmax(0, 1fr) 40px 44px;
     gap: 4px;
     padding: 3px 0;
   }
@@ -1291,21 +1291,40 @@
 }
 
 /*
- * «Отменить удаление» лежит над нижним краем экрана и над таймером отдыха.
- * Раньше блок шёл в потоке сразу под шапкой: после прокрутки его было не видно вовсе.
+ * Нижняя стопка: «Отменить удаление» и таймер отдыха лежат в одном липком блоке друг под другом.
+ * Раньше undo был fixed, а таймер липким в потоке, и их расчёты не совпадали: на 360×800 панель закрывала кнопки −15/+15/пауза/пропуск.
+ * В одной колонке перекрытие невозможно при любой высоте и прокрутке.
  */
-.workout-undo {
-  position: fixed;
-  right: 16px;
-  bottom: calc(16px + var(--sab, 0px));
-  left: 16px;
+.workout-dock {
+  position: sticky;
+  bottom: calc(12px + var(--sab, 0px));
   z-index: 35;
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  max-width: 728px;
+  margin: 0 auto;
+  pointer-events: none;
+}
+
+.workout-dock:empty {
+  display: none;
+}
+
+.workout-dock > * {
+  pointer-events: auto;
+}
+
+.workout-dock .rest-bar {
+  position: relative;
+  bottom: auto;
+}
+
+.workout-undo {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  max-width: 728px;
-  margin: 0 auto;
   padding: 6px 6px 6px 16px;
   border: 1px solid var(--line-strong);
   border-radius: 14px;
@@ -1315,18 +1334,9 @@
   font-size: 0.875rem;
 }
 
-.workout-undo.above-rest {
-  bottom: calc(112px + var(--sab, 0px));
-}
-
 .workout-undo .button {
   min-height: 44px;
   white-space: nowrap;
-}
-
-/* Панель закрывает нижние 70 px, пока удаление можно отменить: оставляем место, чтобы строки не оказались под ней. */
-.workout-screen.has-undo {
-  padding-bottom: calc(88px + var(--sab, 0px));
 }
 
 /* Строки плотнее: цели касания остаются 44 px, лишнее — только поля вокруг. */
@@ -1401,11 +1411,64 @@
 /* Узкие телефоны: название упражнения не должно занимать две строки там, где хватает одной. */
 @media (max-width: 400px) {
   .workout-athletic .exercise-card-head h3 {
-    font-size: 1.375rem;
+    font-size: 1.125rem;
+    line-height: 1.15;
   }
 }
 
 .workout-athletic .exercise-extras > .execution-fields {
   padding-block: 0;
   padding-inline: 12px;
+}
+
+/*
+ * Пока подход не выбран, панели быстрой правки нет вовсе: она появляется под выбранной строкой, сама строка при этом не двигается.
+ * Служебные кнопки между упражнениями («Повторить прошлые», «+2.5 кг», «Ещё…») — 34 px по высоте с областью касания 44 px:
+ * на телефоне между последней строкой одного упражнения и первой строкой следующего должно оставаться место под ≥5 строк.
+ */
+.workout-athletic .autofill-pill-btn,
+.workout-athletic .exercise-extras > details > summary {
+  position: relative;
+  min-height: 34px;
+}
+
+.workout-athletic .autofill-pill-btn {
+  padding-block: 4px;
+}
+
+.workout-athletic .autofill-pill-btn::before,
+.workout-athletic .exercise-extras > details > summary::before {
+  position: absolute;
+  inset: -5px 0;
+  content: "";
+}
+
+/* Две кнопки автозаполнения — в одну строку даже на 360 px: подпись кнопки подстраивается, а не переносит соседнюю на новую строку. */
+@media (max-width: 640px) {
+  .workout-athletic .exercise-autofill-bar {
+    flex-wrap: nowrap;
+  }
+
+  .workout-athletic .autofill-pill-btn {
+    gap: 4px;
+    padding-inline: 8px;
+    font-size: 0.6875rem;
+    white-space: nowrap;
+  }
+
+  .workout-athletic .autofill-pill-btn.repeat {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .workout-athletic .autofill-pill-btn.progress {
+    flex: 0 0 auto;
+  }
+}
+
+/* D5: пятый символ веса («222,5») не должен резаться на 360 px: поле веса шире, поля внутри — без лишних боковых отступов. */
+@media (max-width: 640px) {
+  .workout-athletic .set-row input[type="number"] {
+    padding-inline: 1px;
+  }
 }

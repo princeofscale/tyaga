@@ -1,4 +1,5 @@
 import MachineManager from "./components/MachineManager";
+import { zoneCreditNote } from "./lib/zoneCredit";
 import { ExecutionIdentity } from "./domain/ExecutionIdentity";
 import { useRestNotifications } from "./hooks/useRestNotifications";
 import RestNotificationSettings from "./components/RestNotificationSettings";
@@ -431,6 +432,11 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
   );
   const weekDone = currentLoads.reduce((n, m) => n + Math.min(m.total, m.goal), 0);
   const weekGoal = currentLoads.reduce((n, m) => n + m.goal, 0);
+  const weekNote = zoneCreditNote(weekDone, workingSets(currentWeek));
+  const zonesNote = zoneCreditNote(
+    loads.reduce((n, m) => n + Math.min(m.total, m.goal), 0),
+    workingSets(weekWorkouts),
+  );
   const currentLagging = [...currentLoads]
     .sort((a, b) => a.ratio - b.ratio)
     .filter((m) => m.ratio < 0.8);
@@ -1044,10 +1050,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                         <strong>{fmt(weekDone)}</strong> / {weekGoal} зачтено зонам
                       </span>
                     </span>
-                    <span className="week-summary-note">
-                      Один подход засчитывается каждой зоне, которую он нагружает: жим — и груди, и трицепсу. Поэтому число
-                      больше, чем подходов в записи.
-                    </span>
+                    {weekNote ? <span className="week-summary-note">{weekNote}</span> : null}
                     <span className="meter" aria-hidden="true">
                       <span style={{ width: `${weekGoal ? Math.min(100, (100 * weekDone) / weekGoal) : 0}%` }} />
                     </span>
@@ -1258,6 +1261,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                               <strong>{fmt(loads.reduce((n, m) => n + Math.min(m.total, m.goal), 0))}</strong>{" "}
                               из {loads.reduce((n, m) => n + m.goal, 0)} по твоим целям
                             </p>
+                            {zonesNote ? <p className="tiny">{zonesNote}</p> : null}
                           </div>
                         </div>
                         <div className="analysis-controls">
@@ -1914,7 +1918,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                             {exerciseForEntry(e)?.recording.loadMode ===
                             "bodyweight"
                               ? "Без веса"
-                              : `${recordedLoad(e, s)} ${recordingLabel(e)}`}{" "}
+                              : `${fmt(recordedLoad(e, s))} ${recordingLabel(e)}`}{" "}
                             × {s.reps}
                             {exerciseForEntry(e)?.recording.repsMode ===
                             "per_side"

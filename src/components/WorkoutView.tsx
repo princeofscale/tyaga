@@ -3,7 +3,7 @@ import { MuscleParticipation } from "../domain/MuscleParticipation";
 import { ExecutionIdentity } from "../domain/ExecutionIdentity";
 import type { MachineInstance } from "../lib/types";
 import { WorkoutUndo } from "../domain/WorkoutUndo";
-import { SetPropagation } from "../domain/SetPropagation";
+import { SetPropagation, type SetFollowers } from "../domain/SetPropagation";
 import { WorkoutDiscard } from "../domain/WorkoutDiscard";
 import { selectOnFocus, trimLeadingZeros } from "../lib/numberField";
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -213,6 +213,8 @@ export default function WorkoutView({
   const [contextKey, setContextKey] = useState<string | null>(null);
   const barRef = useRef<HTMLElement>(null);
   const pinRef = useRef<HTMLSpanElement>(null);
+  // Кто пойдёт за правкой поля: определяется один раз, когда поле получило фокус, а не после каждой цифры.
+  const followersRef = useRef<SetFollowers | null>(null);
   const [expandedExercises, setExpandedExercises] = useState<Record<number, boolean>>({});
   const [soundEnabled, setSoundEnabled] = useState(() => !audioHaptics.isMuted());
 
@@ -335,7 +337,7 @@ export default function WorkoutView({
     return { kind: "normal", warmup: false };
   };
 
-  /** `propagate` — правка набрана руками в поле: ещё не тронутые строки ниже берут то же число. Кнопки «быстрой правки» и подстановка прошлого результата меняют только выбранную строку. */
+  /** `propagate` — правка вес/повторы/RIR (набор, шаги, быстрый RIR, «прошлый результат»): ещё не тронутые строки ниже берут то же число. Кого считать нетронутым, решает снимок на начало правки (`followersRef`), см. SetPropagation. */
   const changeSet = (ei: number, si: number, patch: Partial<SetEntry>, propagate = false) => {
     if (patch.done && soundEnabled) {
       audioHaptics.playSetDone();
@@ -357,7 +359,7 @@ export default function WorkoutView({
             ? {
                 ...e,
                 sets: propagate
-                  ? SetPropagation.apply(e.sets, si, patch)
+                  ? SetPropagation.apply(e.sets, si, patch, followersRef.current)
                   : e.sets.map((s, j) => (j === si ? { ...s, ...patch } : s)),
               }
             : e,
@@ -379,11 +381,11 @@ export default function WorkoutView({
     if (spec.loadMode === "assisted_bodyweight") {
       const cur = s.assistanceKg ?? 0;
       const next = Math.max(0, Math.round((cur + delta) * 10) / 10);
-      changeSet(ei, si, { assistanceKg: next });
+      changeSet(ei, si, { assistanceKg: next }, true);
     } else {
       const cur = s.weight;
       const next = Math.max(0, Math.round((cur + delta) * 10) / 10);
-      changeSet(ei, si, { weight: next });
+      changeSet(ei, si, { weight: next }, true);
     }
   };
 
@@ -406,10 +408,14 @@ export default function WorkoutView({
   const fieldProps = (ei: number, si: number) => ({
     onFocus: (e: React.FocusEvent<HTMLInputElement>) => {
       selectOnFocus.onFocus(e);
+      followersRef.current = SetPropagation.followers(w.exercises[ei].sets, si);
       setActiveSetKey(`${ei}-${si}`);
     },
     onMouseUp: selectOnFocus.onMouseUp,
-    onBlur: selectOnFocus.onBlur,
+    onBlur: (e: React.FocusEvent<HTMLInputElement>) => {
+      selectOnFocus.onBlur(e);
+      followersRef.current = null;
+    },
     onClick: (e: React.MouseEvent) => e.stopPropagation(),
   });
   const lastRemoval = draft.removals?.at(-1);
@@ -428,7 +434,7 @@ export default function WorkoutView({
           },
     );
   return (
-    <div className={`workout-screen workout-athletic ${lastRemoval ? "has-undo" : ""}`}>
+    <div className="workout-screen workout-athletic">
       <header className="workout-bar" ref={barRef}>
         <button
           className="icon-button workout-minimize-btn"
@@ -540,39 +546,6 @@ export default function WorkoutView({
           </button>
         </div>
       ) : null}
-      <AnimatePresence initial={false}>
-        {lastRemoval ? (
-          <m.div
-            className={`workout-undo ${resting ? "above-rest" : ""}`}
-            key="undo"
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 8 }}
-            role="status"
-          >
-            <span>
-              {lastRemoval.kind === "set" ? "Подход удалён" : "Упражнение убрано"}
-              {draft.removals!.length > 1 ? ` · ещё ${draft.removals!.length - 1}` : ""}
-            </span>
-            <button
-              type="button"
-              className="button secondary"
-              aria-label="Отменить удаление"
-              onClick={() => {
-                try {
-                  update(WorkoutUndo.restore(draft));
-                  setUndoError("");
-                } catch (e) {
-                  setUndoError((e as Error).message);
-                }
-              }}
-            >
-              <RotateCcw size={16} />
-              Отменить
-            </button>
-          </m.div>
-        ) : null}
-      </AnimatePresence>
       {undoError && <p className="form-error" role="alert">{undoError}</p>}
       <fieldset
         className="workout-main"
@@ -703,7 +676,7 @@ export default function WorkoutView({
                         aria-pressed={quickSet?.rir === r}
                         disabled={!quickSet}
                         onClick={() => {
-                          if (quickSet) changeSet(ei, quickSetIndex, { rir: quickSet.rir === r ? null : r });
+                          if (quickSet) changeSet(ei, quickSetIndex, { rir: quickSet.rir === r ? null : r }, true);
                         }}
                       >
                         {r}
@@ -1244,7 +1217,7 @@ export default function WorkoutView({
                                 reps: last.reps,
                                 ...(timed ? { durationSeconds: last.durationSeconds } : {}),
                                 ...(assistance ? { assistanceKg: last.assistanceKg } : {}),
-                              });
+                              }, true);
                           }}
                         >
                           {wrapSafe(lastText)}
@@ -1363,7 +1336,6 @@ export default function WorkoutView({
                     </div>
                   );
                 })}
-                {!quickSet ? quickControls : null}
               </div>
               <div className="set-actions">
                 <button
@@ -1555,6 +1527,41 @@ export default function WorkoutView({
           </button>
         </details>
       </fieldset>
+      {/* Одна нижняя стопка: «Отменить удаление» и таймер отдыха идут друг под другом в одном липком блоке, поэтому не могут перекрыть друг друга. */}
+      <div className="workout-dock">
+      <AnimatePresence initial={false}>
+        {lastRemoval ? (
+          <m.div
+            className="workout-undo"
+            key="undo"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            role="status"
+          >
+            <span>
+              {lastRemoval.kind === "set" ? "Подход удалён" : "Упражнение убрано"}
+              {draft.removals!.length > 1 ? ` · ещё ${draft.removals!.length - 1}` : ""}
+            </span>
+            <button
+              type="button"
+              className="button secondary"
+              aria-label="Отменить удаление"
+              onClick={() => {
+                try {
+                  update(WorkoutUndo.restore(draft));
+                  setUndoError("");
+                } catch (e) {
+                  setUndoError((e as Error).message);
+                }
+              }}
+            >
+              <RotateCcw size={16} />
+              Отменить
+            </button>
+          </m.div>
+        ) : null}
+      </AnimatePresence>
       <AnimatePresence initial={false}>
       {resting ? (
         <m.section
@@ -1624,6 +1631,7 @@ export default function WorkoutView({
         </m.section>
       ) : null}
       </AnimatePresence>
+      </div>
       <span className="sr-only" role="status" aria-live="polite">
         {announcement}
       </span>
