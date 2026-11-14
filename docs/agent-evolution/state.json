@@ -6,7 +6,7 @@
   "fetchedMainSha": "b766eec0588a5bd688742dac26b45411d85e82e3",
   "integrationSha": "555a9b3f7a8bfa3de19f5c92a17bf3299293dea7",
   "goalId": "goal-1588dc6a-45a6-4c72-8239-7d62bba32138",
-  "stage": "round-1-closed",
+  "stage": "round-2-engineering",
   "checkpoint": {
     "sampledAt": "2026-11-14T09:25:00+04:00",
     "timezone": "Europe/Saratov",
@@ -16,10 +16,10 @@
     "humanObservationSampleMeaning": "observation-instant-not-execution-or-event-time",
     "priorSampledCheckpoint": "2026-11-14T09:05:00+04:00"
   },
-  "roundsStarted": 1,
+  "roundsStarted": 2,
   "roundsAccepted": 1,
-  "currentRound": null,
-  "nextRound": 2,
+  "currentRound": 2,
+  "nextRound": 3,
   "requirements": [],
   "rounds": [],
   "agents": {
