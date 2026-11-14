@@ -22,6 +22,7 @@ type Props = {
     skipped: number;
     replaced?: number;
     kept?: number;
+    runId?: string;
     addedIds?: string[];
     settings?: Settings;
     theme?: ThemeId;
@@ -131,13 +132,13 @@ export default function HistoryImporter({
     }
   }
   const suggestion = (name: string) =>
-    ImportMapping.suggest(name) ?? matches[name]?.[0] ?? null;
+    ImportMapping.suggestForImport(name) ?? matches[name]?.[0] ?? null;
   const choiceFor = (name: string) =>
     name in userChoices
       ? userChoices[name]
       : weightTotal === "yes" &&
-          ImportMapping.appliesByDefault(ImportMapping.suggest(name))
-        ? ImportMapping.suggest(name)!.id
+          ImportMapping.appliesByDefault(ImportMapping.suggestForImport(name))
+        ? ImportMapping.suggestForImport(name)!.id
         : "";
   async function run() {
     if (!preview) return;

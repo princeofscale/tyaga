@@ -48,8 +48,22 @@ export class ImportMapping {
     );
   }
 
+  /**
+   * Equipment-qualified source labels are safe. Generic aliases such as
+   * "Deadlift" or "Overhead press" are useful for search, but importing them
+   * automatically would infer a load rule and merge potentially different lifts.
+   */
+  static suggestForImport(sourceName: string): Exercise | null {
+    const normalized = normalizeSearch(sourceName);
+    const equipmentQualified = /\b(barbell|dumbbell|kettlebell|machine|smith)\b/i.test(sourceName) ||
+      /(штанг|гантел|тренажер|тренажёр)/i.test(normalized);
+    return equipmentQualified ? this.suggest(sourceName) : null;
+  }
+  static appliesByDefaultName(sourceName: string) {
+    return this.appliesByDefault(this.suggestForImport(sourceName));
+  }
   /** Does the weight in the file need the "is it the total bar weight?" question? */
   static needsWeightQuestion(names: string[]) {
-    return names.some((n) => this.appliesByDefault(this.suggest(n)));
+    return names.some((n) => this.appliesByDefaultName(n));
   }
 }

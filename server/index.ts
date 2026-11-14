@@ -17,6 +17,7 @@ import { ExerciseRepository } from "./ExerciseRepository";
 import { ProductRepository } from "./ProductRepository";
 import { PersonalExerciseFactory } from "./PersonalExerciseFactory";
 import { HistoryImportService } from "./HistoryImportService";
+import { ImportReceiptService } from "./ImportReceiptService";
 import { BackupImportService } from "./BackupImportService";
 import { exerciseById } from "../src/lib/model";
 import { AccountService, AuthError } from "./AccountService";
@@ -166,6 +167,10 @@ export async function handleApi(request: Request, env: Env) {
           await readBody(request),
         ),
       );
+    if (request.method === "POST" && url.pathname === "/api/import/undo")
+      return json(await new ImportReceiptService(env.DB, userId).undo(await readBody(request)));
+    if (request.method === "GET" && url.pathname === "/api/import/runs")
+      return json(await new ImportReceiptService(env.DB, userId).runs());
     if (request.method === "POST" && url.pathname === "/api/import/metadata")
       return json(
         await new BackupImportService(env.DB, userId).import(
@@ -246,6 +251,8 @@ export async function handleApi(request: Request, env: Env) {
           )
         : json({ deleted: id });
     }
+    if (request.method === "GET" && url.pathname === "/api/sync/recovery")
+      return json(await new SyncService(env.DB, userId).recovery());
     if (request.method === "GET" && url.pathname === "/api/sync/changes")
       return json(
         await new SyncService(env.DB, userId).changes(

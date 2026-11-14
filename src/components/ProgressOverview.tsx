@@ -4,6 +4,7 @@ import { ProgressOverview as Overview } from "../domain/ProgressOverview";
 import { fmt, type Workout, type Settings } from "../lib/model";
 import StatsAnalytics from "./StatsAnalytics";
 import { quantityWord } from "../lib/quantity";
+import { VolumeLabel } from "../domain/VolumeLabel";
 export default function ProgressOverview({
   workouts,
   settings,
@@ -93,8 +94,8 @@ export default function ProgressOverview({
               )}
             </small>
           </strong>
-          <p>
-            {fmt(data.volumeKg / 1000)} т свободных весов ·{" "}
+          <p title={data.volumeKg > 0 ? undefined : VolumeLabel.reason(data.volumeOmitted)}>
+            {VolumeLabel.short(data.volumeKg)} {data.volumeKg > 0 ? "" : `${VolumeLabel.reason(data.volumeOmitted)} · `}свободных весов ·{" "}
             {data.workloadChange === null
               ? "Нет прошлого периода"
               : `${data.workloadChange > 0 ? "+" : ""}${data.workloadChange}% подходов`}

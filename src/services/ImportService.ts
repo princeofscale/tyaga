@@ -16,33 +16,33 @@ export class ImportService {
     }
     return result;
   }
-  private packages(workouts: ImportedWorkout[]) {
-    const chunks: ImportedWorkout[][] = [];
-    let current: ImportedWorkout[] = [];
-    for (const workout of workouts) {
-      const candidate = [...current, workout];
-      const names = new Set(
-        candidate.flatMap((w) =>
-          w.exercises.map((e) => e.exerciseId ?? e.sourceName),
-        ),
-      );
-      if (
-        current.length &&
-        (candidate.length > 5 ||
-          names.size > 30 ||
-          JSON.stringify(candidate).length > 350000)
-      ) {
-        chunks.push(current);
-        current = [];
-      }
-      current.push(workout);
-      if (JSON.stringify(current).length > 400000)
-        throw new Error(
-          "Одна сессия слишком велика для импорта. Раздели её в исходном журнале.",
-        );
+  private async manifest(format: ImportPreview["format"], workouts: ImportedWorkout[], replace: boolean) {
+    const sort = (value: unknown): unknown => Array.isArray(value) ? value.map(sort) :
+      value && typeof value === "object" ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => [k, sort(v)])) : value;
+    const canonical = JSON.stringify(sort({ format, workouts, replace }));
+    const hash = [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical)))].map((b) => b.toString(16).padStart(2, "0")).join("");
+    return hash;
+  }
+  private runId(hash: string) {
+    const key = `tyaga-import-run:${hash}`;
+    try {
+      const existing = localStorage.getItem(key);
+      if (existing) return { key, runId: existing };
+      const runId = crypto.randomUUID();
+      localStorage.setItem(key, runId);
+      return { key, runId };
+    } catch {
+      return { key, runId: crypto.randomUUID() };
     }
-    if (current.length) chunks.push(current);
-    return chunks;
+  }
+  async runs() {
+    return apiClient.request<{
+      runs: Array<{ runId: string; manifestHash: string; at: string; total: number; activeCount: number }>;
+      pending: Array<{ runId: string; manifestHash: string; at: string; total: number }>;
+    }>("/api/import/runs");
+  }
+  async undo(runId: string) {
+    return apiClient.request<{ removed: number; restored: number; kept: number; runId: string }>("/api/import/undo", "POST", { runId });
   }
   async import(
     preview: ImportPreview,
@@ -55,70 +55,24 @@ export class ImportService {
     }) => void,
     options: { replace?: boolean } = {},
   ) {
-    const chunks = this.packages(preview.workouts);
-    let imported = 0,
-      skipped = 0,
-      replaced = 0,
-      kept = 0;
-    const addedIds: string[] = [];
-    const idMap: Record<string, string> = {};
-    // All packages are validated first; writes begin only after a successful review.
-    for (let i = 0; i < chunks.length; i++) {
-      onProgress({
-        phase: "Проверяем данные",
-        done: i,
-        total: chunks.length,
-        imported,
-        skipped,
-      });
-      const result = await apiClient.request<{
-        exerciseIdMap: Record<string, string>;
-      }>("/api/import", "POST", {
-        format: preview.format,
-        workouts: chunks[i],
-        dryRun: true,
-        ...(options.replace ? { replace: true } : {}),
-      });
-      Object.assign(idMap, result.exerciseIdMap);
-    }
-    for (let i = 0; i < chunks.length; i++) {
-      onProgress({
-        phase: "Переносим историю",
-        done: i,
-        total: chunks.length,
-        imported,
-        skipped,
-      });
-      const result = await apiClient.request<{
-        imported: number;
-        skipped: number;
-        replaced?: number;
-        kept?: number;
-        addedIds?: string[];
-        workouts: Workout[];
-        exercises: Exercise[];
-        exerciseIdMap: Record<string, string>;
-      }>("/api/import", "POST", {
-        format: preview.format,
-        workouts: chunks[i],
-        ...(options.replace ? { replace: true } : {}),
-      });
-      imported += result.imported;
-      skipped += result.skipped;
-      replaced += result.replaced ?? 0;
-      kept += result.kept ?? 0;
-      addedIds.push(...(result.addedIds ?? []));
-      Object.assign(idMap, result.exerciseIdMap);
-      exerciseCatalog.register(result.exercises);
-      onProgress({
-        phase: "Переносим историю",
-        done: i + 1,
-        total: chunks.length,
-        imported,
-        skipped,
-      });
-    }
-    return { imported, skipped, replaced, kept, addedIds, idMap };
+    const names = new Set(preview.workouts.flatMap((w) => w.exercises.map((e) => e.exerciseId ?? e.sourceName)));
+    if (preview.workouts.length > 30 || names.size > 30) throw new Error("Весь файл должен помещаться в одну безопасную операцию (не более 30 тренировок и 30 вариантов). Раздели экспорт до импорта.");
+    const manifestHash = await this.manifest(preview.format, preview.workouts, options.replace === true);
+    const { key, runId } = await this.runId(manifestHash);
+    const body = { format: preview.format, workouts: preview.workouts, runId, manifestHash,
+      ...(options.replace ? { replace: true } : {}) };
+    if (JSON.stringify(body).length > 450000) throw new Error("Файл слишком велик для безопасной атомарной записи. Раздели экспорт до импорта.");
+    onProgress({ phase: "Проверяем данные", done: 0, total: 1, imported: 0, skipped: 0 });
+    await apiClient.request("/api/import", "POST", { ...body, dryRun: true });
+    onProgress({ phase: "Переносим историю", done: 0, total: 1, imported: 0, skipped: 0 });
+    const result = await apiClient.request<{
+      imported: number; skipped: number; replaced: number; kept: number; addedIds: string[];
+      exerciseIdMap: Record<string, string>; exercises: Exercise[]; runId: string;
+    }>("/api/import", "POST", body);
+    exerciseCatalog.register(result.exercises);
+    try { localStorage.removeItem(key); } catch { /* a receipt still exists server-side */ }
+    onProgress({ phase: "Переносим историю", done: 1, total: 1, imported: result.imported, skipped: result.skipped });
+    return { ...result, idMap: result.exerciseIdMap };
   }
   async restoreExtras(
     preview: ImportPreview,

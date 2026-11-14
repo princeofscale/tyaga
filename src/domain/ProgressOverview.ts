@@ -46,7 +46,7 @@ export class ProgressOverview {
       totalWeeks: days / 7,
       sets,
       volumeKg: volumeSummary(current,"working",options).total,
-      workloadChange: previousSets
+      volumeOmitted: volumeSummary(current,"working",options).omittedSets,      workloadChange: previousSets
         ? Math.round(((sets - previousSets) / previousSets) * 100)
         : null,
       strengthChange: changes.length

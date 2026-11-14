@@ -7,6 +7,7 @@ import { useRestNotifications } from "./hooks/useRestNotifications";
 import RestNotificationSettings from "./components/RestNotificationSettings";
 import { JournalBackup } from "./domain/JournalBackup";
 import { ImportUndo, type ImportRecord } from "./domain/ImportUndo";
+import { importService } from "./services/ImportService";
 import { VolumeLabel } from "./domain/VolumeLabel";
 import { ImportOrigin } from "./domain/ImportOrigin";
 import { applyTheme, getCurrentTheme } from "./lib/theme";
@@ -254,6 +255,8 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
   const [lastImport, setLastImport] = useState<ImportRecord | null>(() =>
     importUndo.read(),
   );
+  const [lastImportRun, setLastImportRun] = useState<{ runId: string; at: string; total: number; activeCount: number } | null>(null);
+  const [pendingImport, setPendingImport] = useState<{ runId: string; total: number } | null>(null);
   const [undoAsk, setUndoAsk] = useState(false);
   const [muscleFilter, setMuscleFilter] = useState<Muscle | "all">("all");
   const [selectedMuscle, setSelectedMuscle] = useState<Muscle | null>(null);
@@ -290,6 +293,12 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
       ]);
       setProduct(productData);
       setWorkouts(data.workouts);
+      // The server receipt is authoritative. LocalStorage never grants permission
+      // to delete a workout, and a lost import response still leaves a banner.
+      importService.runs().then((result) => {
+        setLastImportRun(result.runs[0] ?? null);
+        setPendingImport(result.pending?.[0] ? { runId: result.pending[0].runId, total: result.pending[0].total } : null);
+      }).catch(() => { setLastImportRun(null); setPendingImport(null); });
       setSettings({
         ...data.settings,
         timeZone: data.settings.timeZone ?? browserTimeZone(),
@@ -729,38 +738,23 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
     }
   };
   const undoImport = async () => {
-    if (!lastImport || saving) return;
+    const run = lastImportRun?.runId ?? pendingImport?.runId;
+    if (!run || saving) return;
     setSaving(true);
-    const plan = ImportUndo.plan(lastImport, workouts);
-    let removed = 0,
-      changed = plan.edited;
     try {
-      for (const item of plan.remove) {
-        try {
-          await api("/api/workouts/" + encodeURIComponent(item.id), "DELETE", {
-            revision: item.revision,
-          });
-          removed++;
-        } catch (e) {
-          if (e instanceof ApiError && e.status === 409) changed++;
-          else throw e;
-        }
-      }
+      const result = await importService.undo(run);
       importUndo.clear();
       setLastImport(null);
+      setLastImportRun(null);
+      setPendingImport(null);
       setUndoAsk(false);
       await load();
-      setToast(
-        `Импорт отменён: убрано ${removed}` +
-          (changed ? `, оставлено изменённых тобой: ${changed}` : ""),
-      );
+      setToast(`Импорт отменён: убрано ${result.removed}` +
+        (result.restored ? `, восстановлено прежних: ${result.restored}` : "") +
+        (result.kept ? `, оставлено изменённых: ${result.kept}` : ""));
     } catch (e) {
       await load().catch(() => undefined);
-      warn(
-        e instanceof Error
-          ? `Не удалось отменить импорт до конца: ${e.message}. Нажми ещё раз — убранное повторно не удалится.`
-          : "Не удалось отменить импорт",
-      );
+      warn(e instanceof Error ? `Не удалось отменить импорт: ${e.message}. Нажми ещё раз.` : "Не удалось отменить импорт");
     } finally {
       setSaving(false);
     }
@@ -1205,56 +1199,34 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                   <header className="screen-head">
                     <h1>История тренировок</h1>
                   </header>
-                  {lastImport ? (
+                  {pendingImport && !lastImportRun ? (
+                    <section className="import-undo panel" role="status">
+                      <p><b>Импорт не завершён · {pendingImport.total} тренировок ещё не записаны</b>
+                        <small>Если запись оборвалась, открой тот же файл и повтори импорт с теми же ответами. До завершения тренировки в Истории не появляются. Этот черновик можно отменить.</small>
+                      </p>
+                      <div>
+                        <button className="button secondary" onClick={() => setModal("import")}>Продолжить импорт</button>
+                        <button className="button danger" disabled={saving} onClick={() => void undoImport()}>Убрать черновик</button>
+                      </div>
+                    </section>
+                  ) : null}
+                  {lastImportRun ? (
                     <section className="import-undo panel" role="status">
                       <p>
-                        <b>
-                          Импорт: добавлено {lastImport.imported}
-                          {lastImport.replaced
-                            ? `, заменено ${lastImport.replaced}`
-                            : ""}
-                        </b>
-                        <small>
-                          Отмена убирает только эти тренировки и только те, что
-                          ты не правил.
-                          {lastImport.replaced
-                            ? " Заменённые прежние записи не вернутся."
-                            : ""}
-                        </small>
+                        <b>Импорт: записано {lastImportRun.activeCount} из {lastImportRun.total}</b>
+                        <small>Отмена выполняется сервером только для точно неизменённых записей этого импорта. Правки с другого устройства не удаляются.</small>
                       </p>
                       {undoAsk ? (
                         <div>
-                          <button
-                            className="button danger"
-                            disabled={saving}
-                            onClick={() => void undoImport()}
-                          >
-                            Убрать {lastImport.ids.length}
+                          <button className="button danger" disabled={saving} onClick={() => void undoImport()}>
+                            Убрать {lastImportRun.activeCount}
                           </button>
-                          <button
-                            className="button secondary"
-                            onClick={() => setUndoAsk(false)}
-                          >
-                            Не надо
-                          </button>
+                          <button className="button secondary" onClick={() => setUndoAsk(false)}>Не надо</button>
                         </div>
                       ) : (
                         <div>
-                          <button
-                            className="button secondary"
-                            onClick={() => setUndoAsk(true)}
-                          >
-                            Отменить импорт
-                          </button>
-                          <button
-                            className="text-button"
-                            onClick={() => {
-                              importUndo.clear();
-                              setLastImport(null);
-                            }}
-                          >
-                            Скрыть
-                          </button>
+                          <button className="button secondary" onClick={() => setUndoAsk(true)}>Отменить импорт</button>
+                          <button className="text-button" onClick={() => setLastImportRun(null)}>Скрыть</button>
                         </div>
                       )}
                     </section>
@@ -2235,6 +2207,9 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                   };
                   importUndo.save(record);
                   setLastImport(record);
+                   const currentRuns = await importService.runs().catch(() => ({ runs: [], pending: [] }));
+                   setLastImportRun(currentRuns.runs[0] ?? null);
+                    setPendingImport(null);
                   setUndoAsk(false);
                 }
                 const added = result.imported - (result.replaced ?? 0);

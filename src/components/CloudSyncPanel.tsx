@@ -1,4 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { api } from "../services/ApiClient";
+import { saveFile } from "../lib/saveFile";
 import { Cloud, CloudOff, RefreshCw } from "lucide-react";
 import {
   CLOUD_URL,
@@ -15,6 +17,17 @@ export default function CloudSyncPanel({ displayName }: { displayName: string })
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [recoveryCode, setRecoveryCode] = useState("");
+  const [savedEdits, setSavedEdits] = useState(0);
+  useEffect(() => {
+    if (!state) return;
+    api<{ records: unknown[] }>("/api/sync/recovery").then(({ records }) => setSavedEdits(records.length)).catch(() => undefined);
+  }, [state?.lastSyncAt]);
+  const exportSavedEdits = async () => {
+    try {
+      const { records } = await api<{ records: unknown[] }>("/api/sync/recovery");
+      await saveFile("tyaga-conflicts.json", JSON.stringify({ format: "tyaga-sync-recovery", records }, null, 2));
+    } catch (e) { setError(e instanceof Error ? e.message : "Не удалось выгрузить сохранённые правки"); }
+  };
   useEffect(() => {
     const refresh = () => setState(cloudState());
     window.addEventListener("tyaga:cloud", refresh);
@@ -53,6 +66,14 @@ export default function CloudSyncPanel({ displayName }: { displayName: string })
                 ? `Синхронизировано ${new Date(state.lastSyncAt).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`
                 : "Синхронизируем…")}
           </p>
+          {savedEdits > 0 ? (
+            <aside className="inline-error" role="alert">
+              <b>Сохранены прежние версии тренировок: {savedEdits}</b>
+              <p>Облачная версия осталась в журнале; прежняя версия записана отдельно. Выгрузку можно открыть как JSON и вручную перенести нужные подходы или заметки. Это не файл импорта Тяги.</p>
+              <button className="button secondary" onClick={() => void exportSavedEdits()}>Выгрузить сохранённые правки</button>
+            </aside>
+          ) : null}
+          {error ? <p className="form-error" role="alert">{error}</p> : null}
           {recoveryCode ? (
             <>
               <p className="tiny">Код восстановления пароля — сохрани его отдельно:</p>

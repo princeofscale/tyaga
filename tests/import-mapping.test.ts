@@ -23,6 +23,14 @@ for (const [name, id] of CASES)
     assert.ok(ImportMapping.appliesByDefault(found));
   });
 
+test("generic aliases never auto-map equipment, while qualified Strong names still do", () => {
+  for (const source of ["Deadlift", "Romanian deadlift", "Bent over row", "Overhead press", "Military press", "Back squat"])
+    assert.equal(ImportMapping.suggestForImport(source), null, `${source} must remain literal or manual`);
+  for (const [source, id] of CASES) {
+    assert.equal(ImportMapping.suggestForImport(source)?.id, id);
+    assert.ok(ImportMapping.appliesByDefaultName(source));
+  }
+});
 test("ImportMapping: the barbell press is not the seated dumbbell press", () => {
   assert.notEqual(ImportMapping.suggest("Overhead Press (Barbell)")?.id, "ohp");
   assert.equal(ImportMapping.suggest("Overhead Press (Dumbbell)"), null);

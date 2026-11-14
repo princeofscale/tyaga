@@ -98,16 +98,34 @@ export class SyncService {
         .prepare("SELECT version_at FROM sync_versions WHERE owner_id = ? AND kind = ? AND doc_id = ?")
         .bind(this.ownerId, d.kind, d.id)))
       : [];
+    const currentWorkouts = docs.some((d) => d.kind === "workout")
+      ? await this.db.batch(docs.map((d) => d.kind === "workout"
+        ? this.db.prepare("SELECT date,payload,revision FROM workouts WHERE owner_id=? AND id=?").bind(this.ownerId, d.id)
+        : this.db.prepare("SELECT NULL AS date,NULL AS payload,NULL AS revision WHERE 0")))
+      : [];
     const newer = docs.filter((d, i) => {
       const current = (local[i].results[0] as { version_at: string } | undefined)?.version_at;
       return !current || d.versionAt > current;
     });
     const statements = newer.flatMap((d) => {
       const table = TABLES[d.kind];
+      const prior = d.kind === "workout"
+        ? (currentWorkouts[docs.indexOf(d)].results[0] as { date: string; payload: string; revision: number } | undefined)
+        : undefined;
+      const localVersion = d.kind === "workout"
+        ? (local[docs.indexOf(d)].results[0] as { version_at: string } | undefined)?.version_at
+        : undefined;
+      const preserveLocal = !!prior && !!localVersion &&
+        (!d.deleted ? d.versionAt > localVersion && String(d.row?.payload) !== prior.payload : d.versionAt > localVersion);
+      const recovery = preserveLocal ? [this.db.prepare(
+        `INSERT INTO workout_sync_recovery(owner_id,workout_id,version_at,date,payload,revision,received_at)
+         VALUES(?,?,?,?,?,?,?) ON CONFLICT(owner_id,workout_id,version_at,payload) DO NOTHING`,
+      ).bind(this.ownerId, d.id, localVersion!, prior!.date, prior!.payload, prior!.revision, new Date().toISOString())] : [];
       const write = d.deleted
         ? this.db.prepare(table.remove).bind(this.ownerId, d.id)
         : this.db.prepare(table.upsert).bind(this.ownerId, ...table.columns.map(([name]) => d.row![name]));
       return [
+        ...recovery,
         write,
         // The trigger stamped "now"; keep the document's own version time instead.
         this.db.prepare("DELETE FROM sync_versions WHERE owner_id = ? AND kind = ? AND doc_id = ?").bind(this.ownerId, d.kind, d.id),
@@ -118,6 +136,13 @@ export class SyncService {
     });
     if (statements.length) await this.db.batch(statements);
     return { applied: newer.length, skipped: docs.length - newer.length };
+  }
+
+  async recovery() {
+    const rows = await this.db.prepare(
+      "SELECT workout_id AS id,version_at AS versionAt,date,payload,revision,received_at AS receivedAt FROM workout_sync_recovery WHERE owner_id=? ORDER BY received_at DESC LIMIT 100",
+    ).bind(this.ownerId).all<{ id: string; versionAt: string; date: string; payload: string; revision: number; receivedAt: string }>();
+    return { records: rows.results.map((r) => ({ ...r, workout: JSON.parse(r.payload) })) };
   }
 }
 

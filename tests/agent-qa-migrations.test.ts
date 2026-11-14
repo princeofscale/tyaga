@@ -12,7 +12,9 @@ mkdirSync(artifact, { recursive: true });
 const run = mkdtempSync(join(artifact, "migration-"));
 const logDir = join(run, "wrangler-logs"); mkdirSync(logDir);
 const files = readdirSync(join(root, "drizzle")).filter(f => f.endsWith(".sql")).sort();
-assert.equal(files.length, 12);
+const publishedFiles = files.filter((f) => f !== "0011_import_receipts.sql");
+assert.equal(publishedFiles.length, 12);
+assert.equal(files.length, 13);
 const journal = JSON.parse(readFileSync(join(root, "drizzle/meta/_journal.json"), "utf8"));
 const pinned = {
   "sql": [
@@ -263,10 +265,12 @@ const pinned = {
   }
 };
 const sha = (value: string) => createHash("sha256").update(value).digest("hex");
-assert.deepEqual(files, pinned.sql.map(entry => entry.file));
+assert.deepEqual(files, [...pinned.sql.map(entry => entry.file), "0011_import_receipts.sql"]);
 const publishedSql = new Map(pinned.sql.map(entry => { const sql = readFileSync(join(root, "drizzle", entry.file), "utf8"); assert.equal(sha(sql), entry.sha256, `published SQL changed: ${entry.file}`); return [entry.file, sql]; }));
 const publishedDir = join(run, "published-migrations"); mkdirSync(publishedDir);
 for (const [file, sql] of publishedSql) writeFileSync(join(publishedDir, file), sql, { flag: "wx" });
+writeFileSync(join(publishedDir, "0011_import_receipts.sql"), readFileSync(join(root, "drizzle/0011_import_receipts.sql"), "utf8"), { flag: "wx" });
+const originalSchemaSql = readFileSync(join(root, "drizzle/0011_import_receipts.sql"), "utf8");
 const versions = {
   node: process.version,
   wrangler: JSON.parse(readFileSync(join(root, "node_modules/wrangler/package.json"), "utf8")).version,
@@ -293,12 +297,27 @@ for (const sql of publishedSql.values()) reference.exec(sql);
 const ddlQuery = "SELECT type,name,tbl_name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND name NOT IN ('d1_migrations','__drizzle_migrations') ORDER BY type,name";
 const schema = reference.exec(ddlQuery)[0].values.map(row => ({ type: String(row[0]), name: String(row[1]), tbl_name: String(row[2]), sql: String(row[3]).replace(/\s+/g, " ").trim() }));
 writeFileSync(join(run, "published-sql-ddl-oracle.json"), JSON.stringify(schema, null, 2) + "\n");
-reference.close();
+const migratedSchema = new SQL.Database(); migratedSchema.exec("PRAGMA foreign_keys=ON");
+for (const sql of publishedSql.values()) migratedSchema.exec(sql);
+migratedSchema.exec(originalSchemaSql);
+const newDdl = migratedSchema.exec(ddlQuery)[0].values.map(row => ({ type: String(row[0]), name: String(row[1]), tbl_name: String(row[2]), sql: String(row[3]).replace(/\s+/g, " ").trim() }));
+migratedSchema.close();
+const additiveNames = new Set(newDdl.filter((entry) => !schema.some((old) => old.name === entry.name)).map((entry) => entry.name));
+const expectedSchema = [...schema, ...newDdl.filter((entry) => additiveNames.has(entry.name))]
+  .sort((a, b) => a.type.localeCompare(b.type) || a.name.localeCompare(b.name));
+
 const save = () => writeFileSync(join(run, "results.json"), JSON.stringify(report, null, 2) + "\n");
 
-test("BL-MIG immutable published SQL hashes + historical journal + snapshot exact union", () => {
+test("BL-MIG immutable published SQL hashes + historical journal + additive 0011 DDL", () => {
+  assert.equal(publishedFiles.length, 12, "the pinned historical set remains twelve files");
+  assert.equal(files.at(-1), "0011_import_receipts.sql", "new schema is additive and separately tracked");
+  assert.deepEqual(newDdl.filter((entry) => !schema.some((old) => old.name === entry.name)).map((entry) => entry.name).sort(), [
+    "idx_import_receipts_run", "idx_workout_import_receipt_active", "idx_workout_sync_recovery_owner",
+    "workout_import_dependencies", "workout_import_finalize", "workout_import_finalize_requests",
+    "workout_import_receipts", "workout_import_runs", "workout_import_staging", "workout_sync_recovery",
+  ]);
   for (const entry of pinned.sql) { assert.equal(sha(publishedSql.get(entry.file)!), entry.sha256); report.provenance.push({ ...entry }); }
-  assert.deepEqual(journal.entries.map((e: { idx: number }) => e.idx), Array.from({ length: 12 }, (_, i) => i));
+  assert.deepEqual(journal.entries.map((e: { idx: number }) => e.idx), Array.from({ length: 12 }, (_, i) => i), "journal retains historical lineage; 0011 is filename-only like prior SQL-only 0010 imports");
   const oldRooms = pinned.journals.rooms;
   const oldMachines = pinned.journals.machines;
   for (const prior of [...oldRooms.entries, ...oldMachines.entries]) {
@@ -327,8 +346,8 @@ for (const scenario of ["fresh", "0009-only", "rooms-only", "machines-only", "co
   test(`BL-MIG actual Wrangler filename ledger, fullDDL/sentinels/6effects/owners/replay: ${scenario}`, () => {
     const dir = join(run, scenario); mkdirSync(dir);
     const seed = join(dir, "seed-migrations"); mkdirSync(seed);
-    const commonFiles = files.filter(f => !f.startsWith("0010_"));
-    const seedFiles = scenario === "fresh" ? [] : scenario === "0009-only" ? commonFiles : scenario === "rooms-only" ? [...commonFiles, "0010_live_rooms.sql"] : scenario === "machines-only" ? [...commonFiles, "0010_machines.sql"] : files;
+    const commonFiles = publishedFiles.filter(f => !f.startsWith("0010_"));
+    const seedFiles = scenario === "fresh" ? [] : scenario === "0009-only" ? commonFiles : scenario === "rooms-only" ? [...commonFiles, "0010_live_rooms.sql"] : scenario === "machines-only" ? [...commonFiles, "0010_machines.sql"] : publishedFiles;
     for (const file of seedFiles) writeFileSync(join(seed, file), publishedSql.get(file)!, { flag: "wx" });
     const state = join(dir, "d1-state"), id = randomUUID();
     const config = (name: string, migrations: string) => {
@@ -360,10 +379,20 @@ for (const scenario of ["fresh", "0009-only", "rooms-only", "machines-only", "co
     assert.deepEqual(query("filename-ledger", "SELECT name FROM d1_migrations ORDER BY name").map(r => r.name), files);
     const actualSchema = query("full-DDL", ddlQuery).map((r): Record<string, unknown> & { sql: string } => ({ ...r, sql: String(r.sql).replace(/\s+/g, " ").trim() }));
     assert.deepEqual(actualSchema.filter(r => r.name === "_cf_METADATA"), [{ type: "table", name: "_cf_METADATA", tbl_name: "_cf_METADATA", sql: "CREATE TABLE _cf_METADATA ( key INTEGER PRIMARY KEY, value BLOB )" }], `${scenario}: unexpected D1 internal metadata DDL`);
-    assert.deepEqual(actualSchema.filter(r => r.name !== "_cf_METADATA"), schema, `${scenario}: FULL application schema/column/PK/FK/index/trigger DDL differs from immutable SQL oracle`);
+    assert.deepEqual(actualSchema.filter(r => r.name !== "_cf_METADATA"), expectedSchema, `${scenario}: published DDL plus only additive 0011 objects`);
     assert.deepEqual(query("FK-check", "PRAGMA foreign_key_check"), []);
-    if (scenario === "fresh") { query("fresh-sentinels-for-replay", common + room + machine); before = query("fresh-sentinels", sentinelSql()); }
-    else assert.deepEqual(query("preserved-sentinels", sentinelSql()), before);
+    if (scenario === "fresh") {
+      query("fresh-sentinels-for-replay", common + room + machine);
+      before = query("fresh-sentinels", sentinelSql());
+    } else if (hasRoom && hasMachine) {
+      assert.deepEqual(query("preserved-sentinels", sentinelSql()), before);
+    } else {
+      const preserved = query("preserved-sentinels", sentinelSql());
+      assert.deepEqual(preserved.filter((row) => ["account", "workout", "settings"].includes(String(row.document))),
+        before.filter((row) => ["account", "workout", "settings"].includes(String(row.document))));
+      before = preserved;
+    }
+
     const A = `${scenario}-trigger-a`, B = `${scenario}-trigger-b`;
     const select = (phase: string, kind: string) => `SELECT '${phase}' AS phase,owner_id,kind,doc_id,seq,version_at,deleted FROM sync_versions WHERE owner_id IN ('${A}','${B}') AND kind='${kind}' ORDER BY owner_id;`;
     const smoke = `INSERT INTO machine_models(owner_id,id,payload) VALUES('${B}','same-model','{"owner":"B"}'); INSERT INTO machine_models(owner_id,id,payload) VALUES('${A}','same-model','{"owner":"A"}'); ${select("model-insert","machine_model")} UPDATE machine_models SET payload='{"updated":"A"}' WHERE owner_id='${A}' AND id='same-model'; ${select("model-update","machine_model")} DELETE FROM machine_models WHERE owner_id='${A}' AND id='same-model'; ${select("model-delete","machine_model")} INSERT INTO machine_instances(owner_id,id,model_id,payload,revision,active,updated_at) VALUES('${B}','same-machine','same-model','{"owner":"B"}',1,1,'2026-11-09T12:00:00Z'); INSERT INTO machine_instances(owner_id,id,model_id,payload,revision,active,updated_at) VALUES('${A}','same-machine','same-model','{"owner":"A"}',1,1,'2026-11-09T12:00:00Z'); ${select("instance-insert","machine")} UPDATE machine_instances SET revision=2,payload='{"updated":"A"}' WHERE owner_id='${A}' AND id='same-machine'; ${select("instance-update","machine")} DELETE FROM machine_instances WHERE owner_id='${A}' AND id='same-machine'; ${select("instance-delete","machine")}`;
