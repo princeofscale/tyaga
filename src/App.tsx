@@ -1028,7 +1028,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
           {offlineData ? (
             <div className="offline-banner" role="status">
               <Info size={18} />
-              <span>Нет связи: показаны данные с этого устройства. Подходы пишутся в черновик; «Завершить» сработает, когда появится сеть.</span>
+              <span>Нет связи: показаны данные с этого устройства. Тренировка сохранена на устройстве; нажми «Завершить», когда появится связь — сама она не отправится.</span>
               <button className="text-button" onClick={() => void load()}>
                 Обновить
               </button>

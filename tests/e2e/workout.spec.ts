@@ -743,13 +743,17 @@ test("programs save to the account, schedule a week and propose safe double prog
     .filter({ hasText: "[E2E] Программа" })
     .getByRole("button", { name: "Начать", exact: true })
     .click();
-  for (let i = 1; i <= 3; i++)
+  for (let i = 1; i <= 3; i++) {
+    // План программы (диапазон 8–12) — серая подсказка; в запись идёт то, что введено (R03-REQ02).
+    await expect(page.getByLabel(`Жим штанги лёжа, подход ${i}, повторы`, { exact: true })).toHaveAttribute("placeholder", "8–12");
+    await page.getByLabel(`Жим штанги лёжа, подход ${i}, повторы`, { exact: true }).fill("12");
     await page
       .getByRole("button", {
         name: `Отметить выполненным: Жим штанги лёжа, подход ${i}`,
         exact: true,
       })
       .click();
+  }
   await page
     .getByRole("button", { name: "Завершить тренировку", exact: true })
     .click();

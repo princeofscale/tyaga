@@ -16,6 +16,8 @@ export type Round01Options = {
   pendingImports?: Array<{ runId: string; total: number }>;
   /** Журнал веса отвечает только после `releaseWeights()`: так повторяется загрузка «уже после открытия профиля». */
   holdWeights?: boolean;
+  /** Выход из аккаунта: приложение стартует без входа, `POST /api/auth/register|login` впускает (другая почта — другой аккаунт). */
+  signedOut?: boolean;
 };
 
 /** Законченная тренировка: подходы выполнены, `exercises` — [id, вес, повторы, число подходов]. */
@@ -55,6 +57,8 @@ export async function round01Fixture(page: Page, options: Round01Options = {}) {
   const undone = new Set<string>();
   const pending = (options.pendingImports ?? []).map((p) => ({ ...p, manifestHash: "pending", at: NOW.toISOString() }));
   page.on("pageerror", (e) => errors.push(e.message));
+  let signedIn = !options.signedOut;
+  const other = { id: "round01-user-b", email: "other@example.test", displayName: "Вика", timeZone: ZONE, bodyMassKg: null as number | null, revision: 1, createdAt: NOW.toISOString() };
   const profile = {
     id: "round01-user",
     email: "round01@example.test",
@@ -64,13 +68,24 @@ export async function round01Fixture(page: Page, options: Round01Options = {}) {
     revision: 1,
     createdAt: NOW.toISOString(),
   };
+  let active: typeof profile = profile;
   await page.route("**/api/**", async (route) => {
     const r = route.request();
     const path = new URL(r.url()).pathname;
     const method = r.method();
     const json = (body: unknown, status = 200) =>
       route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
-    if (path === "/api/auth/session") return json({ registered: true, profile });
+    if (path === "/api/auth/session") return json({ registered: true, profile: signedIn ? active : null });
+    if (path === "/api/auth/logout" && method === "POST") {
+      signedIn = false;
+      return json({ ok: true });
+    }
+    if ((path === "/api/auth/register" || path === "/api/auth/login") && method === "POST") {
+      const body = r.postDataJSON();
+      active = body.email === other.email ? other : profile;
+      signedIn = true;
+      return json({ profile: active, ...(path.endsWith("register") ? { recoveryCode: "RECOVERY-1" } : {}) }, path.endsWith("register") ? 201 : 200);
+    }
     if (path === "/api/auth/profile" && method === "PUT") {
       const body = r.postDataJSON();
       profileBodies.push(body);
@@ -79,7 +94,7 @@ export async function round01Fixture(page: Page, options: Round01Options = {}) {
     }
     if (path === "/api/challenges") return json({ accountId: profile.id, challenges: [] });
     if (path === "/api/data")
-      return json({ workouts, settings: { ...DEFAULT_SETTINGS, timeZone: ZONE } });
+      return json({ workouts: active === profile ? workouts : [], settings: { ...DEFAULT_SETTINGS, timeZone: ZONE } });
     if (path === "/api/product") return json({ routines: options.routines ?? [], favorites: [], customExercises: [] });
     if (path === "/api/exercises/resolve" && method === "POST") return json({ matches: {} });
     if (path === "/api/import" && method === "POST") {
@@ -196,7 +211,7 @@ export async function round01Fixture(page: Page, options: Round01Options = {}) {
   });
   await mockLive(page);
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Сегодня", exact: true })).toBeVisible();
+  if (!options.signedOut) await expect(page.getByRole("heading", { name: "Сегодня", exact: true })).toBeVisible();
   return { workouts, runs, pending, profile, profileBodies, importBodies, deleted, savedBodies, weights, errors, unexpected, releaseWeights: () => releaseWeights() };
 }
 

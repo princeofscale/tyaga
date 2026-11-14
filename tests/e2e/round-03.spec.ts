@@ -293,6 +293,9 @@ test.describe("R03-REQ04: запуск без сети после первого
     await page.reload();
     await expect(page.getByRole("heading", { name: "Сегодня", exact: true })).toBeVisible({ timeout: 15000 });
     await expect(page.locator(".offline-banner")).toContainText("Нет связи");
+    // QA-R03-04: баннер не обещает автоматическую отправку.
+    await expect(page.locator(".offline-banner")).toContainText("нажми «Завершить»");
+    await expect(page.locator(".offline-banner")).not.toContainText("сработает");
     await nav(page, "Программы").click();
     await expect(page.getByRole("heading", { name: "Программы" })).toBeVisible();
     await nav(page, "История").click();
@@ -318,4 +321,102 @@ test.describe("R03-REQ04: запуск без сети после первого
     expect(f.savedBodies[0].exercises[0].sets[0]).toMatchObject({ done: true, reps: 8, weight: 60 });
     expect(f.errors).toEqual([]);
   });
+});
+
+const register = async (page: Page, email = "fresh@example.test") => {
+  await page.getByRole("button", { name: "Регистрация", exact: true }).click();
+  await page.getByLabel("Как тебя зовут").fill("Саша");
+  await page.getByLabel("Почта").fill(email);
+  await page.getByLabel("Пароль", { exact: true }).fill("correct horse battery");
+  await page.getByRole("button", { name: "Создать аккаунт", exact: true }).click();
+  await page.getByRole("button", { name: "Код сохранён", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Сегодня", exact: true })).toBeVisible();
+};
+
+test.describe("QA-R03-01: офлайн-запуск сразу после регистрации", () => {
+  test.use({ serviceWorkers: "allow" });
+
+  test("свежий аккаунт: регистрация онлайн → без второй загрузки сеть пропала → приложение открывается", async ({ page, context }) => {
+    await round01Fixture(page, { signedOut: true });
+    await expect
+      .poll(() => page.evaluate(async () => (await caches.keys()).filter((k) => k.startsWith("tyaga-shell-")).length), { timeout: 20000 })
+      .toBe(1);
+    await register(page);
+    // Копия профиля и данных записана сразу при входе — до какой-либо следующей загрузки.
+    const keys = await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("tyaga-offline:")));
+    expect(keys).toContain("tyaga-offline:session");
+    expect(keys.some((k) => k.startsWith("tyaga-offline:data:"))).toBe(true);
+    let offline = false;
+    await page.route("**/api/**", (route) => (offline ? route.abort("internetdisconnected") : route.fallback()));
+    offline = true;
+    await context.setOffline(true);
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Сегодня", exact: true })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText("Запрос не завершился")).toHaveCount(0);
+    await expect(page.locator(".offline-banner")).toContainText("Нет связи");
+  });
+});
+
+test("QA-R03-03: выход стирает всё личное с устройства, а другой аккаунт не видит чужого", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await round01Fixture(page, { workouts: benchHistory() });
+  await page.evaluate(() => localStorage.setItem("tyaga_theme_accent", "lime"));
+  await startWith(page, BENCH);
+  await weight(page, 1).fill("60");
+  await reps(page, 1).fill("8");
+  await check(page, 1).click();
+  await page.evaluate(() => {
+    localStorage.setItem("tyaga-bodyweight-sync:round01-user", "{}");
+    localStorage.setItem("tyaga-last-import:round01-user", "{}");
+  });
+  const personal = () => page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("tyaga-")));
+  await expect.poll(personal).toEqual(expect.arrayContaining(["tyaga-draft-account:round01-user", "tyaga-offline:session", "tyaga-offline:data:round01-user", "tyaga-bodyweight-sync:round01-user", "tyaga-last-import:round01-user"]));
+  await page.locator(".profile-button").click();
+  await page.getByRole("dialog").getByRole("button", { name: "Выйти из аккаунта", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Снова в зале" })).toBeVisible();
+  await expect.poll(personal).toEqual([]);
+  expect(await page.evaluate(() => localStorage.getItem("tyaga_theme_accent")), "оформление не личное и остаётся").toBe("lime");
+  // Cache Storage — только файлы приложения, ни одного ответа API.
+  const cached = await page.evaluate(async () => {
+    const out: string[] = [];
+    for (const name of await caches.keys()) for (const r of await (await caches.open(name)).keys()) out.push(new URL(r.url).pathname);
+    return out;
+  });
+  expect(cached.filter((p) => p.startsWith("/api"))).toEqual([]);
+  // Вход под другим аккаунтом: ни черновика, ни журнала прежнего.
+  await page.getByLabel("Почта").fill("other@example.test");
+  await page.getByLabel("Пароль", { exact: true }).fill("correct horse battery");
+  await page.getByRole("button", { name: "Войти в Тягу", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Сегодня", exact: true })).toBeVisible();
+  const after = await personal();
+  expect(after.filter((k) => k.includes("round01-user:") || k.endsWith("round01-user"))).toEqual([]);
+  expect(await page.evaluate(() => document.body.innerText)).not.toContain("Продолжить тренировку");
+});
+
+test("QA-R03-02: тренировка из программы — подход N из «Прошлого» (8/8/7), без истории поля пусты, ✓ без ввода не пишет", async ({ page }) => {
+  const { makeWorkout } = await import("../../src/lib/model");
+  const w = makeWorkout(["bench", "lat-pulldown"]);
+  const routine = {
+    id: "r-start", name: "Верх тела", notes: "", days: [1], restSeconds: 90, progression: "repeat" as const,
+    repMin: 8, repMax: 12, incrementKg: 2.5, revision: 1, exercises: w.exercises,
+  };
+  const f = await round01Fixture(page, { workouts: benchHistory(), routines: [routine] });
+  await page.getByRole("button", { name: "Начать тренировку", exact: true }).first().click();
+  for (const [n, expected] of [[1, "8"], [2, "8"], [3, "7"]] as const) {
+    await expect(reps(page, n)).toHaveValue(expected);
+    await expect(rir(page, n)).toHaveValue("");
+  }
+  const PULL = "Тяга верхнего блока";
+  await expect(reps(page, 1, PULL)).toHaveValue("");
+  await expect(reps(page, 1, PULL)).toHaveAttribute("placeholder", "10");
+  await expect(rir(page, 1, PULL)).toHaveValue("");
+  await weight(page, 1, PULL).fill("40");
+  await check(page, 1, PULL).click();
+  await expect(uncheck(page, 1, PULL)).toHaveCount(0);
+  await expect(page.locator(".set-hint")).toContainText("Повторы не введены");
+  // Три ✓ жима записывают 8/8/7, как «Повторить прошлые».
+  for (const n of [1, 2, 3]) await check(page, n).click();
+  await page.getByRole("button", { name: /^Повторить прошлые/ }).first().click();
+  for (const [n, expected] of [[1, "8"], [2, "8"], [3, "7"]] as const) await expect(reps(page, n)).toHaveValue(expected);
+  void f;
 });

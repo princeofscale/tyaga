@@ -236,7 +236,9 @@ export class TrainingProgram {
           ...structuredClone(plan),
           ...(r.progression === "double"
             ? { repMin: range.min, repMax: range.max }
-            : {}),
+            : !work.length && plan.repMin === undefined && plan.sets.some((s) => !s.warmup && s.reps > 0)
+              ? { repMin: plan.sets.find((s) => !s.warmup)!.reps, repMax: plan.sets.find((s) => !s.warmup)!.reps }
+              : {}),
           progressionNote: deload
             ? undefined
             : r.progression === "double" && progressive && canIncrease
@@ -257,7 +259,10 @@ export class TrainingProgram {
                 deload && cycle
                   ? Math.round(base * cycle.weightFactor * 2) / 2
                   : Math.min(1000, Math.round(base * 100) / 100),
-              reps: raised !== undefined ? range.min : ref ? ref.reps : s.reps,
+              // R03-REQ02: подход N — из «Прошлого» (как «Повторить прошлые»); без истории повторы и RIR не
+              // выдумываются — план программы виден серой подсказкой (repMin/repMax), а не записан как введённое.
+              reps: raised !== undefined ? range.min : ref ? ref.reps : s.warmup ? s.reps : 0,
+              rir: s.warmup ? s.rir : (ref?.rir ?? null),
               ...(deload && cycle ? { rir: cycle.deloadRir } : {}),
               ...(definition.recording.type === "duration"
                 ? {

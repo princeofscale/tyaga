@@ -9,6 +9,7 @@ import { SetCompleteness } from "../src/domain/SetCompleteness";
 import { TrainingProgram } from "../src/domain/TrainingProgram";
 import { WorkoutSession } from "../src/domain/WorkoutSession";
 import { OfflineSnapshot } from "../src/lib/offlineSnapshot";
+import { DeviceAccountData } from "../src/lib/deviceAccountData";
 import { estimatedOneRepMax, exerciseById, makeExerciseEntry, makeSets, makeWorkout} from "../src/lib/model";
 import type { Routine, Workout } from "../src/lib/types";
 
@@ -162,13 +163,53 @@ test("R03-REQ08: /api/exercises по слову «присед» отдаёт б
     const names: string[] = result.exercises.map((e: any) => e.name);
     assert.ok(names.slice(0, 5).includes("Приседания"), "простое «Приседания» в первых пяти строках: " + names.slice(0, 5).join(" | "));
     assert.notEqual(names[0], "Присед на ящик одной ногой");
-    for (const word of ["тяга", "жим"]) {
-      const generic = await (await request("/api/exercises?q=" + encodeURIComponent(word))).json();
-      assert.ok(generic.exercises.length > 0);
-    }
+    const pull = await (await request("/api/exercises?q=" + encodeURIComponent("тяга"))).json();
+    const pullNames: string[] = pull.exercises.slice(0, 5).map((e: any) => e.name);
+    assert.ok(pullNames.includes("Становая тяга") && pullNames.includes("Тяга штанги в наклоне"), "QA-R03-05, первые пять: " + pullNames.join(" | "));
+    const generic = await (await request("/api/exercises?q=" + encodeURIComponent("жим"))).json();
+    assert.ok(generic.exercises.length > 0);
     const press = await (await request("/api/exercises?q=" + encodeURIComponent("жим лёжа"))).json();
     assert.ok(press.exercises.slice(0, 2).some((e: any) => e.name === "Жим штанги лёжа"), "«жим лёжа» по-прежнему ставит «Жим штанги лёжа» в первые две строки");
   } finally {
     await mf.dispose();
   }
+});
+
+const routineOf = (exercises: Workout["exercises"]) => routine({ exercises });
+
+test("QA-R03-02: запуск из программы — подход N из «Прошлого», без истории повторы и RIR не вписаны", () => {
+  const history = makeWorkout(["bench"], [], "UTC", true);
+  history.date = "2026-10-01";
+  history.createdAt = "2026-10-01T10:00:00Z";
+  history.exercises[0].sets = [8, 8, 7].map((reps) => ({ ...makeSets(1, 77.5, reps, null)[0], done: true }));
+  const plan = makeWorkout(["bench", "lat-pulldown"]);
+  const routine = routineOf(plan.exercises);
+  const started = new TrainingProgram(routine).start([history], "UTC", "2026-11-10");
+  const [bench, pulldown] = started.exercises;
+  assert.deepEqual(bench.sets.map((s) => s.reps), [8, 8, 7], "8/8/7, как в «Прошлом»");
+  assert.deepEqual(bench.sets.map((s) => s.weight), [77.5, 77.5, 77.5]);
+  assert.deepEqual(bench.sets.map((s) => s.rir), [null, null, null], "RIR из плана не подставляется");
+  assert.deepEqual(pulldown.sets.map((s) => [s.reps, s.rir]), [[0, null], [0, null], [0, null]], "без истории — пусто");
+  assert.equal(pulldown.repMin, 10, "план программы остаётся подсказкой, а не введённым значением");
+  assert.equal(SetCompleteness.missing(exerciseById("lat-pulldown")!, pulldown.sets[0]), "weight");
+});
+
+test("QA-R03-03: выход стирает всё личное с tyaga-, оформление остаётся; вход другого аккаунта стирает чужое", () => {
+  const map = new Map<string, string>();
+  const storage = {
+    get length() { return map.size; }, key: (i: number) => [...map.keys()][i] ?? null,
+    getItem: (k: string) => map.get(k) ?? null, setItem: (k: string, v: string) => void map.set(k, v), removeItem: (k: string) => void map.delete(k),
+  };
+  const personal = ["tyaga-draft-account:a1", "tyaga-bodyweight-sync:a1", "tyaga-bodyweight-sync:a1:cloud:offline", "tyaga-bodyweight-bound:a1", "tyaga-bodyweight:a1", "tyaga-bodyweight-goal:a1", "tyaga-last-import:a1", "tyaga-offline:session", "tyaga-offline:data:a1", "tyaga-import-run:abc", "tyaga-draft-v1"];
+  const neutral = ["tyaga_theme_accent", "tyaga_sound_muted", "other-site-key"];
+  for (const k of [...personal, ...neutral]) map.set(k, "x");
+  const data = new DeviceAccountData(() => storage);
+  assert.deepEqual(data.purgeOthers("a1"), [], "свои данные при входе не трогаются");
+  map.set("tyaga-draft-account:b2", "x");
+  data.purgeOthers("a1");
+  assert.equal(map.has("tyaga-draft-account:b2"), false, "данные другого аккаунта стёрты");
+  assert.equal(map.has("tyaga-draft-account:a1"), true);
+  data.wipe();
+  assert.deepEqual([...map.keys()].sort(), [...neutral].sort());
+  assert.doesNotThrow(() => new DeviceAccountData(() => { throw new Error("blocked"); }).wipe());
 });

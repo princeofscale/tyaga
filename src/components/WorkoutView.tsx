@@ -1258,7 +1258,7 @@ changeSet(ei, si, PreviousSets.patch(last, { timed, assistance }), true);
                           max={timed ? "86400" : "200"}
                           inputMode="numeric"
                           value={timed ? (s.durationSeconds ?? 30) : s.reps || ""}
-                          placeholder={last ? `${last.reps}` : timed ? "30" : "10"}
+                          placeholder={last ? `${last.reps}` : timed ? "30" : (plannedRange ?? "—")}
                           {...fieldProps(ei, si)}
                           onChange={(e) =>
                             changeSet(

@@ -13,6 +13,8 @@ import type { WgerRecord } from "../src/domain/WgerExercise";
 import { EXERCISES } from "../src/lib/catalog";
 
 const snapshot = data as WgerSnapshot;
+/** Названия основных движений приложения: по ним в чужом каталоге находятся «базовые» упражнения. */
+const BASIC_NAMES = EXERCISES.filter((e) => ExerciseSearchRank.isCore(e)).map((e) => normalizeSearch(e.name));
 export class ExerciseRepository {
   private adapter = new WgerExerciseAdapter(
     snapshot.release,
@@ -185,6 +187,7 @@ export class ExerciseRepository {
         (row) => row.editorial === 1,
         (row) => row.prominent === 1,
         (row) => done.has(row.id),
+        (row) => ExerciseSearchRank.isBasic(row.name, BASIC_NAMES),
       );
       total = ordered.length;
       const ids = ordered.slice(offset, offset + 24).map((row) => row.id);

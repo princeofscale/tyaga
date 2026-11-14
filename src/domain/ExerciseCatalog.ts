@@ -71,6 +71,6 @@ export class ExerciseCatalog {
           e.equipment === "bodyweight"),
     );
     // При запросе — ближайшие по названию первыми, при пустом остаётся порядок каталога.
-    return ExerciseSearchRank.sort(found, text, (e) => e.name, () => true, (e) => e.recording.e1rmEligible === true);
+    return ExerciseSearchRank.sort(found, text, (e) => e.name, () => true, (e) => e.recording.e1rmEligible === true, () => false, (e) => ExerciseSearchRank.isCore(e));
   }
 }

@@ -32,6 +32,7 @@ function performed(
       sets: e.sets.map((s) => ({
         ...s,
         done: !s.warmup,
+        reps: s.warmup ? s.reps : 5,
         weight: s.warmup ? 0 : weight,
       })),
     })),
@@ -81,10 +82,12 @@ test("у каждого упражнения свой диапазон повт�
   const workout = program.start([], TZ, WEEK0);
   const lateral = workout.exercises.find((e) => e.exerciseId === "lateral")!;
   assert.equal(lateral.sets.length, 6);
+  // R03-REQ02: без истории повторы не вписываются — план виден подсказкой (repMin/repMax), вписывает их человек.
   assert.deepEqual(
     lateral.sets.map((s) => s.reps),
-    Array(6).fill(12),
+    Array(6).fill(0),
   );
+  assert.equal(lateral.repMin, program.range(routine.exercises.find((e) => e.exerciseId === "lateral")!).min);
   assert.equal(
     workout.exercises.find((e) => e.exerciseId === "ohp")!.repMin,
     8,

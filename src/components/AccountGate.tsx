@@ -6,6 +6,8 @@ import Modal from "./Modal";
 import { LiveRoomProvider } from "./LiveRoomProvider";
 import { api, ApiError } from "../services/ApiClient";
 import { offlineSnapshot } from "../lib/offlineSnapshot";
+import { deviceAccountData } from "../lib/deviceAccountData";
+import { DEFAULT_SETTINGS } from "../lib/model";
 import { browserTimeZone } from "../lib/calendar";
 import type { AccountProfile, AccountState } from "../lib/account";
 
@@ -17,7 +19,7 @@ export default function AccountGate() {
     try {
       const session = await api<AccountState>("/api/auth/session");
       // Копия профиля нужна только для запуска без связи; без входа её не бывает.
-      if (session.profile) offlineSnapshot.saveSession(session.profile); else offlineSnapshot.clear();
+      if (session.profile) { offlineSnapshot.saveSession(session.profile); deviceAccountData.purgeOthers(session.profile.id); } else offlineSnapshot.clear();
       setState(session); setError("");
     }
     catch (e) {
@@ -32,8 +34,18 @@ export default function AccountGate() {
   return <>
     {state.profile ? <LiveRoomProvider key={state.profile.id}><App account={state.profile}
       onAccountChange={profile => { offlineSnapshot.saveSession(profile); setState({ registered: true, profile }); }}
-      onLogout={() => { offlineSnapshot.clear(state.profile?.id); setState({ registered: true, profile: null }); }} /></LiveRoomProvider>
-      : <SignIn registered={state.registered} onSignedIn={(profile, recoveryCode) => { setState({ registered: true, profile }); if (recoveryCode) setRecovery(recoveryCode); history.replaceState(null, "", location.pathname + location.search); }} />}
+      onLogout={() => {
+        // Выход: на устройстве не остаётся ничего личного (черновик, журнал веса, офлайн-копия). Повтор — после размонтирования приложения.
+        deviceAccountData.wipe();
+        setState({ registered: true, profile: null });
+        setTimeout(() => deviceAccountData.wipe(), 0);
+      }} /></LiveRoomProvider>
+      : <SignIn registered={state.registered} onSignedIn={(profile, recoveryCode, fresh) => {
+        // Офлайн-запуск должен работать сразу после первого входа, а не после второй онлайн-загрузки.
+        deviceAccountData.purgeOthers(profile.id);
+        offlineSnapshot.saveSession(profile);
+        if (fresh) offlineSnapshot.saveData(profile.id, { workouts: [], settings: { ...DEFAULT_SETTINGS, timeZone: profile.timeZone || browserTimeZone() }, product: { routines: [], customExercises: [], favorites: [] } });
+        setState({ registered: true, profile }); if (recoveryCode) setRecovery(recoveryCode); history.replaceState(null, "", location.pathname + location.search); }} />}
     {recovery && <Modal title="Код восстановления" onClose={() => setRecovery("")}>
       <p className="modal-intro">Сохрани этот код. Он позволит установить новый пароль, если забудешь старый. Почту мы используем для входа; письма восстановления пока не отправляем.</p>
       <code className="recovery-code">{recovery}</code>
@@ -44,7 +56,7 @@ export default function AccountGate() {
     </Modal>}
   </>;
 }
-function SignIn({ registered, onSignedIn }: { registered: boolean; onSignedIn: (profile: AccountProfile, code?: string) => void }) {
+function SignIn({ registered, onSignedIn }: { registered: boolean; onSignedIn: (profile: AccountProfile, code?: string, fresh?: boolean) => void }) {
   const [mode, setMode] = useState(() => location.hash.includes("recover") ? "recover" : location.hash.includes("register") ? "register" : registered ? "login" : "register");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -59,7 +71,7 @@ function SignIn({ registered, onSignedIn }: { registered: boolean; onSignedIn: (
         email: form.get("email"), password: form.get("password"), displayName: form.get("displayName"),
         timeZone: browserTimeZone(), recoveryCode: form.get("recoveryCode"),
       });
-      onSignedIn(result.profile, result.recoveryCode);
+      onSignedIn(result.profile, result.recoveryCode, mode === "register");
     } catch (e) { setError(e instanceof Error ? e.message : "Не удалось войти"); }
     finally { setBusy(false); }
   };
