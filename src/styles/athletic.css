@@ -410,3 +410,32 @@ button, input { font-variant-numeric: tabular-nums; }
 .detail-insights > summary { min-height: 44px; padding: 12px 16px; cursor: pointer; color: var(--text-soft); font-weight: 650; }
 .detail-insights > .session-insights { margin: 0; border: 0; border-top: 1px solid var(--line); border-radius: 0 0 14px 14px; }
 .apple-health-panel.no-data { padding: 0; border: 0; background: none; margin: 12px 0; }
+
+/* R02-REQ10: в день отдыха карточка называет следующую тренировку. */
+.plan-next {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.9375rem;
+  font-weight: 650;
+  text-align: left;
+}
+
+.plan-next span {
+  color: var(--muted);
+  font-weight: 500;
+}
+.training-hero .plan-exercises b { display: inline-flex; flex-direction: column; align-items: flex-end; }
+.plan-source { display: block; font-size: .68rem; font-weight: 500; color: var(--muted); letter-spacing: .02em; }
+.import-undo { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; margin: 0 0 14px; }
+.import-undo p { display: grid; gap: 2px; margin: 0; }
+.import-undo small { color: var(--muted); }
+.import-undo > div { display: flex; gap: 8px; align-items: center; }
+.import-undo button { min-height: 44px; }
+.session-item-value .volume-none { display: block; font-size: .68rem; color: var(--muted); }

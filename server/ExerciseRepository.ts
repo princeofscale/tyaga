@@ -8,6 +8,7 @@ import {
 } from "../src/domain/WgerExercise";
 import type { Exercise } from "../src/lib/types";
 import { normalizeSearch } from "../src/lib/search";
+import { ExerciseSearchRank } from "../src/domain/ExerciseSearchRank";
 import type { WgerRecord } from "../src/domain/WgerExercise";
 import { EXERCISES } from "../src/lib/catalog";
 
@@ -165,21 +166,47 @@ export class ExerciseRepository {
       bindings.push(language);
     }
     const clause = where.join(" AND ");
-    const [rows, counts] = await this.db.batch([
-      this.db
-        .prepare(
-          `SELECT payload FROM exercise_catalog JOIN catalog_memberships ON exercise_catalog.id = catalog_memberships.exercise_id WHERE ${clause} ORDER BY name, exercise_catalog.id LIMIT 24 OFFSET ?`,
-        )
-        .bind(...bindings, (Math.floor(page) - 1) * 24),
-      this.db
-        .prepare(
-          `SELECT COUNT(*) AS count FROM exercise_catalog JOIN catalog_memberships ON exercise_catalog.id = catalog_memberships.exercise_id WHERE ${clause}`,
-        )
-        .bind(...bindings),
-    ]);
+    const from = "FROM exercise_catalog JOIN catalog_memberships ON exercise_catalog.id = catalog_memberships.exercise_id";
+    const editorial = "json_extract(exercise_catalog.payload,'$.provenance.reviewStatus') = 'editorial'";
+    const offset = (Math.floor(page) - 1) * 24;
+    let exercises: Exercise[];
+    let total: number;
+    if (query) {
+      // По запросу — по близости к нему («жим лёжа» → «Жим штанги лёжа», а не «Жим в положении лёжа на спине»).
+      const found = await this.db
+        .prepare(`SELECT exercise_catalog.id AS id, name, ${editorial} AS editorial ${from} WHERE ${clause} ORDER BY name, exercise_catalog.id`)
+        .bind(...bindings)
+        .all<{ id: string; name: string; editorial: number }>();
+      const ordered = ExerciseSearchRank.sort(
+        found.results,
+        query,
+        (row) => row.name,
+        (row) => row.editorial === 1,
+      );
+      total = ordered.length;
+      const ids = ordered.slice(offset, offset + 24).map((row) => row.id);
+      const payloads = ids.length
+        ? await this.db
+            .prepare(`SELECT id,payload FROM exercise_catalog WHERE id IN (${ids.map(() => "?").join(",")})`)
+            .bind(...ids)
+            .all<{ id: string; payload: string }>()
+        : { results: [] as { id: string; payload: string }[] };
+      const byId = new Map(payloads.results.map((r) => [r.id, JSON.parse(r.payload) as Exercise]));
+      exercises = ids.map((id) => byId.get(id)).filter((e): e is Exercise => !!e);
+    } else {
+      // Без запроса — сначала проверенные основные движения, потом остальные по алфавиту.
+      const [rows, counts] = await this.db.batch([
+        this.db
+          .prepare(`SELECT payload ${from} WHERE ${clause} ORDER BY ${editorial} DESC, name, exercise_catalog.id LIMIT 24 OFFSET ?`)
+          .bind(...bindings, offset),
+        this.db.prepare(`SELECT COUNT(*) AS count ${from} WHERE ${clause}`).bind(...bindings),
+      ]);
+      exercises = (rows.results as { payload: string }[]).map((r) => JSON.parse(r.payload) as Exercise);
+      total = (counts.results[0] as { count: number } | undefined)?.count ?? 0;
+    }
     return {
-      exercises: (rows.results as {payload:string}[]).map((r) => JSON.parse(r.payload) as Exercise),
-      total: (counts.results[0] as {count:number} | undefined)?.count ?? 0,
+      exercises,
+      total,
       page: Math.floor(page),
       pageSize: 24,
       catalogTotal: snapshot.count,

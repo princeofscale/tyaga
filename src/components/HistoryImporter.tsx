@@ -9,6 +9,7 @@ import {
   type ImportPreview,
   type ImportOptions,
 } from "../domain/WorkoutImport";
+import { ImportMapping } from "../domain/ImportMapping";
 import { importService } from "../services/ImportService";
 import Select from "./Select";
 import { EXERCISES, exerciseById, localDate } from "../lib/model";
@@ -19,6 +20,9 @@ type Props = {
   onComplete: (result: {
     imported: number;
     skipped: number;
+    replaced?: number;
+    kept?: number;
+    addedIds?: string[];
     settings?: Settings;
     theme?: ThemeId;
     weightCount?: number;
@@ -46,10 +50,14 @@ export default function HistoryImporter({
   });
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [matches, setMatches] = useState<Record<string, Exercise[]>>({});
-  const [choices, setChoices] = useState<Record<string, string>>({}),
+  // Only what the user changed by hand; everything else follows ImportMapping.
+  const [userChoices, setUserChoices] = useState<Record<string, string>>({}),
     [machines, setMachines] = useState<Record<string, string>>({}),
     [sides, setSides] = useState<Record<string, "both" | "left" | "right">>({});
-  const [applyRules, setApplyRules] = useState(false),
+  // «Как моя» by default: a barbell number in a Strong/Hevy/FitNotes file is the
+  // total bar weight unless the user says otherwise.
+  const [weightTotal, setWeightTotal] = useState<"yes" | "no">("yes"),
+    [replaceImported, setReplaceImported] = useState(true),
     [restoreExtras, setRestoreExtras] = useState(true),
     [restoreSettings, setRestoreSettings] = useState(false);
   const [busy, setBusy] = useState(false),
@@ -114,14 +122,7 @@ export default function HistoryImporter({
           ? {}
           : await importService.resolve(data.exerciseNames);
       setMatches(resolved);
-      setChoices(
-        Object.fromEntries(
-          data.exerciseNames.map((name) => [
-            name,
-            resolved[name]?.[0]?.id ?? "",
-          ]),
-        ),
-      );
+      setUserChoices({});
       setPreview(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось прочитать экспорт");
@@ -129,6 +130,15 @@ export default function HistoryImporter({
       markBusy(false);
     }
   }
+  const suggestion = (name: string) =>
+    ImportMapping.suggest(name) ?? matches[name]?.[0] ?? null;
+  const choiceFor = (name: string) =>
+    name in userChoices
+      ? userChoices[name]
+      : weightTotal === "yes" &&
+          ImportMapping.appliesByDefault(ImportMapping.suggest(name))
+        ? ImportMapping.suggest(name)!.id
+        : "";
   async function run() {
     if (!preview) return;
     markBusy(true);
@@ -146,15 +156,11 @@ export default function HistoryImporter({
         workouts: preview.workouts.map((w) => ({
           ...w,
           exercises: w.exercises.map((e) => {
-            const chosen = choices[e.sourceName]
-              ? exerciseById(choices[e.sourceName])
+            const chosen = choiceFor(e.sourceName)
+              ? exerciseById(choiceFor(e.sourceName))
               : undefined;
             if (preview.format === "tyaga") return e;
-            if (
-              applyRules &&
-              chosen &&
-              (chosen.recording.type ?? "reps") === e.type
-            ) {
+            if (chosen && (chosen.recording.type ?? "reps") === e.type) {
               if (
                 ["machine_stack", "assisted_bodyweight"].includes(
                   chosen.recording.loadMode,
@@ -181,11 +187,13 @@ export default function HistoryImporter({
                 })),
               };
             }
-            return { ...e, displayName: chosen?.name ?? e.displayName };
+            return e;
           }),
         })),
       };
-      const result = await importService.import(prepared, setProgress);
+      const result = await importService.import(prepared, setProgress, {
+        replace: replaceImported && prepared.format !== "tyaga",
+      });
       if (restoreExtras && prepared.extras)
         await importService.restoreExtras(prepared, result.idMap, (phase) =>
           setProgress((p) => ({ ...p!, phase })),
@@ -431,34 +439,68 @@ export default function HistoryImporter({
           </div>
           {preview.format !== "tyaga" ? (
             <>
-              <label className="check-label import-rules">
-                <input
-                  type="checkbox"
-                  checked={applyRules}
-                  disabled={busy}
-                  onChange={(e) => setApplyRules(e.target.checked)}
-                />
-                <span>
-                  Применить правила веса выбранных вариантов библиотеки.
-                  Подтверждаю, что число в файле означает тот же вес и те же
-                  стороны.
-                </span>
-              </label>
+              {ImportMapping.needsWeightQuestion(preview.exerciseNames) ? (
+                <fieldset className="import-question" disabled={busy}>
+                  <legend>Вес в файле — это общий вес штанги с грифом?</legend>
+                  <label className="check-label">
+                    <input
+                      type="radio"
+                      name="import-weight-total"
+                      checked={weightTotal === "yes"}
+                      onChange={() => setWeightTotal("yes")}
+                    />
+                    <span>
+                      Да — записать как мои штанговые упражнения (тоннаж, 1ПМ,
+                      общий ряд в «Силе»)
+                    </span>
+                  </label>
+                  <label className="check-label">
+                    <input
+                      type="radio"
+                      name="import-weight-total"
+                      checked={weightTotal === "no"}
+                      onChange={() => setWeightTotal("no")}
+                    />
+                    <span>
+                      Нет или не знаю — сохранить числа буквально, отдельными
+                      записями
+                    </span>
+                  </label>
+                </fieldset>
+              ) : null}
+              <ul className="import-recognized" aria-label="Что распознано">
+                {preview.exerciseNames.map((name) => {
+                  const chosen = choiceFor(name)
+                    ? exerciseById(choiceFor(name))
+                    : null;
+                  return (
+                    <li key={name}>
+                      <span>{name}</span>
+                      <b>
+                        {chosen
+                          ? chosen.name
+                          : "отдельная запись, вес буквально"}
+                      </b>
+                    </li>
+                  );
+                })}
+              </ul>
               <details className="import-mapping">
                 <summary>
-                  Сопоставления упражнений · {preview.exerciseNames.length}
+                  Изменить сопоставления · {preview.exerciseNames.length}
                 </summary>
                 <div>
                   {preview.exerciseNames.map((name) => {
-                    const candidate = choices[name]
-                      ? exerciseById(choices[name])
-                      : null;
+                    const current = choiceFor(name);
+                    const candidate = current ? exerciseById(current) : null;
+                    const first = suggestion(name);
                     const options = [
                       ...new Map(
-                        [...(matches[name] ?? []), ...EXERCISES].map((e) => [
-                          e.id,
-                          e,
-                        ]),
+                        [
+                          ...(first ? [first] : []),
+                          ...(matches[name] ?? []),
+                          ...EXERCISES,
+                        ].map((e) => [e.id, e]),
                       ).values(),
                     ];
                     return (
@@ -466,25 +508,28 @@ export default function HistoryImporter({
                         <label>
                           <span>{name}</span>
                           <Select
-                            value={choices[name] ?? ""}
+                            searchable
+                            value={current}
                             disabled={busy}
                             onChange={(v) =>
-                              setChoices({ ...choices, [name]: v })
+                              setUserChoices({ ...userChoices, [name]: v })
                             }
                             options={[
                               {
                                 value: "",
-                                label: "Своя запись с неизвестным правилом",
+                                label: "Отдельная запись, вес буквально",
                               },
                               ...options.map((e) => ({
                                 value: e.id,
                                 label: e.source ? `${e.name} · база` : e.name,
+                                search: [e.nameEn, ...(e.aliases ?? [])].join(
+                                  " ",
+                                ),
                               })),
                             ]}
                           />
                         </label>
-                        {applyRules &&
-                        candidate &&
+                        {candidate &&
                         ["machine_stack", "assisted_bodyweight"].includes(
                           candidate.recording.loadMode,
                         ) ? (
@@ -504,8 +549,7 @@ export default function HistoryImporter({
                             />
                           </label>
                         ) : null}
-                        {applyRules &&
-                        candidate?.recording.laterality === "unilateral" ? (
+                        {candidate?.recording.laterality === "unilateral" ? (
                           <label>
                             Как записаны стороны
                             <Select
@@ -529,15 +573,31 @@ export default function HistoryImporter({
                           </label>
                         ) : null}
                         <small>
-                          {applyRules && candidate
-                            ? "Используем выбранное правило записи"
-                            : "Русское название, алиас оригинала; вес сохранится буквально"}
+                          {candidate
+                            ? candidate.recording.loadMode === "per_implement"
+                              ? "Вес — одной гантели. Проверь, что в файле так же."
+                              : "Используем правило записи выбранного упражнения"
+                            : first && !ImportMapping.appliesByDefault(first)
+                              ? `Похоже на «${first.name}», но вес в файле может значить другое — выбери вручную, если уверен`
+                              : "Вес сохранится буквально; в «Силе» это будет отдельный ряд"}
                         </small>
                       </div>
                     );
                   })}
                 </div>
               </details>
+              <label className="check-label import-rules">
+                <input
+                  type="checkbox"
+                  checked={replaceImported}
+                  disabled={busy}
+                  onChange={(e) => setReplaceImported(e.target.checked)}
+                />
+                <span>
+                  Заменить тренировки, уже импортированные из этого файла. Те,
+                  что ты правил после импорта, не трогаем.
+                </span>
+              </label>
             </>
           ) : null}
           {preview.extras ? (
@@ -587,8 +647,9 @@ export default function HistoryImporter({
             <ShieldCheck size={20} />
             <div>
               <p>
-                Повторный импорт пропускает те же сессии. Если соединение
-                прервётся, открой этот файл ещё раз.
+                Повторный импорт не создаёт дублей: те же сессии заменяются или
+                пропускаются. Если соединение прервётся, открой этот файл ещё
+                раз.
               </p>
               {preview.warnings.map((w) => (
                 <p key={w}>{w}</p>

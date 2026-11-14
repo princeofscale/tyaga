@@ -100,12 +100,12 @@ export const volumeSummary = TrainingVolume.summarize.bind(TrainingVolume);
 export const volume = (workouts: Workout[]) => volumeSummary(workouts).total;
 export const workingSets = (workouts: Workout[], options: FactsOptions = {}) => new AnalyticsFacts(workouts,options).sets().length;
 export const estimatedOneRepMax = TrainingVolume.e1rm.bind(TrainingVolume);
-export function makeSets(count = 3, weight = 0, reps = 10): SetEntry[] {
+export function makeSets(count = 3, weight = 0, reps = 10, rir: number | null = 2): SetEntry[] {
   return Array.from({ length: count }, () => ({
     id: crypto.randomUUID(),
     weight,
     reps,
-    rir: 2,
+    rir,
     warmup: false,
     done: false,
   }));

@@ -1,6 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import { DEFAULT_SETTINGS, makeWorkout } from "../../../src/lib/model";
-import type { Workout } from "../../../src/lib/types";
+import type { Routine, Workout } from "../../../src/lib/types";
 import { mockWeights, weightFixture } from "./bodyweight";
 import { mockLive } from "./live";
 
@@ -10,6 +10,8 @@ const ZONE = "Europe/Saratov";
 
 export type Round01Options = {
   workouts?: Workout[];
+  /** Программы пользователя (`/api/product`). */
+  routines?: Routine[];
   /** Журнал веса отвечает только после `releaseWeights()`: так повторяется загрузка «уже после открытия профиля». */
   holdWeights?: boolean;
 };
@@ -43,6 +45,9 @@ export async function round01Fixture(page: Page, options: Round01Options = {}) {
   const errors: string[] = [];
   const unexpected: string[] = [];
   const profileBodies: unknown[] = [];
+  const importBodies: any[] = [];
+  const deleted: string[] = [];
+  const savedBodies: Workout[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   const profile = {
     id: "round01-user",
@@ -69,11 +74,67 @@ export async function round01Fixture(page: Page, options: Round01Options = {}) {
     if (path === "/api/challenges") return json({ accountId: profile.id, challenges: [] });
     if (path === "/api/data")
       return json({ workouts, settings: { ...DEFAULT_SETTINGS, timeZone: ZONE } });
-    if (path === "/api/product") return json({ routines: [], favorites: [], customExercises: [] });
+    if (path === "/api/product") return json({ routines: options.routines ?? [], favorites: [], customExercises: [] });
+    if (path === "/api/exercises/resolve" && method === "POST") return json({ matches: {} });
+    if (path === "/api/import" && method === "POST") {
+      const body = r.postDataJSON();
+      importBodies.push(body);
+      if (body.dryRun) return json({ imported: 0, skipped: 0, exercises: [], exerciseIdMap: {}, workouts: [] });
+      const added: Workout[] = [];
+      let replaced = 0,
+        kept = 0;
+      for (const source of body.workouts) {
+        const id = `import:test:${source.sourceKey}`;
+        const at = workouts.findIndex((w) => w.id === id);
+        if (at !== -1 && !(body.replace && workouts[at].revision === 1)) {
+          if (at !== -1 && body.replace) kept++;
+          continue;
+        }
+        if (at !== -1) {
+          workouts.splice(at, 1);
+          replaced++;
+        }
+        const w = makeWorkout([], [], ZONE);
+        added.push({
+          ...w,
+          id,
+          name: source.name,
+          date: source.date,
+          duration: source.duration,
+          createdAt: `${source.date}T10:00:00.000Z`,
+          revision: 1,
+          exercises: source.exercises.map((e: any) => ({
+            exerciseId: e.exerciseId,
+            catalogRevision: e.catalogRevision,
+            displayNameSnapshot: e.displayName,
+            sets: e.sets.map((s: any, i: number) => ({ ...s, id: `${id}:${i}` })),
+          })),
+        });
+      }
+      workouts.unshift(...added);
+      return json({
+        imported: added.length,
+        replaced,
+        kept,
+        addedIds: added.map((w) => w.id),
+        skipped: body.workouts.length - added.length,
+        workouts: added,
+        exercises: [],
+        exerciseIdMap: {},
+      });
+    }
+    if (path.startsWith("/api/workouts/") && method === "DELETE") {
+      const id = decodeURIComponent(path.slice("/api/workouts/".length));
+      const at = workouts.findIndex((w) => w.id === id);
+      if (at !== -1) workouts.splice(at, 1);
+      deleted.push(id);
+      return json({ deleted: id });
+    }
     if (path === "/api/workouts" && method === "PUT") {
       const w = r.postDataJSON();
       const saved = { ...w, revision: 1 };
       workouts.unshift(saved);
+      savedBodies.push(w);
       return json({ workout: saved });
     }
     if (path.startsWith("/api/friends"))
@@ -97,7 +158,7 @@ export async function round01Fixture(page: Page, options: Round01Options = {}) {
   await mockLive(page);
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Сегодня", exact: true })).toBeVisible();
-  return { workouts, profile, profileBodies, weights, errors, unexpected, releaseWeights: () => releaseWeights() };
+  return { workouts, profile, profileBodies, importBodies, deleted, savedBodies, weights, errors, unexpected, releaseWeights: () => releaseWeights() };
 }
 
 export const nav = (page: Page, name: string) =>

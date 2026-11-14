@@ -5,6 +5,7 @@ import { useMemo } from "react";
 import { Check, Flame, Trophy, Calendar } from "lucide-react";
 import { type Workout, fmt } from "../lib/model";
 import { quantityWord } from "../lib/quantity";
+import { VolumeLabel } from "../domain/VolumeLabel";
 
 export default function WeeklyActivityBar({
   workouts,
@@ -52,10 +53,11 @@ export default function WeeklyActivityBar({
       });
     }
 
-    return { days, totalTonnage, totalWorkouts, totalWorkingSets };
+    const omitted = TrainingVolume.summarize(eligible, "working", { timeZone, now }).omittedSets;
+    return { days, totalTonnage, totalWorkouts, totalWorkingSets, omitted };
   }, [workouts, timeZone]);
 
-  const tonnageTons = (weekData.totalTonnage / 1000).toFixed(1).replace(".", ",");
+  const tonnageLabel = VolumeLabel.short(weekData.totalTonnage);
 
   return (
     <div className="weekly-activity-bar">
@@ -69,8 +71,11 @@ export default function WeeklyActivityBar({
             <Flame size={12} className="text-accent" />
             <b>{weekData.totalWorkouts}</b> {quantityWord(weekData.totalWorkouts, "тренировка", "тренировки", "тренировок")}
           </span>
-          <span className="stat-badge">
-            <b>{tonnageTons}</b> т
+          <span
+            className="stat-badge"
+            title={weekData.totalTonnage > 0 ? undefined : VolumeLabel.reason(weekData.omitted)}
+          >
+            <b>{tonnageLabel}</b>
           </span>
           <span className="stat-badge">
             <b>{weekData.totalWorkingSets}</b> {quantityWord(weekData.totalWorkingSets, "подход", "подхода", "подходов")}
@@ -101,7 +106,7 @@ export default function WeeklyActivityBar({
               </div>
               {hasWorkout && (
                 <span className="day-tonnage-mini">
-                  {Math.round(day.tonnage / 1000)}т
+                  {VolumeLabel.short(day.tonnage)}
                 </span>
               )}
             </div>

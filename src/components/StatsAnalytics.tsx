@@ -1,3 +1,4 @@
+import { VolumeLabel } from "../domain/VolumeLabel";
 import { AnalyticsFacts } from "../domain/AnalyticsFacts";
 import { m, useReducedMotion } from "motion/react";
 import { useMemo, useState } from "react";
@@ -71,7 +72,9 @@ export default function StatsAnalytics({
   );
 
   const selectedDay = heatmap.find((day)=>day.date===selectedDate) ?? null;
-  const totalVolume = useMemo(() => volumeSummary(workouts).total, [workouts]);
+  const volumeAll = useMemo(() => volumeSummary(workouts), [workouts]);
+  const totalVolume = volumeAll.total;
+  const volumeOmitted = volumeAll.omittedSets;
   const reduced = useReducedMotion();
   const totalWorkingSets = useMemo(
     () =>
@@ -154,13 +157,25 @@ export default function StatsAnalytics({
             </div>
             <div className="stat-card-content">
               <span className="stat-label">Тоннаж свободных весов</span>
-              <b className="stat-value">
-                {fmt(
-                  totalVolume >= 10000
-                    ? Math.round(totalVolume / 100) / 10
-                    : totalVolume,
-                )}{" "}
-                <small>{totalVolume >= 10000 ? "т" : "кг"}</small>
+              <b
+                className="stat-value"
+                title={totalVolume > 0 ? undefined : VolumeLabel.reason(volumeOmitted)}
+              >
+                {totalVolume > 0 ? (
+                  <>
+                    {fmt(
+                      totalVolume >= 10000
+                        ? Math.round(totalVolume / 100) / 10
+                        : totalVolume,
+                    )}{" "}
+                    <small>{totalVolume >= 10000 ? "т" : "кг"}</small>
+                  </>
+                ) : (
+                  <>
+                    {VolumeLabel.NONE}{" "}
+                    <small>{volumeOmitted > 0 ? "не считается" : ""}</small>
+                  </>
+                )}
               </b>
               {trends.priorVolume > 0 && trends.growthPct !== 0 && (
                 <span
@@ -281,7 +296,9 @@ export default function StatsAnalytics({
                 <span>{selectedDay.names.join(" · ") || "Тренировка"}</span>
                 <b>
                   {selectedDay.workingSets} рабочих подходов ·{" "}
-                  {fmt(selectedDay.totalVolume)} кг тоннаж
+                  {selectedDay.totalVolume > 0
+                    ? `${fmt(selectedDay.totalVolume)} кг тоннаж`
+                    : `тоннаж: ${VolumeLabel.NONE}`}
                 </b>
               </div>
             ) : (

@@ -871,34 +871,37 @@ test("personal timed exercises, aliases and favorites survive reload and history
   expect(product.favorites.length).toBeGreaterThan(0);
 });
 
-test("CSV import offers a Russian preview, saves literal weights and skips duplicate uploads", async ({
+test("CSV import is «as mine» by default, replaces a repeated upload, and keeps literal weights on «Нет»", async ({
   page,
   request,
 }) => {
   await page.goto("/");
   await history(page);
-  const csv =
-    "Date,Workout Name,Duration,Exercise Name,Set Order,Weight,Reps,Seconds,RPE\n2026-10-06 18:00:00,[E2E] CSV,45m,Bench Press,1,60,8,0,8\n2026-10-06 18:00:00,[E2E] CSV,45m,Bench Press,2,60,8,0,\n";
-  async function upload() {
+  const csv = (name: string) =>
+    `Date,Workout Name,Duration,Exercise Name,Set Order,Weight,Reps,Seconds,RPE\n2026-10-06 18:00:00,${name},45m,Bench Press,1,60,8,0,8\n2026-10-06 18:00:00,${name},45m,Bench Press,2,60,8,0,\n`;
+  async function upload(name: string, literal = false) {
     await page
       .getByRole("button", { name: "Импорт истории", exact: true })
       .click();
     await page.getByLabel("Файл истории тренировок").setInputFiles({
       name: "strong.csv",
       mimeType: "text/csv",
-      buffer: Buffer.from(csv),
+      buffer: Buffer.from(csv(name)),
     });
     await page
       .getByRole("button", { name: "Показать предпросмотр", exact: true })
       .click();
     await expect(page.locator(".import-summary")).toContainText("1");
-    await page
-      .getByText("Сопоставления упражнений · 1", { exact: true })
-      .click();
-    await expect(page.locator(".import-mapping-row .select-trigger")).toHaveAttribute(
-      "data-value",
-      "bench",
-    );
+    // Один вопрос про вес; «Да» выбрано по умолчанию.
+    await expect(
+      page.getByText("Вес в файле — это общий вес штанги с грифом?"),
+    ).toBeVisible();
+    await expect(page.getByRole("radio").first()).toBeChecked();
+    if (literal) await page.getByRole("radio").nth(1).check();
+    await page.getByText("Изменить сопоставления · 1", { exact: true }).click();
+    await expect(
+      page.locator(".import-mapping-row .select-trigger"),
+    ).toHaveAttribute("data-value", literal ? "" : "bench");
     await page.screenshot({
       path: "artifacts/import-v1.3.png",
       fullPage: true,
@@ -910,24 +913,33 @@ test("CSV import offers a Russian preview, saves literal weights and skips dupli
       page.getByRole("dialog", { name: "Импорт истории", exact: true }),
     ).toHaveCount(0);
   }
-  await upload();
+  await upload("[E2E] CSV");
   let data = await (await request.get("/api/data")).json();
   let imported = data.workouts.filter((w: any) => w.name === "[E2E] CSV");
   expect(imported).toHaveLength(1);
+  // Как моя запись: тот же жим штанги лёжа с правилом «общий вес», без отдельного «своего» упражнения.
+  expect(imported[0].exercises[0].exerciseId).toBe("bench");
   expect(imported[0].exercises[0].displayNameSnapshot).toBe("Жим штанги лёжа");
-  expect(imported[0].exercises[0].externalDefinition.recording.loadMode).toBe(
-    "legacy_unspecified",
-  );
+  expect(imported[0].exercises[0].externalDefinition).toBeUndefined();
   expect(imported[0].exercises[0].sets[0].weight).toBe(60);
   expect(imported[0].exercises[0].sets[1].rir).toBeNull();
-  await upload();
+  await expect(page.locator(".import-undo")).toContainText("Импорт: добавлено 1");
+  // Тот же файл ещё раз: заменяется, а не дублируется.
+  await upload("[E2E] CSV");
   data = await (await request.get("/api/data")).json();
   expect(data.workouts.filter((w: any) => w.name === "[E2E] CSV")).toHaveLength(
     1,
   );
-  await expect(page.locator(".toast")).toContainText(
-    "добавлено 0, пропущено 1",
+  await expect(page.locator(".toast")).toContainText("заменено 1");
+  // «Нет»: числа остаются буквально, отдельной записью с неизвестным правилом.
+  await upload("[E2E] CSV буквально", true);
+  data = await (await request.get("/api/data")).json();
+  imported = data.workouts.filter((w: any) => w.name === "[E2E] CSV буквально");
+  expect(imported).toHaveLength(1);
+  expect(imported[0].exercises[0].externalDefinition.recording.loadMode).toBe(
+    "legacy_unspecified",
   );
+  expect(imported[0].exercises[0].sets[0].weight).toBe(60);
 });
 
 test("first-session warmups and Apple Health XML/ZIP summaries persist without uploading the health export",async({page,request})=> {

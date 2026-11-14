@@ -1,7 +1,13 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { Check, ChevronDown } from "lucide-react";
+import { matchesSearch } from "../lib/search";
 
-export type SelectOption = { value: string; label: string };
+export type SelectOption = {
+  value: string;
+  label: string;
+  /** Extra text the search box matches besides the label (aliases, English name). */
+  search?: string;
+};
 // Old WebViews without the Popover API keep the native picker.
 const supported = typeof HTMLElement !== "undefined" && "popover" in HTMLElement.prototype;
 
@@ -15,18 +21,23 @@ export default function Select({
   options,
   onChange,
   disabled,
+  searchable = false,
   ...aria
 }: {
   value: string;
   options: SelectOption[];
   onChange: (value: string) => void;
   disabled?: boolean;
+  /** Длинный список: над вариантами строка поиска по подписи. */
+  searchable?: boolean;
   "aria-label"?: string;
 }) {
   const id = useId();
   const trigger = useRef<HTMLButtonElement>(null);
   const list = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const shown = searchable && query.trim() ? options.filter((o) => matchesSearch(`${o.label} ${o.search ?? ""}`, query)) : options;
   const place = () => {
     const box = trigger.current!.getBoundingClientRect();
     const pop = list.current!;
@@ -71,6 +82,8 @@ export default function Select({
   const move = (event: KeyboardEvent<HTMLDivElement>) => {
     const items = [...list.current!.querySelectorAll<HTMLButtonElement>("[role=option]")];
     const at = items.indexOf(document.activeElement as HTMLButtonElement);
+    const inField = event.target instanceof HTMLInputElement;
+    if (inField && (event.key === "Home" || event.key === "End")) return;
     const next = { ArrowDown: at + 1, ArrowUp: at - 1, Home: 0, End: items.length - 1 }[event.key];
     if (next === undefined) return;
     event.preventDefault();
@@ -111,12 +124,28 @@ export default function Select({
         onToggle={(e) => {
           const opened = e.newState === "open";
           setOpen(opened);
-          if (!opened) return;
+          if (!opened) {
+            setQuery("");
+            return;
+          }
           place();
-          list.current!.querySelector<HTMLButtonElement>("[aria-selected=true], [role=option]")?.focus();
+          const field = searchable ? list.current!.querySelector<HTMLInputElement>(".select-search") : null;
+          if (field) field.focus();
+          else list.current!.querySelector<HTMLButtonElement>("[aria-selected=true], [role=option]")?.focus();
         }}
       >
-        {options.map((o) => (
+        {searchable ? (
+          <input
+            className="select-search"
+            type="search"
+            aria-label="Поиск в списке"
+            placeholder="Поиск…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        ) : null}
+        {searchable && !shown.length ? <p className="select-empty">Ничего не найдено</p> : null}
+        {shown.map((o) => (
           <button
             key={o.value}
             type="button"

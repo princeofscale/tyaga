@@ -1,5 +1,6 @@
 import { AnalyticsFacts } from "./AnalyticsFacts";
 import { ExecutionIdentity } from "./ExecutionIdentity";
+import { ImportOrigin } from "./ImportOrigin";
 import { calendarWeek } from "../lib/calendar";
 import { TrainingVolume } from "./TrainingVolume";
 import { ProgressSeries } from "./ProgressSeries";
@@ -113,7 +114,10 @@ export class PersonalRecordsCalculator {
         let pr = recordMap.get(key);
         if (!pr) {
           pr = {
-            context: ExecutionIdentity.describe(we),
+            context:
+              [ExecutionIdentity.describe(we), ImportOrigin.label(we)]
+                .filter(Boolean)
+                .join(" · ") || undefined,
             unit: ProgressSeries.metric(we).unit,
             category: exerciseForEntry(we)?.primary ?? [],
             exerciseId: we.exerciseId,

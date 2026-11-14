@@ -11,7 +11,11 @@ import {
   Save,
   Trash2,
 } from "lucide-react";
-import { TrainingProgram, DAY_NAMES } from "../domain/TrainingProgram";
+import {
+  TrainingProgram,
+  DAY_NAMES,
+  weightSourceSummary,
+} from "../domain/TrainingProgram";
 import {
   addCalendarDays,
   weekStart,
@@ -27,7 +31,7 @@ import type { Exercise, Routine, Workout } from "../lib/types";
 import { ApiError } from "../services/ApiClient";
 import Modal from "./Modal";
 import Select from "./Select";
-const ExerciseLibrary = lazy(() => import("./ExerciseLibrary"));
+import { ExerciseLibrary } from "./chunks";
 
 type Props = {
   routines: Routine[];
@@ -49,6 +53,10 @@ export default function ProgramsScreen(props: Props) {
     [error, setError] = useState("");
   const [deleting, setDeleting] = useState<Routine | null>(null);
   const [picker, setPicker] = useState(false);
+  const [removed, setRemoved] = useState<{
+    entry: Routine["exercises"][number];
+    index: number;
+  } | null>(null);
   const [info, setInfo] = useState<Exercise | null>(null);
   const initial = props.initial;
   useEffect(() => {
@@ -152,6 +160,36 @@ export default function ProgramsScreen(props: Props) {
   ) => {
     if (!editor) return;
     updateExercise(index, TrainingProgram.editRange(editor, entry, side, raw));
+  };
+  useEffect(() => {
+    if (!editor) setRemoved(null);
+  }, [editor]);
+  useEffect(() => {
+    if (!removed) return;
+    const timer = window.setTimeout(() => setRemoved(null), 8000);
+    return () => window.clearTimeout(timer);
+  }, [removed]);
+  const removeExercise = (index: number) => {
+    if (!editor) return;
+    setRemoved({ entry: editor.exercises[index], index });
+    setEditor({
+      ...editor,
+      exercises: editor.exercises.filter((_, i) => i !== index),
+    });
+  };
+  const restoreExercise = () => {
+    if (!removed) return;
+    setEditor((r) => {
+      if (!r) return r;
+      const exercises = [...r.exercises];
+      exercises.splice(
+        Math.min(removed.index, exercises.length),
+        0,
+        removed.entry,
+      );
+      return { ...r, exercises };
+    });
+    setRemoved(null);
   };
   const move = (i: number, direction: number) =>
     setEditor((r) => {
@@ -336,6 +374,14 @@ export default function ProgramsScreen(props: Props) {
               {r.progression === "double"
                 ? `Прогрессия: ${r.repMin}–${r.repMax} повт., шаг ${r.incrementKg} кг`
                 : "Повторять структуру, брать веса из истории"}
+              {" · "}
+              {weightSourceSummary(
+                new TrainingProgram(r).weightSources(
+                  props.workouts,
+                  props.timeZone,
+                  today,
+                ),
+              )}
             </small>
             <div className="routine-card-actions">
               <button
@@ -608,44 +654,39 @@ export default function ProgramsScreen(props: Props) {
                       className="routine-editor-exercise"
                       key={entry.exerciseId}
                     >
-                      <div>
-                        <span className="eyebrow">
-                          {String(index + 1).padStart(2, "0")}
-                        </span>
-                        <h3>{entryName(entry)}</h3>
+                      <div className="routine-editor-head">
+                        <div>
+                          <span className="eyebrow">
+                            {String(index + 1).padStart(2, "0")}
+                          </span>
+                          <h3>{entryName(entry)}</h3>
+                        </div>
+                        <div className="routine-order-controls">
+                          <button
+                            type="button"
+                            disabled={index === 0}
+                            onClick={() => move(index, -1)}
+                          >
+                            Выше
+                          </button>
+                          <button
+                            type="button"
+                            disabled={index === editor.exercises.length - 1}
+                            onClick={() => move(index, 1)}
+                          >
+                            Ниже
+                          </button>
+                          <button
+                            type="button"
+                            className="icon-button"
+                            aria-label={`Убрать из программы ${entryName(entry)}`}
+                            onClick={() => removeExercise(index)}
+                          >
+                            <Trash2 size={17} />
+                          </button>
+                        </div>
                       </div>
-                      <div className="routine-order-controls">
-                        <button
-                          type="button"
-                          disabled={index === 0}
-                          onClick={() => move(index, -1)}
-                        >
-                          Выше
-                        </button>
-                        <button
-                          type="button"
-                          disabled={index === editor.exercises.length - 1}
-                          onClick={() => move(index, 1)}
-                        >
-                          Ниже
-                        </button>
-                        <button
-                          type="button"
-                          className="icon-button"
-                          aria-label={`Убрать из программы ${entryName(entry)}`}
-                          onClick={() =>
-                            setEditor({
-                              ...editor,
-                              exercises: editor.exercises.filter(
-                                (_, i) => i !== index,
-                              ),
-                            })
-                          }
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
-                      <div className="form-grid three">
+                      <div className="routine-fields">
                         <label>
                           Подходы
                           <input
@@ -710,8 +751,13 @@ export default function ProgramsScreen(props: Props) {
                         <label>
                           {spec.loadMode === "assisted_bodyweight"
                             ? "Помощь, кг"
-                            : "Начальный вес, кг"}
+                            : "Вес, кг"}
                           <input
+                            aria-label={
+                              spec.loadMode === "assisted_bodyweight"
+                                ? "Помощь, кг"
+                                : "Начальный вес, кг"
+                            }
                             type="number"
                             min={0}
                             max={1000}
@@ -738,57 +784,68 @@ export default function ProgramsScreen(props: Props) {
                           />
                         </label>
                       </div>
-                      <div className="form-grid">
-                        <label>
-                          Повторы от
-                          <input
-                            type="number"
-                            min={1}
-                            max={200}
-                            inputMode="numeric"
-                            placeholder={String(editor.repMin)}
-                            value={entry.repMin ?? ""}
-                            onChange={(e) =>
-                              setRepRange(index, entry, "min", e.target.value)
-                            }
-                          />
-                        </label>
-                        <label>
-                          Повторы до
-                          <input
-                            type="number"
-                            min={1}
-                            max={200}
-                            inputMode="numeric"
-                            placeholder={String(editor.repMax)}
-                            value={entry.repMax ?? ""}
-                            onChange={(e) =>
-                              setRepRange(index, entry, "max", e.target.value)
-                            }
-                          />
-                        </label>
-                      </div>
-                      {["machine_stack", "assisted_bodyweight"].includes(
-                        spec.loadMode,
-                      ) ? (
-                        <label>
-                          Тренажёр / блок
-                          <input
-                            maxLength={120}
-                            value={entry.equipmentNote ?? ""}
-                            onChange={(e) =>
-                              updateExercise(index, {
-                                equipmentNote: e.target.value,
-                              })
-                            }
-                            placeholder="Название или расположение машины"
-                          />
-                        </label>
-                      ) : null}
+                      <details className="routine-more">
+                        <summary>Ещё</summary>
+                        <div className="form-grid">
+                          <label>
+                            Повторы от
+                            <input
+                              type="number"
+                              min={1}
+                              max={200}
+                              inputMode="numeric"
+                              placeholder={String(editor.repMin)}
+                              value={entry.repMin ?? ""}
+                              onChange={(e) =>
+                                setRepRange(index, entry, "min", e.target.value)
+                              }
+                            />
+                          </label>
+                          <label>
+                            Повторы до
+                            <input
+                              type="number"
+                              min={1}
+                              max={200}
+                              inputMode="numeric"
+                              placeholder={String(editor.repMax)}
+                              value={entry.repMax ?? ""}
+                              onChange={(e) =>
+                                setRepRange(index, entry, "max", e.target.value)
+                              }
+                            />
+                          </label>
+                        </div>
+                        {["machine_stack", "assisted_bodyweight"].includes(
+                          spec.loadMode,
+                        ) ? (
+                          <label>
+                            Тренажёр / блок
+                            <input
+                              maxLength={120}
+                              value={entry.equipmentNote ?? ""}
+                              onChange={(e) =>
+                                updateExercise(index, {
+                                  equipmentNote: e.target.value,
+                                })
+                              }
+                              placeholder="Название или расположение машины"
+                            />
+                          </label>
+                        ) : null}
+                      </details>
                     </article>
                   );
                 })}
               </div>
+              {removed ? (
+                <div className="undo-bar" role="status">
+                  <span>Упражнение убрано</span>
+                  <button type="button" onClick={restoreExercise}>
+                    Отменить
+                  </button>
+                </div>
+              ) : null}
               <button
                 type="button"
                 className="button secondary full-width"

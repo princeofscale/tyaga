@@ -53,10 +53,14 @@ export class ImportService {
       imported: number;
       skipped: number;
     }) => void,
+    options: { replace?: boolean } = {},
   ) {
     const chunks = this.packages(preview.workouts);
     let imported = 0,
-      skipped = 0;
+      skipped = 0,
+      replaced = 0,
+      kept = 0;
+    const addedIds: string[] = [];
     const idMap: Record<string, string> = {};
     // All packages are validated first; writes begin only after a successful review.
     for (let i = 0; i < chunks.length; i++) {
@@ -73,6 +77,7 @@ export class ImportService {
         format: preview.format,
         workouts: chunks[i],
         dryRun: true,
+        ...(options.replace ? { replace: true } : {}),
       });
       Object.assign(idMap, result.exerciseIdMap);
     }
@@ -87,15 +92,22 @@ export class ImportService {
       const result = await apiClient.request<{
         imported: number;
         skipped: number;
+        replaced?: number;
+        kept?: number;
+        addedIds?: string[];
         workouts: Workout[];
         exercises: Exercise[];
         exerciseIdMap: Record<string, string>;
       }>("/api/import", "POST", {
         format: preview.format,
         workouts: chunks[i],
+        ...(options.replace ? { replace: true } : {}),
       });
       imported += result.imported;
       skipped += result.skipped;
+      replaced += result.replaced ?? 0;
+      kept += result.kept ?? 0;
+      addedIds.push(...(result.addedIds ?? []));
       Object.assign(idMap, result.exerciseIdMap);
       exerciseCatalog.register(result.exercises);
       onProgress({
@@ -106,7 +118,7 @@ export class ImportService {
         skipped,
       });
     }
-    return { imported, skipped, idMap };
+    return { imported, skipped, replaced, kept, addedIds, idMap };
   }
   async restoreExtras(
     preview: ImportPreview,

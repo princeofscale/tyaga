@@ -643,4 +643,66 @@ export const CATALOG_V3: Exercise[] = [
     limitations:
       "Это не подъём на носки без веса из выпуска 2 и не сидячий вариант: колени почти прямые. Сравнение стоячего и сидячего вариантов выполнено на внешней нагрузке в небольшой выборке и к конкретной машине напрямую не переносится.",
   }),
+  // Release 3 additions for imported histories: the three barbell lifts that
+  // Strong/Hevy/FitNotes export under their own names and that release 2
+  // does not cover (its "ohp" is a seated DUMBBELL press, so a barbell
+  // overhead press must NOT be mapped onto it). Additive: no v2 id changes.
+  entry({
+    id: "deadlift-bar",
+    name: "Становая тяга со штангой",
+    nameEn: "Conventional barbell deadlift",
+    familyId: "hip-hinge",
+    equipment: "gym",
+    recording: bar,
+    variant:
+      "Классическая тяга с пола, штанга над серединой стопы, обе ноги; общий вес грифа и блинов.",
+    jointActions: ["Разгибание бедра", "Разгибание колена"],
+    primary: ["gluteus-maximus", ...hamstrings, "erector-spinae"],
+    assistant: ["quadriceps-vasti", "adductor-magnus", "trapezius-upper"],
+    stabilizer: ["rectus-abdominis", "obliques", "trapezius-middle"],
+    moderate: ["quadriceps-vasti", "adductor-magnus", "trapezius-upper"],
+    evidence: ["deadlift-review"],
+    tip: "Держи штангу близко, спину нейтральной; тяни в момент, когда натянут гриф. Тяга с плинтов или в сумо — другие варианты.",
+    limitations:
+      "Доли ягодичных, задней поверхности бедра и выпрямителей спины зависят от стойки и длины рук и записью не измеряются. Сумо, трэп-гриф и тяга с плинтов — отдельные движения: их вес не сравнивай с этим.",
+  }),
+  entry({
+    id: "row-bent-bar",
+    name: "Тяга штанги в наклоне",
+    nameEn: "Bent-over barbell row",
+    familyId: "horizontal-row",
+    equipment: "gym",
+    recording: bar,
+    variant:
+      "Корпус наклонён примерно до горизонтали, штанга тянется к животу прямым хватом; общий вес грифа и блинов.",
+    jointActions: ["Разгибание плеча", "Ретракция лопатки", "Сгибание локтя"],
+    primary: ["latissimus-dorsi", ...retractors],
+    assistant: [...flexors, "teres-major", "deltoid-posterior"],
+    stabilizer: ["erector-spinae", ...hamstrings],
+    moderate: ["trapezius-middle", "rhomboids"],
+    tip: "Угол корпуса держи одинаковым от повтора к повтору; рывок бёдрами делает повтор другим.",
+    limitations:
+      "Угол корпуса, хват и «читинг» меняют вклад широчайших и ромбовидных, а выпрямители спины работают как стабилизаторы и в прямой объём спины не входят. Тяга Пендлея и с упором на скамью — другие варианты.",
+  }),
+  entry({
+    id: "ohp-bar",
+    name: "Жим штанги стоя",
+    nameEn: "Standing barbell overhead press",
+    familyId: "overhead-press",
+    equipment: "gym",
+    recording: bar,
+    variant:
+      "Стоя, штанга от верха груди над головой без помощи ног; общий вес грифа и блинов. Жим с ног (push press) — другой вариант.",
+    jointActions: [
+      "Подъём плеча",
+      "Разгибание локтя",
+      "Вращение лопатки вверх",
+    ],
+    primary: ["deltoid-anterior", "deltoid-middle", "triceps-brachii"],
+    assistant: ["serratus-anterior", "trapezius-upper", "trapezius-lower"],
+    stabilizer: ["infraspinatus", "rectus-abdominis", "obliques", "erector-spinae"],
+    tip: "Рёбра вниз, ягодицы напряжены; голова чуть уходит назад, пока штанга проходит лицо.",
+    limitations:
+      "Подключение ног и прогиб поясницы делают вес несравнимым между подходами. Вес сидя с гантелями (запись «ohp» выпуска 2) — другой вариант, переносить его вес нельзя.",
+  }),
 ];

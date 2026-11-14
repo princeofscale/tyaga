@@ -1472,3 +1472,21 @@
     padding-inline: 1px;
   }
 }
+
+/* R02-REQ04: файл экрана не загрузился — сообщение на месте окна, а не чёрный экран. */
+.chunk-failed {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+  padding: 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.chunk-failed p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}

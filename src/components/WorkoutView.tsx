@@ -6,6 +6,7 @@ import { WorkoutUndo } from "../domain/WorkoutUndo";
 import { SetPropagation, type SetFollowers } from "../domain/SetPropagation";
 import { WorkoutDiscard } from "../domain/WorkoutDiscard";
 import { selectOnFocus, trimLeadingZeros } from "../lib/numberField";
+import { ExerciseLibrary } from "./chunks";
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import {
@@ -215,6 +216,10 @@ export default function WorkoutView({
   const pinRef = useRef<HTMLSpanElement>(null);
   // Кто пойдёт за правкой поля: определяется один раз, когда поле получило фокус, а не после каждой цифры.
   const followersRef = useRef<SetFollowers | null>(null);
+  // Каталог упражнений — отдельный файл. Докачиваем его, пока связь есть: «Добавить упражнение» в подвале без сети должно открыться.
+  useEffect(() => {
+    ExerciseLibrary.preload();
+  }, []);
   const [expandedExercises, setExpandedExercises] = useState<Record<number, boolean>>({});
   const [soundEnabled, setSoundEnabled] = useState(() => !audioHaptics.isMuted());
 
@@ -1343,7 +1348,8 @@ export default function WorkoutView({
                   disabled={we.sets.length >= 30}
                   onClick={() => {
                     const last = we.sets.at(-1)!;
-                    const next = makeSets(1, last.weight, last.reps).map(
+                    // Новый подход наследует вес, повторы и RIR предыдущего (R02-REQ09).
+                    const next = makeSets(1, last.weight, last.reps, last.rir ?? null).map(
                       (s) => ({
                         ...s,
                         ...(timed

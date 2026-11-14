@@ -86,6 +86,8 @@ test("программа v2 добавляется из шаблона и пок
     }),
     minimum = editor.getByLabel("Повторы от", { exact: true }).nth(1),
     maximum = editor.getByLabel("Повторы до", { exact: true }).nth(1);
+  // «Повторы от/до» упражнения лежат под «Ещё» (R02-REQ07).
+  await editor.locator(".routine-more > summary").first().click();
   await maximum.fill("");
   await maximum.pressSequentially("15");
   await expect(minimum).toHaveValue("6");

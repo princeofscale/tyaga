@@ -9,6 +9,7 @@ import {
   localDate,
 } from "../lib/model";
 import { MUSCLES } from "../data/muscles";
+import { addCalendarDays } from "../lib/calendar";
 import type {
   Muscle,
   Routine,
@@ -137,8 +138,29 @@ export class TrainingProgram {
   ) {
     return WorkoutReference.latest(
       history.filter((w) => !skipDeload || !this.isDeload(history, w.date)),
-      plan, undefined, today, { timeZone },
+      plan,
+      undefined,
+      today,
+      { timeZone },
     );
+  }
+  /**
+   * Where each planned weight comes from: "history" when a finished working
+   * set of the same movement under the same recording rule exists (the same
+   * reference `start` uses), "plan" when the number is the program's own.
+   */
+  weightSources(
+    history: Workout[],
+    timeZone: string,
+    today = localDate(new Date(), timeZone),
+  ): Array<"history" | "plan"> {
+    const cycle = !!this.routine.cycle;
+    return this.routine.exercises.map((plan) => {
+      const previous = this.reference(history, plan, cycle, today, timeZone);
+      return previous?.sets.some((s) => !s.warmup && s.done)
+        ? "history"
+        : "plan";
+    });
   }
   start(
     history: Workout[],
@@ -171,7 +193,13 @@ export class TrainingProgram {
       exercises: r.exercises.map((plan) => {
         const definition = exerciseForEntry(plan)!;
         const range = this.range(plan);
-        const previous = this.reference(history, plan, !!cycle, today,timeZone);
+        const previous = this.reference(
+          history,
+          plan,
+          !!cycle,
+          today,
+          timeZone,
+        );
         const work = previous?.sets.filter((s) => !s.warmup && s.done) ?? [];
         const plannedCount = plan.sets.filter((s) => !s.warmup).length;
         const progressive = definition.catalogRevision !== 1;
@@ -492,4 +520,29 @@ export class TrainingProgram {
       }
     return totals;
   }
+}
+
+/** Ближайшая запланированная тренировка после `today` (в пределах недели): день и программа. */
+export function nextScheduled(
+  routines: Routine[],
+  today: string,
+): { date: string; dayName: string; routine: Routine } | null {
+  for (let offset = 1; offset <= 7; offset++) {
+    const date = addCalendarDays(today, offset);
+    const routine = routines.find((r) =>
+      new TrainingProgram(r).scheduled(date),
+    );
+    if (routine)
+      return { date, dayName: DAY_NAMES[calendarWeekday(date)], routine };
+  }
+  return null;
+}
+
+/** "из истории" / "по плану" / a count of each, for a program card. */
+export function weightSourceSummary(sources: Array<"history" | "plan">) {
+  const fromHistory = sources.filter((s) => s === "history").length;
+  if (!sources.length) return "";
+  if (fromHistory === sources.length) return "веса из истории";
+  if (fromHistory === 0) return "веса по плану";
+  return `веса: ${fromHistory} из истории, ${sources.length - fromHistory} по плану`;
 }

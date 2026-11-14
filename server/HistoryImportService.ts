@@ -239,14 +239,31 @@ export class HistoryImportService {
     const keys = [...new Set([...workouts.map((w) => w.id), ...duplicateIds])];
     const existing = await this.db
       .prepare(
-        `SELECT id FROM workouts WHERE owner_id=? AND id IN (${keys.map(() => "?").join(",")})`,
+        `SELECT id,revision FROM workouts WHERE owner_id=? AND id IN (${keys.map(() => "?").join(",")})`,
       )
       .bind(this.owner, ...keys)
-      .all<{ id: string }>();
+      .all<{ id: string; revision: number }>();
     const present = new Set(existing.results.map((w) => w.id));
+    // A repeated import may REPLACE what an earlier import wrote (same source
+    // session → same deterministic id), but only a workout that is still
+    // exactly as imported: revision 1. Anything the user has edited since is
+    // never touched, and the response says how many were kept.
+    const replace =
+      input.replace === true && format !== "tyaga"
+        ? new Set(
+            existing.results
+              .filter((w) => w.revision === 1 && w.id.startsWith("import:"))
+              .map((w) => w.id),
+          )
+        : new Set<string>();
+    const kept =
+      input.replace === true && format !== "tyaga"
+        ? workouts.filter((w) => present.has(w.id) && !replace.has(w.id)).length
+        : 0;
     const pending = workouts.filter(
       (w, i) =>
-        !present.has(w.id) && !present.has(String(inputs[i].nativeId ?? "")),
+        (!present.has(w.id) || replace.has(w.id)) &&
+        !present.has(String(inputs[i].nativeId ?? "")),
     );
     const unique = [...new Map(pending.map((w) => [w.id, w])).values()];
     const proposedIds = [...proposals.keys()];
@@ -278,6 +295,8 @@ export class HistoryImportService {
         imported: 0,
         skipped: inputs.length - unique.length,
         ready: unique.length,
+        replaceable: unique.filter((w) => replace.has(w.id)).length,
+        kept,
         exercises: [...proposals.values()],
         exerciseIdMap: idMap,
         workouts: [],
@@ -285,6 +304,15 @@ export class HistoryImportService {
     const stamp = new Date().toISOString(),
       statements: D1PreparedStatement[] = [];
     // Validate the entire package before one atomic D1 batch; no partial sessions.
+    const replacing = unique.filter((w) => replace.has(w.id));
+    for (const w of replacing)
+      statements.push(
+        this.db
+          .prepare(
+            "DELETE FROM workouts WHERE owner_id=? AND id=? AND revision=1",
+          )
+          .bind(this.owner, w.id),
+      );
     for (const machine of machineProposals.values()) statements.push(...machineRepository.statements(machine, true));
     for (const e of proposals.values())
       statements.push(
@@ -310,9 +338,12 @@ export class HistoryImportService {
       );
     const results = statements.length ? await this.db.batch(statements) : [];
     // RETURNING, not meta.changes: D1 also counts rows written by sync triggers.
-    const imported = results
-      .slice(proposals.size + machineProposals.size * 2)
-      .filter((r) => r.results.length).length;
+    const written = results
+      .slice(replacing.length + proposals.size + machineProposals.size * 2)
+      .filter((r) => r.results.length);
+    const imported = written.length;
+    const addedIds = written.map((r) => String((r.results[0] as { id: string }).id));
+    const replaced = replacing.filter((w) => addedIds.includes(w.id)).length;
     const rows = unique.length
       ? await this.db
           .prepare(
@@ -323,6 +354,9 @@ export class HistoryImportService {
       : { results: [] };
     return {
       imported,
+      replaced,
+      kept,
+      addedIds,
       skipped: inputs.length - imported,
       workouts: rows.results.map((r) => ({
         ...JSON.parse(r.payload),

@@ -1,9 +1,14 @@
 import MachineManager from "./components/MachineManager";
 import { zoneCreditNote } from "./lib/zoneCredit";
+import { quantity } from "./lib/quantity";
+import { StrengthExercises } from "./domain/StrengthExercises";
 import { ExecutionIdentity } from "./domain/ExecutionIdentity";
 import { useRestNotifications } from "./hooks/useRestNotifications";
 import RestNotificationSettings from "./components/RestNotificationSettings";
 import { JournalBackup } from "./domain/JournalBackup";
+import { ImportUndo, type ImportRecord } from "./domain/ImportUndo";
+import { VolumeLabel } from "./domain/VolumeLabel";
+import { ImportOrigin } from "./domain/ImportOrigin";
 import { applyTheme, getCurrentTheme } from "./lib/theme";
 import { BodyweightProvider, useBodyweight } from "./state/BodyweightContext";
 import { BodyMass } from "./domain/BodyMass";
@@ -18,7 +23,6 @@ import MovementBalance from "./components/MovementBalance";
 import ToolsHub from "./components/ToolsHub";
 import {
   useCallback,
-  lazy,
   Suspense,
   useEffect,
   useMemo,
@@ -100,15 +104,16 @@ import Select from "./components/Select";
 import WorkoutView from "./components/WorkoutView";
 import TrainingPlate from "./components/TrainingPlate";
 import { AnimatePresence, m } from "motion/react";
-const AnatomyExplorer = lazy(() => import("./components/AnatomyExplorer"));
-const ExerciseLibrary = lazy(() => import("./components/ExerciseLibrary"));
-const ProgramsScreen = lazy(() => import("./components/ProgramsScreen"));
-const FriendsScreen = lazy(() => import("./components/FriendsScreen"));
-const PersonalExerciseEditor = lazy(
-  () => import("./components/PersonalExerciseEditor"),
-);
-const HistoryImporter = lazy(() => import("./components/HistoryImporter"));
-const AppleHealthPanel = lazy(() => import("./components/AppleHealthPanel"));
+import {
+  AnatomyExplorer,
+  ExerciseLibrary,
+  ProgramsScreen,
+  FriendsScreen,
+  PersonalExerciseEditor,
+  HistoryImporter,
+  AppleHealthPanel,
+  PoseAnalysisPanel,
+} from "./components/chunks";
 import PlateCalculator from "./components/PlateCalculator";
 import OneRepMaxCalculator from "./components/OneRepMaxCalculator";
 import { BodyweightModal } from "./components/BodyweightModal";
@@ -134,7 +139,7 @@ import {
 import { WorkoutSession } from "./domain/WorkoutSession";
 import { api, ApiError } from "./services/ApiClient";
 import { productService } from "./services/ProductService";
-import { TrainingProgram } from "./domain/TrainingProgram";
+import { TrainingProgram, nextScheduled } from "./domain/TrainingProgram";
 import { useTrainingTools } from "./lib/webmcp";
 import { AccountProfileForm } from "./components/AccountProfileForm";
 import type { AccountProfile } from "./lib/account";
@@ -167,7 +172,6 @@ const dateLabel = (date: string, long = false) =>
   });
 type AppProps = { account: AccountProfile; onAccountChange: (p: AccountProfile) => void; onLogout: () => void };
 export default function App(props:AppProps) {return <BodyweightProvider accountId={props.account.id} timeZone={props.account.timeZone}><JournalApp {...props}/></BodyweightProvider>;}
-const PoseAnalysisPanel = lazy(() => import("./components/PoseAnalysisPanel"));
 
 function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
   const weights=useBodyweight();
@@ -229,6 +233,28 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
   const [detail, setDetail] = useState<Workout | null>(null);
   const [justSaved, setJustSaved] = useState<Workout | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  // Каталог упражнений — отдельный файл: докачиваем его, пока есть связь, чтобы «Добавить упражнение» открылось и без неё.
+  useEffect(() => {
+    const idle = (window as { requestIdleCallback?: (f: () => void, o?: { timeout: number }) => void }).requestIdleCallback;
+    const warm = () => {
+      ExerciseLibrary.preload();
+      ProgramsScreen.preload();
+    };
+    if (idle) idle.call(window, warm, { timeout: 2000 });
+    else setTimeout(warm, 1500);
+  }, []);
+  const importUndo = useMemo(
+    () =>
+      new ImportUndo(
+        typeof localStorage === "undefined" ? null : localStorage,
+        account.id,
+      ),
+    [account.id],
+  );
+  const [lastImport, setLastImport] = useState<ImportRecord | null>(() =>
+    importUndo.read(),
+  );
+  const [undoAsk, setUndoAsk] = useState(false);
   const [muscleFilter, setMuscleFilter] = useState<Muscle | "all">("all");
   const [selectedMuscle, setSelectedMuscle] = useState<Muscle | null>(null);
   const [weekOffset, setWeekOffset] = useState(0);
@@ -237,9 +263,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
   const [excluded, setExcluded] = useState<Muscle[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
-  const [progressExercise, setProgressExercise] = useState(
-    progressKey({ ...entrySpec("bench"), sets: [] }),
-  );
+  const [progressPick, setProgressExercise] = useState<string | null>(null);
   const [historySearch, setHistorySearch] = useState("");
   const [settingsDraft, setSettingsDraft] =
     useState<Settings>(DEFAULT_SETTINGS);
@@ -416,6 +440,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
     [currentLoads, minutes, planEquipment, excluded, settings.restSeconds],
   );
   const today = localDate(new Date(), settings.timeZone);
+  const nextProgramDay = useMemo(() => nextScheduled(product.routines, today), [product.routines, today]);
   const todayRoutine = product.routines.find((r) =>
     new TrainingProgram(r).scheduled(today),
   );
@@ -429,6 +454,17 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
           )
         : null,
     [todayRoutine, workouts, settings.timeZone],
+  );
+  const todaySources = useMemo(
+    () =>
+      todayRoutine
+        ? new TrainingProgram(todayRoutine).weightSources(
+            workouts,
+            settings.timeZone ?? browserTimeZone(),
+            today,
+          )
+        : [],
+    [todayRoutine, workouts, settings.timeZone, today],
   );
   const weekDone = currentLoads.reduce((n, m) => n + Math.min(m.total, m.goal), 0);
   const weekGoal = currentLoads.reduce((n, m) => n + m.goal, 0);
@@ -601,7 +637,8 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
       setSaving(false);
       return;
     }
-    const workout = new WorkoutSession(draft.workout).completedWithDuration(
+    const { workout: performed, removed } = new WorkoutSession(draft.workout).withoutUnperformed();
+    const workout = new WorkoutSession(performed).completedWithDuration(
       draft.manualDuration
         ? draft.workout.duration
         : Math.floor(elapsedMs(draft) / 60000),
@@ -640,10 +677,11 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
         })().catch(()=>setToast("Тренировка сохранена. Добавь общий итог в разделе друзей, когда появится связь."));
       }
       go("history");
+      const savedText = draft.editing ? "Изменения сохранены" : "Тренировка сохранена";
       setToast(
-        draft.editing
-          ? "Изменения сохранены"
-          : "Тренировка сохранена",
+        removed
+          ? `${savedText} · убрано ${quantity(removed, "упражнение", "упражнения", "упражнений")} без подходов`
+          : savedText,
       );
     } catch (e) {
       if (e instanceof ApiError && e.status === 409)
@@ -686,6 +724,43 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
         setDeleteId(null);
       }
       setToast(e instanceof Error ? e.message : "Ошибка удаления");
+    } finally {
+      setSaving(false);
+    }
+  };
+  const undoImport = async () => {
+    if (!lastImport || saving) return;
+    setSaving(true);
+    const plan = ImportUndo.plan(lastImport, workouts);
+    let removed = 0,
+      changed = plan.edited;
+    try {
+      for (const item of plan.remove) {
+        try {
+          await api("/api/workouts/" + encodeURIComponent(item.id), "DELETE", {
+            revision: item.revision,
+          });
+          removed++;
+        } catch (e) {
+          if (e instanceof ApiError && e.status === 409) changed++;
+          else throw e;
+        }
+      }
+      importUndo.clear();
+      setLastImport(null);
+      setUndoAsk(false);
+      await load();
+      setToast(
+        `Импорт отменён: убрано ${removed}` +
+          (changed ? `, оставлено изменённых тобой: ${changed}` : ""),
+      );
+    } catch (e) {
+      await load().catch(() => undefined);
+      warn(
+        e instanceof Error
+          ? `Не удалось отменить импорт до конца: ${e.message}. Нажми ещё раз — убранное повторно не удалится.`
+          : "Не удалось отменить импорт",
+      );
     } finally {
       setSaving(false);
     }
@@ -736,16 +811,13 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
       .toLowerCase()
       .includes(historySearch.toLowerCase()),
   );
-  const progressOptions = [
-    ...new Map(
-      [
-        ...EXERCISES.map(
-          (e) => ({ ...entrySpec(e.id), sets: [] }) as WorkoutExercise,
-        ),
-        ...displayed.flatMap((w) => w.exercises.flatMap((e) => ExecutionIdentity.split(e))),
-      ].map((we) => [progressKey(we), we]),
-    ).entries(),
-  ].map(([key, we]) => ({ key, we }));
+  // Только то, что делал: свежие и частые первыми; без истории — один жим лёжа, чтобы экран не был пустым.
+  const strengthRows = StrengthExercises.list(displayed);
+  const progressOptions = strengthRows.length
+    ? strengthRows
+    : [{ ...entrySpec("bench"), sets: [] } as WorkoutExercise].map((we) => ({ key: progressKey(we), we }));
+  const progressExercise =
+    progressPick && progressOptions.some((o) => o.key === progressPick) ? progressPick : progressOptions[0].key;
   const progressEntry = progressOptions.find((o) => o.key === progressExercise)
     ?.we ?? { ...entrySpec("bench"), sets: [] };
   const progressSpec = exerciseForEntry(progressEntry)!.recording;
@@ -789,7 +861,9 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
       />
     </Suspense>
   );
-  const sessionItem = (w: Workout, expanded = false) => (
+  const sessionItem = (w: Workout, expanded = false) => {
+    const tonnage = volumeSummary([w], "all");
+    return (
     <button className="session-item" key={w.id} onClick={() => setDetail(w)}>
       <div className="session-date">
         <b>{new Date(w.date + "T12:00:00").getDate()}</b>
@@ -815,9 +889,20 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
         </p>
       </div>
       <div className="session-item-value">
-        <b title="Только однозначно записанные свободные веса">
-          {fmt(volumeSummary([w], "all").total / 1000)} т
+        <b
+          title={
+            tonnage.total > 0
+              ? "Только однозначно записанные свободные веса"
+              : VolumeLabel.reason(tonnage.omittedSets)
+          }
+        >
+          {VolumeLabel.short(tonnage.total)}
         </b>
+        {VolumeLabel.caption(tonnage.total, tonnage.omittedSets) ? (
+          <small className="volume-none">
+            {VolumeLabel.caption(tonnage.total, tonnage.omittedSets)}
+          </small>
+        ) : null}
         <span>
           <Clock3 size={13} />
           {w.duration} мин
@@ -825,7 +910,8 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
       </div>
       <ChevronRight size={17} className="muted" />
     </button>
-  );
+    );
+  };
 
   return (
     <div className={`app-shell ${view === "workout" && draft ? "in-workout" : ""} ${draft && view !== "workout" && view !== "overview" ? "has-resume" : ""}`}>
@@ -994,14 +1080,25 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                           ? `${todayPlan.exercises.length} упр. · ${todayPlan.exercises.reduce((n, e) => n + e.sets.length, 0)} подх.`
                           : "Записывай подходы — веса и прогресс посчитаем сами."}
                     </p>
+                    {!todayPlan && !draft && nextProgramDay ? (
+                      <button className="plan-next" onClick={() => go("programs")}>
+                        <span>Следующая:</span> {nextProgramDay.dayName} · {nextProgramDay.routine.name}
+                        <ChevronRight size={16} />
+                      </button>
+                    ) : null}
                     {todayPlan && !draft ? (
                       <ul className="plan-exercises">
-                        {todayPlan.exercises.slice(0, 4).map((e) => (
+                        {todayPlan.exercises.slice(0, 4).map((e, i) => (
                           <li key={e.exerciseId}>
                             <span>{entryName(e)}</span>
                             <b>
                               {e.sets.length} × {e.sets[0]?.reps ?? 0}
                               {e.sets[0]?.weight ? ` · ${fmt(e.sets[0].weight)} кг` : ""}
+                              {e.sets[0]?.weight ? (
+                                <small className="plan-source">
+                                  {todaySources[i] === "history" ? "вес из истории" : "по плану"}
+                                </small>
+                              ) : null}
                             </b>
                           </li>
                         ))}
@@ -1108,6 +1205,60 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                   <header className="screen-head">
                     <h1>История тренировок</h1>
                   </header>
+                  {lastImport ? (
+                    <section className="import-undo panel" role="status">
+                      <p>
+                        <b>
+                          Импорт: добавлено {lastImport.imported}
+                          {lastImport.replaced
+                            ? `, заменено ${lastImport.replaced}`
+                            : ""}
+                        </b>
+                        <small>
+                          Отмена убирает только эти тренировки и только те, что
+                          ты не правил.
+                          {lastImport.replaced
+                            ? " Заменённые прежние записи не вернутся."
+                            : ""}
+                        </small>
+                      </p>
+                      {undoAsk ? (
+                        <div>
+                          <button
+                            className="button danger"
+                            disabled={saving}
+                            onClick={() => void undoImport()}
+                          >
+                            Убрать {lastImport.ids.length}
+                          </button>
+                          <button
+                            className="button secondary"
+                            onClick={() => setUndoAsk(false)}
+                          >
+                            Не надо
+                          </button>
+                        </div>
+                      ) : (
+                        <div>
+                          <button
+                            className="button secondary"
+                            onClick={() => setUndoAsk(true)}
+                          >
+                            Отменить импорт
+                          </button>
+                          <button
+                            className="text-button"
+                            onClick={() => {
+                              importUndo.clear();
+                              setLastImport(null);
+                            }}
+                          >
+                            Скрыть
+                          </button>
+                        </div>
+                      )}
+                    </section>
+                  ) : null}
                   {justSaved && (
                     <SessionInsights
                       workout={justSaved}
@@ -1156,8 +1307,11 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                           <h2>Объём за 28 дней</h2>
                           <p>Свободные веса, включая разминку</p>
                         </div>
-                        <b className="volume-total">
-                          {fmt(volumeSummary(monthWorkouts, "all").total / 1000)} т
+                        <b
+                          className="volume-total"
+                          title={VolumeLabel.reason(volumeSummary(monthWorkouts, "all").omittedSets)}
+                        >
+                          {VolumeLabel.short(volumeSummary(monthWorkouts, "all").total)}
                         </b>
                       </div>
                       <VolumeChart workouts={monthWorkouts} timeZone={settings.timeZone} />
@@ -1465,6 +1619,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                         <label>
                           Упражнение
                           <Select
+                            searchable
                             value={progressExercise}
                             onChange={setProgressExercise}
                             options={progressOptions.map((o) => ({
@@ -1474,6 +1629,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                                 (o.we.catalogRevision ?? 1) === 1 ? "старое правило веса" : "",
                                 o.we.machineInstanceId ? "" : o.we.equipmentNote ?? "",
                                 ExecutionIdentity.describe(o.we),
+                                ImportOrigin.label(o.we),
                                 o.we.performedSides ? SIDES[o.we.performedSides] : "",
                               ].filter(Boolean).join(" · "),
                             }))}
@@ -2069,8 +2225,25 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                 setModal(null);
                 setDemo(false);
                 go("history");
+                if (result.addedIds?.length) {
+                  const record: ImportRecord = {
+                    at: new Date().toISOString(),
+                    ids: result.addedIds,
+                    imported: result.imported - (result.replaced ?? 0),
+                    replaced: result.replaced ?? 0,
+                    kept: result.kept ?? 0,
+                  };
+                  importUndo.save(record);
+                  setLastImport(record);
+                  setUndoAsk(false);
+                }
+                const added = result.imported - (result.replaced ?? 0);
                 setToast(
-                  `Импорт завершён: добавлено ${result.imported}, пропущено ${result.skipped}${result.weightCount!==undefined?`; замеров веса: ${result.weightCount}`:""}`,
+                  `Импорт завершён: добавлено ${added}` +
+                    (result.replaced ? `, заменено ${result.replaced}` : "") +
+                    `, пропущено ${result.skipped - (result.kept ?? 0)}` +
+                    (result.kept ? `, твои правки сохранены: ${result.kept}` : "") +
+                    (result.weightCount!==undefined?`; замеров веса: ${result.weightCount}`:""),
                 );
               }}
             />

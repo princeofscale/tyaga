@@ -2,7 +2,8 @@ import { useBodyweight } from "../state/BodyweightContext";
 import { BodyMass } from "../domain/BodyMass";
 import { BodyweightTracker } from "../domain/BodyweightTracker";
 import { localDate } from "../lib/calendar";
-import { lazy, Suspense, useState, useEffect, type FormEvent } from "react";
+import { Suspense, useState, useEffect, type FormEvent } from "react";
+import { CloudSyncPanel } from "./chunks";
 import { Smartphone, UserRound, Sparkles } from "lucide-react";
 import { api } from "../services/ApiClient";
 import { browserTimeZone } from "../lib/calendar";
@@ -18,7 +19,7 @@ import {
 // On Android the profile is created silently with a stored password, so
 // signing out or changing the password would lock the owner out.
 const onDevice = import.meta.env.MODE === "device";
-const CloudSyncPanel = lazy(() => import("./CloudSyncPanel"));
+
 export function AccountProfileForm({
   account,
   onChange,

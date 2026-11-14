@@ -1,5 +1,6 @@
 import type { Exercise, WorkoutExercise } from "../lib/types";
 import { matchesSearch } from "../lib/search";
+import { ExerciseSearchRank } from "./ExerciseSearchRank";
 
 export class ExerciseCatalog {
   private entries = new Map<string, Exercise>();
@@ -54,7 +55,7 @@ export class ExerciseCatalog {
     zone?: string;
     equipment?: string;
   }) {
-    return this.curated.filter(
+    const found = this.curated.filter(
       (e) =>
         matchesSearch(
           `${e.name} ${e.nameEn} ${(e.aliases ?? []).join(" ")}`,
@@ -69,5 +70,7 @@ export class ExerciseCatalog {
           e.equipment === equipment ||
           e.equipment === "bodyweight"),
     );
+    // При запросе — ближайшие по названию первыми, при пустом остаётся порядок каталога.
+    return ExerciseSearchRank.sort(found, text, (e) => e.name, () => true);
   }
 }

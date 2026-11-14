@@ -16,6 +16,17 @@ export class WorkoutSession {
       exercises: [...this.workout.exercises, exercise],
     };
   }
+  /**
+   * Упражнения без единого выполненного подхода не сохраняются и не проверяются
+   * (например, «укажи тренажёр» требуется только там, где подходы были).
+   */
+  withoutUnperformed(): { workout: Workout; removed: number } {
+    const exercises = this.workout.exercises.filter((e) => e.sets.some((s) => s.done));
+    return {
+      workout: exercises.length === this.workout.exercises.length ? this.workout : { ...this.workout, exercises },
+      removed: this.workout.exercises.length - exercises.length,
+    };
+  }
   completedWithDuration(minutes: number): Workout {
     if (!this.completedWorkingSets)
       throw new Error("Отметь хотя бы один выполненный рабочий подход.");
