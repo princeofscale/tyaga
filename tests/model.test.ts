@@ -234,7 +234,7 @@ test("e1RM uses eligible recorded weight and per-dumbbell semantics, excludes wa
     ) < 0.001,
   );
 });
-test("references use the final working set of the latest matching session, without adopting ambiguous old weights", () => {
+test("references use the working sets of the latest matching session set by set (R03-REQ02), without adopting ambiguous old weights", () => {
   const first = sample();
   first.createdAt = "2026-10-06T10:00:00Z";
   first.exercises[0].sets = [
@@ -246,7 +246,8 @@ test("references use the final working set of the latest matching session, witho
   const earlier = sample();
   earlier.createdAt = "2026-10-06T09:00:00Z";
   earlier.exercises[0].sets = [set({ weight: 50 })];
-  assert.equal(makeExerciseEntry("bench", [earlier, first]).sets[0].weight, 85);
+  const prefilled = makeExerciseEntry("bench", [earlier, first], undefined, undefined, true);
+  assert.deepEqual(prefilled.sets.map((s) => s.weight), [80, 90, 85], "подход N берёт подход N прошлого раза; разминка не в счёт");
   assert.equal(
     makeExerciseEntry("incline-db", [legacy("incline-db", { weight: 20 })])
       .sets[0].weight,

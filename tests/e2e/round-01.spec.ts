@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { doneWorkout, nav, round01Fixture, startWith } from "./fixtures/round01";
+import { doneWorkout, mark, nav, round01Fixture, startWith } from "./fixtures/round01";
 
 /**
  * Раунд 1: критерии приёмки R01-REQ01…REQ11 на телефоне. Приложение целиком на подставных ответах,
@@ -45,7 +45,7 @@ test("R01-REQ01: отмена пустой тренировки — без во�
 test("R01-REQ01: после выполненного подхода отмена задаёт ровно один вопрос", async ({ page }) => {
   await round01Fixture(page);
   await startWith(page, BENCH);
-  await check(page, 1).click();
+  await mark(page, 1);
   await page.getByRole("button", { name: "Отмена", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toHaveCount(1);
@@ -59,7 +59,7 @@ test("R01-REQ01: после выполненного подхода отмена
 test("R01-REQ01: «Продолжить» в вопросе оставляет тренировку на месте", async ({ page }) => {
   await round01Fixture(page);
   await startWith(page, BENCH);
-  await check(page, 1).click();
+  await mark(page, 1);
   await page.getByRole("button", { name: "Отмена", exact: true }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Продолжить", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -70,7 +70,7 @@ test("R01-REQ02: «Отменить удаление» видна и нажим�
   await round01Fixture(page);
   await startWith(page, BENCH, SQUAT);
   await weight(page, 3).fill("90");
-  await check(page, 1).click(); // включает таймер отдыха: панель не должна лежать под ним
+  await mark(page, 1); // включает таймер отдыха: панель не должна лежать под ним
   const undo = page.getByRole("button", { name: "Отменить удаление", exact: true });
   for (const y of [0, 400, 1_000_000]) {
     await page.evaluate((top) => window.scrollTo(0, top), y);
@@ -143,14 +143,14 @@ test("R01-REQ04: касание выделяет число, набор «100» 
   await page.keyboard.press("Enter");
   await expect(rir(page, 1)).toBeFocused();
   await page.keyboard.type("1");
-  await check(page, 1).click();
+  await mark(page, 1);
   // Подходы 2 и 3 не набирались: достаточно ✓.
   for (const n of [2, 3]) {
     await expect(weight(page, n)).toHaveValue("100");
     await expect(reps(page, n)).toHaveValue("8");
     await expect(rir(page, n)).toHaveValue("1");
     await expect(check(page, n)).toHaveAttribute("aria-pressed", "false");
-    await check(page, n).click();
+    await mark(page, n);
   }
   await expect(page.locator(".hud-tonnage b")).toContainText("2 400");
 });
@@ -338,7 +338,7 @@ test("R01-REQ10: нет обрывков и «успеха» на отказе, 
 test("R01-REQ10: завершение тренировки говорит только «Тренировка сохранена»", async ({ page }) => {
   await round01Fixture(page);
   await startWith(page, BENCH);
-  await check(page, 1).click();
+  await mark(page, 1);
   await page.getByRole("button", { name: "Завершить тренировку", exact: true }).click();
   await expect(page.locator(".toast")).toHaveText("Тренировка сохранена");
 });
@@ -390,7 +390,7 @@ test("регрессия: черновик переживает перезагр
   await startWith(page, BENCH);
   await weight(page, 1).fill("100");
   await reps(page, 1).fill("8");
-  await check(page, 1).click();
+  await mark(page, 1);
   await page.reload();
   await page.getByRole("button", { name: "Продолжить тренировку", exact: true }).click();
   await expect(weight(page, 1)).toHaveValue("100");
@@ -419,7 +419,7 @@ for (const size of [
     await page.setViewportSize(size);
     await round01Fixture(page);
     await startWith(page, BENCH);
-    await check(page, 1).click(); // запустился «Отдых 01:30»
+    await mark(page, 1); // запустился «Отдых 01:30»
     await page.getByRole("button", { name: "Убрать последний подход" }).first().click();
     const buttons = [
       page.getByRole("button", { name: "Минус 15 секунд", exact: true }),
@@ -465,9 +465,9 @@ test("D2: шаги веса, RIR и «прошлый результат» тож
   await expect(weight(page, 1)).toHaveValue("62.5");
   await expect(weight(page, 2)).toHaveValue("62.5");
   await expect(weight(page, 3)).toHaveValue("90");
-  await dock.locator(".rir-quick-group").getByRole("button", { name: "1", exact: true }).click();
-  await expect(rir(page, 1)).toHaveValue("1");
-  await expect(rir(page, 2)).toHaveValue("1");
+  await dock.locator(".rir-quick-group").getByRole("button", { name: "3", exact: true }).click();
+  await expect(rir(page, 1)).toHaveValue("3");
+  await expect(rir(page, 2)).toHaveValue("3");
   // «Подставить прошлый результат» (100 × 8) переносится на строку 2, которая всё ещё равна строке 1.
   await page.getByRole("button", { name: /^Подставить прошлый результат: 100 × 8$/ }).first().click();
   await expect(weight(page, 1)).toHaveValue("100");
@@ -475,7 +475,7 @@ test("D2: шаги веса, RIR и «прошлый результат» тож
   await expect(reps(page, 2)).toHaveValue("8");
   await expect(weight(page, 3)).toHaveValue("90");
   // Выполненную строку ничто не трогает.
-  await check(page, 2).click();
+  await mark(page, 2);
   await weight(page, 1).fill("110");
   await expect(weight(page, 2)).toHaveValue("100");
 });

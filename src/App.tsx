@@ -7,6 +7,8 @@ import { useRestNotifications } from "./hooks/useRestNotifications";
 import RestNotificationSettings from "./components/RestNotificationSettings";
 import { JournalBackup } from "./domain/JournalBackup";
 import { ImportUndo, type ImportRecord } from "./domain/ImportUndo";
+import { ImportUndoMessage } from "./domain/ImportUndoMessage";
+import { offlineSnapshot } from "./lib/offlineSnapshot";
 import { importService } from "./services/ImportService";
 import { VolumeLabel } from "./domain/VolumeLabel";
 import { ImportOrigin } from "./domain/ImportOrigin";
@@ -195,6 +197,8 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [demo, setDemo] = useState(false);
+  /** Открыто без связи: на экране копия последнего ответа сервера. */
+  const [offlineData, setOfflineData] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(() => readDraft(draftKey));
   useLiveBroadcast(draft);
   const [persistence, setPersistence] = useState<PersistenceStatus>("pending");
@@ -305,18 +309,51 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
       });
       setPlanEquipment(data.settings.equipment);
       setDemo(false);
+      setOfflineData(false);
+      offlineSnapshot.saveData(account.id, {
+        workouts: data.workouts,
+        settings: { ...data.settings, timeZone: data.settings.timeZone ?? browserTimeZone() },
+        product: productData,
+      });
     } catch (e) {
-      if (e instanceof Error && e.name !== "AbortError")
-        setLoadError(e.message);
+      if (e instanceof Error && e.name !== "AbortError") {
+        // Нет связи (не отказ сервера): показываем копию последнего ответа вместо пустого экрана.
+        const copy = e instanceof ApiError || signal?.aborted ? null : offlineSnapshot.data(account.id);
+        if (copy) {
+          exerciseCatalog.register([
+            ...copy.product.customExercises,
+            ...(copy.product.favoriteDefinitions ?? []),
+            ...copy.workouts.flatMap((w) => w.exercises.flatMap((x) => (x.externalDefinition ? [x.externalDefinition] : []))),
+          ]);
+          setProduct(copy.product);
+          setWorkouts(copy.workouts);
+          setSettings(copy.settings);
+          setPlanEquipment(copy.settings.equipment);
+          setDemo(false);
+          setOfflineData(true);
+        } else setLoadError(e.message);
+      }
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
-  }, []);
+  }, [account.id]);
   useEffect(() => {
     const controller = new AbortController();
     void load(controller.signal);
     return () => controller.abort();
   }, [load]);
+  // Связь вернулась: берём свежие данные, баннер «Нет связи» уходит сам.
+  useEffect(() => {
+    if (!offlineData) return;
+    const back = () => void load();
+    window.addEventListener("online", back);
+    return () => window.removeEventListener("online", back);
+  }, [offlineData, load]);
+  // Копия для запуска без связи следует за журналом: сохранили, удалили, правили программу.
+  useEffect(() => {
+    if (loading || demo || offlineData) return;
+    offlineSnapshot.saveData(account.id, { workouts, settings, product });
+  }, [loading, demo, offlineData, workouts, settings, product, account.id]);
   const [update, setUpdate] = useState<Release | null>(null);
   const [updateProgress, setUpdateProgress] = useState<number | null>(null);
   useEffect(() => {
@@ -532,7 +569,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
       setModal(null);
       return;
     }
-    const workout = template ?? makeWorkout(ids, workouts, settings.timeZone);
+    const workout = template ?? makeWorkout(ids, workouts, settings.timeZone, true);
     workout.exercises = BodyMass.workout(workout, weights.massAt(workout.date,account.bodyMassKg)).exercises;
     if (name) workout.name = name;
     setDraft(newDraft(workout));
@@ -557,7 +594,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
         ? {
             ...d,
             workout: new WorkoutSession(d.workout).add(
-              BodyMass.entry(makeExerciseEntry(id, workouts, d.workout.date, settings.timeZone), weights.massAt(d.workout.date, account.bodyMassKg)),
+              BodyMass.entry(makeExerciseEntry(id, workouts, d.workout.date, settings.timeZone, true), weights.massAt(d.workout.date, account.bodyMassKg)),
             ),
           }
         : null,
@@ -624,7 +661,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
   };
   const startMeetup = (meetup:TrainingMeetup) => {
     if(draft){go("workout");warn("Сначала заверши или отмени текущую тренировку.");return;}
-    const workout=makeWorkout([],workouts,settings.timeZone);workout.name=meetup.name;
+    const workout=makeWorkout([],workouts,settings.timeZone,true);workout.name=meetup.name;
     const gym=meetup.participants.find(p=>p.id===account.id)?.gym ?? (meetup.hostId===account.id?meetup.gym:"");
     setDraft({...newDraft(workout),meetupId:meetup.id,meetupGym:gym});go("workout");
     void friendsApi.request("/api/friends/status","PUT",{inGym:true,gym,focus:meetup.name}).catch(()=>setToast("Тренировка начата. Статус зала не обновился — проверь связь."));
@@ -751,9 +788,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
       if (run === pendingImport?.runId) setPendingImport(null);
       setUndoAsk(false);
       await load();
-      setToast(`Импорт отменён: убрано ${result.removed}` +
-        (result.restored ? `, восстановлено прежних: ${result.restored}` : "") +
-        (result.kept ? `, оставлено изменённых: ${result.kept}` : ""));
+      setToast(ImportUndoMessage.describe(result));
     } catch (e) {
       await load().catch(() => undefined);
       warn(e instanceof Error ? `Не удалось отменить импорт: ${e.message}. Нажми ещё раз.` : "Не удалось отменить импорт");
@@ -990,6 +1025,15 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
               </span>
             </div>
           ) : null}
+          {offlineData ? (
+            <div className="offline-banner" role="status">
+              <Info size={18} />
+              <span>Нет связи: показаны данные с этого устройства. Подходы пишутся в черновик; «Завершить» сработает, когда появится сеть.</span>
+              <button className="text-button" onClick={() => void load()}>
+                Обновить
+              </button>
+            </div>
+          ) : null}
           {loadError ? (
             <div className="error-banner" role="alert">
               <Info size={18} />
@@ -1212,12 +1256,22 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                       </div>
                     </section>
                   ) : null}
+                  {justSaved && (
+                    <SessionInsights
+                      workout={justSaved}
+                      settings={settings}
+                      account={account}
+                    />
+                  )}
                   {lastImportRun ? (
                     <section className="import-undo panel" role="status">
-                      <p>
+                      <div className="import-undo-text">
                         <b>Импорт: записано {lastImportRun.activeCount} из {lastImportRun.total}</b>
-                        <small>Отмена выполняется сервером только для точно неизменённых записей этого импорта. Правки с другого устройства не удаляются.</small>
-                      </p>
+                        <details className="import-undo-more">
+                          <summary>Как работает отмена</summary>
+                          <small>Убираются только записи этого импорта, которые ты не менял. Твои правки и тренировки с других устройств остаются.</small>
+                        </details>
+                      </div>
                       {undoAsk ? (
                         <div>
                           <button className="button danger" disabled={saving} onClick={() => void undoImport(lastImportRun.runId)}>
@@ -1233,13 +1287,6 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                       )}
                     </section>
                   ) : null}
-                  {justSaved && (
-                    <SessionInsights
-                      workout={justSaved}
-                      settings={settings}
-                      account={account}
-                    />
-                  )}
                   <div className="history-toolbar">
                     <div className="search-field">
                       <Search size={18} />

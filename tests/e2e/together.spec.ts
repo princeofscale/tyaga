@@ -85,6 +85,7 @@ async function startBench(page: Page) {
 }
 async function markFirstSet(page: Page) {
   await page.getByLabel("Жим штанги лёжа, подход 1, вес", { exact: true }).fill("70");
+  await page.getByLabel("Жим штанги лёжа, подход 1, повторы", { exact: true }).fill("8");
   await page
     .getByRole("button", { name: "Отметить выполненным: Жим штанги лёжа, подход 1", exact: true })
     .click();

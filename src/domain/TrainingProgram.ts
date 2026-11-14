@@ -162,6 +162,24 @@ export class TrainingProgram {
         : "plan";
     });
   }
+  /**
+   * R03-REQ07: что окажется в первом рабочем подходе и откуда это число. История важнее плана
+   * (так делает `start`): «из истории» — с весом последней тренировки, «по плану» — с весом,
+   * который записан в программе, «не задан» — когда его нет нигде.
+   */
+  weightHints(
+    history: Workout[],
+    timeZone: string,
+    today = localDate(new Date(), timeZone),
+  ): Array<{ source: "history" | "plan" | "none"; weightKg: number | null }> {
+    const cycle = !!this.routine.cycle;
+    return this.routine.exercises.map((plan) => {
+      const work = this.reference(history, plan, cycle, today, timeZone)?.sets.filter((s) => !s.warmup && s.done) ?? [];
+      if (work.length) return { source: "history", weightKg: work[0].weight };
+      const planned = plan.sets.find((s) => !s.warmup)?.weight ?? 0;
+      return planned > 0 ? { source: "plan", weightKg: planned } : { source: "none", weightKg: null };
+    });
+  }
   start(
     history: Workout[],
     timeZone: string,

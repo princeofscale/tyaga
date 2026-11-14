@@ -4,7 +4,7 @@ import { X } from 'lucide-react';
 /** Запас на случай, если animationend не придёт (вкладка в фоне, анимации отключены стилями). */
 const EXIT_FALLBACK_MS = 260;
 
-export default function Modal({ title, children, onClose, wide = false }: { title: string; children: ReactNode; onClose: () => void; wide?: boolean }) {
+export default function Modal({ title, children, onClose, wide = false }: { title: string; children: ReactNode; onClose: () => void | false; wide?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null);
   const callback = useRef(onClose); callback.current = onClose;
   const [closing, setClosing] = useState(false);
@@ -15,11 +15,12 @@ export default function Modal({ title, children, onClose, wide = false }: { titl
     dialog.showModal();
     return () => { window.clearTimeout(timer.current); if (dialog.open) dialog.close(); };
   }, []);
-  /** Родитель снимает окно с экрана только после анимации выхода: один раз, как бы ни закрыли. */
+  /** Родитель снимает окно с экрана только после анимации выхода: один раз, как бы ни закрыли (кроме ответа `false`). */
   const finish = useCallback(() => {
     if (finished.current) return;
     finished.current = true;
-    callback.current();
+    // `false` — родитель оставил окно открытым (например, спросил про несохранённые правки): им можно пользоваться дальше.
+    if (callback.current() === false) { finished.current = false; setClosing(false); }
   }, []);
   const requestClose = useCallback(() => {
     if (finished.current) return;

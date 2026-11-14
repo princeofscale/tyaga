@@ -117,6 +117,7 @@ export function useTrainingTools(state: {
           plan.picks.map((p) => p.exercise.id),
           s.workouts,
           s.settings.timeZone,
+          true,
         );
         workout.name = "Баланс недели";
         s.stage(workout);

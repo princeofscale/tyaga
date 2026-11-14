@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { doneWorkout, nav, round01Fixture, startWith } from "./fixtures/round01";
+import { doneWorkout, mark, nav, round01Fixture, startWith } from "./fixtures/round01";
 import { makeWorkout } from "../../src/lib/model";
 import type { Routine } from "../../src/lib/types";
 
@@ -68,7 +68,7 @@ async function importStrong(page: Page) {
 test("R02-REQ05: упражнение без выполненных подходов не мешает «Завершить» и не сохраняется", async ({ page }) => {
   const f = await round01Fixture(page);
   await startWith(page, BENCH, SQUAT);
-  await check(page, 1).click();
+  await mark(page, 1);
   await page.getByRole("button", { name: "Завершить тренировку", exact: true }).click();
   await expect(page.locator(".toast")).toContainText("Тренировка сохранена");
   await expect.poll(() => f.savedBodies.length).toBe(1);
@@ -215,7 +215,7 @@ test("R02-REQ01/02/03: импорт Strong «как моя» — вопрос п
   await nav(page, "История").click();
   await banner.getByRole("button", { name: "Отменить импорт", exact: true }).click();
   await banner.getByRole("button", { name: /^Убрать/ }).click();
-  await expect(page.locator(".toast")).toContainText("Импорт отменён: убрано 4");
+  await expect(page.locator(".toast")).toContainText("Убрал 4 тренировки этого импорта");
   await expect(page.locator(".session-item")).toHaveCount(0);
   expect(f.deleted).toHaveLength(4);
   expect(f.errors).toEqual([]);
@@ -229,7 +229,7 @@ test("QA-R02-04: после «Отменить импорт» тот же фай
   await expect(banner).toContainText("Импорт: записано 4 из 4");
   await banner.getByRole("button", { name: "Отменить импорт", exact: true }).click();
   await banner.getByRole("button", { name: /^Убрать/ }).click();
-  await expect(page.locator(".toast")).toContainText("Импорт отменён: убрано 4");
+  await expect(page.locator(".toast")).toContainText("Убрал 4 тренировки этого импорта");
   await expect(page.locator(".session-item")).toHaveCount(0);
   await importStrong(page);
   await page.getByRole("dialog").getByRole("button", { name: "Импортировать", exact: true }).click();

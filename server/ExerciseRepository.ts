@@ -124,7 +124,8 @@ export class ExerciseRepository {
         .run();
     return imported;
   }
-  async search(params: URLSearchParams) {
+  /** `done` — id упражнений, которые пользователь уже делал: при коротком общем запросе они идут среди первых. */
+  async search(params: URLSearchParams, done: ReadonlySet<string> = new Set()) {
     const imported = await this.ensureImported();
     if (imported < snapshot.count)
       return {
@@ -183,6 +184,7 @@ export class ExerciseRepository {
         (row) => row.name,
         (row) => row.editorial === 1,
         (row) => row.prominent === 1,
+        (row) => done.has(row.id),
       );
       total = ordered.length;
       const ids = ordered.slice(offset, offset + 24).map((row) => row.id);

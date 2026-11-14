@@ -84,6 +84,7 @@ async function startBench(page: Page, name: string) {
   await page
     .getByLabel("Жим штанги лёжа, подход 1, вес", { exact: true })
     .fill("70");
+  await page.getByLabel("Жим штанги лёжа, подход 1, повторы", { exact: true }).fill("10");
   await page
     .getByRole("button", {
       name: "Отметить выполненным: Жим штанги лёжа, подход 1",
@@ -395,6 +396,7 @@ test("dumbbells, explicit sides and assistance keep distinct input rules", async
         exact: true,
       })
       .fill(i === 2 ? "40" : "20");
+    await page.getByLabel(new RegExp(`^${name}, подход 1, повторы`)).fill("10");
     await page
       .getByRole("button", {
         name: `Отметить выполненным: ${name}, подход 1`,
@@ -428,6 +430,7 @@ test("a rejected save scrolls its reason into view instead of failing silently",
   const machine = "Подтягивания с помощью тренажёра";
   await addExercise(page, machine);
   await page.getByLabel(`${machine}, подход 1, помощь`, { exact: true }).fill("40");
+  await page.getByLabel(`${machine}, подход 1, повторы`, { exact: true }).fill("10");
   await page
     .getByRole("button", {
       name: `Отметить выполненным: ${machine}, подход 1`,
@@ -637,6 +640,7 @@ test("wger browse, attribution and recording survive reload and edit", async ({
     .getByLabel("Название тренировки", { exact: true })
     .fill("[E2E] wger");
   await page.getByLabel(`${name}, подход 1, вес`, { exact: true }).fill("25");
+  await page.getByLabel(`${name}, подход 1, повторы`, { exact: true }).fill("10");
   await page
     .getByRole("button", {
       name: `Отметить выполненным: ${name}, подход 1`,

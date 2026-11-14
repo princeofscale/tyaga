@@ -1,5 +1,5 @@
 import { quantity } from "../lib/quantity";
-import { lazy, Suspense, useState, useEffect, useMemo } from "react";
+import { lazy, Suspense, useState, useEffect, useMemo, useRef } from "react";
 import {
   CalendarDays,
   Check,
@@ -25,6 +25,7 @@ import {
   entryName,
   makeExerciseEntry,
   makeSets,
+  fmt,
 } from "../lib/model";
 import ExerciseInfo from "./ExerciseInfo";
 import type { Exercise, Routine, Workout } from "../lib/types";
@@ -58,6 +59,26 @@ export default function ProgramsScreen(props: Props) {
     index: number;
   } | null>(null);
   const [info, setInfo] = useState<Exercise | null>(null);
+  // R03-REQ03: закрытие редактора с несохранёнными правками спрашивает, а не стирает работу.
+  const baseline = useRef<string | null>(null);
+  const editing = !!editor;
+  useEffect(() => {
+    baseline.current = editing ? JSON.stringify(editorRef.current) : null;
+    if (!editing) setAskClose(false);
+  }, [editing]);
+  const [askClose, setAskClose] = useState(false);
+  const editorRef = useRef<Routine | null>(editor);
+  editorRef.current = editor;
+  const dirty = !!editor && baseline.current !== null && JSON.stringify(editor) !== baseline.current;
+  const weightHints = useMemo(
+    () => (editor ? new TrainingProgram(editor).weightHints(props.workouts, props.timeZone) : []),
+    [editor, props.workouts, props.timeZone],
+  );
+  const closeEditor = () => {
+    setEditor(null);
+    setAskClose(false);
+    props.onInitialUsed?.();
+  };
   const initial = props.initial;
   useEffect(() => {
     if (initial) props.onInitialUsed?.();
@@ -498,10 +519,12 @@ export default function ProgramsScreen(props: Props) {
           }
           wide
           onClose={() => {
-            if (!busy) {
-              setEditor(null);
-              props.onInitialUsed?.();
+            if (busy) return false;
+            if (dirty) {
+              setAskClose(true);
+              return false;
             }
+            closeEditor();
           }}
         >
           <form
@@ -785,7 +808,18 @@ export default function ProgramsScreen(props: Props) {
                         </label>
                       </div>
                       <details className="routine-more">
-                        <summary>Ещё</summary>
+                        <summary>
+                          <span>Ещё</span>
+                            {spec.loadMode !== "bodyweight" && weightHints[index] ? (
+                              <span className={`weight-source ${weightHints[index].source}`} data-source={weightHints[index].source}>
+                                {weightHints[index].source === "history"
+                                  ? `Начнёшь с веса из истории: ${fmt(weightHints[index].weightKg!)} кг`
+                                  : weightHints[index].source === "plan"
+                                    ? `Вес по плану: ${fmt(weightHints[index].weightKg!)} кг`
+                                    : "Вес не задан — введи его или впиши в тренировке"}
+                              </span>
+                            ) : null}
+                        </summary>
                         <div className="form-grid">
                           <label>
                             Повторы от
@@ -956,6 +990,32 @@ export default function ProgramsScreen(props: Props) {
               setInfo(null);
             }}
           />
+        </Modal>
+      ) : null}
+      {editor && askClose ? (
+        <Modal title="Сохранить программу?" onClose={() => setAskClose(false)}>
+          <p>В программе «{editor.name || "без названия"}» есть несохранённые правки.</p>
+          {!editor.exercises.length ? (
+            <p className="tiny">Чтобы сохранить, добавь хотя бы одно упражнение.</p>
+          ) : null}
+          <div className="modal-actions">
+            <button
+              className="button primary"
+              disabled={busy || !editor.exercises.length}
+              onClick={() => {
+                setAskClose(false);
+                void save();
+              }}
+            >
+              Сохранить
+            </button>
+            <button className="button danger" disabled={busy} onClick={closeEditor}>
+              Не сохранять
+            </button>
+            <button className="button secondary" onClick={() => setAskClose(false)}>
+              Продолжить правку
+            </button>
+          </div>
         </Modal>
       ) : null}
       {deleting ? (

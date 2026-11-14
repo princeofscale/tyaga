@@ -1,6 +1,7 @@
 import { AnalyticsFacts, type FactsOptions } from "../domain/AnalyticsFacts";
 import { TrainingVolume } from "../domain/TrainingVolume";
 import { WorkoutReference } from "../domain/WorkoutReference";
+import { PreviousSets } from "../domain/PreviousSets";
 import {
   TrainingAnalytics,
   type AnalysisOptions,
@@ -112,32 +113,36 @@ export function makeSets(count = 3, weight = 0, reps = 10, rir: number | null = 
 }
 /** The same exercise variant from the most recent workout, skipping `excludeId`. */
 export const lastEntry = WorkoutReference.latest.bind(WorkoutReference);
+/**
+ * Новое упражнение в тренировке. С историей подход N берёт подход N из прошлого раза (`PreviousSets`);
+ * без истории при `blank: true` повторы и RIR остаются пустыми — в поле видна только серая подсказка, и записать
+ * можно лишь то, что введено. Живая тренировка всегда создаётся с `blank: true`; без него — заготовка
+ * программы и фикстуры (там нужны числа по умолчанию 3×10, RIR 2).
+ */
 export function makeExerciseEntry(
   id: string,
   history: Workout[] = [],
   referenceDate = localDate(),
   timeZone?: string,
+  blank = false,
 ): WorkoutExercise {
-  const entry: WorkoutExercise = { ...entrySpec(id), sets: makeSets() };
   const e = exerciseById(id)!;
+  const entry: WorkoutExercise = { ...entrySpec(id), sets: blank ? makeSets(3, 0, 0, null) : makeSets() };
   if (e.recording.type === "duration")
     entry.sets = makeSets(3, 0, 1).map((s) => ({
       ...s,
       rir: null,
       durationSeconds: 30,
     }));
-  const previous = lastEntry(history, entry, undefined, referenceDate, { timeZone })
-    ?.sets.filter((s) => s.done && !s.warmup)
-    .at(-1);
-  if (previous)
-    entry.sets = makeSets(3, previous.weight, previous.reps).map((s) => ({
+  const working = lastEntry(history, entry, undefined, referenceDate, { timeZone })
+    ?.sets.filter((s) => s.done && !s.warmup) ?? [];
+  if (working.length)
+    entry.sets = entry.sets.map((s, i) => ({
       ...s,
-      ...(e.recording.type === "duration"
-        ? { rir: null, durationSeconds: previous.durationSeconds ?? 30 }
-        : {}),
-      ...(e.recording.loadMode === "assisted_bodyweight"
-        ? { assistanceKg: previous.assistanceKg ?? 0 }
-        : {}),
+      ...PreviousSets.patch(PreviousSets.pick(working, i)!, {
+        timed: e.recording.type === "duration",
+        assistance: e.recording.loadMode === "assisted_bodyweight",
+      }),
     }));
   else if (e.recording.loadMode === "assisted_bodyweight")
     entry.sets.forEach((s) => {
@@ -149,6 +154,7 @@ export function makeWorkout(
   ids: string[] = [],
   history: Workout[] = [],
   timeZone = browserTimeZone(),
+  blank = false,
 ): Workout {
   return {
     id: crypto.randomUUID(),
@@ -156,7 +162,7 @@ export function makeWorkout(
     date: localDate(new Date(), timeZone),
     duration: 0,
     notes: "",
-    exercises: ids.map((id) => makeExerciseEntry(id, history, localDate(new Date(), timeZone),timeZone)),
+    exercises: ids.map((id) => makeExerciseEntry(id, history, localDate(new Date(), timeZone), timeZone, blank)),
     revision: 0,
     timeZone,
     createdAt: new Date().toISOString(),

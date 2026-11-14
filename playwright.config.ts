@@ -11,6 +11,8 @@ export default defineConfig({
     timezoneId: "Europe/Amsterdam",
     viewport: { width: 1440, height: 1080 },
     reducedMotion: "reduce",
+    // Сервис-воркер включается только в сценарии офлайна (round-03.spec.ts).
+    serviceWorkers: "block",
     launchOptions: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
       ? {
           executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,

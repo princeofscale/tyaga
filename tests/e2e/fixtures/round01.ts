@@ -211,3 +211,15 @@ export async function startWith(page: Page, ...names: string[]) {
     await page.getByRole("button", { name: `Добавить ${name}`, exact: true }).click();
   await page.getByRole("button", { name: "Готово", exact: true }).click();
 }
+
+/**
+ * Отметить подход ✓ так, как это делает человек: подход без веса и повторов не записывается (R03-REQ01),
+ * поэтому пустые поля сначала заполняются, а введённые значения не трогаются.
+ */
+export async function mark(page: Page, n: number, name = "Жим штанги лёжа", weight = "60", reps = "8") {
+  for (const [kind, value] of [["вес", weight], ["повторы", reps]] as const) {
+    const input = page.getByLabel(`${name}, подход ${n}, ${kind}`, { exact: true });
+    if ((await input.count()) && (await input.inputValue()) === "") await input.fill(value);
+  }
+  await page.getByRole("button", { name: `Отметить выполненным: ${name}, подход ${n}`, exact: true }).click();
+}

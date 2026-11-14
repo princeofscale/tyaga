@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { readFileSync } from "node:fs";
+import { serviceWorkerPlugin } from "./scripts/serviceWorkerPlugin";
 
 // The Android version (android/app/build.gradle) lets the app spot a newer APK.
 const gradle = readFileSync("android/app/build.gradle", "utf8");
@@ -11,7 +12,7 @@ const appVersion = {
 
 // `vite build --mode device` is the Android build: the API runs in the app.
 export default defineConfig(({ mode }) => ({
-  plugins: [react()],
+  plugins: [react(), ...(mode === "device" ? [] : [serviceWorkerPlugin("dist/client")])],
   define: { __APP_VERSION__: JSON.stringify(appVersion) },
   build: {
     outDir: mode === "device" ? "dist/device" : "dist/client",

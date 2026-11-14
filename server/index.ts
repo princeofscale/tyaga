@@ -264,7 +264,20 @@ export async function handleApi(request: Request, env: Env) {
       return json(await new SyncService(env.DB, userId).apply(await readBody(request)));
     if (request.method === "GET" && url.pathname === "/api/exercises")
       return json(
-        await new ExerciseRepository(env.DB).search(url.searchParams),
+        await new ExerciseRepository(env.DB).search(
+          url.searchParams,
+          url.searchParams.get("q")
+            ? new Set(
+                (
+                  await env.DB.prepare(
+                    "SELECT DISTINCT json_extract(e.value,'$.exerciseId') AS id FROM workouts w, json_each(w.payload,'$.exercises') e WHERE w.owner_id=?",
+                  )
+                    .bind(userId)
+                    .all<{ id: string | null }>()
+                ).results.flatMap((r) => (r.id ? [r.id] : [])),
+              )
+            : undefined,
+        ),
       );
     if (request.method === "GET" && url.pathname === "/api/data") {
       // One D1 call returns a consistent journal/settings snapshot and avoids

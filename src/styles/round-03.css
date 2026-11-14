@@ -1,0 +1,53 @@
+/* R03-REQ05: на экране тренировки всё нажимаемое — не меньше 44×44 px (мерим getBoundingClientRect, а не область псевдоэлемента), строка подхода ≤ 56 px. */
+.workout-athletic :is(.sets-header, .set-row) {
+  grid-template-columns: 44px minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.9fr) 44px 44px;
+  gap: 2px;
+}
+
+.workout-athletic .set-row .set-kind {
+  width: 44px;
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.workout-athletic .set-row .set-check {
+  width: 44px;
+  min-height: 44px;
+}
+
+.workout-athletic .autofill-pill-btn,
+.workout-athletic .exercise-extras > details > summary {
+  min-height: 44px;
+}
+
+.workout-athletic .sets-header {
+  min-height: 44px;
+}
+
+.workout-athletic .sets-header .rir-help {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.workout-athletic .set-row input[type="number"] {
+  min-width: 44px;
+}
+
+/* R03-REQ06: короткий баннер импорта, пояснение — по нажатию. */
+.import-undo > .import-undo-text {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+}
+.import-undo-more summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+.import-undo-more small {
+  display: block;
+  padding-bottom: 6px;
+}

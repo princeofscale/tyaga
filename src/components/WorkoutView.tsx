@@ -1,6 +1,8 @@
 import ExecutionFields from "./ExecutionFields";
 import { MuscleParticipation } from "../domain/MuscleParticipation";
 import { ExecutionIdentity } from "../domain/ExecutionIdentity";
+import { PreviousSets } from "../domain/PreviousSets";
+import { SetCompleteness, type MissingField } from "../domain/SetCompleteness";
 import type { MachineInstance } from "../lib/types";
 import { WorkoutUndo } from "../domain/WorkoutUndo";
 import { SetPropagation, type SetFollowers } from "../domain/SetPropagation";
@@ -204,6 +206,7 @@ export default function WorkoutView({
   const [now, setNow] = useState(Date.now());
   const [announcement, setAnnouncement] = useState("");
   const [rirHelp, setRirHelp] = useState(false);
+  const [needs, setNeeds] = useState<{ setId: string; field: MissingField } | null>(null);
   const [plateCalcTarget, setPlateCalcTarget] = useState<{ weight: number; ei: number } | null>(null);
   const [oneRepMaxTarget, setOneRepMaxTarget] = useState<{ weight: number; reps: number } | null>(null);
   const [swapTarget, setSwapTarget] = useState<{ ei: number; exercise: Exercise } | null>(null);
@@ -1052,16 +1055,8 @@ export default function WorkoutView({
                     onClick={() => {
                       const newSets = we.sets.map((s) => {
                         if (s.warmup) return s;
-                        const idx = ExecutionIdentity.setIndex(we, s);
-                        const prevW = before.working[idx] || before.working[before.working.length - 1];
-                        if (!prevW) return s;
-                        return {
-                          ...s,
-                          weight: prevW.weight,
-                          reps: prevW.reps,
-                          ...(timed ? { durationSeconds: prevW.durationSeconds } : {}),
-                          ...(assistance ? { assistanceKg: prevW.assistanceKg } : {}),
-                        };
+                        const prevW = PreviousSets.pick(before.working, ExecutionIdentity.setIndex(we, s));
+                        return prevW ? { ...s, ...PreviousSets.patch(prevW, { timed, assistance }) } : s;
                       });
                       patchExercise(ei, { sets: newSets });
                     }}
@@ -1217,12 +1212,7 @@ export default function WorkoutView({
                           onClick={(e) => {
                             e.stopPropagation();
                             last &&
-                              changeSet(ei, si, {
-                                weight: last.weight,
-                                reps: last.reps,
-                                ...(timed ? { durationSeconds: last.durationSeconds } : {}),
-                                ...(assistance ? { assistanceKg: last.assistanceKg } : {}),
-                              }, true);
+changeSet(ei, si, PreviousSets.patch(last, { timed, assistance }), true);
                           }}
                         >
                           {wrapSafe(lastText)}
@@ -1243,7 +1233,7 @@ export default function WorkoutView({
                             max="1000"
                             step="0.5"
                             inputMode="decimal"
-                            value={assistance ? (s.assistanceKg ?? 0) : s.weight}
+                            value={assistance ? (s.assistanceKg ?? 0) : s.weight || ""}
                             placeholder={last ? `${last.weight}` : "0"}
                             {...fieldProps(ei, si)}
                             onChange={(e) =>
@@ -1267,7 +1257,7 @@ export default function WorkoutView({
                           min="1"
                           max={timed ? "86400" : "200"}
                           inputMode="numeric"
-                          value={timed ? (s.durationSeconds ?? 30) : s.reps}
+                          value={timed ? (s.durationSeconds ?? 30) : s.reps || ""}
                           placeholder={last ? `${last.reps}` : timed ? "30" : "10"}
                           {...fieldProps(ei, si)}
                           onChange={(e) =>
@@ -1322,6 +1312,18 @@ export default function WorkoutView({
                           aria-pressed={s.done}
                           onClick={(e) => {
                             e.stopPropagation();
+                            if (!s.done) {
+                              // ✓ — это «я это сделал»: без введённого веса и повторов подход не записываем молча.
+                              const missing = SetCompleteness.missing(exercise, s);
+                              if (missing) {
+                                setNeeds({ setId: s.id, field: missing });
+                                const row = e.currentTarget.closest(".set-row");
+                                const fields = row?.querySelectorAll<HTMLInputElement>('input[type="number"]');
+                                fields?.[missing === "weight" || noLoad ? 0 : 1]?.focus();
+                                return;
+                              }
+                            }
+                            setNeeds(null);
                             changeSet(ei, si, { done: !s.done });
                           }}
                         >
@@ -1337,6 +1339,9 @@ export default function WorkoutView({
                           </m.span>
                         </button>
                       </div>
+                      {needs?.setId === s.id && SetCompleteness.missing(exercise, s) === needs.field ? (
+                        <p className="set-hint" role="alert">{SetCompleteness.message(needs.field)}</p>
+                      ) : null}
                       {isRowActive ? quickControls : null}
                     </div>
                   );

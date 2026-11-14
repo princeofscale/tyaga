@@ -21,9 +21,14 @@ export class WorkoutSession {
    * (например, «укажи тренажёр» требуется только там, где подходы были).
    */
   withoutUnperformed(): { workout: Workout; removed: number } {
-    const exercises = this.workout.exercises.filter((e) => e.sets.some((s) => s.done));
+    const performed = this.workout.exercises.filter((e) => e.sets.some((s) => s.done));
+    // Неотмеченные подходы без введённых повторов (пустые строки) в журнал не уходят: сервер требует повторы ≥ 1.
+    const exercises = performed.map((e) => {
+      const kept = e.sets.filter((s) => s.done || s.reps >= 1);
+      return kept.length === e.sets.length ? e : { ...e, sets: kept };
+    });
     return {
-      workout: exercises.length === this.workout.exercises.length ? this.workout : { ...this.workout, exercises },
+      workout: exercises.length === this.workout.exercises.length && exercises.every((e, i) => e === performed[i]) ? this.workout : { ...this.workout, exercises },
       removed: this.workout.exercises.length - exercises.length,
     };
   }

@@ -10,6 +10,7 @@ import "./styles/athletic.css";
 import "./styles/auth-athletic.css";
 import "./styles/workout-athletic.css";
 import "./styles/workflow.css";
+import "./styles/round-03.css";
 const loadMotionFeatures = () =>
   import("./lib/motionFeatures").then((module) => module.default);
 const backend =
@@ -30,3 +31,9 @@ void backend.catch(console.error).finally(() =>
     </React.StrictMode>,
   ),
 );
+
+// Оболочка и каталог открываются без сети после первого входа (R03-REQ04). Не для Android-сборки и не для dev.
+if (import.meta.env.PROD && import.meta.env.MODE !== "device" && "serviceWorker" in navigator)
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" }).catch(() => {});
+  });

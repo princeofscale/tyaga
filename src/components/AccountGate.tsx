@@ -4,7 +4,8 @@ import { m, useReducedMotion } from "motion/react";
 import App from "../App";
 import Modal from "./Modal";
 import { LiveRoomProvider } from "./LiveRoomProvider";
-import { api } from "../services/ApiClient";
+import { api, ApiError } from "../services/ApiClient";
+import { offlineSnapshot } from "../lib/offlineSnapshot";
 import { browserTimeZone } from "../lib/calendar";
 import type { AccountProfile, AccountState } from "../lib/account";
 
@@ -13,15 +14,25 @@ export default function AccountGate() {
   const [error, setError] = useState("");
   const [recovery, setRecovery] = useState("");
   const refresh = useCallback(async () => {
-    try { setState(await api<AccountState>("/api/auth/session")); setError(""); }
-    catch (e) { setError(e instanceof Error ? e.message : "Не удалось открыть аккаунт"); }
+    try {
+      const session = await api<AccountState>("/api/auth/session");
+      // Копия профиля нужна только для запуска без связи; без входа её не бывает.
+      if (session.profile) offlineSnapshot.saveSession(session.profile); else offlineSnapshot.clear();
+      setState(session); setError("");
+    }
+    catch (e) {
+      // Нет связи (а не отказ сервера): после первого входа приложение открывается с копией на устройстве.
+      const cached = e instanceof ApiError ? null : offlineSnapshot.session();
+      if (cached) { setState({ registered: true, profile: cached }); setError(""); }
+      else setError(e instanceof Error ? e.message : "Не удалось открыть аккаунт");
+    }
   }, []);
   useEffect(() => { void refresh(); window.addEventListener("tyaga:auth-expired", refresh); return () => window.removeEventListener("tyaga:auth-expired", refresh); }, [refresh]);
   if (!state) return <main className="account-loading auth-loading"><div className="auth-loading-mark"><Dumbbell size={32} aria-hidden="true" /></div><h1>Тяга</h1>{error ? <><p role="alert">{error}</p><button className="button primary" onClick={() => void refresh()}>Повторить</button></> : <p role="status">Открываем твой журнал…</p>}</main>;
   return <>
     {state.profile ? <LiveRoomProvider key={state.profile.id}><App account={state.profile}
-      onAccountChange={profile => setState({ registered: true, profile })}
-      onLogout={() => setState({ registered: true, profile: null })} /></LiveRoomProvider>
+      onAccountChange={profile => { offlineSnapshot.saveSession(profile); setState({ registered: true, profile }); }}
+      onLogout={() => { offlineSnapshot.clear(state.profile?.id); setState({ registered: true, profile: null }); }} /></LiveRoomProvider>
       : <SignIn registered={state.registered} onSignedIn={(profile, recoveryCode) => { setState({ registered: true, profile }); if (recoveryCode) setRecovery(recoveryCode); history.replaceState(null, "", location.pathname + location.search); }} />}
     {recovery && <Modal title="Код восстановления" onClose={() => setRecovery("")}>
       <p className="modal-intro">Сохрани этот код. Он позволит установить новый пароль, если забудешь старый. Почту мы используем для входа; письма восстановления пока не отправляем.</p>

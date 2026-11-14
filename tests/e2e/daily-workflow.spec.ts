@@ -373,6 +373,7 @@ test("personal goals, meetup invitation, workout start and shared completion are
   await page
     .getByLabel("Жим штанги лёжа, подход 1, вес", { exact: true })
     .fill("60");
+  await page.getByLabel("Жим штанги лёжа, подход 1, повторы", { exact: true }).fill("8");
   await page
     .getByRole("button", {
       name: "Отметить выполненным: Жим штанги лёжа, подход 1",
@@ -447,6 +448,7 @@ test("profile and new bodyweight sets share the weighing journal; complete expor
   await expect(page.getByLabel("Масса тела, кг", { exact: true })).toHaveValue(
     "74.5",
   );
+  await page.getByLabel("Подтягивания прямым хватом, подход 1, повторы", { exact: true }).fill("8");
   await page
     .getByRole("button", {
       name: "Отметить выполненным: Подтягивания прямым хватом, подход 1",
@@ -807,6 +809,7 @@ test("Android notification controls are opt-in and a native action restores the 
   await page
     .getByLabel("Жим штанги лёжа, подход 1, вес", { exact: true })
     .fill("80");
+  await page.getByLabel("Жим штанги лёжа, подход 1, повторы", { exact: true }).fill("8");
   await page
     .getByRole("button", {
       name: "Отметить выполненным: Жим штанги лёжа, подход 1",
