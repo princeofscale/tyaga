@@ -6,7 +6,7 @@
   "fetchedMainSha": "b766eec0588a5bd688742dac26b45411d85e82e3",
   "integrationSha": "555a9b3f7a8bfa3de19f5c92a17bf3299293dea7",
   "goalId": "goal-1588dc6a-45a6-4c72-8239-7d62bba32138",
-  "stage": "round-1-engineering",
+  "stage": "round-1-closed",
   "checkpoint": {
     "sampledAt": "2026-11-14T09:25:00+04:00",
     "timezone": "Europe/Saratov",
@@ -17,15 +17,15 @@
     "priorSampledCheckpoint": "2026-11-14T09:05:00+04:00"
   },
   "roundsStarted": 1,
-  "roundsAccepted": 0,
-  "currentRound": 1,
+  "roundsAccepted": 1,
+  "currentRound": null,
   "nextRound": 2,
   "requirements": [],
   "rounds": [],
   "agents": {
     "productOwner": "product-owner-v3",
     "engineer": "engineer-v2",
-    "qa": null,
+    "qa": "qa-v2",
     "scienceReviewer": null
   },
   "utilityAgents": {
@@ -463,7 +463,7 @@
     },
     "baselineAcceptance": "not-accepted"
   },
-  "nextAction": "R01: engineer-v2 implements -> checks -> independent QA -> PO acceptance -> close round",
+  "nextAction": "Round 2: PO explores current HEAD, issues ONE TZ -> engineer -> QA -> PO acceptance",
   "precommitReviewAndGitVerification": {
     "phaseARunsRetained": 2,
     "firstRunSummaryJson": "artifacts/agent-evolution/setup/precommit-review/phase-a-run-20261114_034209/summary.json",
