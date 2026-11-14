@@ -254,7 +254,7 @@ test("mobile tool dialogs and workout inputs retain their exact set targets", as
   const first = page.locator(".exercise-card").first();
   const weights = first.locator("input[aria-label$=', вес']");
   await expect(weights.first()).toBeVisible();
-  const secondWeight = await weights.nth(1).inputValue();
+  let secondWeight = await weights.nth(1).inputValue();
   const dock = first.locator(".set-quick-controls-dock");
   const geometry = () =>
     first.evaluate((el) => {
@@ -271,6 +271,10 @@ test("mobile tool dialogs and workout inputs retain their exact set targets", as
     dock.getByRole("button", { name: "+2.5", exact: true }),
   ).toBeDisabled();
   await weights.first().fill("60");
+  // Раунд 1 (R01-REQ04): набранный вес переходит на нетронутые строки ниже, поэтому «второй» вес теперь тоже 60.
+  // Дальше важно другое: кнопки быстрой правки по-прежнему меняют только выбранный подход.
+  await expect(weights.nth(1)).toHaveValue("60");
+  secondWeight = "60";
   expect(await geometry()).toEqual(beforeFocus);
   await dock.getByRole("button", { name: "+2.5", exact: true }).click();
   await expect(weights.first()).toHaveValue("62.5");

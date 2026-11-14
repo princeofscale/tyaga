@@ -319,6 +319,10 @@ test("machine picker and per-set execution survive draft reload and save with se
       }),
     });
   const row = single.locator(".set-row-wrapper").first();
+  // Раунд 1: подпись «Контекст подхода» больше не висит под каждой строкой. Она появляется в панели выбранной строки.
+  await row
+    .getByLabel("Тяга гантели одной рукой с опорой, подход 1, вес", { exact: true })
+    .click();
   await row.getByText("Контекст подхода 1", { exact: true }).click();
   await row
     .getByLabel("Тяга гантели одной рукой с опорой, подход 1, стороны", {
