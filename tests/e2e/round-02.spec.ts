@@ -198,7 +198,7 @@ test("R02-REQ01/02/03: импорт Strong «как моя» — вопрос п
   // Попали в «Историю»; баннер с отменой; у тренировок есть тоннаж.
   await expect(page.getByRole("heading", { name: "История тренировок" })).toBeVisible();
   const banner = page.locator(".import-undo");
-  await expect(banner).toContainText("Импорт: добавлено 4");
+  await expect(banner).toContainText("Импорт: записано 4 из 4");
   const rows = page.locator(".session-item");
   await expect(rows).toHaveCount(4);
   for (const text of await rows.locator(".session-item-value b").allTextContents()) expect(text).not.toBe("—");
@@ -219,6 +219,74 @@ test("R02-REQ01/02/03: импорт Strong «как моя» — вопрос п
   await expect(page.locator(".session-item")).toHaveCount(0);
   expect(f.deleted).toHaveLength(4);
   expect(f.errors).toEqual([]);
+});
+
+test("QA-R02-04: после «Отменить импорт» тот же файл импортируется снова новой операцией", async ({ page }) => {
+  const f = await round01Fixture(page);
+  const banner = page.locator(".import-undo");
+  await importStrong(page);
+  await page.getByRole("dialog").getByRole("button", { name: "Импортировать", exact: true }).click();
+  await expect(banner).toContainText("Импорт: записано 4 из 4");
+  await banner.getByRole("button", { name: "Отменить импорт", exact: true }).click();
+  await banner.getByRole("button", { name: /^Убрать/ }).click();
+  await expect(page.locator(".toast")).toContainText("Импорт отменён: убрано 4");
+  await expect(page.locator(".session-item")).toHaveCount(0);
+  await importStrong(page);
+  await page.getByRole("dialog").getByRole("button", { name: "Импортировать", exact: true }).click();
+  await expect(page.locator(".toast")).toContainText("Импорт завершён: добавлено 4");
+  await expect(page.locator(".session-item")).toHaveCount(4);
+  await expect(page.getByText("Этот импорт уже отменён")).toHaveCount(0);
+  const runIds = new Set(f.importBodies.filter((b) => !b.dryRun).map((b) => b.runId));
+  expect(runIds.size, "вторая операция — с новым runId").toBe(2);
+});
+
+test("QA-R02-04: ключ отменённого run остался в браузере — клиент сам заводит новый, тупика нет", async ({ page }) => {
+  const f = await round01Fixture(page);
+  await importStrong(page);
+  await page.getByRole("dialog").getByRole("button", { name: "Импортировать", exact: true }).click();
+  await expect(page.locator(".import-undo")).toContainText("Импорт: записано 4 из 4");
+  const first = f.importBodies.find((b) => !b.dryRun)!;
+  // Отмена прошла на сервере, а клиент об этом не узнал: ключ того же файла остался в localStorage.
+  await page.evaluate(async ({ runId, key }) => {
+    await fetch("/api/import/undo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ runId }) });
+    localStorage.setItem(key, runId);
+  }, { runId: first.runId as string, key: `tyaga-import-run:${first.manifestHash}` });
+  await page.reload();
+  await importStrong(page);
+  await page.getByRole("dialog").getByRole("button", { name: "Импортировать", exact: true }).click();
+  await expect(page.locator(".toast")).toContainText("Импорт завершён: добавлено 4");
+  await expect(page.locator(".session-item")).toHaveCount(4);
+  const sent = f.importBodies.filter((b) => !b.dryRun).map((b) => b.runId);
+  expect(sent[0]).toBe(first.runId);
+  expect(sent.at(-1)).not.toBe(first.runId);
+});
+
+test("N-1: записанный импорт и незавершённый черновик видны вместе, «Убрать черновик» трогает только черновик", async ({ page }) => {
+  const f = await round01Fixture(page, { pendingImports: [{ runId: "draft-1", total: 21 }] });
+  await importStrong(page);
+  await page.getByRole("dialog").getByRole("button", { name: "Импортировать", exact: true }).click();
+  await expect(page.locator(".session-item")).toHaveCount(4);
+  const banners = page.locator(".import-undo");
+  await expect(banners).toHaveCount(2);
+  await expect(banners.filter({ hasText: "Импорт не завершён" })).toContainText("21 тренировок ещё не записаны");
+  await expect(banners.filter({ hasText: "Импорт: записано 4 из 4" })).toBeVisible();
+  await banners.filter({ hasText: "Импорт не завершён" }).getByRole("button", { name: "Убрать черновик", exact: true }).click();
+  await expect(banners).toHaveCount(1);
+  await expect(banners.first()).toContainText("Импорт: записано 4 из 4");
+  await expect(page.locator(".session-item")).toHaveCount(4);
+  expect(f.pending).toHaveLength(0);
+  expect(f.deleted, "записанные тренировки не тронуты").toHaveLength(0);
+});
+
+test("N-5: в «Прогресс → Обзор» без считаемого тоннажа подпись читается прямо", async ({ page }) => {
+  const w = doneWorkout("Ноги на тренажёрах", "2026-11-10", [["legpress", 120, 10, 3]]);
+  w.exercises[0].equipmentNote = "Окно";
+  await round01Fixture(page, { workouts: [w] });
+  await nav(page, "Прогресс").click();
+  const card = page.locator(".progress-overview, main").getByText("Тоннаж: —").first();
+  await expect(card).toContainText("3 подх. без правила веса");
+  await expect(page.locator("body")).not.toContainText("— Тоннаж не считается");
+  await expect(page.locator("body")).not.toContainText(/(^|\s)0 т(\s|$)/);
 });
 
 test("R02-REQ01: ответ «Нет» оставляет числа буквально — упражнения не подставляются как свои", async ({ page }) => {

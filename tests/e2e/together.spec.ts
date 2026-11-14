@@ -1,5 +1,6 @@
 import { mockWeights } from "./fixtures/bodyweight";
 import { liveMock, liveState, member, mockLive, ROOM_CODE, roomWithPartner, UNKNOWN_CODE } from "./fixtures/live";
+import { mockImportRuns } from "./fixtures/importRuns";
 import { test, expect, type Page } from "@playwright/test";
 import { DEFAULT_SETTINGS, makeWorkout } from "../../src/lib/model";
 import type { FriendsData } from "../../src/domain/FriendsService";
@@ -59,6 +60,7 @@ async function fixture(page: Page, options: { room?: LiveRoom | null; signedIn?:
   });
   await mockWeights(page, profile.id);
   const live = await mockLive(page, liveMock(options.room ?? null), profile.displayName);
+  await mockImportRuns(page);
   return {
     live,
     clean: () => {

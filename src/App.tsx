@@ -737,16 +737,18 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
       setSaving(false);
     }
   };
-  const undoImport = async () => {
-    const run = lastImportRun?.runId ?? pendingImport?.runId;
+  const undoImport = async (run: string | undefined) => {
     if (!run || saving) return;
     setSaving(true);
     try {
       const result = await importService.undo(run);
-      importUndo.clear();
-      setLastImport(null);
-      setLastImportRun(null);
-      setPendingImport(null);
+      // Черновик и записанный импорт могут жить одновременно: убираем только тот, что отменён.
+      if (run === lastImportRun?.runId) {
+        importUndo.clear();
+        setLastImport(null);
+        setLastImportRun(null);
+      }
+      if (run === pendingImport?.runId) setPendingImport(null);
       setUndoAsk(false);
       await load();
       setToast(`Импорт отменён: убрано ${result.removed}` +
@@ -1199,14 +1201,14 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                   <header className="screen-head">
                     <h1>История тренировок</h1>
                   </header>
-                  {pendingImport && !lastImportRun ? (
+                  {pendingImport ? (
                     <section className="import-undo panel" role="status">
                       <p><b>Импорт не завершён · {pendingImport.total} тренировок ещё не записаны</b>
                         <small>Если запись оборвалась, открой тот же файл и повтори импорт с теми же ответами. До завершения тренировки в Истории не появляются. Этот черновик можно отменить.</small>
                       </p>
                       <div>
                         <button className="button secondary" onClick={() => setModal("import")}>Продолжить импорт</button>
-                        <button className="button danger" disabled={saving} onClick={() => void undoImport()}>Убрать черновик</button>
+                        <button className="button danger" disabled={saving} onClick={() => void undoImport(pendingImport.runId)}>Убрать черновик</button>
                       </div>
                     </section>
                   ) : null}
@@ -1218,7 +1220,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                       </p>
                       {undoAsk ? (
                         <div>
-                          <button className="button danger" disabled={saving} onClick={() => void undoImport()}>
+                          <button className="button danger" disabled={saving} onClick={() => void undoImport(lastImportRun.runId)}>
                             Убрать {lastImportRun.activeCount}
                           </button>
                           <button className="button secondary" onClick={() => setUndoAsk(false)}>Не надо</button>
@@ -2209,7 +2211,8 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                   setLastImport(record);
                    const currentRuns = await importService.runs().catch(() => ({ runs: [], pending: [] }));
                    setLastImportRun(currentRuns.runs[0] ?? null);
-                    setPendingImport(null);
+                    // Черновик другого файла остаётся виден: сервер — единственный источник правды.
+                    setPendingImport(currentRuns.pending?.[0] ? { runId: currentRuns.pending[0].runId, total: currentRuns.pending[0].total } : null);
                   setUndoAsk(false);
                 }
                 const added = result.imported - (result.replaced ?? 0);

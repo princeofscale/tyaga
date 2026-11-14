@@ -43,3 +43,9 @@ test("the reason distinguishes omitted sets from an empty week", () => {
   assert.equal(VolumeLabel.caption(500, 3), "");
   assert.equal(VolumeLabel.caption(0, 0), "");
 });
+test("Обзор называет причину прямо, без склейки «— Тоннаж не считается…»", () => {
+  assert.equal(VolumeLabel.overview(0, 7), "Тоннаж: — · 7 подх. без правила веса");
+  assert.equal(VolumeLabel.overview(0, 0), "Тоннаж: — · нет подходов со свободным весом");
+  assert.match(VolumeLabel.overview(12400, 0).replace(/\s/g, " "), /^12,4 т свободных весов$/);
+  assert.doesNotMatch(VolumeLabel.overview(0, 7), /тренажёре или с весом тела/);
+});

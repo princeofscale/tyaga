@@ -878,7 +878,7 @@ test("CSV import is «as mine» by default, replaces a repeated upload, and keep
   await page.goto("/");
   await history(page);
   const csv = (name: string) =>
-    `Date,Workout Name,Duration,Exercise Name,Set Order,Weight,Reps,Seconds,RPE\n2026-10-06 18:00:00,${name},45m,Bench Press,1,60,8,0,8\n2026-10-06 18:00:00,${name},45m,Bench Press,2,60,8,0,\n`;
+    `Date,Workout Name,Duration,Exercise Name,Set Order,Weight,Reps,Seconds,RPE\n2026-10-06 18:00:00,${name},45m,Bench Press (Barbell),1,60,8,0,8\n2026-10-06 18:00:00,${name},45m,Bench Press (Barbell),2,60,8,0,\n`;
   async function upload(name: string, literal = false) {
     await page
       .getByRole("button", { name: "Импорт истории", exact: true })
@@ -923,7 +923,8 @@ test("CSV import is «as mine» by default, replaces a repeated upload, and keep
   expect(imported[0].exercises[0].externalDefinition).toBeUndefined();
   expect(imported[0].exercises[0].sets[0].weight).toBe(60);
   expect(imported[0].exercises[0].sets[1].rir).toBeNull();
-  await expect(page.locator(".import-undo")).toContainText("Импорт: добавлено 1");
+  // Общий стенд может хранить чужие незавершённые черновики — баннер записанного импорта ищем по тексту.
+  await expect(page.locator(".import-undo").filter({ hasText: "Импорт: записано 1 из 1" })).toBeVisible();
   // Тот же файл ещё раз: заменяется, а не дублируется.
   await upload("[E2E] CSV");
   data = await (await request.get("/api/data")).json();

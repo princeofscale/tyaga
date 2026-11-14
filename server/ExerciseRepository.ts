@@ -174,14 +174,15 @@ export class ExerciseRepository {
     if (query) {
       // По запросу — по близости к нему («жим лёжа» → «Жим штанги лёжа», а не «Жим в положении лёжа на спине»).
       const found = await this.db
-        .prepare(`SELECT exercise_catalog.id AS id, name, ${editorial} AS editorial ${from} WHERE ${clause} ORDER BY name, exercise_catalog.id`)
+        .prepare(`SELECT exercise_catalog.id AS id, name, ${editorial} AS editorial, json_extract(exercise_catalog.payload,'$.recording.e1rmEligible') AS prominent ${from} WHERE ${clause} ORDER BY name, exercise_catalog.id`)
         .bind(...bindings)
-        .all<{ id: string; name: string; editorial: number }>();
+        .all<{ id: string; name: string; editorial: number; prominent: number | null }>();
       const ordered = ExerciseSearchRank.sort(
         found.results,
         query,
         (row) => row.name,
         (row) => row.editorial === 1,
+        (row) => row.prominent === 1,
       );
       total = ordered.length;
       const ids = ordered.slice(offset, offset + 24).map((row) => row.id);

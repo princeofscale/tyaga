@@ -17,8 +17,15 @@ export class VolumeLabel {
   /** Why there is no number. */
   static reason(omittedSets: number) {
     return omittedSets > 0
-      ? "Тоннаж не считается: вес записан без правила, на тренажёре или с весом тела"
+      ? "Вес записан без правила: из файла не ясно, считать ли гриф. Подходы на тренажёре и с весом тела в тоннаж не входят."
       : "Нет подходов со свободным весом";
+  }
+  /** Подпись под цифрой подходов в «Прогресс → Обзор»: прямо называет, что именно не посчитано. */
+  static overview(kg: number, omittedSets: number) {
+    if (kg > 0) return `${this.short(kg)} свободных весов`;
+    return omittedSets > 0
+      ? `Тоннаж: ${this.NONE} · ${omittedSets} подх. без правила веса`
+      : `Тоннаж: ${this.NONE} · нет подходов со свободным весом`;
   }
   /** A short visible caption for rows, empty when a number is shown. */
   static caption(kg: number, omittedSets: number) {

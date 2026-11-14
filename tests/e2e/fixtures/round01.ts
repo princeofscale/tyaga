@@ -12,6 +12,8 @@ export type Round01Options = {
   workouts?: Workout[];
   /** Программы пользователя (`/api/product`). */
   routines?: Routine[];
+  /** Незавершённые импорты, которые сервер показывает как черновик (`GET /api/import/runs`). */
+  pendingImports?: Array<{ runId: string; total: number }>;
   /** Журнал веса отвечает только после `releaseWeights()`: так повторяется загрузка «уже после открытия профиля». */
   holdWeights?: boolean;
 };
@@ -48,6 +50,10 @@ export async function round01Fixture(page: Page, options: Round01Options = {}) {
   const importBodies: any[] = [];
   const deleted: string[] = [];
   const savedBodies: Workout[] = [];
+  /** Серверные квитанции импорта: запись, отмена и «уже отменён» ведут себя как на воркере. */
+  const runs: Array<{ runId: string; manifestHash: string; at: string; total: number; ids: string[] }> = [];
+  const undone = new Set<string>();
+  const pending = (options.pendingImports ?? []).map((p) => ({ ...p, manifestHash: "pending", at: NOW.toISOString() }));
   page.on("pageerror", (e) => errors.push(e.message));
   const profile = {
     id: "round01-user",
@@ -79,6 +85,7 @@ export async function round01Fixture(page: Page, options: Round01Options = {}) {
     if (path === "/api/import" && method === "POST") {
       const body = r.postDataJSON();
       importBodies.push(body);
+      if (undone.has(body.runId)) return json({ error: "Этот импорт уже отменён. Начни новую операцию." }, 400);
       if (body.dryRun) return json({ imported: 0, skipped: 0, exercises: [], exerciseIdMap: {}, workouts: [] });
       const added: Workout[] = [];
       let replaced = 0,
@@ -112,16 +119,48 @@ export async function round01Fixture(page: Page, options: Round01Options = {}) {
         });
       }
       workouts.unshift(...added);
+      const runId = body.runId ?? `run-${runs.length + 1}`;
+      for (const earlier of runs) earlier.ids = earlier.ids.filter((id) => !added.some((w) => w.id === id));
+      runs.unshift({ runId, manifestHash: body.manifestHash ?? "", at: NOW.toISOString(), total: added.length, ids: added.map((w) => w.id) });
       return json({
         imported: added.length,
         replaced,
         kept,
+        runId,
         addedIds: added.map((w) => w.id),
         skipped: body.workouts.length - added.length,
         workouts: added,
         exercises: [],
         exerciseIdMap: {},
       });
+    }
+    if (path === "/api/import/runs" && method === "GET")
+      return json({
+        runs: runs.filter((run) => run.ids.length).map((run) => ({ runId: run.runId, manifestHash: run.manifestHash, at: run.at, total: run.total, activeCount: run.ids.length })),
+        pending,
+      });
+    if (path === "/api/import/undo" && method === "POST") {
+      const { runId } = r.postDataJSON();
+      const draft = pending.findIndex((p) => p.runId === runId);
+      if (draft !== -1) {
+        pending.splice(draft, 1);
+        undone.add(runId);
+        return json({ removed: 0, restored: 0, kept: 0, runId });
+      }
+      const run = runs.find((x) => x.runId === runId);
+      if (!run) return json({ error: "Этот импорт для текущего аккаунта не найден" }, 400);
+      let removed = 0;
+      for (const id of run.ids) {
+        const at = workouts.findIndex((w) => w.id === id);
+        if (at !== -1) {
+          workouts.splice(at, 1);
+          deleted.push(id);
+          removed++;
+        }
+      }
+      run.ids = [];
+      undone.add(runId);
+      return json({ removed, restored: 0, kept: 0, runId });
     }
     if (path.startsWith("/api/workouts/") && method === "DELETE") {
       const id = decodeURIComponent(path.slice("/api/workouts/".length));
@@ -158,7 +197,7 @@ export async function round01Fixture(page: Page, options: Round01Options = {}) {
   await mockLive(page);
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Сегодня", exact: true })).toBeVisible();
-  return { workouts, profile, profileBodies, importBodies, deleted, savedBodies, weights, errors, unexpected, releaseWeights: () => releaseWeights() };
+  return { workouts, runs, pending, profile, profileBodies, importBodies, deleted, savedBodies, weights, errors, unexpected, releaseWeights: () => releaseWeights() };
 }
 
 export const nav = (page: Page, name: string) =>

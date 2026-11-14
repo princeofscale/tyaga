@@ -14,21 +14,44 @@ export class HistoryImportService {
     private db: D1Database,
     private owner: string,
   ) {}
+  /** Several requests that share one run: stage parts, then finalize once (one trigger, one rollback). */
+  private static chunkOf(input: Record<string, unknown>) {
+    if (input.parts === undefined && input.part === undefined && input.finalize === undefined) return null;
+    const whole = (v: unknown, min: number, max: number) => {
+      if (typeof v !== "number" || !Number.isInteger(v) || v < min || v > max) throw new InputError("Некорректные части импорта");
+      return v;
+    };
+    const parts = whole(input.parts, 2, 60);
+    if (input.runId === undefined || input.manifestHash === undefined) throw new InputError("У многосоставного импорта должен быть общий runId и хэш файла");
+    if (input.finalize === true) return { parts, part: -1, finalize: true, total: 0 };
+    return {
+      parts, part: whole(input.part, 0, parts - 1), finalize: false,
+      total: input.totalWorkouts === undefined ? 0 : whole(input.totalWorkouts, 1, 60 * 30),
+    };
+  }
   async import(value: unknown) {
     const input = object(value);
     const format = str(input.format, 20, 1);
+    const chunk = HistoryImportService.chunkOf(input);
     if (
       !["strong", "hevy", "fitnotes", "tyaga"].includes(format) ||
-      !Array.isArray(input.workouts) ||
-      input.workouts.length > 30 ||
-      !input.workouts.length
+      (!chunk?.finalize && (!Array.isArray(input.workouts) ||
+        input.workouts.length > 30 ||
+        !input.workouts.length))
     )
-      throw new InputError("Импорт принимает от 1 до 30 сессий целиком; при большем файле разбей экспорт");
-    const inputs = input.workouts.map(object);
+      throw new InputError("Импорт принимает от 1 до 30 сессий за запрос; длинный файл клиент делит на части одной операции");
+    const inputs = chunk?.finalize ? [] : (input.workouts as unknown[]).map(object);
     // A runId is a recovery token only after commit; legacy calls get a fresh one.
     const runId = input.runId === undefined ? crypto.randomUUID() : str(input.runId, 80, 1);
-    const manifestHash = await canonicalHash({ format, workouts: inputs, replace: input.replace === true });
-    if (input.manifestHash !== undefined && str(input.manifestHash, 64, 1) !== manifestHash)
+    const manifestHash = chunk
+      ? str(input.manifestHash, 64, 1)
+      : await canonicalHash({ format, workouts: inputs, replace: input.replace === true });
+    const chunkHash = chunk && !chunk.finalize
+      ? await canonicalHash({ format, workouts: inputs, replace: input.replace === true })
+      : "";
+    if (chunk && !chunk.finalize && str(input.chunkHash, 64, 1) !== chunkHash)
+      throw new InputError("Часть файла изменилась. Проверь файл перед повтором.");
+    if (!chunk && input.manifestHash !== undefined && str(input.manifestHash, 64, 1) !== manifestHash)
       throw new InputError("Файл импорта изменился. Проверь файл перед повтором.");
     const previousRun = await this.db.prepare(
       "SELECT manifest_hash,result,state FROM workout_import_runs WHERE owner_id=? AND run_id=?",
@@ -44,6 +67,10 @@ export class HistoryImportService {
           this.db.prepare("DELETE FROM workout_import_runs WHERE owner_id=? AND run_id=? AND state='failed'").bind(this.owner, runId),
         ]);
       }
+    }
+    if (chunk?.finalize) {
+      if (!previousRun) throw new InputError("Импорт не найден. Загрузи части файла заново с тем же runId.");
+      return this.finalizeParts(runId, chunk.parts);
     }
     const profile = await this.db
       .prepare("SELECT payload FROM settings WHERE owner_id=?")
@@ -354,7 +381,13 @@ export class HistoryImportService {
     ).bind(this.owner, runId).first<{ state: string; manifest_hash: string; result: string }>();
     if (runRow?.state === "committed") return JSON.parse(runRow.result);
     if (runRow?.state === "undone") throw new InputError("Этот импорт уже отменён. Начни новую операцию.");
-    const statements: D1PreparedStatement[] = [
+    const orReplace = chunk ? "OR REPLACE " : "";
+    const statements: D1PreparedStatement[] = chunk ? [
+      this.db.prepare(
+        `INSERT INTO workout_import_runs(owner_id,run_id,manifest_hash,created_at,state,workout_count,result)
+         VALUES(?,?,?,?, 'staging',?,'{}') ON CONFLICT(owner_id,run_id) DO NOTHING`,
+      ).bind(this.owner, runId, manifestHash, stamp, chunk.total || prepared.length),
+    ] : [
       this.db.prepare(
         `INSERT INTO workout_import_runs(owner_id,run_id,manifest_hash,created_at,state,workout_count,result)
          VALUES(?,?,?,?, 'staging',?,?) ON CONFLICT(owner_id,run_id) DO UPDATE SET result=excluded.result
@@ -366,11 +399,25 @@ export class HistoryImportService {
       this.db.prepare("DELETE FROM workout_import_dependencies WHERE owner_id=? AND run_id=? AND EXISTS (SELECT 1 FROM workout_import_runs WHERE owner_id=? AND run_id=? AND state='staging')")
         .bind(this.owner, runId, this.owner, runId),
     ];
+    if (chunk) {
+      // A re-sent part replaces exactly its own earlier rows, never another part's.
+      const previousPart = await this.db.prepare(
+        "SELECT payload FROM workout_import_dependencies WHERE owner_id=? AND run_id=? AND kind='part' AND id=?",
+      ).bind(this.owner, runId, String(chunk.part)).first<{ payload: string }>();
+      if (previousPart) {
+        const old = JSON.parse(previousPart.payload) as { chunkHash: string; stagedIds: string[] };
+        if (old.chunkHash !== chunkHash) throw new InputError("Повтор части импорта изменился: начни новую операцию");
+        if (old.stagedIds.length) statements.push(this.db.prepare(
+          `DELETE FROM workout_import_staging WHERE owner_id=? AND run_id=? AND workout_id IN (${old.stagedIds.map(() => "?").join(",")})
+           AND EXISTS (SELECT 1 FROM workout_import_runs WHERE owner_id=? AND run_id=? AND state='staging')`,
+        ).bind(this.owner, runId, ...old.stagedIds, this.owner, runId));
+      }
+    }
     for (const { w, payload, hash } of prepared) {
       const old = byId.get(w.id);
       const previous = old ? receipts.get(w.id)! : null;
       statements.push(this.db.prepare(
-        `INSERT INTO workout_import_staging
+        `INSERT ${orReplace}INTO workout_import_staging
          (owner_id,run_id,workout_id,payload,payload_hash,date,action,expected_revision,expected_payload,
           previous_run_id,previous_payload_hash,previous_payload,previous_date,previous_revision)
          SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,? WHERE EXISTS
@@ -383,30 +430,123 @@ export class HistoryImportService {
     for (const machine of machineProposals.values()) {
       const { revision: _revision, ...content } = machine;
       statements.push(this.db.prepare(
-        "INSERT INTO workout_import_dependencies(owner_id,run_id,kind,id,model_id,payload,revision,updated_at) VALUES(?,?,'machine',?,?,?,?,?)",
+        `INSERT ${orReplace}INTO workout_import_dependencies(owner_id,run_id,kind,id,model_id,payload,revision,updated_at) VALUES(?,?,'machine',?,?,?,?,?)`,
       ).bind(this.owner, runId, machine.id, machine.model.id, JSON.stringify(content), 1, stamp));
       statements.push(this.db.prepare(
-        "INSERT INTO workout_import_dependencies(owner_id,run_id,kind,id,model_id,payload,revision,updated_at) VALUES(?,?,'machine_model',?,?,?,1,?)",
+        `INSERT ${orReplace}INTO workout_import_dependencies(owner_id,run_id,kind,id,model_id,payload,revision,updated_at) VALUES(?,?,'machine_model',?,?,?,1,?)`,
       ).bind(this.owner, runId, machine.model.id, machine.model.id, JSON.stringify(machine.model), stamp));
     }
     for (const e of proposals.values()) {
       statements.push(this.db.prepare(
-        "INSERT INTO workout_import_dependencies(owner_id,run_id,kind,id,payload,revision,updated_at) VALUES(?,?,'custom_exercise',?,?,1,?)",
+        `INSERT ${orReplace}INTO workout_import_dependencies(owner_id,run_id,kind,id,payload,revision,updated_at) VALUES(?,?,'custom_exercise',?,?,1,?)`,
       ).bind(this.owner, runId, e.id, JSON.stringify(e), stamp));
     }
+    if (chunk) {
+      const partNote = {
+        chunkHash, stagedIds: unique.map((w) => w.id), replacedIds: replacing.map((w) => w.id),
+        kept, sourceCount: inputs.length, exercises: [...proposals.values()], exerciseIdMap: idMap,
+      };
+      statements.push(this.db.prepare(
+        `INSERT OR REPLACE INTO workout_import_dependencies(owner_id,run_id,kind,id,payload,revision,updated_at)
+         SELECT ?,?,'part',?,?,1,? WHERE EXISTS
+           (SELECT 1 FROM workout_import_runs WHERE owner_id=? AND run_id=? AND state='staging')`,
+      ).bind(this.owner, runId, String(chunk.part), JSON.stringify(partNote), stamp, this.owner, runId));
+    }
     await this.db.batch(statements);
+    if (chunk) {
+      const ids = unique.map((w) => w.id);
+      const staged = ids.length ? await this.db.prepare(
+        `SELECT COUNT(*) AS count FROM workout_import_staging WHERE owner_id=? AND run_id=? AND workout_id IN (${ids.map(() => "?").join(",")})`,
+      ).bind(this.owner, runId, ...ids).first<{ count: number }>() : { count: 0 };
+      if (staged?.count !== ids.length) throw new InputError("Часть импорта не подготовлена полностью. Повтори эту же операцию.");
+      return {
+        part: chunk.part, parts: chunk.parts, staged: ids.length, runId,
+        imported: ids.length, replaced: replacing.length, kept, skipped: inputs.length - ids.length,
+        exercises: [...proposals.values()], exerciseIdMap: idMap,
+      };
+    }
     const staged = await this.db.prepare(
       "SELECT COUNT(*) AS count FROM workout_import_staging WHERE owner_id=? AND run_id=?",
     ).bind(this.owner, runId).first<{ count: number }>();
     if (staged?.count !== prepared.length) throw new InputError("Импорт не подготовлен полностью. Повтори эту же операцию.");
-    await this.db.prepare(
-      "INSERT INTO workout_import_finalize_requests(owner_id,run_id) VALUES(?,?)",
-    ).bind(this.owner, runId).run();
+    return this.requestFinalize(runId);
+  }
+
+  /**
+   * Квитанция удалённой тренировки больше ничего не доказывает, но занимает «активное» место
+   * и блокировала бы повторный импорт того же файла (UNIQUE по owner+workout). Гасим такие
+   * квитанции в той же транзакции, что и публикацию.
+   */
+  private releaseOrphanReceipts(runId: string) {
+    return this.db.prepare(
+      `UPDATE workout_import_receipts SET active=0 WHERE owner_id=? AND active=1
+       AND workout_id IN (SELECT workout_id FROM workout_import_staging WHERE owner_id=? AND run_id=? AND action='added')
+       AND NOT EXISTS (SELECT 1 FROM workouts w WHERE w.owner_id=workout_import_receipts.owner_id AND w.id=workout_import_receipts.workout_id)`,
+    ).bind(this.owner, this.owner, runId);
+  }
+
+  private async requestFinalize(runId: string) {
+    await this.db.batch([
+      this.releaseOrphanReceipts(runId),
+      this.db.prepare("INSERT INTO workout_import_finalize_requests(owner_id,run_id) VALUES(?,?)").bind(this.owner, runId),
+    ]);
+    return this.committedResult(runId);
+  }
+
+  private async committedResult(runId: string) {
     const committed = await this.db.prepare(
       "SELECT state,result FROM workout_import_runs WHERE owner_id=? AND run_id=?",
     ).bind(this.owner, runId).first<{ state: string; result: string }>();
     if (committed?.state !== "committed") throw new InputError("Импорт ещё не завершён. Повтори ту же операцию.");
-    const result = JSON.parse(committed.result);
-    return result;
+    return JSON.parse(committed.result);
+  }
+
+  /**
+   * Publishes every staged part of one run. The workouts, receipts, definitions
+   * and the committed state change inside the single finalize trigger, so any
+   * failure leaves the journal untouched and the same call can be repeated.
+   */
+  private async finalizeParts(runId: string, parts: number) {
+    const rows = await this.db.prepare(
+      "SELECT id,payload FROM workout_import_dependencies WHERE owner_id=? AND run_id=? AND kind='part'",
+    ).bind(this.owner, runId).all<{ id: string; payload: string }>();
+    const notes = new Map(rows.results.map((r) => [Number(r.id), JSON.parse(r.payload) as {
+      stagedIds: string[]; replacedIds: string[]; kept: number; sourceCount: number;
+      exercises: Exercise[]; exerciseIdMap: Record<string, string>;
+    }]));
+    for (let i = 0; i < parts; i++)
+      if (!notes.has(i)) throw new InputError("Не все части импорта записаны. Повтори те же части.");
+    const added = new Set<string>(), replaced = new Set<string>();
+    const exercises = new Map<string, Exercise>(), idMap: Record<string, string> = {};
+    let kept = 0, sources = 0;
+    for (const note of notes.values()) {
+      note.stagedIds.forEach((id) => added.add(id));
+      note.replacedIds.forEach((id) => replaced.add(id));
+      note.exercises.forEach((e) => exercises.set(e.id, e));
+      Object.assign(idMap, note.exerciseIdMap);
+      kept += note.kept;
+      sources += note.sourceCount;
+    }
+    const newCustom = await this.db.prepare(
+      `SELECT COUNT(*) AS count FROM workout_import_dependencies d WHERE d.owner_id=? AND d.run_id=? AND d.kind='custom_exercise'
+       AND NOT EXISTS (SELECT 1 FROM custom_exercises c WHERE c.owner_id=d.owner_id AND c.id=d.id)`,
+    ).bind(this.owner, runId).first<{ count: number }>();
+    const active = await this.db.prepare(
+      "SELECT COUNT(*) AS count FROM custom_exercises WHERE owner_id=? AND active=1",
+    ).bind(this.owner).first<{ count: number }>();
+    if ((active?.count ?? 0) + (newCustom?.count ?? 0) > 200)
+      throw new InputError("Личный каталог ограничен 200 вариантами. Сопоставь упражнения с библиотекой.");
+    const result = {
+      imported: added.size, replaced: replaced.size, kept, runId, addedIds: [...added],
+      skipped: sources - added.size, workouts: [], exercises: [...exercises.values()], exerciseIdMap: idMap,
+    };
+    await this.db.batch([
+      this.releaseOrphanReceipts(runId),
+      this.db.prepare(
+        "UPDATE workout_import_runs SET workout_count=?,result=? WHERE owner_id=? AND run_id=? AND state='staging'",
+      ).bind(added.size, JSON.stringify(result), this.owner, runId),
+      this.db.prepare("INSERT INTO workout_import_finalize_requests(owner_id,run_id) VALUES(?,?)").bind(this.owner, runId),
+    ]);
+    return this.committedResult(runId);
   }
 }

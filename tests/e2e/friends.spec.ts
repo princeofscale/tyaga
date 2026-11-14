@@ -1,5 +1,6 @@
 import { mockWeights } from "./fixtures/bodyweight";
 import { mockLive } from "./fixtures/live";
+import { mockImportRuns } from "./fixtures/importRuns";
 import { test, expect, type Page } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 import { DEFAULT_SETTINGS, type Routine } from "../../src/lib/model";
@@ -179,6 +180,7 @@ async function fixture(
   });
   await mockWeights(page, profile.id);
   await mockLive(page);
+  await mockImportRuns(page);
   return {
     data,
     failReads: (value: boolean) => {

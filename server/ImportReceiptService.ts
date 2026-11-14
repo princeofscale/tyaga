@@ -43,8 +43,9 @@ export class ImportReceiptService {
   async runs() {
     const rows = await this.db.prepare(
       `SELECT r.run_id AS runId,r.manifest_hash AS manifestHash,r.created_at AS at,
-       r.workout_count AS total,COUNT(c.workout_id) AS activeCount FROM workout_import_runs r
+       r.workout_count AS total,COUNT(w.id) AS activeCount FROM workout_import_runs r
        LEFT JOIN workout_import_receipts c ON c.owner_id=r.owner_id AND c.run_id=r.run_id AND c.active=1
+       LEFT JOIN workouts w ON w.owner_id=c.owner_id AND w.id=c.workout_id
        WHERE r.owner_id=? AND r.state='committed' GROUP BY r.run_id ORDER BY r.created_at DESC LIMIT 30`,
     ).bind(this.owner).all<{ runId: string; manifestHash: string; at: string; total: number; activeCount: number }>();
     const pending = await this.db.prepare(
@@ -73,18 +74,35 @@ export class ImportReceiptService {
     const rows = await this.db.prepare(
       "SELECT * FROM workout_import_receipts WHERE owner_id=? AND run_id=? ORDER BY workout_id",
     ).bind(this.owner, runId).all<ImportReceipt>();
+    // One read per 80 workouts instead of one per receipt keeps a year-long run
+    // far from the Worker subrequest ceiling.
+    const currentRows = new Map<string, { payload: string; revision: number }>();
+    const liveIds = rows.results.filter((r) => r.active).map((r) => r.workout_id);
+    for (let i = 0; i < liveIds.length; i += 80) {
+      const slice = liveIds.slice(i, i + 80);
+      const found = await this.db.prepare(
+        `SELECT id,payload,revision FROM workouts WHERE owner_id=? AND id IN (${slice.map(() => "?").join(",")})`,
+      ).bind(this.owner, ...slice).all<{ id: string; payload: string; revision: number }>();
+      for (const row of found.results) currentRows.set(row.id, row);
+    }
     const statements: D1PreparedStatement[] = [];
-    const outcomes: Array<{ kind: "removed" | "restored" | "kept"; start: number }> = [];
+    const outcomes: Array<{ kind: "removed" | "restored" | "kept" | "gone"; start: number }> = [];
     for (const receipt of rows.results) {
       const start = statements.length;
       if (!receipt.active || await canonicalHash(JSON.parse(receipt.payload)) !== receipt.payload_hash) {
         outcomes.push({ kind: "kept", start });
         continue;
       }
-      const current = await this.db.prepare(
-        "SELECT payload,revision FROM workouts WHERE owner_id=? AND id=?",
-      ).bind(this.owner, receipt.workout_id).first<{ payload: string; revision: number }>();
-      if (!current || current.revision !== receipt.revision || await canonicalHash(JSON.parse(current.payload)) !== receipt.payload_hash) {
+      const current = currentRows.get(receipt.workout_id);
+      if (!current) {
+        // Тренировку уже удалили: квитанция не нужна и не считается «изменённой».
+        statements.push(this.db.prepare(
+          "UPDATE workout_import_receipts SET active=0 WHERE owner_id=? AND workout_id=? AND run_id=? AND active=1",
+        ).bind(this.owner, receipt.workout_id, runId));
+        outcomes.push({ kind: "gone", start });
+        continue;
+      }
+      if (current.revision !== receipt.revision || await canonicalHash(JSON.parse(current.payload)) !== receipt.payload_hash) {
         outcomes.push({ kind: "kept", start });
         continue;
       }
@@ -123,12 +141,13 @@ export class ImportReceiptService {
       } else outcomes.push({ kind: "kept", start });
     }
     const results = statements.length ? await this.db.batch(statements) : [];
-    const allDone = outcomes.every((item) => item.kind === "kept" || !!results[item.start]?.results.length);
+    const allDone = outcomes.every((item) => item.kind === "kept" || item.kind === "gone" || !!results[item.start]?.results.length);
     if (allDone) await this.db.prepare(
       "UPDATE workout_import_runs SET state='undone' WHERE owner_id=? AND run_id=? AND state='committed'",
     ).bind(this.owner, runId).run();
     let removed = 0, restored = 0, kept = 0;
     for (const item of outcomes) {
+      if (item.kind === "gone") continue;
       if (item.kind === "kept") { kept++; continue; }
       if (!results[item.start]?.results.length) kept++;
       else if (item.kind === "removed") removed++;

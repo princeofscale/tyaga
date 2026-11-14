@@ -95,7 +95,7 @@ export default function ProgressOverview({
             </small>
           </strong>
           <p title={data.volumeKg > 0 ? undefined : VolumeLabel.reason(data.volumeOmitted)}>
-            {VolumeLabel.short(data.volumeKg)} {data.volumeKg > 0 ? "" : `${VolumeLabel.reason(data.volumeOmitted)} · `}свободных весов ·{" "}
+            {VolumeLabel.overview(data.volumeKg, data.volumeOmitted)} ·{" "}
             {data.workloadChange === null
               ? "Нет прошлого периода"
               : `${data.workloadChange > 0 ? "+" : ""}${data.workloadChange}% подходов`}

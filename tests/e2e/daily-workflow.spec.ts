@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { mockLive } from "./fixtures/live";
+import { mockImportRuns } from "./fixtures/importRuns";
 import {
   TeamChallengeProgress,
   type TeamChallenge,
@@ -149,6 +150,7 @@ async function fixture(page: Page, weights = weightFixture(), data = social()) {
   });
   await mockWeights(page, data.me.id, weights);
   await mockLive(page);
+  await mockImportRuns(page);
   await page.goto("/");
   await expect(
     page.getByRole("heading", { name: "Сегодня", exact: true }),

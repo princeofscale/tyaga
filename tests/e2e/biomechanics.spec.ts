@@ -9,6 +9,7 @@ import {
   makeWorkout,
 } from "../../src/lib/model";
 import { mockWeights } from "./fixtures/bodyweight";
+import { mockImportRuns } from "./fixtures/importRuns";
 import type { Workout } from "../../src/lib/types";
 
 const today = localDate(new Date(), "UTC");
@@ -78,6 +79,7 @@ async function preview(page: Page, workouts: Workout[]) {
     });
   });
   await mockWeights(page, "biomechanics");
+  await mockImportRuns(page);
   await page.goto("/");
   await expect(
     page.getByRole("heading", { name: "Сегодня", exact: true }),
