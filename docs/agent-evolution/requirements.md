@@ -24,9 +24,9 @@
 
 | ID | Суть | Engineering | QA | User acceptance |
 |---|---|---|---|---|
-| R02-REQ01 | Импорт чужой истории должен работать «как моя» по умолчанию | IN_PROGRESS | — | — |
-| R02-REQ02 | Импорт можно исправить | IN_PROGRESS | — | — |
-| R02-REQ03 | Тренировка без известного веса не выглядит нулевой | IN_PROGRESS | — | — |
+| R02-REQ01 | Импорт чужой истории должен работать «как моя» по умолчанию | PARTIAL (PO CSV path passes; generic alias caution) | QA_PASS (Strong CSV: 21/175, exact data/e1RM/tonnage/program observed) | — |
+| R02-REQ02 | Импорт можно исправить | REWORK (provenance/CAS/atomicity) | QA_FAIL: потеря sync-правки и частичный импорт/замена при 503 | — |
+| R02-REQ03 | Тренировка без известного веса не выглядит нулевой | REWORK (Обзор) | QA_FAIL: 0 т при буквальном импорте | — |
 | R02-REQ04 | Без связи экран не пропадает | IN_PROGRESS | — | — |
 | R02-REQ05 | Неделанное не мешает завершить и не попадает в историю | IN_PROGRESS | — | — |
 | R02-REQ06 | «Сила» показывает только то, что я делал | IN_PROGRESS | — | — |
