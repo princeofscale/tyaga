@@ -173,3 +173,74 @@ Memory recall по Tyaga не нашёл карточек; это честно �
 4. **Сохраняемые ограничения и следующий шаг**:
    - Сохраняются ограничения: пропуск Drizzle по таймстампам для схемы machines, точечный разрыв `sync_versions` только в SQL, отсутствие тестирования на физическом Android, статусы PARTIAL для календаря, синхронизации, бэкапа, UX и обработки сбоев, статус NOT PROVEN для инференса поз, 16 уязвимостей npm (11 mod/5 high), 6 заблокированных скриптов, предупреждение о чанке > 500 kB, отсутствие runtime security pass для продакшена/приватности.
    - **Следующий шаг**: Выполнение конечного контролируемого локального индексирования и коммита слияния setup (local staging & merge commit) с получением нативных доказательств SHA и родителей → отдельный явный выпуск задачи Product Owner `task-4` (GO) → исследование реального UI на ограниченном стенде :8795 → формулирование ровно одного полного исходного сообщения с требованиями R01. Не является окончательной приёмкой продукта.
+
+## D16 — Локальный интеграционный коммит этапа подготовки (555a9b3) зафиксирован; закрытие этапа Setup и условия допуска к Product UI (Phase D Factual Handoff)
+
+Зафиксировано в документации: 2026-11-14T09:05:00+04:00 Europe/Saratov / 2026-11-14T05:05:00Z UTC (фактическое время фиксации документа, не время команд/событий).
+
+1. **Верификация локального интеграционного коммита этапа подготовки (Setup Integration Commit Verified)**:
+   - Лид лично выполнил независимую вычитку подтверждающих артефактов через авторизованную утилиту и нативное ознакомление со свидетельствами и вызвал режим readonly Git-preflight:
+     - Рабочая директория: `/Users/princeofscale/Desktop/gym/tyaga-agent-evolution`
+     - Ветка: `agents/tyaga-30-rounds`
+     - HEAD: `555a9b3f7a8bfa3de19f5c92a17bf3299293dea7`
+     - Родители (`git rev-list --parents -n1 HEAD`): ровно 3 токена — SHA и два упорядоченных родителя:
+       1. `c708843daa05f68a5bc5417fcb1de7bafed8a369` (первый родитель, ветка `agents/tyaga-30-rounds`)
+       2. `b766eec0588a5bd688742dac26b45411d85e82e3` (второй родитель, `origin/main`)
+     - Временная метка коммита Git: `2026-11-14T08:45:51+04:00`.
+     - Состояние MERGE_HEAD: отсутствует (вызов `git rev-parse --verify -q MERGE_HEAD` возвращает ожидаемый exit 1, merge завершён).
+     - Рабочее дерево до правок документации: полностью чистое (`git status --porcelain=v1 -uall` пусто).
+     - Проверка хуков: канонический путь хуков разрешён через `git rev-parse --git-path hooks` в `/Users/princeofscale/Desktop/gym/tyaga/.git/hooks`; `core.hooksPath` отсутствует (exit 1 ожидаем); обход хуков не применялся.
+   - Границы приёмки: этот коммит объединяет локальный исходный код и baseline проверок. Это промежуточный допуск кода с сохранением ограничений, а **НЕ приёмка всего продукта, спортивной науки, безопасности, аппаратной части или визуальная приёмка Product Owner**. Продуктовые счётчики строго равны 0 (0 started, 0 accepted, 0 requirements, 0 product commits; currentRound: null). Коммит этапа подготовки не входит в число продуктовых коммитов. PR НЕ ГОТОВ (NOT READY). Baseline PO acceptance НЕ ПРИНЯТ (NOT ACCEPTED). Product Owner ещё НЕ посещал UI и не формулировал требований.
+
+2. **Согласование исторического контекста и хронология попыток фазы C (Phase C Resolution History)**:
+   - Прежняя шапка с «merge pending / integrationSha null / staged 86» сохраняется как строго датированный исторический снимок D15 (08:00:16+04:00).
+   - Зафиксированы корни и результаты всех трёх попыток фазы C:
+     1. Попытка 1 ([artifacts/agent-evolution/setup/precommit-review/phase-c-run-20261114_081915/](<../../artifacts/agent-evolution/setup/precommit-review/phase-c-run-20261114_081915/>)): остановлена до стадии индексирования из-за ошибки проверки регулярного файла `portable-clone-r1/manifest.json` (файл отсутствовал как самостоятельный манифест).
+     2. Попытка 2 ([artifacts/agent-evolution/setup/precommit-review/phase-c-corrected-20261114_083256/](<../../artifacts/agent-evolution/setup/precommit-review/phase-c-corrected-20261114_083256/>)): проиндексировано 135 файлов; команда cmd 18 `git diff --cached --check` вернула `exit 2` из-за 14 предупреждений о хвостовых пробелах (trailing whitespace) исключительно в 5 неизменяемых сырых файлах артефактов; коммит не производился.
+     3. Попытка 3 ([artifacts/agent-evolution/setup/precommit-review/phase-c-final-20261114_084430/](<../../artifacts/agent-evolution/setup/precommit-review/phase-c-final-20261114_084430/>)): выполнен точечный сброс индекса для 5 файлов через `git restore --staged -- ...`; проиндексировано ровно 130 файлов; проверка пробелов `git diff --cached --check` вернула `exit 0`; успешно создан ровно один коммит `555a9b3f7a8bfa3de19f5c92a17bf3299293dea7`. Все 5 сырых файлов сохранены в рабочей директории побайтово идентичными, исходный код не модифицировался.
+   - Список 5 сырых файлов, не вошедших в коммит (evidence omissions):
+     1. [`artifacts/agent-evolution/setup-final-checks/task-6-20261114T022744Z-fV1YrO/runner.mjs`](<../../artifacts/agent-evolution/setup-final-checks/task-6-20261114T022744Z-fV1YrO/runner.mjs>)
+     2. [`artifacts/agent-evolution/setup/lead-nonparent.diff`](<../../artifacts/agent-evolution/setup/lead-nonparent.diff>)
+     3. [`artifacts/agent-evolution/setup/precommit-review/phase-a-run-20261114_034209/findings.md`](<../../artifacts/agent-evolution/setup/precommit-review/phase-a-run-20261114_034209/findings.md>)
+     4. [`artifacts/agent-evolution/setup/precommit-review/phase-a-run-20261114_035138/cmd_16_stdout.txt`](<../../artifacts/agent-evolution/setup/precommit-review/phase-a-run-20261114_035138/cmd_16_stdout.txt>)
+     5. [`artifacts/agent-evolution/setup/precommit-review/phase-a-run-20261114_035138/summary.md`](<../../artifacts/agent-evolution/setup/precommit-review/phase-a-run-20261114_035138/summary.md>)
+     Все 5 файлов доступны локально, но не закоммичены. Общее число игнорируемых файлов в артефактах изменилось с 31 до 26 закоммиченных (5 остались локальными).
+
+3. **Метрики целевых 12 файлов и квитанция переносимого клона**:
+   - Дифф целевых 12 неродительских файлов содержит ровно 1094 строки, **55013 символов / 57121 байт UTF-8** (в прежних записях ошибочно указывалось 55013 байт вместо символов; исторические записи сохранены, текущая метрика уточнена аддитивно), SHA-256 `4eb2f7c87c5f587261a76c589013b5803e28b06deaa06654e4937ce632d71004`.
+   - Квитанция переносимого клона [own-portable-clone-r1-execution.json](<../../artifacts/agent-evolution/qa/setup/own-portable-clone-r1-execution.json>) (SHA-256 `e5c1c7f5c5e6da1e14decd01c7d0bbe1e14f4fc1666a4a350164948b4988af03`, 13493 байта): внутренний хеш `6d88a1c422fe414ac157f27b9121e8096f0439d8d24671814cb9e3ff2c080c3a` относится к скопированному `package.json`, а не к отдельному манифесту. Исторический прогон клона (29 файлов, 128 Git, 6 тестов Node exit 0, 98 вызовов Wrangler) остаётся в силе; свежих тестов клона не производилось.
+
+4. **Ограничения утилиты выполнения фазы C (Utility Limitations Not Source Bugs)**:
+   - В runner.py фазы C хелпер хуков проверял `W/.git/hooks`, что не является корректным путём для worktree (фактический общий путь хуков Git вне рабочей директории разрешается через `git rev-parse --git-path hooks` в `/Users/princeofscale/Desktop/gym/tyaga/.git/hooks`); однако измерение в фазе C2 и свежее readonly измерение через `git rev-parse --git-path hooks` подтвердили отсутствие активных исполняемых хуков (присутствуют только `.sample`). Это раздельные моменты наблюдения, не ретроспективный аудит.
+   - Проверка родителей в раннере проверяла `len >= 3`, однако нативный вызов `cmd_28` и журнал доказали ровно 2 упорядоченных родителя.
+   - Проверка статуса в раннере фильтровала `??`, но нативный вызов `cmd_31` подтвердил полностью чистый статус.
+   - UTC-время, длительность и код завершения каждой команды сохранены; поля +04 и сигналы утилитой не фиксировались и не выдумываются. Эти нюансы являются ограничениями вспомогательной утилиты, а не дефектами исходного кода.
+
+5. **Статус QA и обязательных проверок**:
+   - Статус QA остаётся строго неизменным: **12 SCOPED PASS / 5 PARTIAL / 1 NOT PROVEN** (PARTIAL: BL-CALENDAR, BL-SYNC, BL-BACKUP, BL-UX, BL-FAIL; BL-POSE: NOT PROVEN).
+   - Полный набор инженерных проверок (266 тестов pass, tsc exit 0, build exit 0) унаследован от задачи `task-6` без перезапуска.
+   - Действующие ограничения сохраняются: 16 уязвимостей npm audit, 6 заблокированных скриптов, предупреждение о бандле > 500 kB, расхождение по таймстампам Drizzle, таблица `sync_versions` существует в опубликованном SQL, но отсутствует в снимке метаданных Drizzle (Drizzle METADATA snapshot), 16 manual сценариев биомеханики.
+
+6. **Статус задач и следующий шаг**:
+   - Задача `task-10` остаётся в статусе `in_progress` (rev2, владелец `lead`) на время документального handoff.
+   - Задача Product Owner `task-4` остаётся в статусе `pending` (rev3, unowned, ready=true на доске, но `releaseAuthorized=false`).
+   - Документы остаются намеренно незаиндексированными (unstaged) в соответствии с правилом обычного будущего журнального коммита; никаких вызовов `git add` или `git commit` в фазе D не производится.
+   - **Следующий шаг**: завершение задачи `task-10` на доске (CAS rev 2 -> 3 completed) → отдельный явный вызов команды допуска (Lead GO) для задачи `task-4` с переходом к реальному исследованию UI Product Owner на ограниченном стенде :8795.
+
+## D16 follow-up — Фактический выпуск задачи Product Owner (task-4 in_progress rev5) и переход к исследованию UI
+
+Зафиксировано в документации: 2026-11-14T09:25:00+04:00 Europe/Saratov / 2026-11-14T05:25:00Z UTC (фактическое время фиксации документа, не время событий/команд).
+
+1. **Фактическое состояние доски задач и выпуск допуска (Native Board & Release Follow-up)**:
+   - Лид завершил задачу `task-10` на доске: статус `completed`, ревизия 3.
+   - Лид авторизовал допуск и выпустил задачу `task-4`: редактирование GO ревизия 3 → 4 (`releaseAuthorized=true`), последующее переназначение на `product-owner-v2` возвращено со статусом `in_progress`, ревизия 5, владелец `product-owner-v2`. Задача НЕ находится в статусе `pending`.
+   - Явное сервисное сообщение допуска (`send_message` GO) успешно отправлено (`SENT=true`). Времена завершения на доске остаются `unknown`/`null` и не выдумываются.
+   - Свежий readonly Git-контроль зафиксирован в уникальном изолированном каталоге [`artifacts/agent-evolution/setup/precommit-review/phase-e-po-release-20261114_052449Z/`](<../../artifacts/agent-evolution/setup/precommit-review/phase-e-po-release-20261114_052449Z/>): выполнено 11 команд readonly, HEAD `555a9b3f7a8bfa3de19f5c92a17bf3299293dea7`, ровно 3 токена родителей (`c708843...`, `b766eec...`), `MERGE_HEAD` отсутствует (exit 1), `core.hooksPath` отсутствует (exit 1), общий путь хуков разрешен в `/Users/princeofscale/Desktop/gym/tyaga/.git/hooks` (только образцы `.sample`), кэшированный индекс пуст, `git diff --check` без ошибок, 9 хешей QA неизменны и совпадают с картой заморозки.
+   - Уточнение квитанции фазы D: ранее указанное число «32 команды и корень R3» ошибочно относилось к исторической попытке C3; фактическая квитанция фазы D — [`artifacts/agent-evolution/setup/precommit-review/phase-d-handoff-20261114_090500/handoff.json`](<../../artifacts/agent-evolution/setup/precommit-review/phase-d-handoff-20261114_090500/handoff.json>) (52 строки), содержащая производные проверки 9 дайджестов, временные метки 05:06:06.715034Z / 05:05:00Z, без сырых записей 32 команд. Доказательство коммита обеспечивается нативным состоянием HEAD и упорядоченными родителями.
+
+2. **Границы владения и независимый статус Product Owner**:
+   - Роль Product Owner в настоящий момент выполняется параллельно и автономно.
+   - Product Owner эксклюзивно владеет своими артефактами: `product-exploration.md`, `round-01-user-requirements.md`, `tests/e2e/agent-po-initial.spec.ts`, каталогом посещений `product-visits` и собственной заметкой AgentNote. Лид к этим файлам не прикасается.
+   - Исходные первичные требования Product Owner ещё НЕ доставлены; продуктовые счётчики строго остаются равными 0 (started 0, accepted 0, requirements 0, commits 0; currentRound null; requirements [] и rounds [] пусты).
+   - PR НЕ ГОТОВ (NOT READY). Общая приёмка baseline остаётся НЕ ПРИНЯТА (`baseline.acceptance = "not-accepted"`).
+   - **Следующий шаг**: Ожидание завершения автономного UI-исследования Product Owner и поступления первого полного оригинального сообщения с требованиями R01 → фиксация стабильных требований Lead R01-REQxx → назначение задачи инженеру → старт инженерного цикла раунда 1.
