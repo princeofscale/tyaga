@@ -18,9 +18,10 @@ export default function AppleHealthPanel({ workout, onSaved, readOnly = false }:
     finally { setSaving(false); }
   };
   const h = workout.wearable;
-  return <section className="apple-health-panel">
-    <div className="panel-header"><h3><Watch size={18} /> Apple Watch</h3>{h && !readOnly && <button className="icon-button" disabled={busy} aria-label="Удалить показатели Apple Watch" onClick={()=>void save()}><Trash2 size={15}/></button>}</div>
-    {h ? <><div className="watch-metrics"><div><Heart size={17}/><span>Средний пульс</span><b>{h.heartRateAverage ? fmt(h.heartRateAverage) : "—"}<small>уд/мин</small></b></div><div><Flame size={17}/><span>{h.energyKind === "active" ? "Активная энергия" : "Энергия по экспорту"}</span><b>{h.caloriesKcal !== undefined ? fmt(h.caloriesKcal) : "—"}<small>ккал</small></b></div></div><p className="tiny">{h.sourceName} · {h.heartRateSamples} показаний пульса{h.heartRateMin ? ` · диапазон ${fmt(h.heartRateMin)}–${fmt(h.heartRateMax ?? h.heartRateMin)} уд/мин` : ""}. Калории — оценка устройства.</p></> : <p className="tiny">После тренировки добавь пульс и калории из Apple Health. Прямого подключения часов в браузере пока нет.</p>}
+  if (!h && readOnly) return null;
+  return <section className={`apple-health-panel ${h ? "" : "no-data"}`}>
+    {h && <div className="panel-header"><h3><Watch size={18} /> Apple Watch</h3>{!readOnly && <button className="icon-button" disabled={busy} aria-label="Удалить показатели Apple Watch" onClick={()=>void save()}><Trash2 size={15}/></button>}</div>}
+    {h ? <><div className="watch-metrics"><div><Heart size={17}/><span>Средний пульс</span><b>{h.heartRateAverage ? fmt(h.heartRateAverage) : "—"}<small>уд/мин</small></b></div><div><Flame size={17}/><span>{h.energyKind === "active" ? "Активная энергия" : "Энергия по экспорту"}</span><b>{h.caloriesKcal !== undefined ? fmt(h.caloriesKcal) : "—"}<small>ккал</small></b></div></div><p className="tiny">{h.sourceName} · {h.heartRateSamples} показаний пульса{h.heartRateMin ? ` · диапазон ${fmt(h.heartRateMin)}–${fmt(h.heartRateMax ?? h.heartRateMin)} уд/мин` : ""}. Калории — оценка устройства.</p></> : null}
     {!readOnly && <details className="watch-import" open={busy || candidates !== null || !!error || undefined}>
       <summary>{h ? "Заменить данные из Apple Health" : "Импорт из Apple Health"}</summary>
       <ol><li>На часах включи «Традиционная силовая» или «Функциональная силовая».</li><li>На iPhone: «Здоровье» → профиль → «Экспортировать все данные». Сохрани ZIP в «Файлы».</li><li>Выбери архив или export.xml и нужную силовую тренировку за {workout.date}.</li></ol>

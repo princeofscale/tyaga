@@ -37,10 +37,8 @@ export function AccountProfileForm({
   );
   const [mass, setMass] = useState(latestMass?.toString() ?? ""),
     [massDirty, setMassDirty] = useState(false);
-  useEffect(() => {
-    setMassDirty(false);
-    setMass(latestMass?.toString() ?? "");
-  }, [journal]);
+  // Журнал веса догружается уже после открытия окна. Подставляем его значение,
+  // пока поле не тронуто, и никогда не затираем то, что человек уже начал вводить.
   useEffect(() => {
     if (!massDirty) setMass(latestMass?.toString() ?? "");
   }, [latestMass, massDirty]);
@@ -57,7 +55,9 @@ export function AccountProfileForm({
     setError("");
     setSaved("");
     try {
-      const parsedMass = mass ? BodyweightTracker.parseWeight(mass) : null;
+      // Берём то, что сейчас в поле, а не копию в состоянии: именно это значение человек видит и отправляет.
+      const typedMass = String(f.get("bodyMassKg") ?? "").trim();
+      const parsedMass = typedMass ? BodyweightTracker.parseWeight(typedMass) : null;
       const r = await api<{ profile: AccountProfile }>(
         "/api/auth/profile",
         "PUT",
@@ -68,6 +68,9 @@ export function AccountProfileForm({
           revision: account.revision,
         },
       );
+      // Профиль не должен «сохраняться» без введённого веса: сверяем с ответом сервера.
+      if (parsedMass !== null && r.profile.bodyMassKg !== parsedMass)
+        throw new Error("Вес не сохранился. Проверь значение и попробуй ещё раз.");
       onChange(r.profile);
       if (
         parsedMass !== null &&

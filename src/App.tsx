@@ -36,6 +36,7 @@ import {
   History,
   House,
   Info,
+  TriangleAlert,
   Play,
   Search,
   Settings2,
@@ -64,6 +65,8 @@ import {
   entryName,
   entrySpec,
   recordingLabel,
+  recordingNote,
+  recordingSentence,
   recordedLoad,
   progressKey,
   fmt,
@@ -196,7 +199,11 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
   const [mapping, setMapping] = useState<"recorded" | "current">("recorded");
   const [hardSetsOnly, setHardSetsOnly] = useState(false);
   const [progressTab, setProgressTab] = useState<"balance" | "analytics" | "strength" | "anatomy" | "bodyweight">("analytics");
-  const [toast, setToast] = useState("");
+  // Отказ («сначала заверши черновик») не должен выглядеть как успех: у уведомления два тона.
+  const [notice, setNotice] = useState<{ text: string; tone: "ok" | "warn" }>({ text: "", tone: "ok" });
+  const toast = notice.text;
+  const setToast = (text: string) => setNotice({ text, tone: "ok" });
+  const warn = (text: string) => setNotice({ text, tone: "warn" });
   const [modal, setModal] = useState<
     | "machines"
     | "technique"
@@ -206,7 +213,6 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
     | "picker"
     | "settings"
     | "method"
-    | "discard"
     | "personal"
     | "import"
     | "profile"
@@ -471,7 +477,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
   const start = (ids: string[] = [], name?: string, template?: Workout) => {
     if (draft) {
       go("workout");
-      setToast("У тебя уже есть черновик. Продолжи или отмени его.");
+      warn("У тебя уже есть черновик. Продолжи или отмени его.");
       setModal(null);
       return;
     }
@@ -566,11 +572,19 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
     setModal("picker");
   };
   const startMeetup = (meetup:TrainingMeetup) => {
-    if(draft){go("workout");setToast("Сначала заверши или отмени текущую тренировку.");return;}
+    if(draft){go("workout");warn("Сначала заверши или отмени текущую тренировку.");return;}
     const workout=makeWorkout([],workouts,settings.timeZone);workout.name=meetup.name;
     const gym=meetup.participants.find(p=>p.id===account.id)?.gym ?? (meetup.hostId===account.id?meetup.gym:"");
     setDraft({...newDraft(workout),meetupId:meetup.id,meetupGym:gym});go("workout");
     void friendsApi.request("/api/friends/status","PUT",{inGym:true,gym,focus:meetup.name}).catch(()=>setToast("Тренировка начата. Статус зала не обновился — проверь связь."));
+  };
+  // Новая тренировка без выполненных подходов закрывается сразу, с подходами спрашивает WorkoutView один раз.
+  const discardDraft = () => {
+    setDraft(null);
+    setConflict(null);
+    setSaveError("");
+    setModal(null);
+    go("overview");
   };
   const saveWorkout = async () => {
     if (!draft || saving) return;
@@ -623,7 +637,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
       setToast(
         draft.editing
           ? "Изменения сохранены"
-          : "Тренировка сохранена. Хорошая работа!",
+          : "Тренировка сохранена",
       );
     } catch (e) {
       if (e instanceof ApiError && e.status === 409)
@@ -638,7 +652,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
     if (draft) {
       setDetail(null);
       go("workout");
-      setToast("Сначала заверши или отмени текущий черновик.");
+      warn("Сначала заверши или отмени текущий черновик.");
       return;
     }
     setDraft(newDraft(structuredClone(w), true));
@@ -808,7 +822,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
   );
 
   return (
-    <div className={`app-shell ${view === "workout" ? "in-workout" : ""}`}>
+    <div className={`app-shell ${view === "workout" && draft ? "in-workout" : ""} ${draft && view !== "workout" && view !== "overview" ? "has-resume" : ""}`}>
       <aside className="sidebar">
         <a
           className="brand"
@@ -1027,8 +1041,12 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                     <span className="week-summary-head">
                       <b>Нагрузка за неделю</b>
                       <span>
-                        <strong>{fmt(weekDone)}</strong> / {weekGoal} подх.
+                        <strong>{fmt(weekDone)}</strong> / {weekGoal} зачтено зонам
                       </span>
+                    </span>
+                    <span className="week-summary-note">
+                      Один подход засчитывается каждой зоне, которую он нагружает: жим — и груди, и трицепсу. Поэтому число
+                      больше, чем подходов в записи.
                     </span>
                     <span className="meter" aria-hidden="true">
                       <span style={{ width: `${weekGoal ? Math.min(100, (100 * weekDone) / weekGoal) : 0}%` }} />
@@ -1077,7 +1095,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                   onExport={exportDraft}
                   onPick={openPicker}
                   onSave={() => void saveWorkout()}
-                  onDiscard={() => setModal("discard")}
+                  onDiscard={discardDraft}
                   onMinimize={() => go("overview")}
                   onOpenTogether={() => go("friends")}
                 />
@@ -1458,10 +1476,10 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                           />
                         </label>
                         <p className="tiny">
-                          {recordingLabel(progressEntry)}.{" "}
+                          {recordingSentence(progressEntry)}{" "}
                           {progressSpec.loadMode === "assisted_bodyweight"
                             ? "Больше помощи — меньше сопротивления."
-                            : "Сравнение внутри одной версии и правила записи."}{" "}
+                            : "Сравниваются только записи одной версии каталога и одного правила записи."}{" "}
                           {progressSpec.e1rmEligible
                             ? "Расчётный 1ПМ — по 1–12 повторениям записанного веса."
                             : "Для этого правила записи расчётный 1ПМ отключён."}
@@ -1476,11 +1494,11 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                         <Stat
                           label={progressSpec.type === "duration" ? "Изменение, с" : "Изменение веса"}
                           value={
-                            lastProgress && firstProgress
+                            progressPoints.length > 1 && lastProgress && firstProgress
                               ? `${lastProgress.max - firstProgress.max >= 0 ? "+" : ""}${fmt(lastProgress.max - firstProgress.max)}`
                               : "—"
                           }
-                          unit={lastProgress ? (progressMetric.unit) : ""}
+                          unit={progressPoints.length > 1 && lastProgress ? progressMetric.unit : ""}
                         />
                         <Stat
                           label="Расчётный 1ПМ"
@@ -1594,7 +1612,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
         </m.div>
       </main>
       <AnimatePresence>
-        {draft && view !== "workout" ? (
+        {draft && view !== "workout" && view !== "overview" ? (
           <m.button
             key="resume"
             className="resume-pill"
@@ -1616,7 +1634,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
         {toast ? (
           <m.div
             key="toast"
-            className="toast"
+            className={`toast ${notice.tone === "warn" ? "toast-warn" : ""}`}
             role="status"
             style={{ x: "-50%" }}
             initial={{ opacity: 0, y: 14, scale: 0.96 }}
@@ -1624,7 +1642,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
             exit={{ opacity: 0, y: 8, scale: 0.98, transition: { duration: 0.16 } }}
             transition={{ type: "spring", stiffness: 420, damping: 32 }}
           >
-            <Check size={17} />
+            {notice.tone === "warn" ? <TriangleAlert size={17} /> : <Check size={17} />}
             <span>{toast}</span>
             <button
               className="icon-button"
@@ -1850,43 +1868,8 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
           </div>
         </Modal>
       ) : null}
-      {modal === "discard" ? (
-        <Modal
-          title={
-            draft?.editing ? "Отменить изменения?" : "Отменить тренировку?"
-          }
-          onClose={() => setModal(null)}
-        >
-          <p className="modal-intro">
-            {draft?.editing
-              ? "Сохранённая тренировка останется в истории. Изменения в черновике будут потеряны."
-              : "Черновик и незавершённые подходы будут удалены с этого устройства."}
-          </p>
-          <div className="modal-actions">
-            <button className="button secondary" onClick={() => setModal(null)}>
-              Продолжить
-            </button>
-            <button
-              className="button danger"
-              onClick={() => {
-                setDraft(null);
-                setConflict(null);
-                setModal(null);
-                setSaveError("");
-              }}
-            >
-              Отменить
-            </button>
-          </div>
-        </Modal>
-      ) : null}
       {detail ? (
         <Modal title={detail.name} onClose={() => setDetail(null)} wide>
-          <p className="history-value-note">
-            Внешний объём включает только свободные веса с известным правилом
-            записи. Тренажёры, масса тела и неопределённые старые записи
-            показаны по подходам.
-          </p>
           <div className="workout-detail-meta">
             <span>
               <CalendarDays size={16} />
@@ -1901,25 +1884,20 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
               {fmt(volumeSummary([detail], "all").total)} кг
             </span>
           </div>
-          <SessionInsights
-            workout={detail}
-            settings={settings}
-            account={account}
-          />
-          <Suspense fallback={<p className="tiny">Открываем показатели часов…</p>}><AppleHealthPanel workout={detail} readOnly={demo} onSaved={saved => {
-            setDetail(saved); setWorkouts(ws => ws.map(w => w.id === saved.id ? saved : w));
-            setJustSaved(w => w?.id === saved.id ? saved : w); setToast("Показатели часов сохранены");
-          }} /></Suspense>
           {detail.exercises.map((e) => (
             <div className="detail-exercise" key={e.exerciseId}>
               <h3>{entryName(e)}</h3>
-              <p className="tiny">
-                {recordingLabel(e)}
-                {e.machineSnapshot ? ` · ${e.machineSnapshot.nickname}` : e.equipmentNote ? ` · ${e.equipmentNote}` : ""}
-                {e.performedSides
-                  ? ` · ${e.performedSides === "both" ? "обе стороны" : e.performedSides === "left" ? "левая сторона" : "правая сторона"}`
-                  : ""}
-              </p>
+              {(() => {
+                const sides = e.performedSides
+                  ? e.performedSides === "both" ? "обе стороны" : e.performedSides === "left" ? "левая сторона" : "правая сторона"
+                  : "";
+                const line = [
+                  recordingNote(e),
+                  e.machineSnapshot ? e.machineSnapshot.nickname : e.equipmentNote ?? "",
+                  sides,
+                ].filter(Boolean).join(" · ");
+                return line ? <p className="tiny">{line}</p> : null;
+              })()}
               <div className="detail-sets">
                 {e.sets
                   .filter((s) => s.done)
@@ -1974,6 +1952,23 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
             </details>
           ) : null}
           {detail.notes ? <p className="detail-notes">{detail.notes}</p> : null}
+          <p className="history-value-note">
+            Внешний объём включает только свободные веса с известным правилом
+            записи. Тренажёры, масса тела и неопределённые старые записи
+            показаны по подходам.
+          </p>
+          <details className="detail-insights">
+            <summary>Итоги, мышцы и карточка для сторис</summary>
+            <SessionInsights
+              workout={detail}
+              settings={settings}
+              account={account}
+            />
+          </details>
+          <Suspense fallback={<p className="tiny">Открываем показатели часов…</p>}><AppleHealthPanel workout={detail} readOnly={demo} onSaved={saved => {
+            setDetail(saved); setWorkouts(ws => ws.map(w => w.id === saved.id ? saved : w));
+            setJustSaved(w => w?.id === saved.id ? saved : w); setToast("Показатели часов сохранены");
+          }} /></Suspense>
           <div className="modal-actions">
             {!demo ? (
               <button

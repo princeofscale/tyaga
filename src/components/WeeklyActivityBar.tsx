@@ -4,6 +4,7 @@ import { TrainingVolume } from "../domain/TrainingVolume";
 import { useMemo } from "react";
 import { Check, Flame, Trophy, Calendar } from "lucide-react";
 import { type Workout, fmt } from "../lib/model";
+import { quantityWord } from "../lib/quantity";
 
 export default function WeeklyActivityBar({
   workouts,
@@ -54,7 +55,7 @@ export default function WeeklyActivityBar({
     return { days, totalTonnage, totalWorkouts, totalWorkingSets };
   }, [workouts, timeZone]);
 
-  const tonnageTons = (weekData.totalTonnage / 1000).toFixed(1);
+  const tonnageTons = (weekData.totalTonnage / 1000).toFixed(1).replace(".", ",");
 
   return (
     <div className="weekly-activity-bar">
@@ -66,13 +67,13 @@ export default function WeeklyActivityBar({
         <div className="weekly-stats-badges">
           <span className="stat-badge">
             <Flame size={12} className="text-accent" />
-            <b>{weekData.totalWorkouts}</b> трен.
+            <b>{weekData.totalWorkouts}</b> {quantityWord(weekData.totalWorkouts, "тренировка", "тренировки", "тренировок")}
           </span>
           <span className="stat-badge">
             <b>{tonnageTons}</b> т
           </span>
           <span className="stat-badge">
-            <b>{weekData.totalWorkingSets}</b> сетов
+            <b>{weekData.totalWorkingSets}</b> {quantityWord(weekData.totalWorkingSets, "подход", "подхода", "подходов")}
           </span>
         </div>
       </div>

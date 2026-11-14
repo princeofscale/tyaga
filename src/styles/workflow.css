@@ -181,23 +181,6 @@
   font-size: 0.7rem;
   padding: 10px 14px;
 }
-.workout-undo {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  padding: 14px 18px;
-  margin-bottom: 20px;
-  border: 1px solid var(--accent-line);
-  border-radius: 14px;
-  background: var(--surface);
-  font-size: 0.78rem;
-}
-.workout-undo .button {
-  font-size: 0.73rem;
-  padding: 10px 12px;
-  min-height: 42px;
-}
 .exercise-more-tools {
   margin: 8px 0 16px;
   border-top: 1px solid var(--line);
@@ -497,11 +480,6 @@
   .daily-shortcuts > button {
     min-height: 78px;
   }
-  .workout-undo {
-    align-items: flex-start;
-    padding: 12px;
-    font-size: 0.7rem;
-  }
   .meetups-panel {
     padding: 18px;
   }
@@ -511,12 +489,6 @@
   .weight-sync-panel {
     padding: 14px 16px;
   }
-}
-.workout-undo {
-  position: sticky;
-  top: calc(var(--sat) + 8px);
-  z-index: 15;
-  box-shadow: 0 8px 24px #0003;
 }
 
 /* Compact team header keeps invitations and planned sessions close to the top. */
@@ -846,4 +818,9 @@
   .challenge-header-actions .button {
     flex: 1;
   }
+}
+
+/* Плавающая «Вернуться к тренировке» занимает нижние ~70 px: оставляем под неё место, чтобы последние строки экрана читались. */
+.app-shell.has-resume .page-content {
+  padding-bottom: calc(var(--tabbar, 0px) + var(--sab, 0px) + 160px);
 }

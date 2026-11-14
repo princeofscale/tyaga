@@ -100,7 +100,7 @@ export function DeloadModal({
             <b>{assessment.recentSetsCount}</b>
           </div>
           <div className="fatigue-metric-item">
-            <span>Отказных сетов (RIR 0)</span>
+            <span>Отказных подходов (RIR 0)</span>
             <b className="text-accent">{assessment.recentFailureSetsCount}</b>
           </div>
         </div>
@@ -178,7 +178,7 @@ export function DeloadModal({
                 value={testSets}
                 onChange={(e) => setTestSets(Number(e.target.value) || 1)}
               />
-              <span>сетов</span>
+              <span>подходов</span>
             </div>
           </label>
         </div>

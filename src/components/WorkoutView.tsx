@@ -3,7 +3,10 @@ import { MuscleParticipation } from "../domain/MuscleParticipation";
 import { ExecutionIdentity } from "../domain/ExecutionIdentity";
 import type { MachineInstance } from "../lib/types";
 import { WorkoutUndo } from "../domain/WorkoutUndo";
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { SetPropagation } from "../domain/SetPropagation";
+import { WorkoutDiscard } from "../domain/WorkoutDiscard";
+import { selectOnFocus, trimLeadingZeros } from "../lib/numberField";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import {
   Check,
@@ -102,6 +105,11 @@ function previousLabel(entry: WorkoutExercise, previous?: SetEntry) {
     return `${fmt(previous.assistanceKg ?? 0)} × ${previous.reps}`;
   return `${fmt(previous.weight)} × ${previous.reps}`;
 }
+/** Узкая ячейка переносит «100 × 8» на две строки перед «×», а не обрезает многоточием. */
+const wrapSafe = (label: string) => label.replace(" × ", " ×\u00a0");
+/** Для строки есть что показать: стороны или параметры исполнения. */
+const hasSetContext = (set: SetEntry) =>
+  !!set.performedSides || (!!set.execution && Object.values(set.execution).some((v) => v !== undefined && v !== ""));
 const playTimerChime = () => {
   try {
     const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof window.AudioContext }).webkitAudioContext;
@@ -202,6 +210,9 @@ export default function WorkoutView({
   const [activeSetKey, setActiveSetKey] = useState<string | null>(null);
   const [focusMode, setFocusMode] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [contextKey, setContextKey] = useState<string | null>(null);
+  const barRef = useRef<HTMLElement>(null);
+  const pinRef = useRef<HTMLSpanElement>(null);
   const [expandedExercises, setExpandedExercises] = useState<Record<number, boolean>>({});
   const [soundEnabled, setSoundEnabled] = useState(() => !audioHaptics.isMuted());
 
@@ -276,6 +287,24 @@ export default function WorkoutView({
       ),
     [history, exercises, workoutId, draft?.workout.date, settings.timeZone],
   );
+  // На телефоне шапка при прокрутке уходит вверх, пока не останется строка таймера и «Завершить».
+  // Сколько уйти — меряем здесь, а не пишем числом: в шапке бывает полоса напарников.
+  const hasDraft = !!draft;
+  useLayoutEffect(() => {
+    const bar = barRef.current;
+    if (!bar) return;
+    const measure = () => {
+      const pin = pinRef.current;
+      if (!pin) return;
+      const pad = parseFloat(getComputedStyle(bar).paddingTop) || 0;
+      bar.style.setProperty("--bar-collapse", `${Math.max(0, Math.round(pin.offsetTop - pad))}px`);
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(bar);
+    return () => observer.disconnect();
+  }, [hasDraft]);
   if (!draft)
     return (
       <div className="empty-state">
@@ -306,7 +335,8 @@ export default function WorkoutView({
     return { kind: "normal", warmup: false };
   };
 
-  const changeSet = (ei: number, si: number, patch: Partial<SetEntry>) => {
+  /** `propagate` — правка набрана руками в поле: ещё не тронутые строки ниже берут то же число. Кнопки «быстрой правки» и подстановка прошлого результата меняют только выбранную строку. */
+  const changeSet = (ei: number, si: number, patch: Partial<SetEntry>, propagate = false) => {
     if (patch.done && soundEnabled) {
       audioHaptics.playSetDone();
     }
@@ -326,7 +356,9 @@ export default function WorkoutView({
           i === ei
             ? {
                 ...e,
-                sets: e.sets.map((s, j) => (j === si ? { ...s, ...patch } : s)),
+                sets: propagate
+                  ? SetPropagation.apply(e.sets, si, patch)
+                  : e.sets.map((s, j) => (j === si ? { ...s, ...patch } : s)),
               }
             : e,
         ),
@@ -370,6 +402,22 @@ export default function WorkoutView({
     0,
   );
   const resting = remaining > 0 || draft.pausedRest !== null;
+  /** Общие свойства числовых полей строки: выбрать подход и выделить число при касании. */
+  const fieldProps = (ei: number, si: number) => ({
+    onFocus: (e: React.FocusEvent<HTMLInputElement>) => {
+      selectOnFocus.onFocus(e);
+      setActiveSetKey(`${ei}-${si}`);
+    },
+    onMouseUp: selectOnFocus.onMouseUp,
+    onBlur: selectOnFocus.onBlur,
+    onClick: (e: React.MouseEvent) => e.stopPropagation(),
+  });
+  const lastRemoval = draft.removals?.at(-1);
+  // Один вопрос, и только когда есть что терять: пустую тренировку закрываем сразу.
+  const requestDiscard = () => {
+    if (WorkoutDiscard.needsConfirmation(draft)) setShowCancelConfirm(true);
+    else onDiscard();
+  };
   const shiftRest = (seconds: number) =>
     update(
       draft.pausedRest !== null
@@ -380,8 +428,8 @@ export default function WorkoutView({
           },
     );
   return (
-    <div className="workout-screen workout-athletic">
-      <header className="workout-bar">
+    <div className={`workout-screen workout-athletic ${lastRemoval ? "has-undo" : ""}`}>
+      <header className="workout-bar" ref={barRef}>
         <button
           className="icon-button workout-minimize-btn"
           aria-label="Свернуть тренировку"
@@ -425,8 +473,8 @@ export default function WorkoutView({
           <button
             type="button"
             className="button secondary cancel-workout-btn"
-            title="Завершить тренировку без сохранения"
-            onClick={() => setShowCancelConfirm(true)}
+            title="Отменить тренировку без сохранения"
+            onClick={requestDiscard}
           >
             <X size={15} />
             <span>Отмена</span>
@@ -444,7 +492,7 @@ export default function WorkoutView({
           </button>
         </div>
         <div className="workout-live-hud">
-          <span className="live-clock-badge">
+          <span className="live-clock-badge" ref={pinRef}>
             <b>
               <span
                 aria-hidden="true"
@@ -492,7 +540,39 @@ export default function WorkoutView({
           </button>
         </div>
       ) : null}
-        <AnimatePresence initial={false}>{!!draft.removals?.length && <m.div className="workout-undo" key="undo" initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} exit={{opacity:0,y:8}} role="status"><span>Удаление можно отменить · {draft.removals.length}</span><button className="button secondary" onClick={()=>{try{update(WorkoutUndo.restore(draft));setUndoError("");}catch(e){setUndoError((e as Error).message);}}}><RotateCcw size={16}/>Отменить удаление</button></m.div>}</AnimatePresence>
+      <AnimatePresence initial={false}>
+        {lastRemoval ? (
+          <m.div
+            className={`workout-undo ${resting ? "above-rest" : ""}`}
+            key="undo"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            role="status"
+          >
+            <span>
+              {lastRemoval.kind === "set" ? "Подход удалён" : "Упражнение убрано"}
+              {draft.removals!.length > 1 ? ` · ещё ${draft.removals!.length - 1}` : ""}
+            </span>
+            <button
+              type="button"
+              className="button secondary"
+              aria-label="Отменить удаление"
+              onClick={() => {
+                try {
+                  update(WorkoutUndo.restore(draft));
+                  setUndoError("");
+                } catch (e) {
+                  setUndoError((e as Error).message);
+                }
+              }}
+            >
+              <RotateCcw size={16} />
+              Отменить
+            </button>
+          </m.div>
+        ) : null}
+      </AnimatePresence>
       {undoError && <p className="form-error" role="alert">{undoError}</p>}
       <fieldset
         className="workout-main"
@@ -586,13 +666,16 @@ export default function WorkoutView({
           }
 
           const isBarbell = !timed && !noLoad && detectExerciseEquipment(exercise) === "barbell";
-          const quickControls = !noLoad ? (
-            <div className={`set-quick-controls-dock ${timed ? "is-timed" : ""}`}>
+          const contextOpen = !!quickSet && contextKey === activeSetKey;
+          const quickControls = (
+            <div className={`set-quick-controls-dock ${timed ? "is-timed" : ""} ${noLoad ? "is-lite" : ""}`}>
               <div className="quick-controls-heading">
-                <span>Быстрая правка</span>
-                <span>{quickSet ? `Подход ${quickSetIndex + 1}` : "Выбери подход"}</span>
+                <span>
+                  {noLoad ? "Подход" : "Быстрая правка · подход"}
+                  {quickSet ? ` ${quickSetIndex + 1}` : ": выбери строку"}
+                </span>
               </div>
-              <div className="set-quick-steppers-bar" onClick={(e) => e.stopPropagation()}>
+              {!noLoad && <div className="set-quick-steppers-bar" onClick={(e) => e.stopPropagation()}>
                 <div className="stepper-weights-group">
                   <span className="steppers-label">Вес:</span>
                   {[-5, -2.5, -1.25, 1.25, 2.5, 5].map((delta) => (
@@ -628,10 +711,50 @@ export default function WorkoutView({
                     ))}
                   </div>
                 )}
-              </div>
+              </div>}
+        <button
+          type="button"
+          className="set-context-toggle"
+          aria-expanded={contextOpen}
+          disabled={!quickSet}
+          onClick={(e) => {
+            e.stopPropagation();
+            setContextKey(contextOpen ? null : activeSetKey);
+          }}
+        >
+          {quickSet ? `Контекст подхода ${quickSetIndex + 1}` : "Контекст"}
+        </button>
+              {contextOpen && quickSet && (
+                <div className="set-context-panel" onClick={(e) => e.stopPropagation()}>
+                  {spec.laterality === "unilateral" && (
+                    <label>
+                      Стороны этого подхода
+                      <Select
+                        aria-label={`${entryName(we)}, подход ${quickSetIndex + 1}, стороны`}
+                        value={quickSet.performedSides ?? ""}
+                        onChange={(side) =>
+                          changeSet(ei, quickSetIndex, { performedSides: side ? (side as SetEntry["performedSides"]) : undefined })
+                        }
+                        options={[
+                          { value: "", label: "Как в упражнении" },
+                          { value: "both", label: "Обе стороны" },
+                          { value: "left", label: "Только левая" },
+                          { value: "right", label: "Только правая" },
+                        ]}
+                      />
+                    </label>
+                  )}
+                  <ExecutionFields
+                    value={quickSet.execution}
+                    label={`Подход ${quickSetIndex + 1}`}
+                    onChange={(execution) => changeSet(ei, quickSetIndex, { execution })}
+                  />
+                </div>
+              )}
             </div>
-          ) : null;
+          );
 
+          const canWarmup = !we.sets.some((s) => s.warmup) && new WarmupPlanner(we).create().length > 0;
           let working = 0;
           let warm = 0;
           return (
@@ -689,6 +812,7 @@ export default function WorkoutView({
               </div>
 
               {/* Dedicated Compact Toolbar Pills Row (Always inside card, never overflows) */}
+              <div className="exercise-extras">
               <details className="exercise-more-tools"><summary>Ещё для упражнения</summary><div className="exercise-toolbar-pills">
                 <button
                   type="button"
@@ -768,6 +892,8 @@ export default function WorkoutView({
                   </button>
                 )}
               </div></details>
+              <ExecutionFields value={we.execution} onChange={(execution) => patchExercise(ei, { execution })} label={`Упражнение ${ei + 1}`} />
+              </div>
 
               {/* Upgraded Anatomy Drawer */}
               {expandedAnatomy === we.exerciseId && (
@@ -864,7 +990,6 @@ export default function WorkoutView({
                   <span>{we.progressionNote}</span>
                 </div>
               ) : null}
-              <ExecutionFields value={we.execution} onChange={(execution) => patchExercise(ei, { execution })} label={`Упражнение ${ei + 1}`} />
               {["machine_stack", "assisted_bodyweight"].includes(spec.loadMode) && <div className="machine-picker">
                 <label>Сохранённый тренажёр<Select aria-label="Сохранённый тренажёр" value={we.machineInstanceId ?? ""}
                   options={[{value:"",label:"Текстовая пометка / не выбран"}, ...machines.map((m)=>({value:m.id,label:`${m.nickname} · ${m.gym || m.model.model}`})),
@@ -1086,7 +1211,7 @@ export default function WorkoutView({
                       >
                         <button
                           type="button"
-                          className={`set-kind ${s.kind || (s.warmup ? "warmup" : "normal")}`}
+                          className={`set-kind ${s.kind || (s.warmup ? "warmup" : "normal")} ${hasSetContext(s) ? "has-context" : ""}`}
                           title="Тип подхода (обычный, разминка, дропсет, мио-повторы)"
                           aria-label={`Подход ${si + 1}: ${s.kind || (s.warmup ? "разминочный" : "рабочий")}. Нажми для переключения`}
                           onClick={(e) => {
@@ -1122,7 +1247,7 @@ export default function WorkoutView({
                               });
                           }}
                         >
-                          {lastText}
+                          {wrapSafe(lastText)}
                         </button>
                         {noLoad ? (
                           <span
@@ -1142,18 +1267,18 @@ export default function WorkoutView({
                             inputMode="decimal"
                             value={assistance ? (s.assistanceKg ?? 0) : s.weight}
                             placeholder={last ? `${last.weight}` : "0"}
-                            onFocus={() => setActiveSetKey(`${ei}-${si}`)}
-                            onClick={(e) => e.stopPropagation()}
+                            {...fieldProps(ei, si)}
                             onChange={(e) =>
                               changeSet(
                                 ei,
                                 si,
                                 assistance
                                   ? {
-                                      assistanceKg: Number(e.target.value),
+                                      assistanceKg: Number(trimLeadingZeros(e.target)),
                                       weight: 0,
                                     }
-                                  : { weight: Number(e.target.value) },
+                                  : { weight: Number(trimLeadingZeros(e.target)) },
+                                true,
                               )
                             }
                           />
@@ -1166,18 +1291,18 @@ export default function WorkoutView({
                           inputMode="numeric"
                           value={timed ? (s.durationSeconds ?? 30) : s.reps}
                           placeholder={last ? `${last.reps}` : timed ? "30" : "10"}
-                          onFocus={() => setActiveSetKey(`${ei}-${si}`)}
-                          onClick={(e) => e.stopPropagation()}
+                          {...fieldProps(ei, si)}
                           onChange={(e) =>
                             changeSet(
                               ei,
                               si,
                               timed
                                 ? {
-                                    durationSeconds: Number(e.target.value),
+                                    durationSeconds: Number(trimLeadingZeros(e.target)),
                                     reps: 1,
                                   }
-                                : { reps: Number(e.target.value) },
+                                : { reps: Number(trimLeadingZeros(e.target)) },
+                              true,
                             )
                           }
                         />
@@ -1190,8 +1315,7 @@ export default function WorkoutView({
                           inputMode="decimal"
                           value={timed ? (s.distanceKm ?? "") : (s.rir ?? "")}
                           placeholder="—"
-                          onFocus={() => setActiveSetKey(`${ei}-${si}`)}
-                          onClick={(e) => e.stopPropagation()}
+                          {...fieldProps(ei, si)}
                           onChange={(e) =>
                             changeSet(
                               ei,
@@ -1207,8 +1331,9 @@ export default function WorkoutView({
                                     rir:
                                       e.target.value === ""
                                         ? null
-                                        : Number(e.target.value),
+                                        : Number(trimLeadingZeros(e.target)),
                                   },
+                              true,
                             )
                           }
                         />
@@ -1235,13 +1360,6 @@ export default function WorkoutView({
                         </button>
                       </div>
                       {isRowActive ? quickControls : null}
-                      <details className="set-context"><summary>Контекст подхода {si + 1}</summary>
-                        {spec.laterality === "unilateral" && <label>Стороны этого подхода<Select
-                          aria-label={`${entryName(we)}, подход ${si + 1}, стороны`} value={s.performedSides ?? ""}
-                          onChange={(side) => changeSet(ei, si, { performedSides: side ? side as SetEntry["performedSides"] : undefined })}
-                          options={[{value:"",label:"Как в упражнении"},{value:"both",label:"Обе стороны"},{value:"left",label:"Только левая"},{value:"right",label:"Только правая"}]} /></label>}
-                        <ExecutionFields value={s.execution} label={`Подход ${si + 1}`} onChange={(execution)=>changeSet(ei,si,{execution})}/>
-                      </details>
                     </div>
                   );
                 })}
@@ -1274,6 +1392,22 @@ export default function WorkoutView({
                   <Plus size={16} />
                   Подход
                 </button>
+                {canWarmup ? (
+                  <button
+                    type="button"
+                    className="add-set warmup-add"
+                    aria-label="Добавить 3 разминочных"
+                    title="Три разминочных подхода: 40 / 60 / 80% рабочего веса — проверь и поправь"
+                    onClick={() =>
+                      patchExercise(ei, {
+                        sets: [...new WarmupPlanner(we).create(), ...we.sets],
+                      })
+                    }
+                  >
+                    <Flame size={15} />
+                    Разминка
+                  </button>
+                ) : null}
                 <button
                   className="add-set remove-last"
                   disabled={we.sets.length <= 1}
@@ -1283,23 +1417,6 @@ export default function WorkoutView({
                   <Minus size={16} />
                 </button>
               </div>
-              {!we.sets.some((s) => s.warmup) &&
-              new WarmupPlanner(we).create().length > 0 ? (
-                <div className="warmup-scaffold">
-                  <button
-                    className="text-button"
-                    onClick={() =>
-                      patchExercise(ei, {
-                        sets: [...new WarmupPlanner(we).create(), ...we.sets],
-                      })
-                    }
-                  >
-                    <Plus size={15} />
-                    Добавить 3 разминочных
-                  </button>
-                  <p className="tiny">40 / 60 / 80% рабочего веса — проверь и поправь.</p>
-                </div>
-              ) : null}
             </article>
             {we.supersetId && w.exercises[ei + 1]?.supersetId === we.supersetId && (
               <div className="superset-connector-strip">
@@ -1432,7 +1549,7 @@ export default function WorkoutView({
           <button
             className="text-button danger-text discard"
             disabled={saving}
-            onClick={onDiscard}
+            onClick={requestDiscard}
           >
             {draft.editing ? "Отменить изменения" : "Отменить тренировку"}
           </button>
@@ -1572,14 +1689,18 @@ export default function WorkoutView({
       )}
 
       {showCancelConfirm && (
-        <Modal title="Завершить без сохранения?" onClose={() => setShowCancelConfirm(false)}>
+        <Modal
+          title={draft.editing ? "Отменить изменения?" : "Отменить тренировку?"}
+          onClose={() => setShowCancelConfirm(false)}
+        >
           <div className="cancel-workout-dialog">
             <div className="cancel-warning-badge">
               <Trash2 size={28} className="text-danger" />
             </div>
-            <h3 className="cancel-dialog-title">Отменить тренировку?</h3>
             <p className="cancel-dialog-text">
-              Черновик тренировки будет закрыт и удалён с устройства без сохранения в историю.
+              {draft.editing
+                ? "Сохранённая тренировка останется в истории. Изменения в черновике будут потеряны."
+                : "Выполненные подходы не попадут в историю. Черновик удалится с этого устройства."}
             </p>
             <div className="cancel-dialog-buttons">
               <button
@@ -1590,14 +1711,14 @@ export default function WorkoutView({
                   onDiscard();
                 }}
               >
-                Да, отменить без сохранения
+                {draft.editing ? "Да, отменить изменения" : "Да, отменить тренировку"}
               </button>
               <button
                 type="button"
                 className="button secondary full-width"
                 onClick={() => setShowCancelConfirm(false)}
               >
-                Продолжить тренировку
+                Продолжить
               </button>
             </div>
           </div>

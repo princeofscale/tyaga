@@ -299,10 +299,11 @@ button, input { font-variant-numeric: tabular-nums; }
 .account-form label { font-weight: 600; color: var(--text-soft); font-size: .8rem; }
 .account-form input { min-height: 48px; font-size: .9rem; }
 .theme-accent-selector-card { background: var(--bg); border-color: var(--line); box-shadow: none; }
-.theme-swatches-row { display: flex; flex-wrap: wrap; gap: 8px; }
-.theme-swatch-btn { flex: 1 1 64px; min-width: 0; border-color: var(--line); }
+/* Подписи цветов целиком: сетка с колонками по ширине слова, а не сжимающийся ряд. */
+.theme-swatches-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; }
+.theme-swatch-btn { min-width: 0; padding: 8px 10px; border-color: var(--line); }
 .theme-swatch-btn.active { background: var(--accent-soft); border-color: var(--accent); box-shadow: none; }
-.swatch-label { font-size: .64rem; }
+.swatch-label { overflow: visible; font-size: .75rem; white-space: nowrap; }
 @keyframes night-dialog-in { from { opacity: 0; transform: translateY(10px) scale(.985); } to { opacity: 1; transform: none; } }
 @keyframes fade-in { from { opacity: 0; } }
 @keyframes modal-out { to { opacity: 0; transform: translateY(12px) scale(.98); } }
@@ -392,3 +393,20 @@ button, input { font-variant-numeric: tabular-nums; }
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
   .modal[open] { animation: none; }
 }
+
+/* Раунд 1: недельная сводка объясняет, почему число больше числа подходов. */
+.week-summary-head > span { white-space: normal; text-align: right; }
+.week-summary-note { display: block; margin: 10px 0 0; color: var(--muted); font-size: .72rem; line-height: 1.55; font-weight: 400; text-align: left; }
+
+/* Отказ выглядит как предупреждение, а не как успех. */
+.toast.toast-warn {
+  background: color-mix(in srgb, var(--over) 16%, var(--surface-2));
+  border-color: color-mix(in srgb, var(--over) 55%, var(--surface-2));
+}
+.toast.toast-warn > svg { color: var(--over); }
+
+/* История: итоги и карточка для сторис — под упражнениями и свёрнуты. */
+.detail-insights { margin: 16px 0; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+.detail-insights > summary { min-height: 44px; padding: 12px 16px; cursor: pointer; color: var(--text-soft); font-weight: 650; }
+.detail-insights > .session-insights { margin: 0; border: 0; border-top: 1px solid var(--line); border-radius: 0 0 14px 14px; }
+.apple-health-panel.no-data { padding: 0; border: 0; background: none; margin: 12px 0; }

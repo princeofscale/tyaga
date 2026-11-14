@@ -72,7 +72,27 @@ export function recordingLabel(we: WorkoutExercise) {
   if (spec.loadMode === "added_bodyweight") return "кг дополнительного веса";
   if (spec.loadMode === "machine_stack") return "кг на тренажёре";
   if (spec.loadMode === "per_implement") return "кг одной гантели";
-  return "кг общего веса";
+  return "кг";
+}
+/**
+ * Одна законченная фраза о том, что записывается в поле веса. Для штанги вес
+ * обычный, подпись нужна только там, где правило отличается от привычного.
+ */
+export function recordingSentence(we: WorkoutExercise) {
+  const spec = exerciseForEntry(we)?.recording;
+  if (spec?.type === "duration") return "Записывается длительность в секундах.";
+  if (!spec || spec.loadMode === "legacy_unspecified")
+    return "Вес записан в килограммах, правило записи для этого упражнения неизвестно.";
+  if (spec.loadMode === "bodyweight") return "Внешний вес не записывается.";
+  if (spec.loadMode === "assisted_bodyweight") return "Записывается помощь в килограммах.";
+  if (spec.loadMode === "added_bodyweight") return "Записывается добавленный груз в килограммах.";
+  if (spec.loadMode === "machine_stack") return "Записывается вес на тренажёре в килограммах.";
+  if (spec.loadMode === "per_implement") return "Записывается вес одной гантели в килограммах.";
+  return "Записывается общий вес на штанге в килограммах: гриф и блины.";
+}
+/** Пометка к упражнению в истории: пусто там, где вес обычный и подпись ничего не добавляет. */
+export function recordingNote(we: WorkoutExercise) {
+  return exerciseForEntry(we)?.recording.loadMode === "total_external" ? "" : recordingLabel(we);
 }
 export const progressKey = (we: WorkoutExercise, set?: WorkoutExercise["sets"][number]) =>
   ExecutionIdentity.key(we, set);

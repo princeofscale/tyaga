@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   useQuery,
   keepPreviousData,
@@ -110,6 +110,8 @@ function LibraryContent({
     subheadFilter !== "all"
       ? baseExercises.filter((e) => MuscleParticipation.headRole(subheadFilter, e) !== undefined)
       : baseExercises;
+  // Число на вкладке — весь список без поиска и фильтров, а не устаревшая константа.
+  const curatedTotal = useMemo(() => exerciseCatalog.search({}).length, []);
   const count = source !== "wger" ? exercises.length : (query.data?.total ?? 0);
   const zones = (e: Exercise) =>
     e.source
@@ -135,7 +137,7 @@ function LibraryContent({
           }}
         >
           <Dumbbell size={17} />
-          Основные <span>31</span>
+          Основные <span>{curatedTotal}</span>
         </button>
         <button
           className={source === "wger" ? "active" : ""}

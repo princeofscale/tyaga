@@ -914,11 +914,67 @@
     gap: 12px;
   }
 
+  /*
+   * Шапка складывается при прокрутке: строка 3 (таймер, подходы, «Завершить») остаётся,
+   * всё, что выше, уезжает за край. Сколько именно — считает WorkoutView в --bar-collapse,
+   * поэтому высота потока не меняется и подходы не прыгают под пальцем.
+   */
   .workout-athletic .workout-bar {
-    grid-template-columns: repeat(3, 44px) minmax(0, 1fr);
+    grid-template-columns: repeat(4, 44px) minmax(0, 1fr);
     gap: 8px 6px;
     padding: 12px 10px 0;
     border-radius: 14px;
+    top: calc(var(--sat, 0px) - var(--bar-collapse, 0px));
+  }
+
+  .workout-athletic .workout-head-buttons-cluster,
+  .workout-athletic .workout-live-hud {
+    display: contents;
+  }
+
+  .workout-athletic .workout-head-buttons-cluster .cancel-workout-btn {
+    grid-column: 4;
+    grid-row: 2;
+  }
+
+  .workout-athletic .hud-tonnage {
+    grid-column: 5;
+    grid-row: 2;
+    align-items: flex-end;
+    justify-self: end;
+    border-right: 0;
+  }
+
+  .workout-athletic .live-strip {
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
+
+  .workout-athletic .live-clock-badge {
+    grid-column: 1 / 3;
+    grid-row: 3;
+  }
+
+  .workout-athletic .workout-live-hud > .hud-metric:not(.hud-tonnage) {
+    grid-column: 3 / 5;
+    grid-row: 3;
+  }
+
+  .workout-athletic .workout-head-buttons-cluster .finish-button {
+    grid-column: 5;
+    grid-row: 3;
+  }
+
+  .workout-athletic .workout-session-progress {
+    grid-row: 4;
+  }
+
+  .workout-athletic .workout-bar:has(.live-strip) :is(.live-clock-badge, .hud-metric:not(.hud-tonnage), .finish-button) {
+    grid-row: 4;
+  }
+
+  .workout-athletic .workout-bar:has(.live-strip) .workout-session-progress {
+    grid-row: 5;
   }
 
   .workout-athletic .workout-bar-title {
@@ -941,15 +997,8 @@
     grid-row: 2;
   }
 
-  .workout-athletic .workout-head-buttons-cluster {
-    grid-column: 4;
-    grid-row: 2;
-    gap: 6px;
-  }
-
   .workout-athletic .workout-head-buttons-cluster .cancel-workout-btn {
     position: relative;
-    flex: 0 0 44px;
     width: 44px;
     padding: 0;
   }
@@ -965,15 +1014,9 @@
   }
 
   .workout-athletic .workout-head-buttons-cluster .finish-button {
-    flex: 1;
     min-width: 0;
     padding: 0 8px;
     font-size: 0.75rem;
-  }
-
-  .workout-athletic .workout-live-hud {
-    grid-row: 3;
-    padding-top: 3px;
   }
 
   .workout-athletic :is(.live-clock-badge, .hud-metric) {
@@ -989,7 +1032,7 @@
   }
 
   .workout-athletic :is(.live-clock-badge, .hud-metric) b {
-    font-size: 1.5rem;
+    font-size: 1.25rem;
   }
 
   .workout-athletic .hud-metric b small {
@@ -1006,8 +1049,8 @@
   }
 
   .workout-athletic .exercise-card {
-    gap: 12px;
-    padding: 14px 12px;
+    gap: 8px;
+    padding: 12px;
     border-radius: 14px;
   }
 
@@ -1028,30 +1071,44 @@
     padding: 8px 9px;
   }
 
+  /* «Прошлый» получает ширину под «102,5 × 10»; остальные колонки уже не нужны шире цифр. */
   .workout-athletic :is(.sets-header, .set-row) {
-    grid-template-columns: 44px 44px minmax(0, 1fr) minmax(0, 1fr) 44px 44px;
+    grid-template-columns: 34px minmax(58px, 1.15fr) minmax(0, 1fr) minmax(0, 1fr) 40px 44px;
     gap: 4px;
     padding: 3px 0;
   }
 
-  .workout-athletic .last-set {
-    padding: 0;
-    font-size: 0.625rem;
-  }
-
   .workout-athletic .set-quick-controls-dock {
-    margin-top: 8px;
-    min-height: 158px;
-    padding: 8px;
-  }
-
-  .workout-athletic .set-quick-controls-dock.is-timed {
-    min-height: 106px;
+    margin-top: 2px;
+    min-height: 0;
+    padding: 6px 8px;
   }
 
   .workout-athletic .set-quick-steppers-bar {
     flex-direction: column;
     align-items: stretch;
+    gap: 6px;
+  }
+
+  .workout-athletic .quick-controls-heading {
+    margin-bottom: 4px;
+  }
+
+  /* Подпись «Вес:» дублирует названия кнопок −5 … +5; скринридер её по-прежнему читает. */
+  .workout-athletic .stepper-weights-group .steppers-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .workout-athletic .stepper-weights-group {
+    position: relative;
+  }
+
+  .workout-athletic .workout-main {
     gap: 8px;
   }
 
@@ -1123,4 +1180,232 @@
     transition: none !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* ==========================================================================
+   Раунд 1: подходы читаются целиком, шапка и карточки компактнее
+   ========================================================================== */
+
+/* «100 × 8» переносится на вторую строку перед «×», а не обрезается многоточием. */
+.workout-athletic .set-previous {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  padding: 0 2px;
+  overflow: hidden;
+  font-size: 0.75rem;
+  line-height: 1.15;
+  text-align: center;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: normal;
+  text-wrap: balance;
+}
+
+.workout-athletic .set-previous:not(:disabled) {
+  color: var(--text-soft);
+}
+
+/* Строка с записанными сторонами или параметрами исполнения помечена точкой. */
+.workout-athletic .set-kind.has-context {
+  position: relative;
+}
+
+.workout-athletic .set-kind.has-context::after {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  content: "";
+}
+
+/* Контекст подхода живёт в той же панели под строкой, что и быстрая правка. */
+.workout-athletic .quick-controls-heading {
+  min-height: 28px;
+}
+
+/* Кнопка стоит в разметке после «быстрой правки» (табом идём сначала к шагам веса), а рисуется в правом верхнем углу панели. */
+.workout-athletic .set-quick-controls-dock {
+  position: relative;
+}
+
+.workout-athletic .set-context-toggle {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text-soft);
+  font-size: 0.6875rem;
+  font-weight: 650;
+}
+
+/* Область касания 44 px без роста панели. */
+.workout-athletic .set-context-toggle::after {
+  position: absolute;
+  inset: -8px -4px;
+  content: "";
+}
+
+.workout-athletic .set-context-toggle:disabled {
+  opacity: 0.45;
+}
+
+.workout-athletic .set-context-toggle[aria-expanded="true"] {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.workout-athletic .set-context-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.workout-athletic .set-context-panel .execution-fields {
+  margin: 0;
+}
+
+.workout-athletic .set-quick-controls-dock.is-lite {
+  min-height: 0;
+}
+
+/* «Разминка» — третья кнопка в строке «Подход / −», а не отдельный блок на 114 px под карточкой. */
+.workout-athletic .set-actions:has(.warmup-add) {
+  grid-template-columns: minmax(0, 1fr) auto 52px;
+}
+
+.workout-athletic .add-set.warmup-add {
+  width: auto;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+}
+
+/*
+ * «Отменить удаление» лежит над нижним краем экрана и над таймером отдыха.
+ * Раньше блок шёл в потоке сразу под шапкой: после прокрутки его было не видно вовсе.
+ */
+.workout-undo {
+  position: fixed;
+  right: 16px;
+  bottom: calc(16px + var(--sab, 0px));
+  left: 16px;
+  z-index: 35;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  max-width: 728px;
+  margin: 0 auto;
+  padding: 6px 6px 6px 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  background: var(--surface-2);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--bg) 75%, transparent);
+  color: var(--text);
+  font-size: 0.875rem;
+}
+
+.workout-undo.above-rest {
+  bottom: calc(112px + var(--sab, 0px));
+}
+
+.workout-undo .button {
+  min-height: 44px;
+  white-space: nowrap;
+}
+
+/* Панель закрывает нижние 70 px, пока удаление можно отменить: оставляем место, чтобы строки не оказались под ней. */
+.workout-screen.has-undo {
+  padding-bottom: calc(88px + var(--sab, 0px));
+}
+
+/* Строки плотнее: цели касания остаются 44 px, лишнее — только поля вокруг. */
+.workout-athletic .sets-header {
+  min-height: 28px;
+  padding-block: 0;
+}
+
+.workout-athletic .sets-header .rir-help {
+  position: relative;
+  min-height: 28px;
+}
+
+.workout-athletic .sets-header .rir-help::after {
+  position: absolute;
+  inset: -8px 0;
+  content: "";
+}
+
+.workout-athletic .set-row {
+  min-height: 0;
+}
+
+.workout-athletic .sets-table {
+  gap: 2px;
+}
+
+/* Расстояния между блоками карточки задаёт gap карточки, а не собственные поля блоков. */
+.workout-athletic .set-row {
+  margin: 0;
+}
+
+.workout-athletic :is(.exercise-more-tools, .execution-fields) {
+  margin: 0;
+}
+
+/* «Ещё для упражнения» и «амплитуда, хват и углы» — рядом в одной строке; раскрытый блок занимает всю ширину. */
+.workout-athletic .exercise-extras {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  align-items: start;
+}
+
+.workout-athletic .exercise-extras > details[open] {
+  grid-column: 1 / -1;
+}
+
+.workout-athletic .exercise-extras > .exercise-more-tools {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 12px;
+}
+
+.workout-athletic .exercise-extras > details > summary {
+  min-height: 44px;
+  align-content: center;
+  line-height: 1.3;
+}
+
+.workout-athletic .exercise-header-meta {
+  margin-bottom: 4px;
+}
+
+@media (max-width: 640px) {
+  /* Строка подхода: ячейки по-прежнему 44 px, но без запаса вокруг. */
+  .workout-athletic :is(.sets-header, .set-row) {
+    padding-block: 1px;
+  }
+}
+
+/* Узкие телефоны: название упражнения не должно занимать две строки там, где хватает одной. */
+@media (max-width: 400px) {
+  .workout-athletic .exercise-card-head h3 {
+    font-size: 1.375rem;
+  }
+}
+
+.workout-athletic .exercise-extras > .execution-fields {
+  padding-block: 0;
+  padding-inline: 12px;
 }
