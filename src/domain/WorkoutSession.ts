@@ -1,11 +1,9 @@
+import { AnalyticsFacts } from "./AnalyticsFacts";
 import type { Workout, WorkoutExercise } from "../lib/types";
 export class WorkoutSession {
   constructor(private workout: Workout) {}
   get completedWorkingSets() {
-    return this.workout.exercises.reduce(
-      (count, e) => count + e.sets.filter((s) => s.done && !s.warmup).length,
-      0,
-    );
+    return new AnalyticsFacts([this.workout]).sets().length;
   }
   add(exercise: WorkoutExercise): Workout {
     if (

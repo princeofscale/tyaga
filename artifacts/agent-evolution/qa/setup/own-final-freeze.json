@@ -1,0 +1,950 @@
+{
+  "schema": 1,
+  "actor": "qa",
+  "utcCreatedAt": "2026-11-14T00:52:30.930546+00:00",
+  "runtimeInputSHAs7": {
+    "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution/tests/agent-qa-domain.test.ts": "7b1c2a2871493c1f747c61aada15b8e89330139640da04c93a7357f016c3c652",
+    "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution/tests/agent-qa-migrations.test.ts": "ac8b88b64b7bd726c57cbc1d602d997d8930ee02525232c01838a3c9d6e33737",
+    "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution/tests/e2e/agent-qa-baseline.spec.ts": "0ca053ec92b6edecc7814018ad95093d37b64af6ab716765b1da4b17c0d94777",
+    "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution/artifacts/agent-evolution/qa/setup/playwright.qa.config.ts": "a007e9f29bc4febd58c86d7da2211641a4ff9a2dc4fc781b7fa1e8b987b087eb",
+    "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution/artifacts/agent-evolution/qa/setup/serve-qa.mjs": "24361eea64656adc1f924c603e4b15adb216583fd35e99d9a6d8a7eb4d5adcac",
+    "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution/artifacts/agent-evolution/qa/setup/wrangler.qa.json": "7d3cd033db46e6418ea6aba05757914ec7124db30910c237c25e4a0414240659",
+    "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution/artifacts/agent-evolution/qa/setup/tsconfig.qa.json": "2e1166ea326733dbe80e85bff96276cca9527385a408f86d6f914480a04ae42a"
+  },
+  "sourceProducerCount": 249,
+  "currentMatchesR3Baseline": true,
+  "report": {
+    "path": "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution/artifacts/agent-evolution/qa/setup/own-final-qa-report.md",
+    "sha256": "7d7f8c2a7e091f008c3962241e43f924cf51d7a05a51dc057f69d3d694428cf3",
+    "sha256actual": "7d7f8c2a7e091f008c3962241e43f924cf51d7a05a51dc057f69d3d694428cf3"
+  },
+  "note": {
+    "path": "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution/docs/agent-evolution/setup-qa.md",
+    "sha256": "4e80d8614a303d6cd5d327be61b37a06cd525216966a0f3d04b66c378f2fd88d"
+  },
+  "actualRunStats": {
+    "strictR4": {
+      "tscExitCode": 0,
+      "includedFilesCount": 4,
+      "log": "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution/artifacts/agent-evolution/qa/setup/own-strict-all-r4.log",
+      "includedLog": "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution/artifacts/agent-evolution/qa/setup/own-strict-included-all-r4.log",
+      "executionJson": "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution/artifacts/agent-evolution/qa/setup/own-strict-all-r4-execution.json"
+    },
+    "discoveryR3": {
+      "exitCode": 0,
+      "testsDiscovered": 16,
+      "log": "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution/artifacts/agent-evolution/qa/setup/browser-run-discovery-r3/discovery.log",
+      "root": "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution/artifacts/agent-evolution/qa/setup/browser-run-discovery-r3"
+    },
+    "browserBaselineR3": {
+      "startTime": "2026-11-13T23:03:01.902Z",
+      "durationMs": 68495.02399999999,
+      "expected": 16,
+      "unexpected": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "errors": [],
+      "reportJson": "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution/artifacts/agent-evolution/qa/setup/browser-run-baseline-r3/browser-report.json"
+    },
+    "nodeTestsR4": {
+      "exitCode": 0,
+      "pass": 10,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0,
+      "durationMs": 207831.745606,
+      "cliTotal": 98,
+      "cliZeroExit": 83,
+      "cliExpectedConstraintRejections": 15,
+      "log": "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution/artifacts/agent-evolution/qa/setup/own-node-tests-r4.log",
+      "executionJson": "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution/artifacts/agent-evolution/qa/setup/own-node-tests-r4-execution.json"
+    },
+    "portableCloneR1": {
+      "copy29ShaEquality": true,
+      "copiedFilesCount": 29,
+      "containedStates": [
+        "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution/artifacts/agent-evolution/qa/setup/portable-clone-r1/artifacts/agent-evolution/qa/setup/migration-f3FKCD/fresh/d1-state",
+        "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution/artifacts/agent-evolution/qa/setup/portable-clone-r1/artifacts/agent-evolution/qa/setup/migration-f3FKCD/0009-only/d1-state",
+        "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution/artifacts/agent-evolution/qa/setup/portable-clone-r1/artifacts/agent-evolution/qa/setup/migration-f3FKCD/rooms-only/d1-state",
+        "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution/artifacts/agent-evolution/qa/setup/portable-clone-r1/artifacts/agent-evolution/qa/setup/migration-f3FKCD/machines-only/d1-state",
+        "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution/artifacts/agent-evolution/qa/setup/portable-clone-r1/artifacts/agent-evolution/qa/setup/migration-f3FKCD/combined-replay/d1-state"
+      ],
+      "allD1StatesContained": true,
+      "gitProofStatus": 128,
+      "gitProofStderr": "fatal: not a git repository (or any of the parent directories): .git",
+      "canonicalDepsSymlink": "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution/node_modules",
+      "cloneUtcStart": null,
+      "cloneUtcEnd": null,
+      "cloneUtcStartEndOmittedReason": "ACTUAL clone wrapper 167-line JSON omits UTC start/end; truthfully marked null without timestamp backfill",
+      "nodeExecution": {
+        "processExecPath": "/Users/princeofscale/.nvm/versions/node/v24.21.0/bin/node",
+        "argv": [
+          "/Users/princeofscale/.nvm/versions/node/v24.21.0/bin/node",
+          "--import",
+          "tsx",
+          "--test",
+          "tests/agent-qa-migrations.test.ts"
+        ],
+        "cwd": "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution/artifacts/agent-evolution/qa/setup/portable-clone-r1",
+        "status": 0,
+        "signal": null,
+        "error": null,
+        "logPath": "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution/artifacts/agent-evolution/qa/setup/own-portable-clone-r1-node.log",
+        "exitCodePath": "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution/artifacts/agent-evolution/qa/setup/own-portable-clone-r1-node.exit-code",
+        "rawCounts": {
+          "testsTotal": 6,
+          "testsPass": 6,
+          "testsFail": 0,
+          "cliTotal": 98,
+          "cliZeroExit": 83,
+          "cliExpectedConstraintRejections": 15
+        }
+      }
+    },
+    "server8796Teardown": {
+      "exitCode": 143,
+      "pid": 37622,
+      "portFree": true,
+      "host": "127.0.0.1",
+      "port": 8796,
+      "evidenceDir": "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution/artifacts/agent-evolution/qa/setup/server-8796-jtAUUH",
+      "teardownJson": "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution/artifacts/agent-evolution/qa/setup/server-8796-jtAUUH/owned-teardown.json"
+    }
+  },
+  "actualDDLInventory": {
+    "totalObjectsIncludingCfMetadata": 59,
+    "applicationObjectsTotal": 58,
+    "applicationTablesCount": 23,
+    "explicitIndicesCount": 17,
+    "triggersCount": 18,
+    "combinedSnapshotTablesCount": 22,
+    "soleSqlOnlyDeltaTable": "sync_versions",
+    "cfMetadataExactDefinition": "CREATE TABLE _cf_METADATA (\n        key INTEGER PRIMARY KEY,\n        value BLOB\n      )",
+    "logPath": "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution/artifacts/agent-evolution/qa/setup/migration-HcV30k/003-fresh-full-DDL.log"
+  },
+  "disposition18Scopes": [
+    {
+      "id": "BL-ENV",
+      "disposition": "SCOPED PASS"
+    },
+    {
+      "id": "BL-MIG",
+      "disposition": "SCOPED PASS local"
+    },
+    {
+      "id": "BL-OWN",
+      "disposition": "SCOPED PASS"
+    },
+    {
+      "id": "BL-AUTH",
+      "disposition": "SCOPED PASS local"
+    },
+    {
+      "id": "BL-WORK",
+      "disposition": "SCOPED PASS"
+    },
+    {
+      "id": "BL-CAS",
+      "disposition": "SCOPED PASS"
+    },
+    {
+      "id": "BL-MACHINE",
+      "disposition": "SCOPED PASS"
+    },
+    {
+      "id": "BL-MATH",
+      "disposition": "SCOPED PASS"
+    },
+    {
+      "id": "BL-CALENDAR",
+      "disposition": "PARTIAL"
+    },
+    {
+      "id": "BL-PROGRAM",
+      "disposition": "SCOPED PASS"
+    },
+    {
+      "id": "BL-WEIGHT",
+      "disposition": "SCOPED PASS"
+    },
+    {
+      "id": "BL-SYNC",
+      "disposition": "PARTIAL"
+    },
+    {
+      "id": "BL-BACKUP",
+      "disposition": "PARTIAL"
+    },
+    {
+      "id": "BL-LIVE",
+      "disposition": "SCOPED PASS real HTTP"
+    },
+    {
+      "id": "BL-TOOLS",
+      "disposition": "SCOPED PASS"
+    },
+    {
+      "id": "BL-POSE",
+      "disposition": "NOT PROVEN positive"
+    },
+    {
+      "id": "BL-UX",
+      "disposition": "PARTIAL"
+    },
+    {
+      "id": "BL-FAIL",
+      "disposition": "PARTIAL"
+    }
+  ],
+  "ipv6Verified": false,
+  "poGateClosed": true,
+  "acceptedRoundsCount": 0,
+  "r01Closed": false,
+  "policy": {
+    "inputsFrozen": true,
+    "existingEvidenceImmutable": true,
+    "engineerFreshDisposableMigrationOutputsAllowed": true,
+    "requiredPostReleaseCommands": [
+      "npx tsc --noEmit",
+      "npm test",
+      "npm run build"
+    ],
+    "changedExistingRuntimeInputsRequireRuntimeReverify": true,
+    "generatedDocsLogsFixturesPermittedDistBuildDoNotReopenQA": true
+  },
+  "optionalHttpAttachmentSummaries": [
+    {
+      "name": "fixture-profile",
+      "contentType": "application/json",
+      "sha256": "b95e6eefb2d9c854605b3c10fda80cb3c0b30833246e0a3fee73d52e82dbce14",
+      "keys": [
+        "id",
+        "profile"
+      ],
+      "size": 358
+    },
+    {
+      "name": "fixture-profile",
+      "contentType": "application/json",
+      "sha256": "64ef0f0eb2eda04b0a2f7e227f1bc900d0bb10887b52864c5463bc56c6fa3e47",
+      "keys": [
+        "id",
+        "profile"
+      ],
+      "size": 358
+    },
+    {
+      "name": "GET-_api_settings-021f72a6-2118-40c8-93f9-ce5e8423bba3",
+      "contentType": "application/json",
+      "sha256": "03ed963585a2f2073a8b9931aa58958dc660068bafe268830e86a504b2d860c0",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 212,
+      "method": "GET",
+      "path": "/api/settings",
+      "status": 401
+    },
+    {
+      "name": "GET-_api_data-f98b3ab8-ecf4-40ce-aba8-b43310aa2860",
+      "contentType": "application/json",
+      "sha256": "f6950cfb0c5f778a029fd411a915c1f66d60c077a20e58a478fe82296bcb83a1",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 208,
+      "method": "GET",
+      "path": "/api/data",
+      "status": 401
+    },
+    {
+      "name": "PUT-_api_settings-11b52c34-67cf-464e-9bf0-229900b097d5",
+      "contentType": "application/json",
+      "sha256": "07e442694dad52efb2ff27b270c69400b814a56c3e3e0e74a583a5a78aaf1a6e",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 154,
+      "method": "PUT",
+      "path": "/api/settings",
+      "status": 403
+    },
+    {
+      "name": "GET-_api_data-d6fb23a3-29e0-4acb-9157-2574f5706b83",
+      "contentType": "application/json",
+      "sha256": "077237294abdd67904a06eb3b13b4cba5db75d5af4f54d6798a9f189d91131c8",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 458,
+      "method": "GET",
+      "path": "/api/data",
+      "status": 200
+    },
+    {
+      "name": "PUT-_api_settings-08bc1045-9aaa-4b6f-89cf-ae7d6aad319d",
+      "contentType": "application/json",
+      "sha256": "8c1bb1ca9f1cfc8f12e9ce0ad0d9427245483271a5241d4740b727ed30e30a21",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 443,
+      "method": "PUT",
+      "path": "/api/settings",
+      "status": 200
+    },
+    {
+      "name": "PUT-_api_settings-33b9d630-9fdb-4066-9e2e-fc12d3f744a7",
+      "contentType": "application/json",
+      "sha256": "1ec8d86a2b8f5c8f0c9d03a5073858c8b6bed27dba308788e38facd6eebbbeb2",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 650,
+      "method": "PUT",
+      "path": "/api/settings",
+      "status": 409
+    },
+    {
+      "name": "PUT-_api_workouts-07969ec0-e0da-4fa0-9290-e9b54b86c0e5",
+      "contentType": "application/json",
+      "sha256": "065e41c3cb0b4dafece4f43958fc2c940255959ee304b0472dd57b721b46305d",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 1431,
+      "method": "PUT",
+      "path": "/api/workouts",
+      "status": 200
+    },
+    {
+      "name": "PUT-_api_workouts-5b87d427-6bf6-4773-8cbe-9db59c944a4d",
+      "contentType": "application/json",
+      "sha256": "065e41c3cb0b4dafece4f43958fc2c940255959ee304b0472dd57b721b46305d",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 1431,
+      "method": "PUT",
+      "path": "/api/workouts",
+      "status": 200
+    },
+    {
+      "name": "PUT-_api_workouts-c33d3aa0-60d6-4aa2-9f63-089f87340b16",
+      "contentType": "application/json",
+      "sha256": "ee730ee90dea992fc4d75e596bb15133d0409917b880155efa46e5e8fb1a79d9",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 139,
+      "method": "PUT",
+      "path": "/api/workouts",
+      "status": 403
+    },
+    {
+      "name": "GET-_api_data-eb9d2f75-cd23-4614-a45f-f61c9475e4a0",
+      "contentType": "application/json",
+      "sha256": "077237294abdd67904a06eb3b13b4cba5db75d5af4f54d6798a9f189d91131c8",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 458,
+      "method": "GET",
+      "path": "/api/data",
+      "status": 200
+    },
+    {
+      "name": "actual-CAS-race",
+      "contentType": "application/json",
+      "sha256": "0f9c4740ad7c1635d7f49a6881c37ac81ac73033948e631ec31d527435de53be",
+      "keys": [
+        "statuses",
+        "responses"
+      ],
+      "size": 3158
+    },
+    {
+      "name": "GET-_api_data-a6f7585c-1b21-41ed-8396-a534c6d358f6",
+      "contentType": "application/json",
+      "sha256": "3563ec498922c1f8dd9a95a4a32f93067f2a47909028e4ba9b74931501140b97",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 1890,
+      "method": "GET",
+      "path": "/api/data",
+      "status": 200
+    },
+    {
+      "name": "DELETE-_api_workouts_13aff590-3a2a-4c3b-8753-3b4be8f4dcf1-61bb6295-9517-4821-a9bd-8ebf5ade3f66",
+      "contentType": "application/json",
+      "sha256": "e072c6f841a1ba89118688ac717b04b46848ff11c8f3532a4361bc991da4bb1e",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 1637,
+      "method": "DELETE",
+      "path": "/api/workouts/13aff590-3a2a-4c3b-8753-3b4be8f4dcf1",
+      "status": 409
+    },
+    {
+      "name": "DELETE-_api_workouts_13aff590-3a2a-4c3b-8753-3b4be8f4dcf1-af5a1ed2-507f-40fe-a252-d5506d4969da",
+      "contentType": "application/json",
+      "sha256": "00b5eac1ebadc8a6330cb3704a60fa0e0cb1934c5521633558cd785bd523fbdf",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 176,
+      "method": "DELETE",
+      "path": "/api/workouts/13aff590-3a2a-4c3b-8753-3b4be8f4dcf1",
+      "status": 200
+    },
+    {
+      "name": "PUT-_api_workouts-94af17dd-8aa2-458d-97dd-fe5100b062fd",
+      "contentType": "application/json",
+      "sha256": "4a5130da8511426ac669e365552a66f223518d503ff49a3914312f03eb191d65",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 251,
+      "method": "PUT",
+      "path": "/api/workouts",
+      "status": 409
+    },
+    {
+      "name": "GET-_api_sync_changes?since=0-93a38b36-151a-4120-a3ad-092e63d7f40d",
+      "contentType": "application/json",
+      "sha256": "cbdba044bde80e18c282ed9aa04c2aa6227377eb96567982832bd380833182f8",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 753,
+      "method": "GET",
+      "path": "/api/sync/changes?since=0",
+      "status": 200
+    },
+    {
+      "name": "PUT-_api_workouts-d4a1d428-0c06-4fd4-992e-796f811b290b",
+      "contentType": "application/json",
+      "sha256": "80bc945d2c7dfe559f215d768b8964d671203d56dc640cb0a032a8bcab296036",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 125,
+      "method": "PUT",
+      "path": "/api/workouts",
+      "status": 400
+    },
+    {
+      "name": "GET-_api_data-94763a35-0ebb-446f-92cd-593acf0507f7",
+      "contentType": "application/json",
+      "sha256": "f6d6c08d6751325e4fb6e502c900d37ae5018a0ae9d42a597978e859a7966db2",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 459,
+      "method": "GET",
+      "path": "/api/data",
+      "status": 200
+    },
+    {
+      "name": "actual-chromium-dimensions",
+      "contentType": "application/json",
+      "sha256": "afdbfc9fa9c48a1c104943608cbac28a0e303e3cd438d498dc91d84dcbc7d93f",
+      "keys": [
+        "document",
+        "body",
+        "viewport"
+      ],
+      "size": 58
+    },
+    {
+      "name": "browser-version-and-owner",
+      "contentType": "application/json",
+      "sha256": "0e63dd8a08500750d158fe9d563bcee7cc974e5d29061751acf9a5d0d767b119",
+      "keys": [
+        "version",
+        "project",
+        "owner",
+        "now"
+      ],
+      "size": 163
+    },
+    {
+      "name": "fixture-profile",
+      "contentType": "application/json",
+      "sha256": "3928c1f489dc9fa64f76f7b818826bfccfe1481c2154b3272b760254eb982a45",
+      "keys": [
+        "id",
+        "profile"
+      ],
+      "size": 361
+    },
+    {
+      "name": "fixture-profile",
+      "contentType": "application/json",
+      "sha256": "f6edd08ff4759e789e6cf243c33265502a4380d60122c2ad3dfd0c577c8853b7",
+      "keys": [
+        "id",
+        "profile"
+      ],
+      "size": 361
+    },
+    {
+      "name": "GET-_api_bodyweight-544dcfea-66ec-4c8c-aeec-54bff5a73ad4",
+      "contentType": "application/json",
+      "sha256": "ce6104cb5d59e1d8fb1614d0093b37b471eb69717fcae309c2ee0f051dc50200",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 161,
+      "method": "GET",
+      "path": "/api/bodyweight",
+      "status": 200
+    },
+    {
+      "name": "PUT-_api_bodyweight_weight:2026-11-08-a8b8e5f2-5e3f-4c6b-af2b-876a5ad97229",
+      "contentType": "application/json",
+      "sha256": "3f56c94f9cbd942abae57fa8233364175b65d9b6ebfea3ee22051c5d219c7e8b",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 489,
+      "method": "PUT",
+      "path": "/api/bodyweight/weight:2026-11-08",
+      "status": 200
+    },
+    {
+      "name": "PUT-_api_bodyweight_weight:2026-11-08-29ee6769-0fd6-435a-9408-058d0ae2c986",
+      "contentType": "application/json",
+      "sha256": "3f56c94f9cbd942abae57fa8233364175b65d9b6ebfea3ee22051c5d219c7e8b",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 489,
+      "method": "PUT",
+      "path": "/api/bodyweight/weight:2026-11-08",
+      "status": 200
+    },
+    {
+      "name": "PUT-_api_bodyweight_weight:2026-11-08-c7b85303-ade9-4881-81a9-e1d13de2b9dd",
+      "contentType": "application/json",
+      "sha256": "7a603714c88834768853ca3ff1599936e583abefe903a763694bcd48f114c4c7",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 626,
+      "method": "PUT",
+      "path": "/api/bodyweight/weight:2026-11-08",
+      "status": 409
+    },
+    {
+      "name": "PUT-_api_bodyweight_weight:2026-11-08-64493aba-1f6e-4212-a97b-ea982129baf2",
+      "contentType": "application/json",
+      "sha256": "8f5abb7d3e7b08f208757949e0ade2eed242908f31c494b1791c6f27a4c808b2",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 201,
+      "method": "PUT",
+      "path": "/api/bodyweight/weight:2026-11-08",
+      "status": 401
+    },
+    {
+      "name": "PUT-_api_bodyweight_weight:2026-02-30-40461282-5958-4e31-8113-44672f978ab8",
+      "contentType": "application/json",
+      "sha256": "3e939d43aa2b74c7808989c11f2b7e0935c71c86e7e66e8f76d150783e98f52c",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 164,
+      "method": "PUT",
+      "path": "/api/bodyweight/weight:2026-02-30",
+      "status": 400
+    },
+    {
+      "name": "PUT-_api_bodyweight_weight:2099-01-01-604e45d4-a9a7-406a-a25f-bc9ca81e5f63",
+      "contentType": "application/json",
+      "sha256": "b8e37b2f847d9645e55fe3264e68ffb9cbf9658f3f71fca0294e84600466bf51",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 192,
+      "method": "PUT",
+      "path": "/api/bodyweight/weight:2099-01-01",
+      "status": 400
+    },
+    {
+      "name": "PUT-_api_bodyweight_weight:2026-11-08-668aab83-6cf9-4716-bc12-ce9510e6ca01",
+      "contentType": "application/json",
+      "sha256": "1f2109781aa1d295c17c64e280822ac165bbe7de58706b66cba5d3cb16ec5f6d",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 308,
+      "method": "PUT",
+      "path": "/api/bodyweight/weight:2026-11-08",
+      "status": 200
+    },
+    {
+      "name": "PUT-_api_bodyweight_weight:2026-11-08-60779058-2ed5-45da-8dca-86823bdb5e51",
+      "contentType": "application/json",
+      "sha256": "a6b542c8b1374c5bc56e15f6bb8fc5e0b8b0c0e865754e09fbb64654e0035643",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 445,
+      "method": "PUT",
+      "path": "/api/bodyweight/weight:2026-11-08",
+      "status": 409
+    },
+    {
+      "name": "GET-_api_bodyweight-f252fa55-d4a8-49f9-a5b8-174c29eafb3d",
+      "contentType": "application/json",
+      "sha256": "19e190064251a703ad5f9e826b0ad80b2e899d2566402ab4842c53b7a89a7777",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 161,
+      "method": "GET",
+      "path": "/api/bodyweight",
+      "status": 200
+    },
+    {
+      "name": "actual-chromium-dimensions",
+      "contentType": "application/json",
+      "sha256": "afdbfc9fa9c48a1c104943608cbac28a0e303e3cd438d498dc91d84dcbc7d93f",
+      "keys": [
+        "document",
+        "body",
+        "viewport"
+      ],
+      "size": 58
+    },
+    {
+      "name": "fixture-profile",
+      "contentType": "application/json",
+      "sha256": "4a9ca323b5035d12d24e179f6391abdc4c216f924c2964b8af66ce5a871442f3",
+      "keys": [
+        "id",
+        "profile"
+      ],
+      "size": 364
+    },
+    {
+      "name": "fixture-profile",
+      "contentType": "application/json",
+      "sha256": "da7cd7fd5477486236097cffcd5364c837d25315c1692fadf26199f5353934e3",
+      "keys": [
+        "id",
+        "profile"
+      ],
+      "size": 364
+    },
+    {
+      "name": "PUT-_api_machines-a3dd2c65-9aba-472c-98a6-ccbedd47f24d",
+      "contentType": "application/json",
+      "sha256": "d87b8137a66ad1b272cc7e1fef1bda4409caf510f214e0bbe3aac00d4969b0c8",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 478,
+      "method": "PUT",
+      "path": "/api/machines",
+      "status": 200
+    },
+    {
+      "name": "PUT-_api_machines-a227155f-f603-4014-80b6-c6842a51eaf9",
+      "contentType": "application/json",
+      "sha256": "d87b8137a66ad1b272cc7e1fef1bda4409caf510f214e0bbe3aac00d4969b0c8",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 478,
+      "method": "PUT",
+      "path": "/api/machines",
+      "status": 200
+    },
+    {
+      "name": "GET-_api_product-25274fa1-9ac7-4e94-810d-6ca1bdf21b56",
+      "contentType": "application/json",
+      "sha256": "87a5008f96b54d8f2aa2cd125340497b08392e7142580412091d5720fca8a902",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 199,
+      "method": "GET",
+      "path": "/api/product",
+      "status": 200
+    },
+    {
+      "name": "PUT-_api_workouts-6d8b375b-a6fe-40fc-bccc-12a78f0e94ae",
+      "contentType": "application/json",
+      "sha256": "779d7c10bb2110ff9d60ac4bfccc22726a581dcb3b3b6dd13d77719b785754e1",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 2011,
+      "method": "PUT",
+      "path": "/api/workouts",
+      "status": 200
+    },
+    {
+      "name": "PUT-_api_workouts-4c360d1c-3490-45ed-b88f-290ac39957ca",
+      "contentType": "application/json",
+      "sha256": "5e2efe85e4e32da9382ccb6f30f1eb45730e693045a533902f3ee31733ebf931",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 154,
+      "method": "PUT",
+      "path": "/api/workouts",
+      "status": 400
+    },
+    {
+      "name": "PUT-_api_machines-6bf37587-41b2-4eb4-994c-6be61b6e08de",
+      "contentType": "application/json",
+      "sha256": "616c7baa4093905981527c5c5900782a000360e78cfe8beafe7369aad104563b",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 477,
+      "method": "PUT",
+      "path": "/api/machines",
+      "status": 200
+    },
+    {
+      "name": "PUT-_api_machines-29a3c68c-6232-466d-b26c-b3697ed42180",
+      "contentType": "application/json",
+      "sha256": "a1b4e336549cb7f84b652f59626d1226dab323db056106507c41ff0b5a444292",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 571,
+      "method": "PUT",
+      "path": "/api/machines",
+      "status": 409
+    },
+    {
+      "name": "GET-_api_data-d712fa2f-612e-4cc4-be77-5126bc079c12",
+      "contentType": "application/json",
+      "sha256": "29c44131de30ee180e98720fbd15eaa5e852067a638f83cf690f45f77dae25d5",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 2507,
+      "method": "GET",
+      "path": "/api/data",
+      "status": 200
+    },
+    {
+      "name": "GET-_api_sync_changes?since=0&capabilities=machines-v1-30c56d7b-433a-432f-8e6d-b0fd44cd83d4",
+      "contentType": "application/json",
+      "sha256": "5bed2611b94203dccacb8c236fe9d812d28ca782510ace38f1d98442165cb239",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 2963,
+      "method": "GET",
+      "path": "/api/sync/changes?since=0&capabilities=machines-v1",
+      "status": 200
+    },
+    {
+      "name": "GET-_api_sync_changes?since=0-9db9b716-123a-4e4f-844e-61323f17e16e",
+      "contentType": "application/json",
+      "sha256": "2bd8aa8769b484fc425e9a277c5597183b6279d8914755b4aa9257a78fc2386f",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 1742,
+      "method": "GET",
+      "path": "/api/sync/changes?since=0",
+      "status": 200
+    },
+    {
+      "name": "POST-_api_sync_apply-34e7842b-0b95-429b-9b34-52e87c624c76",
+      "contentType": "application/json",
+      "sha256": "ac8ef6eab50a08b8064606ff7b9c463f83faa4f39f5456fd8a2f774333a3fb2d",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 120,
+      "method": "POST",
+      "path": "/api/sync/apply",
+      "status": 200
+    },
+    {
+      "name": "GET-_api_sync_changes?since=0&capabilities=machines-v1-40eb7d90-76b1-4d90-a8a4-fd7e23151d68",
+      "contentType": "application/json",
+      "sha256": "6969709b6ac4341bc826ca2567ad3f654c05007aa573d61d413aa6e603626df0",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 170,
+      "method": "GET",
+      "path": "/api/sync/changes?since=0&capabilities=machines-v1",
+      "status": 200
+    },
+    {
+      "name": "DELETE-_api_machines_b9efedb2-a1b2-4b51-b6e2-78f285561be4-44b5c622-9ddd-4384-8f54-d951536ec2f3",
+      "contentType": "application/json",
+      "sha256": "87872b94200b85cb3c004e13f62e415ad76be99593c20ba8c07bfae3e7cbc560",
+      "keys": [
+        "method",
+        "path",
+        "status",
+        "body"
+      ],
+      "size": 137,
+      "method": "DELETE",
+      "path": "/api/machines/b9efedb2-a1b2-4b51-b6e2-78f285561be4",
+      "status": 200
+    }
+  ],
+  "documentationAmendedAtUTC": "2026-11-14T01:18:34.464646+00:00",
+  "amendedReason": "document links + precise archive/Git/untested ORM wording; no runtime input change",
+  "previousDocumentHashes": {
+    "report": "7cf33cbbda87d3160f5850f00497e06f79055c20b80dc56a400bab53a70bd8ef",
+    "note": "6757f5bd6e4ef6f3bad0a7bc9d18f183dc64525b8cde5479db69daa09afd39db"
+  },
+  "documentationAmendments": [
+    {
+      "atUTC": "2026-11-14T01:40:13.068451+00:00",
+      "previousReportSHA": "2d10473d982fa59ee5dc8bd66cf8b92aba00bde837bb9e0eae26b9c858790033",
+      "previousNoteSHA": "4e80d8614a303d6cd5d327be61b37a06cd525216966a0f3d04b66c378f2fd88d",
+      "reason": "raw history counts, calculator/timezone/math scoped prose, exact denial/tail facts, narrow runtime-input reverify; no execution/input changes"
+    },
+    {
+      "atUTC": "2026-11-14T01:57:06Z",
+      "previousReportSHA": "3d9c5c123d38b61146e04f10dcf198e9673dbf20f3f488187418d82190fa16cc",
+      "previousNoteSHA": "4e80d8614a303d6cd5d327be61b37a06cd525216966a0f3d04b66c378f2fd88d",
+      "reason": "readback: discovery not execution; equivalent commands/required clone env; filtered catalog; actual captures; receipt hash locator"
+    }
+  ],
+  "amendments": [
+    {
+      "timestampUTC": "2026-11-14T01:59:22.189981+00:00",
+      "previousReportSHA": "3c6989ae6173aae7cd7835d318fcf636bdb6aca59412f3dca5769aee2d3ece96",
+      "previousNoteSHA": "4e80d8614a303d6cd5d327be61b37a06cd525216966a0f3d04b66c378f2fd88d",
+      "reason": "final readback: BL-ENV uses narrow runtime-input policy; handoff explicitly names receipt hash field"
+    }
+  ]
+}

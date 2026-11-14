@@ -1,0 +1,48 @@
+{
+  "integrationBranch": "agents/tyaga-30-rounds",
+  "strategy": "Retain published SQL filenames and bytes; serialize metadata rooms -> combined machines+rooms.",
+  "migrations": [
+    {
+      "file": "0010_live_rooms.sql",
+      "commit": "c708843daa05f68a5bc5417fcb1de7bafed8a369",
+      "sha256": "09938ab09d9bb0d81750fad6c3c6115d16eb1faedeb7970ff3ef069eadfc9a3d"
+    },
+    {
+      "file": "0010_machines.sql",
+      "commit": "b766eec0588a5bd688742dac26b45411d85e82e3",
+      "sha256": "91f6eb0effb0e109e05702fbeffbf07341d1363ccf47a5132fb196ee66f77eb9"
+    }
+  ],
+  "roomsSnapshot": {
+    "commit": "c708843daa05f68a5bc5417fcb1de7bafed8a369",
+    "path": "meta/0010_snapshot.json",
+    "id": "e4b94493-3e00-4b0c-a6f2-34c3a46ed0ca",
+    "prevId": "00b73f44-a273-437c-9f06-39162f02a0c7",
+    "sha256": "bd31820cd90d2e78203a4c136451742113f4ba4405686104420971fe297c0367",
+    "journalIndex": 10,
+    "when": 1794424045113
+  },
+  "machinesOriginalSnapshot": {
+    "commit": "b766eec0588a5bd688742dac26b45411d85e82e3",
+    "path": "provenance/0010_machines_snapshot.original.json",
+    "originalPath": "meta/0010_snapshot.json",
+    "id": "e829fac1-a32e-4fb4-9757-428ec8ba8768",
+    "prevId": "00b73f44-a273-437c-9f06-39162f02a0c7",
+    "sha256": "a4e6aa9adaa1cf0446c0cc14bb97da72d96c74a7aad636affc70b838320a84b8"
+  },
+  "combinedSnapshot": {
+    "path": "meta/0011_snapshot.json",
+    "id": "80149df7-e53d-46a6-9f13-d4b71b3a20c6",
+    "prevId": "e4b94493-3e00-4b0c-a6f2-34c3a46ed0ca",
+    "journalIndex": 11,
+    "sqlTag": "0010_machines",
+    "when": 1794468210926
+  },
+  "nextMigrationIndex": 12,
+  "notes": [
+    "0010 SQL names are immutable. Journal indices and snapshot prefixes are serialized independently of historical SQL tags.",
+    "Shared tables and metadata are identical in both parents and are asserted before union.",
+    "Original machines snapshot is outside meta so Drizzle does not see a second child of 0009.",
+    "SQL sync triggers are published extras not modeled by Drizzle snapshots and must remain untouched."
+  ]
+}

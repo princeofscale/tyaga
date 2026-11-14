@@ -36,3 +36,19 @@ export function dateLabel(date: string, long = false) {
     month: long ? "long" : "short",
   });
 }
+
+export function isCalendarDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(value + "T12:00:00Z");
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+export function calendarWeek(date: string) {
+  if (!isCalendarDate(date)) throw new RangeError("Некорректная календарная дата");
+  const start = addCalendarDays(date, -((new Date(date + "T12:00:00Z").getUTCDay() + 6) % 7));
+  return { from: start, through: addCalendarDays(start, 6) };
+}
+export function trailingWindow(today: string, days: number) {
+  if (!isCalendarDate(today) || !Number.isInteger(days) || days < 1 || days > 36600)
+    throw new RangeError("Некорректное календарное окно");
+  return { from: addCalendarDays(today, 1 - days), through: today };
+}

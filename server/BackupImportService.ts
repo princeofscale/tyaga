@@ -1,3 +1,5 @@
+import { MachineRepository } from "./MachineRepository";
+import { validMachine } from "./validation";
 import type { Exercise } from "../src/lib/types";
 import { exerciseById } from "../src/lib/model";
 import { ProductRepository } from "./ProductRepository";
@@ -22,7 +24,15 @@ export class BackupImportService {
     let created = 0,
       skipped = 0;
     const exercises: Exercise[] = [];
-    if (kind === "custom") {
+    if (kind === "machines") {
+      const repository = new MachineRepository(this.db, this.owner);
+      const existing = await repository.definitions();
+      const incoming = v.items.map(validMachine);
+      for (const machine of incoming) await repository.validateModel(machine);
+      const pending = incoming.filter((m) => !existing.has(m.id));
+      if (pending.length) await this.db.batch(pending.flatMap((m) => repository.statements(m, true)));
+      created = pending.length; skipped = incoming.length - created;
+    } else if (kind === "custom") {
       if (v.items.length > 5)
         throw new InputError("Не больше пяти личных упражнений в пакете");
       const inputs = v.items.map(object);

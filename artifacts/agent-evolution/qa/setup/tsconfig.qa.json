@@ -1,0 +1,14 @@
+{
+  "extends": "../../../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["@cloudflare/workers-types", "node"]
+  },
+  "include": [
+    "../../../../tests/e2e/agent-qa-baseline.spec.ts",
+    "../../../../tests/agent-qa-domain.test.ts",
+    "../../../../tests/agent-qa-migrations.test.ts",
+    "./playwright.qa.config.ts"
+  ],
+  "exclude": []
+}

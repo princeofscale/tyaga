@@ -1,3 +1,5 @@
+import MachineManager from "./components/MachineManager";
+import { ExecutionIdentity } from "./domain/ExecutionIdentity";
 import { useRestNotifications } from "./hooks/useRestNotifications";
 import RestNotificationSettings from "./components/RestNotificationSettings";
 import { JournalBackup } from "./domain/JournalBackup";
@@ -161,6 +163,8 @@ const dateLabel = (date: string, long = false) =>
   });
 type AppProps = { account: AccountProfile; onAccountChange: (p: AccountProfile) => void; onLogout: () => void };
 export default function App(props:AppProps) {return <BodyweightProvider accountId={props.account.id} timeZone={props.account.timeZone}><JournalApp {...props}/></BodyweightProvider>;}
+const PoseAnalysisPanel = lazy(() => import("./components/PoseAnalysisPanel"));
+
 function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
   const weights=useBodyweight();
   const draftKey = `tyaga-draft-account:${account.id}`;
@@ -194,6 +198,8 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
   const [progressTab, setProgressTab] = useState<"balance" | "analytics" | "strength" | "anatomy" | "bodyweight">("analytics");
   const [toast, setToast] = useState("");
   const [modal, setModal] = useState<
+    | "machines"
+    | "technique"
     | "tools"
     | "backup"
     | "rest_notifications"
@@ -360,8 +366,8 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
     [displayed, settings.timeZone],
   );
   const analysisOptions = useMemo(
-    () => ({ mapping, ...(hardSetsOnly ? { maxRir: 3 } : {}) }),
-    [mapping, hardSetsOnly],
+    () => ({ mapping, timeZone: settings.timeZone, ...(hardSetsOnly ? { maxRir: 3 } : {}) }),
+    [mapping, hardSetsOnly, settings.timeZone],
   );
   const loads = useMemo(
     () => muscleLoad(weekWorkouts, settings, analysisOptions),
@@ -494,7 +500,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
         ? {
             ...d,
             workout: new WorkoutSession(d.workout).add(
-              BodyMass.entry(makeExerciseEntry(id, workouts), weights.massAt(d.workout.date, account.bodyMassKg)),
+              BodyMass.entry(makeExerciseEntry(id, workouts, d.workout.date, settings.timeZone), weights.massAt(d.workout.date, account.bodyMassKg)),
             ),
           }
         : null,
@@ -716,14 +722,14 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
         ...EXERCISES.map(
           (e) => ({ ...entrySpec(e.id), sets: [] }) as WorkoutExercise,
         ),
-        ...displayed.flatMap((w) => w.exercises),
+        ...displayed.flatMap((w) => w.exercises.flatMap((e) => ExecutionIdentity.split(e))),
       ].map((we) => [progressKey(we), we]),
     ).entries(),
   ].map(([key, we]) => ({ key, we }));
   const progressEntry = progressOptions.find((o) => o.key === progressExercise)
     ?.we ?? { ...entrySpec("bench"), sets: [] };
   const progressSpec = exerciseForEntry(progressEntry)!.recording;
-  const progressPoints = ProgressSeries.strength(displayed, progressExercise);
+  const progressPoints = ProgressSeries.strength(displayed, progressExercise, { timeZone: settings.timeZone });
   const progressMetric = ProgressSeries.metric(progressEntry);
   const progressBest = ProgressSeries.best(progressPoints, progressMetric.lowerIsBetter);
   const lastProgress = progressPoints.at(-1);
@@ -1029,7 +1035,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                     </span>
                     <span className="week-summary-foot">
                       {lagging.length
-                        ? `Отстают: ${lagging.map((m) => m.short.toLowerCase()).join(", ")}`
+                        ? `Ниже твоей цели: ${lagging.map((m) => m.short.toLowerCase()).join(", ")}`
                         : "Все зоны в работе — так держать"}
                       <ChevronRight size={18} />
                     </span>
@@ -1063,6 +1069,8 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                   update={setDraft}
                   settings={settings}
                   history={workouts}
+                  machines={product.machines ?? []}
+                  onMachines={()=>setModal("machines")}
                   saving={saving}
                   error={saveError}
                   persistence={persistence}
@@ -1319,11 +1327,11 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                           <h2 id="planner-title">Закрыть пробелы</h2>
                           <p>
                             {currentLagging.length
-                              ? `На этой неделе отстают: ${currentLagging
+                              ? `Меньше прямых подходов, чем в твоих целях: ${currentLagging
                                   .slice(0, 2)
                                   .map((m) => m.short.toLowerCase())
                                   .join(" и ")}. Соберём короткую тренировку под твоё время.`
-                              : "Подходы этой недели покрывают твои цели. Можно отдыхать или добавить объём."}
+                              : "Прямые подходы этой недели покрывают твои цели. Решение о дополнительной работе зависит от прогресса и самочувствия."}
                           </p>
                         </div>
                         <div className="planner-controls">
@@ -1442,7 +1450,8 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                               label: [
                                 entryName(o.we),
                                 (o.we.catalogRevision ?? 1) === 1 ? "старое правило веса" : "",
-                                o.we.equipmentNote ?? "",
+                                o.we.machineInstanceId ? "" : o.we.equipmentNote ?? "",
+                                ExecutionIdentity.describe(o.we),
                                 o.we.performedSides ? SIDES[o.we.performedSides] : "",
                               ].filter(Boolean).join(" · "),
                             }))}
@@ -1798,7 +1807,9 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
               <li>Разминка записывается и входит в общий тоннаж и количество выполненных подходов. Её участие в мышцах показывается отдельно; недельные ориентиры считают рабочие подходы. Невыполненные подходы исключаются.</li>
               <li>
                 Роли движителя, помощника и стабилизатора разделены. Помощь не
-                прибавляется как «0,5»; стабилизация не заполняет ориентир.
+                прибавляется к прямым целям; стабилизация не заполняет ориентир.
+                В инструменте «Объём по мышцам» отдельно показана дробная оценка:
+                прямые + 0,5 × помощь, с указанным периодом и ограничениями.
               </li>
               <li>
                 RIR хранится отдельно. Можно включить фильтр ≤3, без
@@ -1904,7 +1915,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
               <h3>{entryName(e)}</h3>
               <p className="tiny">
                 {recordingLabel(e)}
-                {e.equipmentNote ? ` · ${e.equipmentNote}` : ""}
+                {e.machineSnapshot ? ` · ${e.machineSnapshot.nickname}` : e.equipmentNote ? ` · ${e.equipmentNote}` : ""}
                 {e.performedSides
                   ? ` · ${e.performedSides === "both" ? "обе стороны" : e.performedSides === "left" ? "левая сторона" : "правая сторона"}`
                   : ""}
@@ -1915,6 +1926,8 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                   .map((s) => (
                     <span key={s.id}>
                       {s.warmup ? "Разминка · " : ""}
+                      {s.performedSides ? `${s.performedSides === "both" ? "обе стороны" : s.performedSides === "left" ? "левая" : "правая"} · ` : ""}
+                      {s.execution?.rom ? `ROM: ${s.execution.rom} · ` : ""}
                       <b>
                         {exerciseForEntry(e)?.recording.type === "duration" ? (
                           `${s.durationSeconds} с`
@@ -2150,6 +2163,12 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
           <OneRepMaxCalculator onClose={() => setModal(null)} />
         </Modal>
       ) : null}
+      {modal === "technique" && <Modal title="Анализ техники по видео" onClose={()=>setModal(null)} wide><Suspense fallback={<p role="status">Открываем анализ видео…</p>}><PoseAnalysisPanel/></Suspense></Modal>}
+      {modal === "machines" && <Modal title="Мои тренажёры" onClose={()=>setModal(null)} wide><MachineManager
+        machines={product.machines ?? []}
+        onSave={async (machine)=>{ const result=await productService.saveMachine(machine); setProduct((p)=>({...p,machines:[result.machine,...(p.machines ?? []).filter((m)=>m.id!==result.machine.id)]})); }}
+        onArchive={async (machine)=>{ await productService.archiveMachine(machine); setProduct((p)=>({...p,machines:(p.machines ?? []).filter((m)=>m.id!==machine.id)})); }}
+      /></Modal>}
       {modal === "tools" && <Modal title="Инструменты и настройки" onClose={()=>setModal(null)}><ToolsHub onChoose={id=>id==="settings"?openSettings():setModal(id)}/></Modal>}
       {modal === "bodyweight" ? (
         <Modal title="Контроль массы тела" onClose={() => setModal(null)} wide>
@@ -2164,6 +2183,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
         <Modal title="Настройка разгрузочной недели" onClose={() => setModal(null)} wide>
           <DeloadModal
             workouts={workouts}
+            timeZone={settings.timeZone}
             onApplyDeload={(mode) => {
               if (draft) {
                 setDraft((d) => (d ? { ...d, workout: DeloadEngine.transformWorkoutForDeload(d.workout, mode) } : null));
@@ -2185,13 +2205,15 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
       ) : null}
       {modal === "rp_volume" ? (
         <Modal
-          title="Ориентиры объёма по доктору Майку Израэтелю (RP)"
+          title="Ориентиры недельного объёма"
           onClose={() => setModal(null)}
           wide
         >
           <VolumeLandmarksModal
-            loads={loads}
-            onClose={() => setModal(null)}
+            workouts={displayed}
+            today={today}
+            mapping={mapping}
+            timeZone={settings.timeZone}
           />
         </Modal>
       ) : null}

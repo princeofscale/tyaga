@@ -130,7 +130,7 @@ export default function SessionInsights({
 
       <div className="warmup-volume">
         <div>
-          <span>Весь внешний тоннаж</span>
+          <span>Тоннаж свободных весов</span>
           <b>{fmt(volume.all.total)} кг</b>
         </div>
         <p>
@@ -143,6 +143,11 @@ export default function SessionInsights({
         )}
       </div>
 
+      {volume.all.invalidSets > 0 && <p role="status">Исключено повреждённых подходов: {volume.all.invalidSets}. Проверь значения в журнале.</p>}
+      {report.machineVolume.length > 0 && <section className="session-machine-volume"><h3>Тоннаж на отдельных тренажёрах</h3>
+        {report.machineVolume.map((row)=><p key={row.key}>{row.label}: {fmt(row.volume)} кг·повт. · {row.sets} подх.</p>)}
+        <p className="tiny">Значения стека сравниваются только на той же машине в том же варианте движения.</p></section>}
+      {report.density.supersetGroups > 0 && <p className="tiny">Групп суперсетов: {report.density.supersetGroups} · {report.density.setsPerMinute === null ? "длительность не указана" : `${fmt(report.density.setsPerMinute)} рабочих подхода/мин`}. Плотность записи не измеряет усталость.</p>}
       {report.muscles.length > 0 && (
         <div className="session-muscle-table">
           <div className="muscle-table-head">

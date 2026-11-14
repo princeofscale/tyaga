@@ -103,14 +103,14 @@ async function run() {
   };
   try {
     await replicate(
-      (since) => api<SyncPage>(`/api/sync/changes?since=${since}`),
+      (since) => api<SyncPage>(`/api/sync/changes?since=${since}&capabilities=machines-v1`),
       (docs) => cloud("/api/sync/apply", state.token, { docs }),
       state.localCursor,
       (cursor) => keep({ localCursor: cursor }),
     );
     let changed = 0;
     await replicate(
-      async (since) => (await cloud<SyncPage>(`/api/sync/changes?since=${since}`, state.token)).data,
+      async (since) => (await cloud<SyncPage>(`/api/sync/changes?since=${since}&capabilities=machines-v1`, state.token)).data,
       async (docs) => {
         changed += (await api<{ applied: number }>("/api/sync/apply", "POST", { docs })).applied;
       },

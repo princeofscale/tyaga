@@ -1,3 +1,4 @@
+import { AnalyticsFacts } from "../domain/AnalyticsFacts";
 import { m, useReducedMotion } from "motion/react";
 import { useMemo, useState } from "react";
 import {
@@ -30,7 +31,7 @@ import {
 } from "../lib/model";
 
 export default function StatsAnalytics({
-  workouts,
+  workouts: history,
   settings,
   onOpenExerciseStrength,
   compact = false,
@@ -44,18 +45,17 @@ export default function StatsAnalytics({
   rangeStart?: string;
   onOpenExerciseStrength?: (key: string) => void;
 }) {
+  const workouts = useMemo(() => new AnalyticsFacts(history, { timeZone: settings.timeZone }).workouts(), [history, settings.timeZone]);
   const [filterCategory, setFilterCategory] = useState<
     "all" | "big5" | "chest" | "back" | "legs" | "shoulders"
   >("big5");
-  const [selectedDay, setSelectedDay] = useState<ActivityHeatmapDay | null>(
-    null,
-  );
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   const calc = useMemo(
     () => new PersonalRecordsCalculator(workouts),
     [workouts],
   );
-  const prs = useMemo(() => calc.calculateRecords(), [calc]);
+  const prs = useMemo(() => calc.calculateRecords(settings.timeZone), [calc, settings.timeZone]);
   const streak = useMemo(
     () => calc.calculateStreak(settings.timeZone),
     [calc, settings.timeZone],
@@ -64,12 +64,13 @@ export default function StatsAnalytics({
     () => calc.calculateVolumeTrends(settings.timeZone),
     [calc, settings.timeZone],
   );
-  const ratios = useMemo(() => calc.calculateRatios(), [calc]);
+  const ratios = useMemo(() => calc.calculateRatios(settings.timeZone), [calc, settings.timeZone]);
   const heatmap = useMemo(
     () => calc.calculateHeatmap(weeks + (compact ? 1 : 0), settings.timeZone),
     [calc, settings.timeZone, weeks, compact],
   );
 
+  const selectedDay = heatmap.find((day)=>day.date===selectedDate) ?? null;
   const totalVolume = useMemo(() => volumeSummary(workouts).total, [workouts]);
   const reduced = useReducedMotion();
   const totalWorkingSets = useMemo(
@@ -263,7 +264,7 @@ export default function StatsAnalytics({
                   !!(rangeStart && day.date < rangeStart)
                 }
                 title={`${day.date}: ${day.workingSets} подходов (${fmt(day.totalVolume)} кг)`}
-                onClick={() => setSelectedDay(day)}
+                onClick={() => setSelectedDate(day.date)}
               />
             ))}
           </div>
@@ -337,6 +338,7 @@ export default function StatsAnalytics({
               <div className="pr-card-head">
                 <div>
                   <h3>{pr.name}</h3>
+                  {pr.context && <p className="tiny">{pr.context}</p>}
                   <span className="pr-date">
                     Рекорд от {dateLabel(pr.bestWeight.date, true)} · «
                     {pr.bestWeight.workoutName}»
@@ -364,6 +366,9 @@ export default function StatsAnalytics({
                   </b>
                 </div>
 
+                {pr.machineVolume !== undefined && (
+                  <div className="pr-metric-pill volume"><span className="pr-metric-label">Тоннаж на этой машине · {pr.machineLabel}</span><b>{fmt(pr.machineVolume)} кг·повт.</b></div>
+                )}
                 {pr.bestE1rm && (
                   <div className="pr-metric-pill e1rm">
                     <span className="pr-metric-label">Расчётный 1ПМ</span>
@@ -373,7 +378,7 @@ export default function StatsAnalytics({
 
                 {pr.bestSetVolume.volume > 0 && (
                   <div className="pr-metric-pill volume">
-                    <span className="pr-metric-label">Объём подхода</span>
+                    <span className="pr-metric-label">Тоннаж свободного веса</span>
                     <b>{fmt(pr.bestSetVolume.volume)} кг</b>
                   </div>
                 )}

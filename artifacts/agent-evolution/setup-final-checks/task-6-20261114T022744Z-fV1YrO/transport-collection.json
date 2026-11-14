@@ -1,0 +1,15 @@
+{
+  "allJobsCollected": true,
+  "managedJobs": [
+    {
+      "taskId": "b2b08027-50fe-451c-9591-879c313af6bc/task-12",
+      "command": "cd /Users/princeofscale/Desktop/gym/tyaga-agent-evolution && node /Users/princeofscale/Desktop/gym/tyaga-agent-evolution/artifacts/agent-evolution/setup-final-checks/task-6-20261114T022744Z-fV1YrO/runner.mjs > /Users/princeofscale/Desktop/gym/tyaga-agent-evolution/artifacts/agent-evolution/setup-final-checks/task-6-20261114T022744Z-fV1YrO/runner.stdout.log 2> /Users/princeofscale/Desktop/gym/tyaga-agent-evolution/artifacts/agent-evolution/setup-final-checks/task-6-20261114T022744Z-fV1YrO/runner.stderr.log; code=$?; echo \"$code\" > /Users/princeofscale/Desktop/gym/tyaga-agent-evolution/artifacts/agent-evolution/setup-final-checks/task-6-20261114T022744Z-fV1YrO/runner.exit-code; exit $code",
+      "status": "COMPLETED",
+      "exitCode": 0,
+      "collected": true
+    }
+  ],
+  "activeJobsRemaining": 0,
+  "canonicalCwd": "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution",
+  "evidenceRoot": "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution/artifacts/agent-evolution/setup-final-checks/task-6-20261114T022744Z-fV1YrO"
+}

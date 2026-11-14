@@ -13,6 +13,8 @@ import {
   Bell,
 } from "lucide-react";
 export type ToolId =
+  | "machines"
+  | "technique"
   | "backup"
   | "rest_notifications"
   | "bodyweight"
@@ -33,6 +35,8 @@ export default function ToolsHub({
     {
       title: "Учёт",
       items: [
+        { id:"machines",name:"Мои тренажёры",hint:"Станции, модели и отдельный прогресс",icon:Dumbbell },
+        { id:"technique",name:"Анализ техники по видео",hint:"Углы и амплитуда · обработка на устройстве",icon:Target },
         {
           id: "backup",
           name: "Резервная копия",

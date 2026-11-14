@@ -1,0 +1,79 @@
+{
+  "status": "READY-FOR-LEAD-SEMANTIC-REVIEW",
+  "clocks": {
+    "start_utc": "2026-11-14T03:42:09.955926+00:00",
+    "end_utc": "2026-11-14T03:42:10.569073+00:00",
+    "start_saratov": "2026-11-14T07:42:09.955926+04:00",
+    "end_saratov": "2026-11-14T07:42:10.569073+04:00",
+    "duration_sec": 0.613147
+  },
+  "env": {
+    "cwd": "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution",
+    "root": "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution",
+    "safe_override": "GIT_OPTIONAL_LOCKS=0"
+  },
+  "git": {
+    "branch": "agents/tyaga-30-rounds",
+    "HEAD": "c708843daa05f68a5bc5417fcb1de7bafed8a369",
+    "MERGE_HEAD": "b766eec0588a5bd688742dac26b45411d85e82e3",
+    "unmergedCount": 0,
+    "whitespaceExits": {
+      "cmd_12_diff_check": 0,
+      "cmd_13_diff_cached_check": 0
+    },
+    "stagedstat": {
+      "exit_code": 0,
+      "summary_line": " 86 files changed, 7417 insertions(+), 939 deletions(-)"
+    },
+    "untrackedCount": 18,
+    "untrackedNote": "Full list in untracked_list.json and cmd_14_stdout.txt"
+  },
+  "nonparentDiff": {
+    "cmd16_sha256": "4eb2f7c87c5f587261a76c589013b5803e28b06deaa06654e4937ce632d71004",
+    "cmd16_lines": 1094,
+    "lead_diff_sha256": "4eb2f7c87c5f587261a76c589013b5803e28b06deaa06654e4937ce632d71004",
+    "lead_diff_lines": 1094,
+    "result": "SAME"
+  },
+  "packageInspection": {
+    "mediapipe_tasks_vision_package_json": "0.10.35",
+    "mediapipe_tasks_vision_package_lock": "0.10.35",
+    "test_e2e_prepare_script": "node scripts/fetch-pose-test-model.mjs"
+  },
+  "metadataGraph": {
+    "0010_id": "e4b94493-3e00-4b0c-a6f2-34c3a46ed0ca",
+    "0010_prevId": "00b73f44-a273-437c-9f06-39162f02a0c7",
+    "0010_mach_orig_id": "e829fac1-a32e-4fb4-9757-428ec8ba8768",
+    "0011_id": "80149df7-e53d-46a6-9f13-d4b71b3a20c6",
+    "0011_prevId": "e4b94493-3e00-4b0c-a6f2-34c3a46ed0ca",
+    "journal_idx10": {
+      "idx": 10,
+      "version": "6",
+      "when": 1794424045113,
+      "tag": "0010_live_rooms",
+      "breakpoints": true
+    },
+    "journal_idx11": {
+      "idx": 11,
+      "version": "6",
+      "when": 1794468210926,
+      "tag": "0010_machines",
+      "breakpoints": true
+    }
+  },
+  "freezeVerification": {
+    "receipt_sha256": "103c07c25e7f77ec67a47160bf1d3e822959ccc45a9559724ea6aaf0b0b49d17",
+    "receipt_match": true,
+    "allSevenMatch": true,
+    "report_sha256": "7d7f8c2a7e091f008c3962241e43f924cf51d7a05a51dc057f69d3d694428cf3",
+    "report_match": true
+  },
+  "optional249": {
+    "scope": "NOTREMEASURED",
+    "details": {
+      "browser-execution-preflight.json": "Checked; no clear 249 path/SHA map found",
+      "owned-teardown.json": "Checked; no clear 249 path/SHA map found"
+    }
+  },
+  "blockers": []
+}

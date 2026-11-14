@@ -1,5 +1,5 @@
 import { apiClient } from "./ApiClient";
-import type { Routine, ProductData, Exercise } from "../lib/types";
+import type { Routine, ProductData, Exercise, MachineInstance } from "../lib/types";
 export class ProductService {
   read(signal?: AbortSignal) {
     return apiClient.request<ProductData>(
@@ -9,6 +9,8 @@ export class ProductService {
       signal,
     );
   }
+  saveMachine(machine: MachineInstance) { return apiClient.request<{ machine: MachineInstance }>("/api/machines", "PUT", machine); }
+  archiveMachine(machine: MachineInstance) { return apiClient.request("/api/machines/" + encodeURIComponent(machine.id), "DELETE", { revision: machine.revision }); }
   saveRoutine(routine: Routine) {
     return apiClient.request<{ routine: Routine }>(
       "/api/routines",

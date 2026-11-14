@@ -1,0 +1,332 @@
+{
+  "status": "READY-FOR-LEAD-SEMANTIC-REVIEW",
+  "clocks": {
+    "start_utc": "2026-11-14T03:52:02.667410+00:00",
+    "end_utc": "2026-11-14T03:52:03.227021+00:00",
+    "start_saratov": "2026-11-14T07:52:02.667410+04:00",
+    "end_saratov": "2026-11-14T07:52:03.227021+04:00",
+    "duration_sec": 0.559611
+  },
+  "env": {
+    "cwd": "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution",
+    "canonical_root": "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution",
+    "safe_override": "GIT_OPTIONAL_LOCKS=0",
+    "python_flags": "-B"
+  },
+  "guards": {
+    "passed": true,
+    "branch": "agents/tyaga-30-rounds",
+    "HEAD": "c708843daa05f68a5bc5417fcb1de7bafed8a369",
+    "MERGE_HEAD": "b766eec0588a5bd688742dac26b45411d85e82e3"
+  },
+  "commands": {
+    "cmd_01": {
+      "argv": [
+        "git",
+        "rev-parse",
+        "--show-toplevel"
+      ],
+      "exit_code": 0,
+      "stdout_len": 55,
+      "stderr_len": 0
+    },
+    "cmd_02": {
+      "argv": [
+        "pwd"
+      ],
+      "exit_code": 0,
+      "stdout_len": 55,
+      "stderr_len": 0
+    },
+    "cmd_03": {
+      "argv": [
+        "git",
+        "branch",
+        "--show-current"
+      ],
+      "exit_code": 0,
+      "stdout_len": 23,
+      "stderr_len": 0
+    },
+    "cmd_04": {
+      "argv": [
+        "git",
+        "rev-parse",
+        "HEAD"
+      ],
+      "exit_code": 0,
+      "stdout_len": 41,
+      "stderr_len": 0
+    },
+    "cmd_05": {
+      "argv": [
+        "git",
+        "rev-parse",
+        "MERGE_HEAD"
+      ],
+      "exit_code": 0,
+      "stdout_len": 41,
+      "stderr_len": 0
+    },
+    "cmd_06": {
+      "argv": [
+        "git",
+        "status",
+        "--short"
+      ],
+      "exit_code": 0,
+      "stdout_len": 3461,
+      "stderr_len": 0
+    },
+    "cmd_07": {
+      "argv": [
+        "git",
+        "status",
+        "--porcelain=v1",
+        "-uall"
+      ],
+      "exit_code": 0,
+      "stdout_len": 3461,
+      "stderr_len": 0
+    },
+    "cmd_08": {
+      "argv": [
+        "git",
+        "diff",
+        "--name-only",
+        "--diff-filter=U"
+      ],
+      "exit_code": 0,
+      "stdout_len": 0,
+      "stderr_len": 0
+    },
+    "cmd_09": {
+      "argv": [
+        "git",
+        "diff",
+        "--name-status"
+      ],
+      "exit_code": 0,
+      "stdout_len": 44,
+      "stderr_len": 0
+    },
+    "cmd_10": {
+      "argv": [
+        "git",
+        "diff",
+        "--cached",
+        "--stat"
+      ],
+      "exit_code": 0,
+      "stdout_len": 5414,
+      "stderr_len": 0
+    },
+    "cmd_11": {
+      "argv": [
+        "git",
+        "diff",
+        "--cached",
+        "--numstat"
+      ],
+      "exit_code": 0,
+      "stdout_len": 2958,
+      "stderr_len": 0
+    },
+    "cmd_12": {
+      "argv": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0,
+      "stdout_len": 0,
+      "stderr_len": 0
+    },
+    "cmd_13": {
+      "argv": [
+        "git",
+        "diff",
+        "--cached",
+        "--check"
+      ],
+      "exit_code": 0,
+      "stdout_len": 0,
+      "stderr_len": 0
+    },
+    "cmd_14": {
+      "argv": [
+        "git",
+        "ls-files",
+        "--others",
+        "--exclude-standard"
+      ],
+      "exit_code": 0,
+      "stdout_len": 635,
+      "stderr_len": 0
+    },
+    "cmd_15": {
+      "argv": [
+        "git",
+        "ls-files",
+        "--stage"
+      ],
+      "exit_code": 0,
+      "stdout_len": 26963,
+      "stderr_len": 0
+    },
+    "cmd_16": {
+      "argv": [
+        "git",
+        "diff",
+        "--cached",
+        "c708843daa05f68a5bc5417fcb1de7bafed8a369",
+        "--",
+        "db/schema.ts",
+        "drizzle/meta/_journal.json",
+        "drizzle/provenance/integration-0010.json",
+        "package.json",
+        "server/index.ts",
+        "src/App.tsx",
+        "src/components/WorkoutView.tsx",
+        "src/styles.css",
+        "tests/agent-engineering-setup.test.ts",
+        "tests/e2e/daily-workflow.spec.ts",
+        "tests/e2e/workout.spec.ts",
+        "tests/machines-execution-api.test.ts"
+      ],
+      "exit_code": 0,
+      "stdout_len": 55013,
+      "stderr_len": 0
+    },
+    "cmd_17": {
+      "argv": [
+        "git",
+        "diff",
+        "--",
+        "db/schema.ts",
+        "drizzle/meta/_journal.json",
+        "drizzle/provenance/integration-0010.json",
+        "package.json",
+        "server/index.ts",
+        "src/App.tsx",
+        "src/components/WorkoutView.tsx",
+        "src/styles.css",
+        "tests/agent-engineering-setup.test.ts",
+        "tests/e2e/daily-workflow.spec.ts",
+        "tests/e2e/workout.spec.ts",
+        "tests/machines-execution-api.test.ts"
+      ],
+      "exit_code": 0,
+      "stdout_len": 0,
+      "stderr_len": 0
+    }
+  },
+  "unmerged_count": 0,
+  "staged_stat_summary": "86 files changed, 7417 insertions(+), 939 deletions(-)",
+  "untracked_count": 18,
+  "diff_12_paths_comparison": {
+    "cmd16_sha256": "4eb2f7c87c5f587261a76c589013b5803e28b06deaa06654e4937ce632d71004",
+    "cmd16_lines": 1094,
+    "historical_sha256": "4eb2f7c87c5f587261a76c589013b5803e28b06deaa06654e4937ce632d71004",
+    "historical_lines": 1094,
+    "identical": true
+  },
+  "package_preservation": {
+    "mediapipe_exact_0_10_35": true,
+    "test_e2e_prepare_retained": true,
+    "motion_in_pkg": true,
+    "lucide_in_pkg": true
+  },
+  "metadata_graph": {
+    "rooms0010_id": "e4b94493-3e00-4b0c-a6f2-34c3a46ed0ca",
+    "rooms0010_prevId": "00b73f44-a273-437c-9f06-39162f02a0c7",
+    "mach_orig_id": "e829fac1-a32e-4fb4-9757-428ec8ba8768",
+    "mach_orig_prevId": "00b73f44-a273-437c-9f06-39162f02a0c7",
+    "comb0011_id": "80149df7-e53d-46a6-9f13-d4b71b3a20c6",
+    "comb0011_prevId": "e4b94493-3e00-4b0c-a6f2-34c3a46ed0ca",
+    "journal_idx10": {
+      "idx": 10,
+      "version": "6",
+      "when": 1794424045113,
+      "tag": "0010_live_rooms",
+      "breakpoints": true
+    },
+    "journal_idx11": {
+      "idx": 11,
+      "version": "6",
+      "when": 1794468210926,
+      "tag": "0010_machines",
+      "breakpoints": true
+    },
+    "next_idx": 12,
+    "prov_migrations": [
+      {
+        "file": "0010_live_rooms.sql",
+        "commit": "c708843daa05f68a5bc5417fcb1de7bafed8a369",
+        "sha256": "09938ab09d9bb0d81750fad6c3c6115d16eb1faedeb7970ff3ef069eadfc9a3d"
+      },
+      {
+        "file": "0010_machines.sql",
+        "commit": "b766eec0588a5bd688742dac26b45411d85e82e3",
+        "sha256": "91f6eb0effb0e109e05702fbeffbf07341d1363ccf47a5132fb196ee66f77eb9"
+      }
+    ],
+    "prov_rooms_snap": {
+      "commit": "c708843daa05f68a5bc5417fcb1de7bafed8a369",
+      "path": "meta/0010_snapshot.json",
+      "id": "e4b94493-3e00-4b0c-a6f2-34c3a46ed0ca",
+      "prevId": "00b73f44-a273-437c-9f06-39162f02a0c7",
+      "sha256": "bd31820cd90d2e78203a4c136451742113f4ba4405686104420971fe297c0367",
+      "journalIndex": 10,
+      "when": 1794424045113
+    },
+    "prov_mach_orig_snap": {
+      "commit": "b766eec0588a5bd688742dac26b45411d85e82e3",
+      "path": "provenance/0010_machines_snapshot.original.json",
+      "originalPath": "meta/0010_snapshot.json",
+      "id": "e829fac1-a32e-4fb4-9757-428ec8ba8768",
+      "prevId": "00b73f44-a273-437c-9f06-39162f02a0c7",
+      "sha256": "a4e6aa9adaa1cf0446c0cc14bb97da72d96c74a7aad636affc70b838320a84b8"
+    },
+    "prov_comb_snap": {
+      "path": "meta/0011_snapshot.json",
+      "id": "80149df7-e53d-46a6-9f13-d4b71b3a20c6",
+      "prevId": "e4b94493-3e00-4b0c-a6f2-34c3a46ed0ca",
+      "journalIndex": 11,
+      "sqlTag": "0010_machines",
+      "when": 1794468210926
+    }
+  },
+  "qa_final_freeze_verification": {
+    "receipt_sha256": "103c07c25e7f77ec67a47160bf1d3e822959ccc45a9559724ea6aaf0b0b49d17",
+    "receipt_expected": "103c07c25e7f77ec67a47160bf1d3e822959ccc45a9559724ea6aaf0b0b49d17",
+    "receipt_match": true,
+    "runtimeInputSHAs7_matches": {
+      "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution/tests/agent-qa-domain.test.ts": true,
+      "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution/tests/agent-qa-migrations.test.ts": true,
+      "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution/tests/e2e/agent-qa-baseline.spec.ts": true,
+      "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution/artifacts/agent-evolution/qa/setup/playwright.qa.config.ts": true,
+      "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution/artifacts/agent-evolution/qa/setup/serve-qa.mjs": true,
+      "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution/artifacts/agent-evolution/qa/setup/wrangler.qa.json": true,
+      "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution/artifacts/agent-evolution/qa/setup/tsconfig.qa.json": true
+    },
+    "all_7_match": true,
+    "report_sha256": "7d7f8c2a7e091f008c3962241e43f924cf51d7a05a51dc057f69d3d694428cf3",
+    "report_expected": "7d7f8c2a7e091f008c3962241e43f924cf51d7a05a51dc057f69d3d694428cf3",
+    "report_match": true
+  },
+  "optional249": {
+    "status": "NOT REMEASURED",
+    "reason": "No unambiguous 249-path/SHA map exists in browser-execution-preflight.json or owned-teardown.json"
+  },
+  "historical_facts_preserved": {
+    "qa_scopes": "12 SCOPED PASS / 5 PARTIAL / 1 NOT PROVEN",
+    "final_task6_checks": "0 -> 0 -> 0 / 266",
+    "started": 0,
+    "accepted": 0,
+    "requirements": 0,
+    "productcommits": 0,
+    "integrationSHA": null
+  },
+  "active_remaining_jobs": 0
+}

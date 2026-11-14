@@ -1,0 +1,1736 @@
+{
+  "main_ref": "b766eec0588a5bd688742dac26b45411d85e82e3",
+  "commands": {
+    "ls_files_stage": {
+      "command": "git ls-files --stage",
+      "exit_code": 0,
+      "stdout_len": 26963,
+      "stderr_len": 0,
+      "stderr": ""
+    },
+    "ls_tree_head": {
+      "command": "git ls-tree -r HEAD",
+      "exit_code": 0,
+      "stdout_len": 25103,
+      "stderr_len": 0,
+      "stderr": ""
+    },
+    "ls_tree_main": {
+      "command": "git ls-tree -r b766eec0588a5bd688742dac26b45411d85e82e3",
+      "exit_code": 0,
+      "stdout_len": 25752,
+      "stderr_len": 0,
+      "stderr": ""
+    },
+    "diff_cached_check": {
+      "command": "git diff --cached --check",
+      "exit_code": 0,
+      "stdout_len": 0,
+      "stderr_len": 0,
+      "stderr": ""
+    }
+  },
+  "counts": {
+    "both": 126,
+    "head": 37,
+    "main": 57,
+    "neither": 15
+  },
+  "neither_paths": [
+    "db/schema.ts",
+    "drizzle/meta/0011_snapshot.json",
+    "drizzle/meta/_journal.json",
+    "drizzle/provenance/0010_machines_snapshot.original.json",
+    "drizzle/provenance/integration-0010.json",
+    "package-lock.json",
+    "package.json",
+    "server/index.ts",
+    "src/App.tsx",
+    "src/components/WorkoutView.tsx",
+    "src/styles.css",
+    "tests/agent-engineering-setup.test.ts",
+    "tests/e2e/daily-workflow.spec.ts",
+    "tests/e2e/workout.spec.ts",
+    "tests/machines-execution-api.test.ts"
+  ],
+  "neither_diff_included": [
+    "db/schema.ts",
+    "drizzle/meta/_journal.json",
+    "drizzle/provenance/integration-0010.json",
+    "package.json",
+    "server/index.ts",
+    "src/App.tsx",
+    "src/components/WorkoutView.tsx",
+    "src/styles.css",
+    "tests/agent-engineering-setup.test.ts",
+    "tests/e2e/daily-workflow.spec.ts",
+    "tests/e2e/workout.spec.ts",
+    "tests/machines-execution-api.test.ts"
+  ],
+  "neither_diff_excluded": [
+    "drizzle/meta/0011_snapshot.json",
+    "drizzle/provenance/0010_machines_snapshot.original.json",
+    "package-lock.json"
+  ],
+  "neither_diff_lines": {
+    "db/schema.ts": 35,
+    "drizzle/meta/_journal.json": 19,
+    "drizzle/provenance/integration-0010.json": 54,
+    "package.json": 22,
+    "server/index.ts": 58,
+    "src/App.tsx": 176,
+    "src/components/WorkoutView.tsx": 221,
+    "src/styles.css": 28,
+    "tests/agent-engineering-setup.test.ts": 210,
+    "tests/e2e/daily-workflow.spec.ts": 14,
+    "tests/e2e/workout.spec.ts": 14,
+    "tests/machines-execution-api.test.ts": 243
+  },
+  "rows": [
+    {
+      "path": "db/schema.ts",
+      "index": "e436a3785ff1772cd37a213a1736b63d90ec6a3a",
+      "head": "f0bf0eed1353adc0dd9e415b23cf6d416d2db9d4",
+      "main": "59952520b992aa02dee2c2f71fc23034c551034a",
+      "classification": "neither"
+    },
+    {
+      "path": "drizzle/0000_romantic_medusa.sql",
+      "index": "9cd7870ac5a98c2c1173f9dbccbb2efd8cb5b15f",
+      "head": "9cd7870ac5a98c2c1173f9dbccbb2efd8cb5b15f",
+      "main": "9cd7870ac5a98c2c1173f9dbccbb2efd8cb5b15f",
+      "classification": "both"
+    },
+    {
+      "path": "drizzle/0001_misty_ghost_rider.sql",
+      "index": "0b56cc0adecfb5197d23c11fefbbb339f6e2a769",
+      "head": "0b56cc0adecfb5197d23c11fefbbb339f6e2a769",
+      "main": "0b56cc0adecfb5197d23c11fefbbb339f6e2a769",
+      "classification": "both"
+    },
+    {
+      "path": "drizzle/0002_left_ma_gnuci.sql",
+      "index": "b9e9e798cf0111fb164114998febf4607098f71e",
+      "head": "b9e9e798cf0111fb164114998febf4607098f71e",
+      "main": "b9e9e798cf0111fb164114998febf4607098f71e",
+      "classification": "both"
+    },
+    {
+      "path": "drizzle/0003_jazzy_zarda.sql",
+      "index": "3c800d0d24db36660830f1f5dc3a8744e54ffaf4",
+      "head": "3c800d0d24db36660830f1f5dc3a8744e54ffaf4",
+      "main": "3c800d0d24db36660830f1f5dc3a8744e54ffaf4",
+      "classification": "both"
+    },
+    {
+      "path": "drizzle/0004_fat_oracle.sql",
+      "index": "809ea384264b65497965e1afedaeb93bf1ccd33a",
+      "head": "809ea384264b65497965e1afedaeb93bf1ccd33a",
+      "main": "809ea384264b65497965e1afedaeb93bf1ccd33a",
+      "classification": "both"
+    },
+    {
+      "path": "drizzle/0005_young_jazinda.sql",
+      "index": "d8bfa2e07d58117779904323c526f8a8dca9832b",
+      "head": "d8bfa2e07d58117779904323c526f8a8dca9832b",
+      "main": "d8bfa2e07d58117779904323c526f8a8dca9832b",
+      "classification": "both"
+    },
+    {
+      "path": "drizzle/0006_sync.sql",
+      "index": "9c60ac9ec2936682903a15c344453acbe8a0a37b",
+      "head": "9c60ac9ec2936682903a15c344453acbe8a0a37b",
+      "main": "9c60ac9ec2936682903a15c344453acbe8a0a37b",
+      "classification": "both"
+    },
+    {
+      "path": "drizzle/0007_wise_rhodey.sql",
+      "index": "214fa785d8bc2ee34887d8a27057752c6a2cabf7",
+      "head": "214fa785d8bc2ee34887d8a27057752c6a2cabf7",
+      "main": "214fa785d8bc2ee34887d8a27057752c6a2cabf7",
+      "classification": "both"
+    },
+    {
+      "path": "drizzle/0008_flaky_microbe.sql",
+      "index": "610162d4b6cc5b925878af374554b0f3d933ee37",
+      "head": "610162d4b6cc5b925878af374554b0f3d933ee37",
+      "main": "610162d4b6cc5b925878af374554b0f3d933ee37",
+      "classification": "both"
+    },
+    {
+      "path": "drizzle/0009_noisy_iron_lad.sql",
+      "index": "afc8c952e98ae5b1daf185bf6dcb54cd37c0e6b4",
+      "head": "afc8c952e98ae5b1daf185bf6dcb54cd37c0e6b4",
+      "main": "afc8c952e98ae5b1daf185bf6dcb54cd37c0e6b4",
+      "classification": "both"
+    },
+    {
+      "path": "drizzle/0010_live_rooms.sql",
+      "index": "7a4fd424cf13061ceeca9c5c621a8b70f948e7fd",
+      "head": "7a4fd424cf13061ceeca9c5c621a8b70f948e7fd",
+      "main": null,
+      "classification": "head"
+    },
+    {
+      "path": "drizzle/0010_machines.sql",
+      "index": "2c4494378e096d158c9838449294debc4d44c16b",
+      "head": null,
+      "main": "2c4494378e096d158c9838449294debc4d44c16b",
+      "classification": "main"
+    },
+    {
+      "path": "drizzle/meta/0000_snapshot.json",
+      "index": "70eaaa27713850aeefe62ecd74507ee2a19429f5",
+      "head": "70eaaa27713850aeefe62ecd74507ee2a19429f5",
+      "main": "70eaaa27713850aeefe62ecd74507ee2a19429f5",
+      "classification": "both"
+    },
+    {
+      "path": "drizzle/meta/0001_snapshot.json",
+      "index": "a2c5c4e30f3a0ee2e734e01b520315d5dca2c44d",
+      "head": "a2c5c4e30f3a0ee2e734e01b520315d5dca2c44d",
+      "main": "a2c5c4e30f3a0ee2e734e01b520315d5dca2c44d",
+      "classification": "both"
+    },
+    {
+      "path": "drizzle/meta/0002_snapshot.json",
+      "index": "0895f707be08745b517a28fb6843c13e6293208b",
+      "head": "0895f707be08745b517a28fb6843c13e6293208b",
+      "main": "0895f707be08745b517a28fb6843c13e6293208b",
+      "classification": "both"
+    },
+    {
+      "path": "drizzle/meta/0003_snapshot.json",
+      "index": "166eb779aaaf121ab20c01f6b0746530ee254e14",
+      "head": "166eb779aaaf121ab20c01f6b0746530ee254e14",
+      "main": "166eb779aaaf121ab20c01f6b0746530ee254e14",
+      "classification": "both"
+    },
+    {
+      "path": "drizzle/meta/0004_snapshot.json",
+      "index": "98288a149842a6088a9920126c8adbb9c959679a",
+      "head": "98288a149842a6088a9920126c8adbb9c959679a",
+      "main": "98288a149842a6088a9920126c8adbb9c959679a",
+      "classification": "both"
+    },
+    {
+      "path": "drizzle/meta/0005_snapshot.json",
+      "index": "49f6624fee9b59f896efb28e6d496c46dc8578f9",
+      "head": "49f6624fee9b59f896efb28e6d496c46dc8578f9",
+      "main": "49f6624fee9b59f896efb28e6d496c46dc8578f9",
+      "classification": "both"
+    },
+    {
+      "path": "drizzle/meta/0006_snapshot.json",
+      "index": "0a573537a96007fcd5cd85fe42ccfd1dc32269aa",
+      "head": "0a573537a96007fcd5cd85fe42ccfd1dc32269aa",
+      "main": "0a573537a96007fcd5cd85fe42ccfd1dc32269aa",
+      "classification": "both"
+    },
+    {
+      "path": "drizzle/meta/0007_snapshot.json",
+      "index": "c73bff0750a4d5535a613619a5273afe6cef8f76",
+      "head": "c73bff0750a4d5535a613619a5273afe6cef8f76",
+      "main": "c73bff0750a4d5535a613619a5273afe6cef8f76",
+      "classification": "both"
+    },
+    {
+      "path": "drizzle/meta/0008_snapshot.json",
+      "index": "0b6bc91c3778b8bb527be097e0d4358704886e39",
+      "head": "0b6bc91c3778b8bb527be097e0d4358704886e39",
+      "main": "0b6bc91c3778b8bb527be097e0d4358704886e39",
+      "classification": "both"
+    },
+    {
+      "path": "drizzle/meta/0009_snapshot.json",
+      "index": "e78d6419ae498bafec26c631f39d708039d86781",
+      "head": "e78d6419ae498bafec26c631f39d708039d86781",
+      "main": "e78d6419ae498bafec26c631f39d708039d86781",
+      "classification": "both"
+    },
+    {
+      "path": "drizzle/meta/0010_snapshot.json",
+      "index": "eb30d363f97ce40175c1dc563100ba2ff0a61fdc",
+      "head": "eb30d363f97ce40175c1dc563100ba2ff0a61fdc",
+      "main": "72c8094d9bc2612f050089826de459a678f80671",
+      "classification": "head"
+    },
+    {
+      "path": "drizzle/meta/0011_snapshot.json",
+      "index": "6ad41e2a9724345e9ca7eb3e55c65e2b8683d82c",
+      "head": null,
+      "main": null,
+      "classification": "neither"
+    },
+    {
+      "path": "drizzle/meta/_journal.json",
+      "index": "33f3fcce8efc7379f7bced69e9e905356c59fa4f",
+      "head": "455d7071f778882b4ead3f9b9bc913e8275e35b0",
+      "main": "8d13aa0794224c8fb2485caf8c2c2076fb36ff94",
+      "classification": "neither"
+    },
+    {
+      "path": "drizzle/provenance/0010_machines_snapshot.original.json",
+      "index": "72c8094d9bc2612f050089826de459a678f80671",
+      "head": null,
+      "main": null,
+      "classification": "neither"
+    },
+    {
+      "path": "drizzle/provenance/integration-0010.json",
+      "index": "fce4507a0585d9fb3275112787397ae15efaaaff",
+      "head": null,
+      "main": null,
+      "classification": "neither"
+    },
+    {
+      "path": "package-lock.json",
+      "index": "0bd1c31b7c58f26b512957817501fbe8d221da6a",
+      "head": "5e657c76ff7733da7d610ba1a123572f41305735",
+      "main": "b03ce1534e59a3109bd211dfdc164e07d6b5f9ac",
+      "classification": "neither"
+    },
+    {
+      "path": "package.json",
+      "index": "85e4b066a817c1a0d90e47dab9d8dabb1679a812",
+      "head": "b5469c0c8096f735304c6997deb53451a89ca151",
+      "main": "6a2cf10c8429af772a519c34f2221a071923314c",
+      "classification": "neither"
+    },
+    {
+      "path": "server/AccountService.ts",
+      "index": "03dc654d37fdb2024234e13bbae1c5b55833dc49",
+      "head": "03dc654d37fdb2024234e13bbae1c5b55833dc49",
+      "main": "03dc654d37fdb2024234e13bbae1c5b55833dc49",
+      "classification": "both"
+    },
+    {
+      "path": "server/BackupImportService.ts",
+      "index": "f0bf5b55339c9e265e2ddbbf6e3c1d45f211e628",
+      "head": "bfbbe6635992e58239ae3f2a8d3e4c8f10a7fd89",
+      "main": "f0bf5b55339c9e265e2ddbbf6e3c1d45f211e628",
+      "classification": "main"
+    },
+    {
+      "path": "server/BodyweightRepository.ts",
+      "index": "1d91fbc28ac691834703fbf7cddbb351f8c1a415",
+      "head": "1d91fbc28ac691834703fbf7cddbb351f8c1a415",
+      "main": "1d91fbc28ac691834703fbf7cddbb351f8c1a415",
+      "classification": "both"
+    },
+    {
+      "path": "server/ChallengeRepository.ts",
+      "index": "647741d6684e340a9714bc8af599e23f6182dbb7",
+      "head": "647741d6684e340a9714bc8af599e23f6182dbb7",
+      "main": "647741d6684e340a9714bc8af599e23f6182dbb7",
+      "classification": "both"
+    },
+    {
+      "path": "server/ExerciseRepository.ts",
+      "index": "a5f979f315d49dea7e105df48fb263ae34419994",
+      "head": "a5f979f315d49dea7e105df48fb263ae34419994",
+      "main": "a5f979f315d49dea7e105df48fb263ae34419994",
+      "classification": "both"
+    },
+    {
+      "path": "server/FriendsRepository.ts",
+      "index": "b046c6de4d98bed0c7b026a97ed0c9538dc60971",
+      "head": "b046c6de4d98bed0c7b026a97ed0c9538dc60971",
+      "main": "b046c6de4d98bed0c7b026a97ed0c9538dc60971",
+      "classification": "both"
+    },
+    {
+      "path": "server/HistoryImportService.ts",
+      "index": "9926996af14318bfb860569f4c16b1ddc5632eba",
+      "head": "6e6726565d1c60b2059ac5b0c7d18b05b8d534df",
+      "main": "9926996af14318bfb860569f4c16b1ddc5632eba",
+      "classification": "main"
+    },
+    {
+      "path": "server/LiveRoomService.ts",
+      "index": "cc97a133af0d4c68fdc067c8fcc6888bb2121eca",
+      "head": "cc97a133af0d4c68fdc067c8fcc6888bb2121eca",
+      "main": null,
+      "classification": "head"
+    },
+    {
+      "path": "server/MachineRepository.ts",
+      "index": "21739e06fefa2625c2f29f3e377f48817d43edf0",
+      "head": null,
+      "main": "21739e06fefa2625c2f29f3e377f48817d43edf0",
+      "classification": "main"
+    },
+    {
+      "path": "server/MeetupRepository.ts",
+      "index": "7f9ab22b692d4342288ad81d983bb68b961e7ada",
+      "head": "7f9ab22b692d4342288ad81d983bb68b961e7ada",
+      "main": "7f9ab22b692d4342288ad81d983bb68b961e7ada",
+      "classification": "both"
+    },
+    {
+      "path": "server/PersonalExerciseFactory.ts",
+      "index": "559a473b97bc6fc3f4686bd7681b72c8c4b38364",
+      "head": "559a473b97bc6fc3f4686bd7681b72c8c4b38364",
+      "main": "559a473b97bc6fc3f4686bd7681b72c8c4b38364",
+      "classification": "both"
+    },
+    {
+      "path": "server/ProductRepository.ts",
+      "index": "f54471a34679195a072152f7d3133eb12e482e1a",
+      "head": "0e1d899125aa16de34ee8ab87ebae9735995d127",
+      "main": "f54471a34679195a072152f7d3133eb12e482e1a",
+      "classification": "main"
+    },
+    {
+      "path": "server/SyncService.ts",
+      "index": "a9f3e5f41f938f7260445790014e60e4533104ed",
+      "head": "6f2c298616878cc2d8f0c94913da3f9ba9e8ba0a",
+      "main": "a9f3e5f41f938f7260445790014e60e4533104ed",
+      "classification": "main"
+    },
+    {
+      "path": "server/cloud.ts",
+      "index": "c4165a6d7e7cb6b2aaf99ab6e928cb3d5a1a7a35",
+      "head": "c4165a6d7e7cb6b2aaf99ab6e928cb3d5a1a7a35",
+      "main": "c4165a6d7e7cb6b2aaf99ab6e928cb3d5a1a7a35",
+      "classification": "both"
+    },
+    {
+      "path": "server/index.ts",
+      "index": "aad49a8c4c273d170ae8883dcc9bab449072de4a",
+      "head": "1b027b4bd80a230c002d566f08e6fe882fd88f00",
+      "main": "6411ac9fbf266c54e71c906d0c2ceedd3270308f",
+      "classification": "neither"
+    },
+    {
+      "path": "server/local.ts",
+      "index": "5cc224c74ae22026b89e30e20f8983bca35a79cc",
+      "head": "5cc224c74ae22026b89e30e20f8983bca35a79cc",
+      "main": "5cc224c74ae22026b89e30e20f8983bca35a79cc",
+      "classification": "both"
+    },
+    {
+      "path": "server/validation.ts",
+      "index": "91d6366a26032b07ae1498dea984def75dd8f826",
+      "head": "1872fe003ab8a66893ef94c66373b0ab1d4d3c55",
+      "main": "91d6366a26032b07ae1498dea984def75dd8f826",
+      "classification": "main"
+    },
+    {
+      "path": "src/App.tsx",
+      "index": "e4f9448f2d1913f79302c68557789d50fff3473e",
+      "head": "9069cb697c05b04e802715831a4296998ab6e156",
+      "main": "b9b8fe571cba920a93b548df1bc5c9c6452447ec",
+      "classification": "neither"
+    },
+    {
+      "path": "src/assets/anatomy/LICENSE",
+      "index": "16dcb28e084a54b377f1de03832ef61c0f7f6993",
+      "head": "16dcb28e084a54b377f1de03832ef61c0f7f6993",
+      "main": "16dcb28e084a54b377f1de03832ef61c0f7f6993",
+      "classification": "both"
+    },
+    {
+      "path": "src/assets/anatomy/PROVENANCE.md",
+      "index": "8630d759a913faa5d231a4e81507070104cc9717",
+      "head": "8630d759a913faa5d231a4e81507070104cc9717",
+      "main": "8630d759a913faa5d231a4e81507070104cc9717",
+      "classification": "both"
+    },
+    {
+      "path": "src/assets/anatomy/muscle-map.json",
+      "index": "4c5f080641739a2b21a179aa727add05414eac55",
+      "head": "4c5f080641739a2b21a179aa727add05414eac55",
+      "main": "4c5f080641739a2b21a179aa727add05414eac55",
+      "classification": "both"
+    },
+    {
+      "path": "src/components/AccountGate.tsx",
+      "index": "263e99ad81b434667ca820e43f4e0939a865f695",
+      "head": "263e99ad81b434667ca820e43f4e0939a865f695",
+      "main": "9abf78a688393e06e33c58713733292176e3ae27",
+      "classification": "head"
+    },
+    {
+      "path": "src/components/AccountProfileForm.tsx",
+      "index": "d45b33605d392c0ca69a933bc43dfc1fc7a55b8e",
+      "head": "d45b33605d392c0ca69a933bc43dfc1fc7a55b8e",
+      "main": "d45b33605d392c0ca69a933bc43dfc1fc7a55b8e",
+      "classification": "both"
+    },
+    {
+      "path": "src/components/AnatomyExplorer.tsx",
+      "index": "4b6dd8664c1c3a1476963a997098418c388b30fc",
+      "head": "9474c984ee2925814a5839d4c7e9822e41cc9bbe",
+      "main": "4b6dd8664c1c3a1476963a997098418c388b30fc",
+      "classification": "main"
+    },
+    {
+      "path": "src/components/AppleHealthPanel.tsx",
+      "index": "c8fb1e444be0e891a5de1910cea8f704f038b496",
+      "head": "c8fb1e444be0e891a5de1910cea8f704f038b496",
+      "main": "c8fb1e444be0e891a5de1910cea8f704f038b496",
+      "classification": "both"
+    },
+    {
+      "path": "src/components/BodyMap.tsx",
+      "index": "88b811d5f38fa204c0f413971eda68d1d33bc214",
+      "head": "52022168c5ccee57dc27746888cf7b9e016b84c5",
+      "main": "88b811d5f38fa204c0f413971eda68d1d33bc214",
+      "classification": "main"
+    },
+    {
+      "path": "src/components/BodyweightModal.tsx",
+      "index": "d57053fbc7f243b2d3395d074a8d879c3db49e51",
+      "head": "d57053fbc7f243b2d3395d074a8d879c3db49e51",
+      "main": "d57053fbc7f243b2d3395d074a8d879c3db49e51",
+      "classification": "both"
+    },
+    {
+      "path": "src/components/Charts.tsx",
+      "index": "e25c79d7682a2e9ddad1b065e84257cbd253ec88",
+      "head": "e25c79d7682a2e9ddad1b065e84257cbd253ec88",
+      "main": "e25c79d7682a2e9ddad1b065e84257cbd253ec88",
+      "classification": "both"
+    },
+    {
+      "path": "src/components/CloudSyncPanel.tsx",
+      "index": "1aa7ad698c210fae0269aeccdd848363df660351",
+      "head": "1aa7ad698c210fae0269aeccdd848363df660351",
+      "main": "1aa7ad698c210fae0269aeccdd848363df660351",
+      "classification": "both"
+    },
+    {
+      "path": "src/components/DeloadModal.tsx",
+      "index": "93bbe6207e43a1201b5ef965afa92de8783f6bae",
+      "head": "2da63bc6a2e5316873a7b5573bf06eb01b2709be",
+      "main": "93bbe6207e43a1201b5ef965afa92de8783f6bae",
+      "classification": "main"
+    },
+    {
+      "path": "src/components/ExecutionFields.tsx",
+      "index": "4214b7c835a569da4ad9a8e354d4b72f1f4d66ab",
+      "head": null,
+      "main": "4214b7c835a569da4ad9a8e354d4b72f1f4d66ab",
+      "classification": "main"
+    },
+    {
+      "path": "src/components/ExerciseInfo.tsx",
+      "index": "f17c432d7d7a39ed771c98274704947d8f3b363c",
+      "head": "c591accf9cc5a52c0099de5af75c5013891f7040",
+      "main": "f17c432d7d7a39ed771c98274704947d8f3b363c",
+      "classification": "main"
+    },
+    {
+      "path": "src/components/ExerciseLibrary.tsx",
+      "index": "cc495b57b9b80bb4245ae9adabf1f512161c1149",
+      "head": "dcabfb52baf3b49096eadd8fc10261931717bdd7",
+      "main": "cc495b57b9b80bb4245ae9adabf1f512161c1149",
+      "classification": "main"
+    },
+    {
+      "path": "src/components/ExerciseSwapModal.tsx",
+      "index": "0eee84830fa6eb97af300da42fa3129b89ae234c",
+      "head": "0eee84830fa6eb97af300da42fa3129b89ae234c",
+      "main": "0eee84830fa6eb97af300da42fa3129b89ae234c",
+      "classification": "both"
+    },
+    {
+      "path": "src/components/FriendsScreen.tsx",
+      "index": "6de7e9a315b17d692bb7993d64da70fdf787eaf8",
+      "head": "6de7e9a315b17d692bb7993d64da70fdf787eaf8",
+      "main": "c6ffeb3282407f9acdea5325ddc01151e77c1c7c",
+      "classification": "head"
+    },
+    {
+      "path": "src/components/HistoryImporter.tsx",
+      "index": "6607bce7f6668621c6f1655b1625fedd3e65f57e",
+      "head": "6607bce7f6668621c6f1655b1625fedd3e65f57e",
+      "main": "6607bce7f6668621c6f1655b1625fedd3e65f57e",
+      "classification": "both"
+    },
+    {
+      "path": "src/components/InteractiveStrengthChart.tsx",
+      "index": "396e6bdb0dfbb76bfc051a7dcae50918f48899b3",
+      "head": "396e6bdb0dfbb76bfc051a7dcae50918f48899b3",
+      "main": "396e6bdb0dfbb76bfc051a7dcae50918f48899b3",
+      "classification": "both"
+    },
+    {
+      "path": "src/components/IosInstallPrompt.tsx",
+      "index": "692e8958238c53e3247186303af16a1be0cfbad4",
+      "head": "692e8958238c53e3247186303af16a1be0cfbad4",
+      "main": "692e8958238c53e3247186303af16a1be0cfbad4",
+      "classification": "both"
+    },
+    {
+      "path": "src/components/LiveAvatar.tsx",
+      "index": "c08ee9fb6b8017eaa53aae173a237d94ccc2e00b",
+      "head": "c08ee9fb6b8017eaa53aae173a237d94ccc2e00b",
+      "main": null,
+      "classification": "head"
+    },
+    {
+      "path": "src/components/LiveRoomProvider.tsx",
+      "index": "841b8db06e54d19580ff8ce03112144ab9b230bf",
+      "head": "841b8db06e54d19580ff8ce03112144ab9b230bf",
+      "main": null,
+      "classification": "head"
+    },
+    {
+      "path": "src/components/LiveStrip.tsx",
+      "index": "1841e2e4e303c7662748f31f7a1ee1d5c6eeaee1",
+      "head": "1841e2e4e303c7662748f31f7a1ee1d5c6eeaee1",
+      "main": null,
+      "classification": "head"
+    },
+    {
+      "path": "src/components/MachineManager.tsx",
+      "index": "847d3b8b18845c638108722ec93afa8da3ff351a",
+      "head": null,
+      "main": "847d3b8b18845c638108722ec93afa8da3ff351a",
+      "classification": "main"
+    },
+    {
+      "path": "src/components/Modal.tsx",
+      "index": "be1064437ef6c8fe4ad15573a049b903b408914c",
+      "head": "be1064437ef6c8fe4ad15573a049b903b408914c",
+      "main": "ec25bf334286205edc365631c09dbbb44c712a93",
+      "classification": "head"
+    },
+    {
+      "path": "src/components/MovementBalance.tsx",
+      "index": "aa9e70432fe6a4b39f991ee01ab83e19bffea10c",
+      "head": "aa9e70432fe6a4b39f991ee01ab83e19bffea10c",
+      "main": "aa9e70432fe6a4b39f991ee01ab83e19bffea10c",
+      "classification": "both"
+    },
+    {
+      "path": "src/components/OneRepMaxCalculator.tsx",
+      "index": "7031c62c86832d173a25c6287d774e45f257f103",
+      "head": "7031c62c86832d173a25c6287d774e45f257f103",
+      "main": "7031c62c86832d173a25c6287d774e45f257f103",
+      "classification": "both"
+    },
+    {
+      "path": "src/components/PersonalExerciseEditor.tsx",
+      "index": "da77a1102084c39fc1a4f5e862d4c1bccdf3afba",
+      "head": "da77a1102084c39fc1a4f5e862d4c1bccdf3afba",
+      "main": "da77a1102084c39fc1a4f5e862d4c1bccdf3afba",
+      "classification": "both"
+    },
+    {
+      "path": "src/components/PlateCalculator.tsx",
+      "index": "8b3e2eac1816d5e6ca11e52a93c976f5ce40e1fa",
+      "head": "8b3e2eac1816d5e6ca11e52a93c976f5ce40e1fa",
+      "main": "8b3e2eac1816d5e6ca11e52a93c976f5ce40e1fa",
+      "classification": "both"
+    },
+    {
+      "path": "src/components/PoseAnalysisPanel.tsx",
+      "index": "273c8f136a46948dee400338e9e643d1cfbc1536",
+      "head": null,
+      "main": "273c8f136a46948dee400338e9e643d1cfbc1536",
+      "classification": "main"
+    },
+    {
+      "path": "src/components/ProgramsScreen.tsx",
+      "index": "8210ee26e5521b36c1b3b32a76f90540087ba92c",
+      "head": "8210ee26e5521b36c1b3b32a76f90540087ba92c",
+      "main": "8210ee26e5521b36c1b3b32a76f90540087ba92c",
+      "classification": "both"
+    },
+    {
+      "path": "src/components/ProgressChart.tsx",
+      "index": "3dce60bdf4c63163e48f284c9cd752e487a09f7d",
+      "head": "3dce60bdf4c63163e48f284c9cd752e487a09f7d",
+      "main": "3dce60bdf4c63163e48f284c9cd752e487a09f7d",
+      "classification": "both"
+    },
+    {
+      "path": "src/components/ProgressOverview.tsx",
+      "index": "fafa9b3ed2e0559cad8052596a4db223f161c17b",
+      "head": "fafa9b3ed2e0559cad8052596a4db223f161c17b",
+      "main": "fafa9b3ed2e0559cad8052596a4db223f161c17b",
+      "classification": "both"
+    },
+    {
+      "path": "src/components/RestNotificationSettings.tsx",
+      "index": "e0d853095b4dff6df3d7924776b8f9066153fe78",
+      "head": "e0d853095b4dff6df3d7924776b8f9066153fe78",
+      "main": "e0d853095b4dff6df3d7924776b8f9066153fe78",
+      "classification": "both"
+    },
+    {
+      "path": "src/components/RoomInvite.tsx",
+      "index": "71e0fc568c65e0331fb3629b85b6a0226bc12717",
+      "head": "71e0fc568c65e0331fb3629b85b6a0226bc12717",
+      "main": null,
+      "classification": "head"
+    },
+    {
+      "path": "src/components/Select.tsx",
+      "index": "a1bd439337e9580380e8811793c0c8a47d2a971b",
+      "head": "a1bd439337e9580380e8811793c0c8a47d2a971b",
+      "main": "a1bd439337e9580380e8811793c0c8a47d2a971b",
+      "classification": "both"
+    },
+    {
+      "path": "src/components/SessionInsights.tsx",
+      "index": "c977f18c7ea3341348c5d93ec21501ff1103b680",
+      "head": "92240a55e084d25fd3f3a8c3febc4d91c815b2e1",
+      "main": "c977f18c7ea3341348c5d93ec21501ff1103b680",
+      "classification": "main"
+    },
+    {
+      "path": "src/components/ShareStoryCardModal.tsx",
+      "index": "9b76dc624d94075b62f0c0871b0c271673c75d90",
+      "head": "9b76dc624d94075b62f0c0871b0c271673c75d90",
+      "main": "63f44e7a9fb563625a21febaf30a7deb73bf0e3b",
+      "classification": "head"
+    },
+    {
+      "path": "src/components/StatsAnalytics.tsx",
+      "index": "164586987d4470e9f8814593566017821bcd9869",
+      "head": "a650f0700ecf5f98fa8c9d5f28aa3f03a1c131d6",
+      "main": "164586987d4470e9f8814593566017821bcd9869",
+      "classification": "main"
+    },
+    {
+      "path": "src/components/TeamChallenges.tsx",
+      "index": "86b2fd98b65591390b1a7bcd2fd2bb801be2ced2",
+      "head": "86b2fd98b65591390b1a7bcd2fd2bb801be2ced2",
+      "main": "86b2fd98b65591390b1a7bcd2fd2bb801be2ced2",
+      "classification": "both"
+    },
+    {
+      "path": "src/components/TogetherCard.tsx",
+      "index": "8c67cbcc8049572f34c2d1583861eed9d5c9a573",
+      "head": "8c67cbcc8049572f34c2d1583861eed9d5c9a573",
+      "main": null,
+      "classification": "head"
+    },
+    {
+      "path": "src/components/ToolsHub.tsx",
+      "index": "6bb5ddca0a1414ce429327b0e9d3fdcf466be5c2",
+      "head": "cea10900d0ac07a266056252d09e121b255863a9",
+      "main": "6bb5ddca0a1414ce429327b0e9d3fdcf466be5c2",
+      "classification": "main"
+    },
+    {
+      "path": "src/components/TrainingMeetups.tsx",
+      "index": "58c504880f7d2524270927fceeef1452f9f2efdf",
+      "head": "58c504880f7d2524270927fceeef1452f9f2efdf",
+      "main": "58c504880f7d2524270927fceeef1452f9f2efdf",
+      "classification": "both"
+    },
+    {
+      "path": "src/components/TrainingPlate.tsx",
+      "index": "2cffd955aeb389bc03701dcc5ff19060df4bbe3f",
+      "head": "2cffd955aeb389bc03701dcc5ff19060df4bbe3f",
+      "main": "2cffd955aeb389bc03701dcc5ff19060df4bbe3f",
+      "classification": "both"
+    },
+    {
+      "path": "src/components/VolumeLandmarksModal.tsx",
+      "index": "ab00508faf28e6f25ec7772f8917be1b823b4c57",
+      "head": "a65033241a291eab10ab3a8ce5fbeff4d84fa0ff",
+      "main": "ab00508faf28e6f25ec7772f8917be1b823b4c57",
+      "classification": "main"
+    },
+    {
+      "path": "src/components/WarmupModal.tsx",
+      "index": "31b8715115eb41f6290472a63e6cef04d6808cf8",
+      "head": "31b8715115eb41f6290472a63e6cef04d6808cf8",
+      "main": "31b8715115eb41f6290472a63e6cef04d6808cf8",
+      "classification": "both"
+    },
+    {
+      "path": "src/components/WeeklyActivityBar.tsx",
+      "index": "d37fe49d65e82013227c279ef54198c2dd406e32",
+      "head": "d55c1b7978c301228ecdd09f438c675ed381b898",
+      "main": "d37fe49d65e82013227c279ef54198c2dd406e32",
+      "classification": "main"
+    },
+    {
+      "path": "src/components/WorkoutView.tsx",
+      "index": "33fc3f9e500d0b45c3c417f85b7bab4d4a987e3a",
+      "head": "628c30b988cd34c01e6f0d02dbbe44acde709cd8",
+      "main": "a2bf7a52b847f7b154570ff39bce511b908f28b5",
+      "classification": "neither"
+    },
+    {
+      "path": "src/data/catalog-v1.ts",
+      "index": "43e79c40f7ae29a1919d6d62bb93b610fb967196",
+      "head": "43e79c40f7ae29a1919d6d62bb93b610fb967196",
+      "main": "43e79c40f7ae29a1919d6d62bb93b610fb967196",
+      "classification": "both"
+    },
+    {
+      "path": "src/data/catalog-v2.ts",
+      "index": "1e1c29c3e3b2ad0cc3c136c3900cd8370100416b",
+      "head": "1e1c29c3e3b2ad0cc3c136c3900cd8370100416b",
+      "main": "1e1c29c3e3b2ad0cc3c136c3900cd8370100416b",
+      "classification": "both"
+    },
+    {
+      "path": "src/data/catalog-v3.ts",
+      "index": "dbb16969d2853c8fdb717f891ae36c7687fd0ad0",
+      "head": "dbb16969d2853c8fdb717f891ae36c7687fd0ad0",
+      "main": "dbb16969d2853c8fdb717f891ae36c7687fd0ad0",
+      "classification": "both"
+    },
+    {
+      "path": "src/data/evidence.ts",
+      "index": "4337e4a23f3863c647a13255c22b5c8e09d634cf",
+      "head": "4337e4a23f3863c647a13255c22b5c8e09d634cf",
+      "main": "4337e4a23f3863c647a13255c22b5c8e09d634cf",
+      "classification": "both"
+    },
+    {
+      "path": "src/data/exercise-aliases.ts",
+      "index": "e8c51a45d9a3d2800473fb90c26e14e3c12e97e9",
+      "head": "e8c51a45d9a3d2800473fb90c26e14e3c12e97e9",
+      "main": "e8c51a45d9a3d2800473fb90c26e14e3c12e97e9",
+      "classification": "both"
+    },
+    {
+      "path": "src/data/muscle-involvement-v1.ts",
+      "index": "22a593aec095436fc931d35d456de6ab740cfc40",
+      "head": null,
+      "main": "22a593aec095436fc931d35d456de6ab740cfc40",
+      "classification": "main"
+    },
+    {
+      "path": "src/data/muscles.ts",
+      "index": "c1400374eef84332a8abf206bd4841930dafffba",
+      "head": "96f579d7d0da7485225b9d89dc923f4e6b411868",
+      "main": "c1400374eef84332a8abf206bd4841930dafffba",
+      "classification": "main"
+    },
+    {
+      "path": "src/device/LocalD1.ts",
+      "index": "7d0e2023413d1fd5a790c58dbd29e952baebd337",
+      "head": "7d0e2023413d1fd5a790c58dbd29e952baebd337",
+      "main": "7d0e2023413d1fd5a790c58dbd29e952baebd337",
+      "classification": "both"
+    },
+    {
+      "path": "src/device/appUpdate.ts",
+      "index": "12c6ab8d90d76ababc87dddccdbbe88b20d852d3",
+      "head": "12c6ab8d90d76ababc87dddccdbbe88b20d852d3",
+      "main": "12c6ab8d90d76ababc87dddccdbbe88b20d852d3",
+      "classification": "both"
+    },
+    {
+      "path": "src/device/cloudSync.ts",
+      "index": "2ba3c21d524c19128d19e927aae6b32710a69e62",
+      "head": "6c0fe743195b844af66a9b70a7ec47b0c5e48688",
+      "main": "2ba3c21d524c19128d19e927aae6b32710a69e62",
+      "classification": "main"
+    },
+    {
+      "path": "src/device/localBackend.ts",
+      "index": "931371769d5b34e8e13ee286bd7ab93ec1ef1893",
+      "head": "931371769d5b34e8e13ee286bd7ab93ec1ef1893",
+      "main": "931371769d5b34e8e13ee286bd7ab93ec1ef1893",
+      "classification": "both"
+    },
+    {
+      "path": "src/device/release.ts",
+      "index": "4bc59e9afa83c39d3444d3292193d3dc7d00191e",
+      "head": "4bc59e9afa83c39d3444d3292193d3dc7d00191e",
+      "main": "4bc59e9afa83c39d3444d3292193d3dc7d00191e",
+      "classification": "both"
+    },
+    {
+      "path": "src/domain/AnalyticsFacts.ts",
+      "index": "d60b2f510c930f8b5487caff5b7d5174c6038de1",
+      "head": null,
+      "main": "d60b2f510c930f8b5487caff5b7d5174c6038de1",
+      "classification": "main"
+    },
+    {
+      "path": "src/domain/AnatomyPresenter.ts",
+      "index": "203e2174a22138cf2fe27b88c04bb3600ee59738",
+      "head": "a843b7e7550378a36f7b951f39fcda0ba9ae2926",
+      "main": "203e2174a22138cf2fe27b88c04bb3600ee59738",
+      "classification": "main"
+    },
+    {
+      "path": "src/domain/AppleHealthImport.ts",
+      "index": "91abe53ef618d898601ea4a535b2f705864c72d6",
+      "head": "91abe53ef618d898601ea4a535b2f705864c72d6",
+      "main": "91abe53ef618d898601ea4a535b2f705864c72d6",
+      "classification": "both"
+    },
+    {
+      "path": "src/domain/BodyMass.ts",
+      "index": "1530bbad8704e64b0471b1bd99ab564d1954ec22",
+      "head": "1530bbad8704e64b0471b1bd99ab564d1954ec22",
+      "main": "1530bbad8704e64b0471b1bd99ab564d1954ec22",
+      "classification": "both"
+    },
+    {
+      "path": "src/domain/BodyweightDocument.ts",
+      "index": "caa5d3b9548b559f8e5087e493d51e0071cdf851",
+      "head": "caa5d3b9548b559f8e5087e493d51e0071cdf851",
+      "main": "caa5d3b9548b559f8e5087e493d51e0071cdf851",
+      "classification": "both"
+    },
+    {
+      "path": "src/domain/BodyweightTracker.ts",
+      "index": "3dc1e49c02532ed971a6efcd42dd1840ca40149a",
+      "head": "3dc1e49c02532ed971a6efcd42dd1840ca40149a",
+      "main": "3dc1e49c02532ed971a6efcd42dd1840ca40149a",
+      "classification": "both"
+    },
+    {
+      "path": "src/domain/DeloadEngine.ts",
+      "index": "a00faf91d225cd981a6496526237bb793687be59",
+      "head": "098df7eef18fca9b60c9dc37ff99ba61afc4979e",
+      "main": "a00faf91d225cd981a6496526237bb793687be59",
+      "classification": "main"
+    },
+    {
+      "path": "src/domain/ExecutionIdentity.ts",
+      "index": "3fbabeccc1d64c0e07270f1f3c274fc2e9ea1758",
+      "head": null,
+      "main": "3fbabeccc1d64c0e07270f1f3c274fc2e9ea1758",
+      "classification": "main"
+    },
+    {
+      "path": "src/domain/ExecutionProfile.ts",
+      "index": "963b07828992e8ca7ab3d43d59ca44935cb73bff",
+      "head": null,
+      "main": "963b07828992e8ca7ab3d43d59ca44935cb73bff",
+      "classification": "main"
+    },
+    {
+      "path": "src/domain/ExerciseAlternatives.ts",
+      "index": "6c228b9cbbaeabdb331fd3a89b34555fba8f4386",
+      "head": "6c228b9cbbaeabdb331fd3a89b34555fba8f4386",
+      "main": "6c228b9cbbaeabdb331fd3a89b34555fba8f4386",
+      "classification": "both"
+    },
+    {
+      "path": "src/domain/ExerciseCatalog.ts",
+      "index": "5ba4ebc4ded376a5734d305c4f78bfe5a7c7742f",
+      "head": "5ba4ebc4ded376a5734d305c4f78bfe5a7c7742f",
+      "main": "5ba4ebc4ded376a5734d305c4f78bfe5a7c7742f",
+      "classification": "both"
+    },
+    {
+      "path": "src/domain/ExerciseTaxonomy.ts",
+      "index": "23e204dc40de86d13153820e3acd5bd958696276",
+      "head": null,
+      "main": "23e204dc40de86d13153820e3acd5bd958696276",
+      "classification": "main"
+    },
+    {
+      "path": "src/domain/FriendsService.ts",
+      "index": "d6cd19c69ad1046de0e1613e11803fe772e86b0a",
+      "head": "d6cd19c69ad1046de0e1613e11803fe772e86b0a",
+      "main": "d6cd19c69ad1046de0e1613e11803fe772e86b0a",
+      "classification": "both"
+    },
+    {
+      "path": "src/domain/JournalBackup.ts",
+      "index": "8aa9a2508c0896843619ac6707be88cb320e6651",
+      "head": "741682c1f463878bf9d15e4e5946040990fa3405",
+      "main": "8aa9a2508c0896843619ac6707be88cb320e6651",
+      "classification": "main"
+    },
+    {
+      "path": "src/domain/LiveSession.ts",
+      "index": "13684d22c274190258840bcfccb4a29da4eb2449",
+      "head": "13684d22c274190258840bcfccb4a29da4eb2449",
+      "main": null,
+      "classification": "head"
+    },
+    {
+      "path": "src/domain/MachineRegistry.ts",
+      "index": "f2982dbd4cc021b5901d21ef2fa553b5ec014183",
+      "head": null,
+      "main": "f2982dbd4cc021b5901d21ef2fa553b5ec014183",
+      "classification": "main"
+    },
+    {
+      "path": "src/domain/MuscleParticipation.ts",
+      "index": "9993d6159fe368cc6a64de6881ee8a64ec984640",
+      "head": null,
+      "main": "9993d6159fe368cc6a64de6881ee8a64ec984640",
+      "classification": "main"
+    },
+    {
+      "path": "src/domain/PersonalRecords.ts",
+      "index": "69f1d8e50132583ceaa72bbb4c45b95516c75197",
+      "head": "4eeef539576e8bfd5ab7ab321eb6b4967282153f",
+      "main": "69f1d8e50132583ceaa72bbb4c45b95516c75197",
+      "classification": "main"
+    },
+    {
+      "path": "src/domain/PlateLoadingCalculator.ts",
+      "index": "8b94bd78488daca82dd91a56a0251bd2cb689ceb",
+      "head": "8b94bd78488daca82dd91a56a0251bd2cb689ceb",
+      "main": "8b94bd78488daca82dd91a56a0251bd2cb689ceb",
+      "classification": "both"
+    },
+    {
+      "path": "src/domain/PoseAnalysis.ts",
+      "index": "8fd01128c430330c31b6974832d7ab6d5daa16d1",
+      "head": null,
+      "main": "8fd01128c430330c31b6974832d7ab6d5daa16d1",
+      "classification": "main"
+    },
+    {
+      "path": "src/domain/ProgressOverview.ts",
+      "index": "47d18a8db2a06708a1c9ba87a68d6d0b760febd5",
+      "head": "67f9cbc82cf8f866fd117f589258184591aaa273",
+      "main": "47d18a8db2a06708a1c9ba87a68d6d0b760febd5",
+      "classification": "main"
+    },
+    {
+      "path": "src/domain/ProgressSeries.ts",
+      "index": "a28b112881618573287e64020a10e0f782574ed1",
+      "head": "360fb9731320fc7394b8567495016a508c4b751e",
+      "main": "a28b112881618573287e64020a10e0f782574ed1",
+      "classification": "main"
+    },
+    {
+      "path": "src/domain/RestTimerAction.ts",
+      "index": "999642cebde90f95f1d029157ac97695145b5872",
+      "head": "999642cebde90f95f1d029157ac97695145b5872",
+      "main": "999642cebde90f95f1d029157ac97695145b5872",
+      "classification": "both"
+    },
+    {
+      "path": "src/domain/SessionReport.ts",
+      "index": "b62f3e74d144a0fadb9742b7adf727cc7fcc1958",
+      "head": "1ec2808aaf7719e487f5d75d540dfa03af893bd4",
+      "main": "b62f3e74d144a0fadb9742b7adf727cc7fcc1958",
+      "classification": "main"
+    },
+    {
+      "path": "src/domain/TeamChallenge.ts",
+      "index": "9e22343d597ee4393b69c8126b9d81008d145ef8",
+      "head": "9e22343d597ee4393b69c8126b9d81008d145ef8",
+      "main": "9e22343d597ee4393b69c8126b9d81008d145ef8",
+      "classification": "both"
+    },
+    {
+      "path": "src/domain/TextFitter.ts",
+      "index": "263f3f3d13c51448a005a5538ddadd67e2e3a582",
+      "head": "263f3f3d13c51448a005a5538ddadd67e2e3a582",
+      "main": null,
+      "classification": "head"
+    },
+    {
+      "path": "src/domain/TrainingAnalytics.ts",
+      "index": "4eae0ea13cf50915b90a7d35f04e643c5485f311",
+      "head": "08f670a1d911d3162490ec75feeff9309da8e3a8",
+      "main": "4eae0ea13cf50915b90a7d35f04e643c5485f311",
+      "classification": "main"
+    },
+    {
+      "path": "src/domain/TrainingMeetups.ts",
+      "index": "8bf82f45e26bb81708f4dbeb77d9d230503b0adf",
+      "head": "8bf82f45e26bb81708f4dbeb77d9d230503b0adf",
+      "main": "8bf82f45e26bb81708f4dbeb77d9d230503b0adf",
+      "classification": "both"
+    },
+    {
+      "path": "src/domain/TrainingProgram.ts",
+      "index": "01519d2aed6b426ce40f74d9b152e430de682098",
+      "head": "cf6e5b2f3c83947fddc201e32dea318323c96606",
+      "main": "01519d2aed6b426ce40f74d9b152e430de682098",
+      "classification": "main"
+    },
+    {
+      "path": "src/domain/TrainingVolume.ts",
+      "index": "7e9d31f9bdc9ed688fb3be738c8b001deea9a18e",
+      "head": null,
+      "main": "7e9d31f9bdc9ed688fb3be738c8b001deea9a18e",
+      "classification": "main"
+    },
+    {
+      "path": "src/domain/VolumeLandmarks.ts",
+      "index": "e867c7caf218aeb192608183d500551d64b2ecd1",
+      "head": "b3fe62b854be6073299158b67fa7599128c16c5d",
+      "main": "e867c7caf218aeb192608183d500551d64b2ecd1",
+      "classification": "main"
+    },
+    {
+      "path": "src/domain/WarmupLadderCalculator.ts",
+      "index": "f8ce01d020479872445cf1addf5fa3208ec58911",
+      "head": "f8ce01d020479872445cf1addf5fa3208ec58911",
+      "main": "f8ce01d020479872445cf1addf5fa3208ec58911",
+      "classification": "both"
+    },
+    {
+      "path": "src/domain/WarmupPlanner.ts",
+      "index": "fd28030dd0a792f2f54e66ddca9a343dd3bc1ad2",
+      "head": "fd28030dd0a792f2f54e66ddca9a343dd3bc1ad2",
+      "main": "fd28030dd0a792f2f54e66ddca9a343dd3bc1ad2",
+      "classification": "both"
+    },
+    {
+      "path": "src/domain/WgerExercise.ts",
+      "index": "ab5668748cb2c1a6d165d42c8a99c0b11e8e26f3",
+      "head": "ab5668748cb2c1a6d165d42c8a99c0b11e8e26f3",
+      "main": "ab5668748cb2c1a6d165d42c8a99c0b11e8e26f3",
+      "classification": "both"
+    },
+    {
+      "path": "src/domain/WorkoutImport.ts",
+      "index": "5b721d6e40d64c24491c2123811a3b178630934c",
+      "head": "5b47d8764c6594cd72f565bc13ebfbbe68101510",
+      "main": "5b721d6e40d64c24491c2123811a3b178630934c",
+      "classification": "main"
+    },
+    {
+      "path": "src/domain/WorkoutReference.ts",
+      "index": "7d9e726cb2f7a5f9dd2a42efe3eab71269987688",
+      "head": null,
+      "main": "7d9e726cb2f7a5f9dd2a42efe3eab71269987688",
+      "classification": "main"
+    },
+    {
+      "path": "src/domain/WorkoutSession.ts",
+      "index": "de23305a1d17652ed70938024a72e24a3e51c5d2",
+      "head": "9df5bd0904fa0a142683b3bdb88ed3867b316ba1",
+      "main": "de23305a1d17652ed70938024a72e24a3e51c5d2",
+      "classification": "main"
+    },
+    {
+      "path": "src/domain/WorkoutUndo.ts",
+      "index": "6af390f0032889e979c7b00894a9a527712b1ab4",
+      "head": "6af390f0032889e979c7b00894a9a527712b1ab4",
+      "main": "6af390f0032889e979c7b00894a9a527712b1ab4",
+      "classification": "both"
+    },
+    {
+      "path": "src/hooks/useRestNotifications.ts",
+      "index": "7b0ce985d6c9cfee9c7ebb5abbcc98e14a1f8c91",
+      "head": "7b0ce985d6c9cfee9c7ebb5abbcc98e14a1f8c91",
+      "main": "7b0ce985d6c9cfee9c7ebb5abbcc98e14a1f8c91",
+      "classification": "both"
+    },
+    {
+      "path": "src/lib/account.ts",
+      "index": "7721448d49197d67d2ed88451cc44565c90cdd7f",
+      "head": "7721448d49197d67d2ed88451cc44565c90cdd7f",
+      "main": "7721448d49197d67d2ed88451cc44565c90cdd7f",
+      "classification": "both"
+    },
+    {
+      "path": "src/lib/audioHaptics.ts",
+      "index": "8c7e5b86b38f12ca000b29ad267bb310b0ea0ee9",
+      "head": "8c7e5b86b38f12ca000b29ad267bb310b0ea0ee9",
+      "main": "8c7e5b86b38f12ca000b29ad267bb310b0ea0ee9",
+      "classification": "both"
+    },
+    {
+      "path": "src/lib/calendar.ts",
+      "index": "9f0384064959c44e2ad7bfa771a249dadcf43e86",
+      "head": "5f5d9cf33119d29dde19e567c6e7288122c879fc",
+      "main": "9f0384064959c44e2ad7bfa771a249dadcf43e86",
+      "classification": "main"
+    },
+    {
+      "path": "src/lib/catalog.ts",
+      "index": "81e4ad84986735f8e1aa031c9e41d45f1b322d35",
+      "head": "c196127292c247270bc4fc5865200da9073aca1b",
+      "main": "81e4ad84986735f8e1aa031c9e41d45f1b322d35",
+      "classification": "main"
+    },
+    {
+      "path": "src/lib/draft.ts",
+      "index": "23f4500c8fdb1dd866fd482944b8d9beec909367",
+      "head": "23f4500c8fdb1dd866fd482944b8d9beec909367",
+      "main": "23f4500c8fdb1dd866fd482944b8d9beec909367",
+      "classification": "both"
+    },
+    {
+      "path": "src/lib/invite.ts",
+      "index": "f4be53cb6848d77264a9003f290fefdff3e17624",
+      "head": "f4be53cb6848d77264a9003f290fefdff3e17624",
+      "main": null,
+      "classification": "head"
+    },
+    {
+      "path": "src/lib/liveRoom.ts",
+      "index": "6860a0f183f0dc6fc6959dcf21602825af4fb6bd",
+      "head": "6860a0f183f0dc6fc6959dcf21602825af4fb6bd",
+      "main": null,
+      "classification": "head"
+    },
+    {
+      "path": "src/lib/model.ts",
+      "index": "ac24bf0e0e687d5bb80e2355bde4a58f2d087876",
+      "head": "76bae3f6c8f7f04e098b51a296d19e9919e4f40c",
+      "main": "ac24bf0e0e687d5bb80e2355bde4a58f2d087876",
+      "classification": "main"
+    },
+    {
+      "path": "src/lib/motionFeatures.ts",
+      "index": "7f09bbcece8454e365494aef51e394acd5818b62",
+      "head": "7f09bbcece8454e365494aef51e394acd5818b62",
+      "main": "7f09bbcece8454e365494aef51e394acd5818b62",
+      "classification": "both"
+    },
+    {
+      "path": "src/lib/quantity.ts",
+      "index": "f56d9fe89b9098d503a3ed9f390c6c72479a058d",
+      "head": "f56d9fe89b9098d503a3ed9f390c6c72479a058d",
+      "main": "f56d9fe89b9098d503a3ed9f390c6c72479a058d",
+      "classification": "both"
+    },
+    {
+      "path": "src/lib/replicate.ts",
+      "index": "a937f8a5fbd63f7d713da796b601260343e6bea8",
+      "head": "a937f8a5fbd63f7d713da796b601260343e6bea8",
+      "main": "a937f8a5fbd63f7d713da796b601260343e6bea8",
+      "classification": "both"
+    },
+    {
+      "path": "src/lib/saveFile.ts",
+      "index": "23b9799179c6c246aef108a3447ba53dfa223118",
+      "head": "23b9799179c6c246aef108a3447ba53dfa223118",
+      "main": "23b9799179c6c246aef108a3447ba53dfa223118",
+      "classification": "both"
+    },
+    {
+      "path": "src/lib/search.ts",
+      "index": "fa59ea4eaa95828ebe4d0132e91120ebf40873c5",
+      "head": "fa59ea4eaa95828ebe4d0132e91120ebf40873c5",
+      "main": "fa59ea4eaa95828ebe4d0132e91120ebf40873c5",
+      "classification": "both"
+    },
+    {
+      "path": "src/lib/shareLink.ts",
+      "index": "1ee0599d379d5df106f124793d72905487e2631b",
+      "head": "1ee0599d379d5df106f124793d72905487e2631b",
+      "main": null,
+      "classification": "head"
+    },
+    {
+      "path": "src/lib/theme.ts",
+      "index": "a781c04d2fe0e658de5f04a872a101e7ba31a0c8",
+      "head": "a781c04d2fe0e658de5f04a872a101e7ba31a0c8",
+      "main": "a781c04d2fe0e658de5f04a872a101e7ba31a0c8",
+      "classification": "both"
+    },
+    {
+      "path": "src/lib/types.ts",
+      "index": "d14ca06d136afc5bd7b07d4249d6dcfae1d0d639",
+      "head": "e59a36f2c34014b575134ac4bb6abcfce601ad52",
+      "main": "d14ca06d136afc5bd7b07d4249d6dcfae1d0d639",
+      "classification": "main"
+    },
+    {
+      "path": "src/lib/useLiveBroadcast.ts",
+      "index": "6cb4d5f09252958b1786311417a667ce10e81080",
+      "head": "6cb4d5f09252958b1786311417a667ce10e81080",
+      "main": null,
+      "classification": "head"
+    },
+    {
+      "path": "src/lib/useNow.ts",
+      "index": "e415cfd884252390a75ab7d63d6532aa36e15db1",
+      "head": "e415cfd884252390a75ab7d63d6532aa36e15db1",
+      "main": null,
+      "classification": "head"
+    },
+    {
+      "path": "src/lib/webmcp.ts",
+      "index": "9c23d01738f4d7a56cbd91aae0e2dd917d4655c5",
+      "head": "9c23d01738f4d7a56cbd91aae0e2dd917d4655c5",
+      "main": "9c23d01738f4d7a56cbd91aae0e2dd917d4655c5",
+      "classification": "both"
+    },
+    {
+      "path": "src/main.tsx",
+      "index": "e6c1f646bfc66e0fd8e8fec0a13cb7d4b51b6efd",
+      "head": "e6c1f646bfc66e0fd8e8fec0a13cb7d4b51b6efd",
+      "main": "1f74585101cc1bac5297be6247a084007d6b25c6",
+      "classification": "head"
+    },
+    {
+      "path": "src/services/ApiClient.ts",
+      "index": "eeeb4e9343eaa923125a46e72b90d5b93248861a",
+      "head": "eeeb4e9343eaa923125a46e72b90d5b93248861a",
+      "main": "eeeb4e9343eaa923125a46e72b90d5b93248861a",
+      "classification": "both"
+    },
+    {
+      "path": "src/services/BodyweightApi.ts",
+      "index": "760b1255f2017f63397d2240cdf8b332b40720b4",
+      "head": "760b1255f2017f63397d2240cdf8b332b40720b4",
+      "main": "760b1255f2017f63397d2240cdf8b332b40720b4",
+      "classification": "both"
+    },
+    {
+      "path": "src/services/BodyweightJournal.ts",
+      "index": "2a6d9067ecda2d1aff3ef57f1969a2f9bdc9ea40",
+      "head": "2a6d9067ecda2d1aff3ef57f1969a2f9bdc9ea40",
+      "main": "2a6d9067ecda2d1aff3ef57f1969a2f9bdc9ea40",
+      "classification": "both"
+    },
+    {
+      "path": "src/services/ExerciseLibraryService.ts",
+      "index": "61a50249d80e66739f4e80902a73389a5a5640e2",
+      "head": "61a50249d80e66739f4e80902a73389a5a5640e2",
+      "main": "61a50249d80e66739f4e80902a73389a5a5640e2",
+      "classification": "both"
+    },
+    {
+      "path": "src/services/FriendsApi.ts",
+      "index": "61757983bdd15eb9763f206802eaa419f805b198",
+      "head": "61757983bdd15eb9763f206802eaa419f805b198",
+      "main": "61757983bdd15eb9763f206802eaa419f805b198",
+      "classification": "both"
+    },
+    {
+      "path": "src/services/ImportService.ts",
+      "index": "315c346fce62786c7a9f92f0ee1db352b48ac835",
+      "head": "cde3f329dd708e4a3b2538b78113d81595894625",
+      "main": "315c346fce62786c7a9f92f0ee1db352b48ac835",
+      "classification": "main"
+    },
+    {
+      "path": "src/services/LiveRoomApi.ts",
+      "index": "efac47cf97dbe0fb59e2cbe7019f015dc6d8ed19",
+      "head": "efac47cf97dbe0fb59e2cbe7019f015dc6d8ed19",
+      "main": null,
+      "classification": "head"
+    },
+    {
+      "path": "src/services/PoseVideoAnalysis.ts",
+      "index": "5940c33ef26813b801663925ff551f210b59b770",
+      "head": null,
+      "main": "5940c33ef26813b801663925ff551f210b59b770",
+      "classification": "main"
+    },
+    {
+      "path": "src/services/ProductService.ts",
+      "index": "aece5987a10e32a9be86a2778dddbd74033c592c",
+      "head": "3411cfe100e730bff74bb0d20dde04e575c88d8e",
+      "main": "aece5987a10e32a9be86a2778dddbd74033c592c",
+      "classification": "main"
+    },
+    {
+      "path": "src/services/RestTimerService.ts",
+      "index": "08ab9dba91247c11070ee07f0cb82a816fc74806",
+      "head": "08ab9dba91247c11070ee07f0cb82a816fc74806",
+      "main": "08ab9dba91247c11070ee07f0cb82a816fc74806",
+      "classification": "both"
+    },
+    {
+      "path": "src/services/appleHealth.worker.ts",
+      "index": "38498b17f82113305ea333c0e198123f3ae07353",
+      "head": "38498b17f82113305ea333c0e198123f3ae07353",
+      "main": "38498b17f82113305ea333c0e198123f3ae07353",
+      "classification": "both"
+    },
+    {
+      "path": "src/state/BodyweightContext.tsx",
+      "index": "2e575c123800101d67f31a290a44ca94432485ea",
+      "head": "2e575c123800101d67f31a290a44ca94432485ea",
+      "main": "2e575c123800101d67f31a290a44ca94432485ea",
+      "classification": "both"
+    },
+    {
+      "path": "src/styles.css",
+      "index": "d8846ae797f078066bfcc213c658a728cc6b3cdb",
+      "head": "c4fd71c4676e2b9f39c979c35c5e88909575ae19",
+      "main": "16ecfc8772524e8abf19347d3015fc71e8bfbfd6",
+      "classification": "neither"
+    },
+    {
+      "path": "src/styles/athletic.css",
+      "index": "6a1437424b8245b56ac49934f93bcf8f0bb016d5",
+      "head": "6a1437424b8245b56ac49934f93bcf8f0bb016d5",
+      "main": "9c19c1e2d8f4f13c14f34e947879ef471579bbd5",
+      "classification": "head"
+    },
+    {
+      "path": "src/styles/auth-athletic.css",
+      "index": "fad213223fb89e565c835741de286456da8fad0b",
+      "head": "fad213223fb89e565c835741de286456da8fad0b",
+      "main": "569859018c0ab946992dd2cceb853677edc1a74f",
+      "classification": "head"
+    },
+    {
+      "path": "src/styles/fonts.css",
+      "index": "11090d3b8878998f6b9bbcc75afd04bf7a063755",
+      "head": "11090d3b8878998f6b9bbcc75afd04bf7a063755",
+      "main": null,
+      "classification": "head"
+    },
+    {
+      "path": "src/styles/friends.css",
+      "index": "5d0be7c9d757f14a8cc22c185cc78a08c341caa8",
+      "head": "5d0be7c9d757f14a8cc22c185cc78a08c341caa8",
+      "main": "09affe49b9c45897c123f27efeaa2d9ab6bb4b2d",
+      "classification": "head"
+    },
+    {
+      "path": "src/styles/progress.css",
+      "index": "82b8a6ff0893c06889f6fb02ed3dca2c4e829bce",
+      "head": "82b8a6ff0893c06889f6fb02ed3dca2c4e829bce",
+      "main": "66c49673cda7fc63708e4178f8b16a35a0db8b37",
+      "classification": "head"
+    },
+    {
+      "path": "src/styles/together.css",
+      "index": "ae8ddf85571ad58625cb223cbcb01a39ebdffbaf",
+      "head": "ae8ddf85571ad58625cb223cbcb01a39ebdffbaf",
+      "main": null,
+      "classification": "head"
+    },
+    {
+      "path": "src/styles/workflow.css",
+      "index": "025550f929ab0a8d799c35a10a9924238a534393",
+      "head": "025550f929ab0a8d799c35a10a9924238a534393",
+      "main": "53cb492d8a5080b2f6e9ddd009edcda969da3ae4",
+      "classification": "head"
+    },
+    {
+      "path": "src/styles/workout-athletic.css",
+      "index": "83f6e4db8fd259715d44eab7db5130f5cebf7e2f",
+      "head": "83f6e4db8fd259715d44eab7db5130f5cebf7e2f",
+      "main": "5068bd3a3f96dc89369d622f842bb8a397cb87e5",
+      "classification": "head"
+    },
+    {
+      "path": "src/vite-env.d.ts",
+      "index": "43af4518bbbc86017fab09fe6304c94145f19f85",
+      "head": "43af4518bbbc86017fab09fe6304c94145f19f85",
+      "main": "43af4518bbbc86017fab09fe6304c94145f19f85",
+      "classification": "both"
+    },
+    {
+      "path": "tests/account.test.ts",
+      "index": "13ba030f8e3b18c8100889c13f48f46f956af780",
+      "head": "13ba030f8e3b18c8100889c13f48f46f956af780",
+      "main": "13ba030f8e3b18c8100889c13f48f46f956af780",
+      "classification": "both"
+    },
+    {
+      "path": "tests/agent-engineering-setup.test.ts",
+      "index": "972ea77c0eb944a3e71ae5b468ab74cb8d9ed8e9",
+      "head": null,
+      "main": null,
+      "classification": "neither"
+    },
+    {
+      "path": "tests/analytics-kernel.test.ts",
+      "index": "35fb174df10293ba9c12002b51a7b237e467842f",
+      "head": null,
+      "main": "35fb174df10293ba9c12002b51a7b237e467842f",
+      "classification": "main"
+    },
+    {
+      "path": "tests/anatomy-subheads.test.ts",
+      "index": "8ab8a1adfb41f46fc58344d90b9bd0c79b39385f",
+      "head": "a84512e4e9666751df2bd9c6573c25372f972e76",
+      "main": "8ab8a1adfb41f46fc58344d90b9bd0c79b39385f",
+      "classification": "main"
+    },
+    {
+      "path": "tests/api-client.test.ts",
+      "index": "56ed3c68c8e9b98274c210332add94295748855b",
+      "head": "56ed3c68c8e9b98274c210332add94295748855b",
+      "main": "56ed3c68c8e9b98274c210332add94295748855b",
+      "classification": "both"
+    },
+    {
+      "path": "tests/api.test.ts",
+      "index": "e872f45cfe35a9c40d0f48c81e343eb31b0e4b0d",
+      "head": "e872f45cfe35a9c40d0f48c81e343eb31b0e4b0d",
+      "main": "e872f45cfe35a9c40d0f48c81e343eb31b0e4b0d",
+      "classification": "both"
+    },
+    {
+      "path": "tests/app-update.test.ts",
+      "index": "21046e826db212bdec3357fe48895ec78d6cde55",
+      "head": "21046e826db212bdec3357fe48895ec78d6cde55",
+      "main": "21046e826db212bdec3357fe48895ec78d6cde55",
+      "classification": "both"
+    },
+    {
+      "path": "tests/audio-haptics.test.ts",
+      "index": "009e718e6bf62d04c1f3edc8b850bdbd7faebbff",
+      "head": "009e718e6bf62d04c1f3edc8b850bdbd7faebbff",
+      "main": "009e718e6bf62d04c1f3edc8b850bdbd7faebbff",
+      "classification": "both"
+    },
+    {
+      "path": "tests/bodyweight-journal.test.ts",
+      "index": "d334411804b85eab0062355594b74728442a3052",
+      "head": "d334411804b85eab0062355594b74728442a3052",
+      "main": "d334411804b85eab0062355594b74728442a3052",
+      "classification": "both"
+    },
+    {
+      "path": "tests/bodyweight.test.ts",
+      "index": "5f852f8178b44e57cf06d20fb8af62996f89a436",
+      "head": "5f852f8178b44e57cf06d20fb8af62996f89a436",
+      "main": "5f852f8178b44e57cf06d20fb8af62996f89a436",
+      "classification": "both"
+    },
+    {
+      "path": "tests/challenges-api.test.ts",
+      "index": "15b5929fdb32a3f273642657a23a6f349a884cd4",
+      "head": "15b5929fdb32a3f273642657a23a6f349a884cd4",
+      "main": "15b5929fdb32a3f273642657a23a6f349a884cd4",
+      "classification": "both"
+    },
+    {
+      "path": "tests/daily-workflow-api.test.ts",
+      "index": "3cda6e87f29293c609d164b8621793dc437e33d4",
+      "head": "3cda6e87f29293c609d164b8621793dc437e33d4",
+      "main": "3cda6e87f29293c609d164b8621793dc437e33d4",
+      "classification": "both"
+    },
+    {
+      "path": "tests/deload.test.ts",
+      "index": "65322df6640943b4cf4683968c53905b2720300e",
+      "head": "0eb2e1fa84e9dcccfd5d9ebb06c9edb9c92e7f7d",
+      "main": "65322df6640943b4cf4683968c53905b2720300e",
+      "classification": "main"
+    },
+    {
+      "path": "tests/device.test.ts",
+      "index": "18d3696bd713e9baae77689081290bd16812623f",
+      "head": "18d3696bd713e9baae77689081290bd16812623f",
+      "main": "18d3696bd713e9baae77689081290bd16812623f",
+      "classification": "both"
+    },
+    {
+      "path": "tests/e2e/biomechanics.spec.ts",
+      "index": "3d78853a9616bb467bc216f61831e6127a4b9ef7",
+      "head": null,
+      "main": "3d78853a9616bb467bc216f61831e6127a4b9ef7",
+      "classification": "main"
+    },
+    {
+      "path": "tests/e2e/daily-workflow.spec.ts",
+      "index": "4a9496ee6ccdafb5d6ec5d042962d62d20771135",
+      "head": "260b8501494beac7c2cd2329cdee217078770836",
+      "main": "47932bbf545ddc8a9f4e13417127dde917defefa",
+      "classification": "neither"
+    },
+    {
+      "path": "tests/e2e/design.spec.ts",
+      "index": "57cfbf7ca172da540763d6d2e3b8574a0192e89d",
+      "head": "57cfbf7ca172da540763d6d2e3b8574a0192e89d",
+      "main": "94efb4facab0c5f9d27447d259851359abb05233",
+      "classification": "head"
+    },
+    {
+      "path": "tests/e2e/fixtures/bodyweight.ts",
+      "index": "2777a979d14fa71c0d9bb0aa7c36ee034508fa0d",
+      "head": "2777a979d14fa71c0d9bb0aa7c36ee034508fa0d",
+      "main": "2777a979d14fa71c0d9bb0aa7c36ee034508fa0d",
+      "classification": "both"
+    },
+    {
+      "path": "tests/e2e/fixtures/live.ts",
+      "index": "3bcd7eebe6f82746f5a8594b1cda3eef6b03555b",
+      "head": "3bcd7eebe6f82746f5a8594b1cda3eef6b03555b",
+      "main": null,
+      "classification": "head"
+    },
+    {
+      "path": "tests/e2e/friends.spec.ts",
+      "index": "e621447f16b8e84263368794cbf96901401b9ed3",
+      "head": "e621447f16b8e84263368794cbf96901401b9ed3",
+      "main": "10bfb6465f5fbcb9f507559651c6b495c2db0b14",
+      "classification": "head"
+    },
+    {
+      "path": "tests/e2e/program.spec.ts",
+      "index": "6bde86e2eba550b43e0e520808f6bf9a2aff758f",
+      "head": "6bde86e2eba550b43e0e520808f6bf9a2aff758f",
+      "main": "6bde86e2eba550b43e0e520808f6bf9a2aff758f",
+      "classification": "both"
+    },
+    {
+      "path": "tests/e2e/progress.spec.ts",
+      "index": "6d3ccbfd5c8fb9d1ffaa01aebdaa08e3d821b61d",
+      "head": "6d3ccbfd5c8fb9d1ffaa01aebdaa08e3d821b61d",
+      "main": "8f07580d46e6d6584edbce3d7389c8ed30e2f526",
+      "classification": "head"
+    },
+    {
+      "path": "tests/e2e/together.spec.ts",
+      "index": "1e0e1eea29820912aa12c536ae3f1b57f018b522",
+      "head": "1e0e1eea29820912aa12c536ae3f1b57f018b522",
+      "main": null,
+      "classification": "head"
+    },
+    {
+      "path": "tests/e2e/workout.spec.ts",
+      "index": "454ac33415642bf88642aed302d2bf05d74f4334",
+      "head": "4467ffd226ddef536bd1a44386a899c7a9e656df",
+      "main": "11b4e69102ba431474b3edab6edfa02ea9b2d2f1",
+      "classification": "neither"
+    },
+    {
+      "path": "tests/exercise-alternatives.test.ts",
+      "index": "4258594ba4d1b2b403609708e97e81c18dd102e4",
+      "head": "4258594ba4d1b2b403609708e97e81c18dd102e4",
+      "main": "4258594ba4d1b2b403609708e97e81c18dd102e4",
+      "classification": "both"
+    },
+    {
+      "path": "tests/fixtures/api.ts",
+      "index": "6fcb1994459a562186af739dbd6c96395849d58b",
+      "head": "6fcb1994459a562186af739dbd6c96395849d58b",
+      "main": "6fcb1994459a562186af739dbd6c96395849d58b",
+      "classification": "both"
+    },
+    {
+      "path": "tests/friends-api.test.ts",
+      "index": "4154e0237e3866bdd8b51483b455bcf81c4d1a4c",
+      "head": "4154e0237e3866bdd8b51483b455bcf81c4d1a4c",
+      "main": "4154e0237e3866bdd8b51483b455bcf81c4d1a4c",
+      "classification": "both"
+    },
+    {
+      "path": "tests/friends.test.ts",
+      "index": "691971d677aeb40d62fe6bcbd95bbd6fda10f42d",
+      "head": "691971d677aeb40d62fe6bcbd95bbd6fda10f42d",
+      "main": "691971d677aeb40d62fe6bcbd95bbd6fda10f42d",
+      "classification": "both"
+    },
+    {
+      "path": "tests/live-rooms-api.test.ts",
+      "index": "3a04025f0ae07791afc6f395a237e52b7b54c7cf",
+      "head": "3a04025f0ae07791afc6f395a237e52b7b54c7cf",
+      "main": null,
+      "classification": "head"
+    },
+    {
+      "path": "tests/live-session.test.ts",
+      "index": "07bd84b9d7df6cf917778b2d87427e754587fce9",
+      "head": "07bd84b9d7df6cf917778b2d87427e754587fce9",
+      "main": null,
+      "classification": "head"
+    },
+    {
+      "path": "tests/machines-execution-api.test.ts",
+      "index": "64a88dc2a7615c60822af6384d70137f70eb1dec",
+      "head": null,
+      "main": "f487a954bb76dfac232eb468cbc688484e3cddbb",
+      "classification": "neither"
+    },
+    {
+      "path": "tests/model.test.ts",
+      "index": "9ade342c15ee074433a6d92376cf08681db2a346",
+      "head": "9ade342c15ee074433a6d92376cf08681db2a346",
+      "main": "9ade342c15ee074433a6d92376cf08681db2a346",
+      "classification": "both"
+    },
+    {
+      "path": "tests/personal-records.test.ts",
+      "index": "c163c450fc5110a2fd69b011ea0c3a0eff3d7caa",
+      "head": "c163c450fc5110a2fd69b011ea0c3a0eff3d7caa",
+      "main": "c163c450fc5110a2fd69b011ea0c3a0eff3d7caa",
+      "classification": "both"
+    },
+    {
+      "path": "tests/plate-loading.test.ts",
+      "index": "52c5eb987dcbc23d221a1701201b8173702577b6",
+      "head": "52c5eb987dcbc23d221a1701201b8173702577b6",
+      "main": "52c5eb987dcbc23d221a1701201b8173702577b6",
+      "classification": "both"
+    },
+    {
+      "path": "tests/pose-analysis.test.ts",
+      "index": "ca150a825b4a518f8294dbc0f4b128fc73021315",
+      "head": null,
+      "main": "ca150a825b4a518f8294dbc0f4b128fc73021315",
+      "classification": "main"
+    },
+    {
+      "path": "tests/product.test.ts",
+      "index": "0e1edaaab3057026e7d5661ebe0595d8dfec6d98",
+      "head": "0e1edaaab3057026e7d5661ebe0595d8dfec6d98",
+      "main": "0e1edaaab3057026e7d5661ebe0595d8dfec6d98",
+      "classification": "both"
+    },
+    {
+      "path": "tests/program.test.ts",
+      "index": "2b64356368ff1573ef969700423b958b51dcd47d",
+      "head": "2b64356368ff1573ef969700423b958b51dcd47d",
+      "main": "2b64356368ff1573ef969700423b958b51dcd47d",
+      "classification": "both"
+    },
+    {
+      "path": "tests/progress-series.test.ts",
+      "index": "b108af7f850876ef5150769ea2faf5b51998e6bc",
+      "head": "b108af7f850876ef5150769ea2faf5b51998e6bc",
+      "main": "b108af7f850876ef5150769ea2faf5b51998e6bc",
+      "classification": "both"
+    },
+    {
+      "path": "tests/reliability-domain.test.ts",
+      "index": "646b2236d54f24f0c99a228be2f047a004094756",
+      "head": "646b2236d54f24f0c99a228be2f047a004094756",
+      "main": "646b2236d54f24f0c99a228be2f047a004094756",
+      "classification": "both"
+    },
+    {
+      "path": "tests/session-report.test.ts",
+      "index": "fe7f0cf08c641220aee0aec2fa73eadfa0fa4661",
+      "head": "fe7f0cf08c641220aee0aec2fa73eadfa0fa4661",
+      "main": "fe7f0cf08c641220aee0aec2fa73eadfa0fa4661",
+      "classification": "both"
+    },
+    {
+      "path": "tests/sync.test.ts",
+      "index": "91beae65bac5db4fd1e5fa8f8d6c5f3ffb480530",
+      "head": "91beae65bac5db4fd1e5fa8f8d6c5f3ffb480530",
+      "main": "91beae65bac5db4fd1e5fa8f8d6c5f3ffb480530",
+      "classification": "both"
+    },
+    {
+      "path": "tests/text-fitter.test.ts",
+      "index": "65d046970504e2c52ca5317670efc8efb426daa2",
+      "head": "65d046970504e2c52ca5317670efc8efb426daa2",
+      "main": null,
+      "classification": "head"
+    },
+    {
+      "path": "tests/theme.test.ts",
+      "index": "dddd9296912335e40b2e0cb00d6e600ec1ed9678",
+      "head": "dddd9296912335e40b2e0cb00d6e600ec1ed9678",
+      "main": "dddd9296912335e40b2e0cb00d6e600ec1ed9678",
+      "classification": "both"
+    },
+    {
+      "path": "tests/volume-landmarks.test.ts",
+      "index": "0b7251928ae6a89426548ebba3d0946d590d91b6",
+      "head": "c811249000e6844400abd89678f5383a8cae4f88",
+      "main": "0b7251928ae6a89426548ebba3d0946d590d91b6",
+      "classification": "main"
+    },
+    {
+      "path": "tests/warmup-ladder.test.ts",
+      "index": "d686983123f77115bbd4efd4ce6360eca00b1511",
+      "head": "d686983123f77115bbd4efd4ce6360eca00b1511",
+      "main": "d686983123f77115bbd4efd4ce6360eca00b1511",
+      "classification": "both"
+    },
+    {
+      "path": "tests/workflow-domain.test.ts",
+      "index": "9e5c991413f9dbcadc6dc6b295d9b7f59b64c3c3",
+      "head": "9e5c991413f9dbcadc6dc6b295d9b7f59b64c3c3",
+      "main": "9e5c991413f9dbcadc6dc6b295d9b7f59b64c3c3",
+      "classification": "both"
+    }
+  ]
+}

@@ -1,3 +1,5 @@
+import { MachineRepository } from "./MachineRepository";
+import { validMachine } from "./validation";
 import type { Exercise, Workout, WorkoutExercise } from "../src/lib/types";
 import { exerciseById } from "../src/lib/model";
 import { normalizeSearch } from "../src/lib/search";
@@ -60,6 +62,17 @@ export class HistoryImportService {
         throw new InputError("Проверь упражнения импорта");
       return w.exercises.map(object);
     });
+    const machineRepository = new MachineRepository(this.db, this.owner);
+    const machineDefinitions = await machineRepository.definitions();
+    const machineProposals = new Map<string, import("../src/lib/types").MachineInstance>();
+    for (const entry of allEntries) {
+      if (entry.machineInstanceId === undefined || machineDefinitions.has(String(entry.machineInstanceId))) continue;
+      const machine = validMachine(entry.machineSnapshot);
+      if (machine.id !== entry.machineInstanceId) throw new InputError("Тренажёр не совпадает со снимком");
+      await machineRepository.validateModel(machine);
+      machineDefinitions.set(machine.id, machine);
+      machineProposals.set(machine.id, machine);
+    }
     const ids = allEntries.map((e) =>
       typeof e.exerciseId === "string" ? e.exerciseId : "",
     );
@@ -149,14 +162,18 @@ export class HistoryImportService {
             catalogRevision: definition.catalogRevision,
             recordingSpecRevision: definition.catalogRevision,
             muscleMappingRevision: definition.catalogRevision,
+            ...(e.muscleModelRevision !== undefined ? { muscleModelRevision: e.muscleModelRevision as 1 } : {}),
             displayNameSnapshot: definition.name,
+            ...(e.execution !== undefined ? { execution: e.execution as WorkoutExercise["execution"] } : {}),
+            ...(e.supersetId !== undefined ? { supersetId: e.supersetId as string } : {}),
+            ...(e.machineInstanceId !== undefined ? { machineInstanceId: String(e.machineInstanceId), machineSnapshot: e.machineSnapshot ? validMachine(e.machineSnapshot) : machineDefinitions.get(String(e.machineInstanceId)) } : {}),
             sets: e.sets.map((s, i) => ({
               ...object(s),
               id: `${id}:${workouts.length}:${i}:${(source.exercises as unknown[]).indexOf(e)}`,
             })) as WorkoutExercise["sets"],
             ...(e.equipmentNote
               ? { equipmentNote: str(e.equipmentNote, 120) }
-              : format === "tyaga" &&
+              : format === "tyaga" && !e.machineInstanceId &&
                   definition.catalogRevision === 3 &&
                   !definition.source &&
                   !definition.custom &&
@@ -203,7 +220,7 @@ export class HistoryImportService {
           exercises: merged,
           timeZone: source.timeZone ?? timeZone,
           revision: 0,
-          analysisVersion: 2,
+          analysisVersion: format === "tyaga" ? source.analysisVersion ?? 2 : 2,
           ...(format === "tyaga" && source.wearable
             ? { wearable: source.wearable }
             : {}),
@@ -212,7 +229,7 @@ export class HistoryImportService {
             : {}),
           ...(source.restSeconds ? { restSeconds: source.restSeconds } : {}),
         },
-        { timeZone, importedExercises: definitions },
+        { timeZone, importedExercises: definitions, machines: machineDefinitions },
       );
       workouts.push(w);
     }
@@ -268,6 +285,7 @@ export class HistoryImportService {
     const stamp = new Date().toISOString(),
       statements: D1PreparedStatement[] = [];
     // Validate the entire package before one atomic D1 batch; no partial sessions.
+    for (const machine of machineProposals.values()) statements.push(...machineRepository.statements(machine, true));
     for (const e of proposals.values())
       statements.push(
         this.db
@@ -293,7 +311,7 @@ export class HistoryImportService {
     const results = statements.length ? await this.db.batch(statements) : [];
     // RETURNING, not meta.changes: D1 also counts rows written by sync triggers.
     const imported = results
-      .slice(proposals.size)
+      .slice(proposals.size + machineProposals.size * 2)
       .filter((r) => r.results.length).length;
     const rows = unique.length
       ? await this.db

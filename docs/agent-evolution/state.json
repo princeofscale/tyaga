@@ -1,0 +1,518 @@
+{
+  "schemaVersion": 1,
+  "workspace": "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution",
+  "branch": "agents/tyaga-30-rounds",
+  "initialSha": "c708843daa05f68a5bc5417fcb1de7bafed8a369",
+  "fetchedMainSha": "b766eec0588a5bd688742dac26b45411d85e82e3",
+  "integrationSha": null,
+  "goalId": "goal-1588dc6a-45a6-4c72-8239-7d62bba32138",
+  "stage": "setup-baseline",
+  "checkpoint": {
+    "sampledAt": "2026-11-14T08:00:16+04:00",
+    "timezone": "Europe/Saratov",
+    "utc": "2026-11-14T04:00:16Z",
+    "type": "document-record-time-not-task-event-time",
+    "humanObservationSampleAt": "2026-11-14T07:59:13+04:00",
+    "humanObservationSampleMeaning": "observation-instant-not-execution-or-event-time",
+    "priorSampledCheckpoint": "2026-11-14T07:22:00+04:00"
+  },
+  "roundsStarted": 0,
+  "roundsAccepted": 0,
+  "currentRound": null,
+  "nextRound": 1,
+  "requirements": [],
+  "rounds": [],
+  "agents": {
+    "productOwner": "product-owner-v2",
+    "previousProductOwner": "product-owner",
+    "engineer": "engineer",
+    "qa": "qa",
+    "scienceReviewer": "science-reviewer"
+  },
+  "utilityAgents": {
+    "fullBaselineE2e": "5110c463-9177-40d7-8241-bdf03bc6f79c",
+    "productStandkeeper": "8d0e0197-cc51-42aa-97e9-77782938aeb6"
+  },
+  "setupTasks": {
+    "integration": "task-1",
+    "productPreflight": "task-2",
+    "independentQa": "task-3",
+    "firstProductExploration": "task-4",
+    "scientificReview": "task-5",
+    "finalMandatoryChecks": "task-6",
+    "replacementProductPreflight": "task-7",
+    "docReconciliation": "task-8",
+    "engineeringHandoff": "task-9",
+    "precommitDocReconciliation": "task-10"
+  },
+  "tasks": {
+    "task-1": {
+      "role": "engineer",
+      "status": "completed",
+      "revision": 3,
+      "description": "local merge integration, schema models, engineering verification logs and lock release"
+    },
+    "task-3": {
+      "role": "qa",
+      "status": "completed",
+      "revision": 4,
+      "description": "independent schema calibration, strict/domain/browser suites, portable clone and final raw report",
+      "acceptance": "setup-only-qa-freeze-and-release",
+      "scopedDispositions": {
+        "pass": 12,
+        "partial": 5,
+        "notProven": 1
+      },
+      "freezeReceiptDigest": "103c07c25e7f77ec67a47160bf1d3e822959ccc45a9559724ea6aaf0b0b49d17",
+      "finalReportDigest": "7d7f8c2a7e091f008c3962241e43f924cf51d7a05a51dc057f69d3d694428cf3"
+    },
+    "task-4": {
+      "role": "product-owner-v2",
+      "status": "pending",
+      "revision": 3,
+      "blockedBy": [
+        "task-3",
+        "task-6",
+        "task-7"
+      ],
+      "description": "bounded 8795 UI exploration and single unabridged R01 requirements message",
+      "releaseGate": "explicitLeadReviewAndLocalSetupCommit",
+      "releaseAuthorized": false
+    },
+    "task-5": {
+      "role": "science-reviewer",
+      "status": "completed",
+      "revision": 3,
+      "description": "independent 16 manual source scenario biomechanics audit, report in docs/agent-evolution/setup-science-review.md"
+    },
+    "task-6": {
+      "role": "engineer",
+      "status": "completed",
+      "revision": 4,
+      "blockedBy": [
+        "task-3"
+      ],
+      "description": "final mandatory checks (tsc, npm test, npm run build) on final tree with newly added QA files",
+      "commandsExecuted": true,
+      "commandsOverallStatus": "SUCCESS",
+      "testPassCount": 266,
+      "ownershipReleased": true,
+      "ownershipMessage": "RELEASE test/build ownership NOW",
+      "pendingHandoff": null,
+      "ownReportAndCasVerified": true,
+      "reportAppendReceipt": "artifacts/agent-evolution/setup-final-checks/task-6-20261114T022744Z-fV1YrO/report-append.json"
+    },
+    "task-7": {
+      "role": "product-owner-v2",
+      "status": "completed",
+      "revision": 3,
+      "description": "read-only docs review and own AgentNote preparation without UI, account or requirements (note created, 110 lines, verified by Lead)"
+    },
+    "task-8": {
+      "role": "lead",
+      "status": "completed",
+      "revision": 3,
+      "description": "task-8 D14 doc reconciliation across overview.md, qa-results.md, decisions.md, final-report.md, state.json, and external Lead Note",
+      "completedAt": null
+    },
+    "task-9": {
+      "role": "engineer",
+      "status": "completed",
+      "revision": 3,
+      "description": "engineering report append line 142 GO -> fresh get rev2/ready -> claim CAS 2->3",
+      "completedAt": null
+    },
+    "task-10": {
+      "role": "lead",
+      "status": "in_progress",
+      "revision": 2,
+      "description": "precommit semantic review and task-10 Phase B document reconciliation across allowlisted docs and external Lead Note",
+      "startedAt": null
+    }
+  },
+  "stand": {
+    "url": "http://127.0.0.1:8795",
+    "persistPath": ".wrangler/agent-evolution",
+    "status": "bounded-visits-pending",
+    "jobId": null,
+    "lifecycle": "single-cli-invocation",
+    "lastStartupTaskId": "e133e892-6ab5-46c4-bf82-e0af89744b9b/task-16",
+    "lastStartupTaskIdKind": "historical-foreign-conversation-trace-not-native-job-handle"
+  },
+  "qaStand": {
+    "url": "http://127.0.0.1:8796",
+    "persistPath": ".wrangler/agent-evolution-qa",
+    "status": "r3-ended/ready-not-asserted",
+    "jobId": null,
+    "lifecycle": "single-cli-invocation",
+    "lastTeardown": {
+      "code": 143,
+      "requestedByQa": true,
+      "portFree": true,
+      "producersUnchanged": true,
+      "producerFiles": 249,
+      "qaInputsUnchanged": true,
+      "qaInputFiles": 7,
+      "evidenceKind": "browser-r3-owned-stop-jtAUUH",
+      "portFreeMeaning": "after-owned-r3-stop-only-not-current-probe"
+    }
+  },
+  "baseline": {
+    "acceptance": "not-accepted",
+    "typecheck": "historical-pass-final-task6-executed-success",
+    "unit": "historical-pass-256-of-256-final-task6-executed-266-pass",
+    "build": "historical-pass-final-task6-executed-success",
+    "finalMandatoryChecks": "executed-success-lead-raw-verified-engineering-handoff-complete",
+    "e2e": "actual-original-runtime-pass-60-of-60-not-accepted",
+    "discovery": {
+      "tests": 60,
+      "files": 8,
+      "exitCode": 0,
+      "durationSec": 2.124,
+      "multisetMatchesOriginal": true,
+      "resultsSha256": "9de1bdf2d3d17e512c96b1dc45263bffb56be2f2716416c00621c467f00b496d",
+      "noRuntimeRerun": true
+    },
+    "independentQa": {
+      "migrationsMatrixR2": "partial-pass-5-matrix-pass-domain-pass-provenance-fail-outer-exit-1",
+      "migrationsProvenanceR3": "targeted-pass-exit-0-no-matrix-rerun",
+      "portability12SqlHashes": "verified-matched-12-hashes-between-r2-and-prep-json",
+      "browserR1": {
+        "exitCode": 1,
+        "attempts": 16,
+        "pass": 4,
+        "fail": 12,
+        "skip": 0,
+        "flaky": 0,
+        "durationMs": 320596.938,
+        "status": "rerun-pending-calibrating-own-fixtures"
+      },
+      "browserR2": {
+        "reportPath": "artifacts/agent-evolution/qa/setup/browser-report-baseline-r2.json",
+        "startTime": "2026-11-13T21:38:44.316Z",
+        "durationMs": 420001.022,
+        "expected": 4,
+        "unexpected": 5,
+        "skipped": 7,
+        "flaky": 0,
+        "timeout": "420s suite and teardown timeout",
+        "status": "historical-owned-stop-not-readiness"
+      },
+      "strictSuites": {
+        "r1": "verified-exit-0-root-cleanup-complete",
+        "r2": "raw-exit-2-duplicate-suffix",
+        "r3": "role-reported-exit-2-two-ts2339",
+        "r4": "lead-raw-verified-pass-exit-0-inclusion-4-inputs"
+      },
+      "discoveryR3": {
+        "reportPath": "artifacts/agent-evolution/qa/setup/browser-run-discovery-r3/discovery-execution.json",
+        "logPath": "artifacts/agent-evolution/qa/setup/browser-run-discovery-r3/discovery.log",
+        "exitCode": 0,
+        "tests": 16,
+        "files": 1,
+        "status": "lead-raw-verified-exit-0"
+      },
+      "browserR3": {
+        "reportPath": "artifacts/agent-evolution/qa/setup/browser-run-baseline-r3/browser-report.json",
+        "teardownPath": "artifacts/agent-evolution/qa/setup/browser-run-baseline-r3/browser-execution-teardown.json",
+        "helperTeardownPath": "artifacts/agent-evolution/qa/setup/server-8796-jtAUUH/owned-teardown.json",
+        "startTime": "2026-11-13T23:03:01.902Z",
+        "durationMs": 68495.02399999999,
+        "expected": 16,
+        "unexpected": 0,
+        "skipped": 0,
+        "flaky": 0,
+        "exitCode": 0,
+        "status": "lead-raw-verified-all-16-passed-not-readiness"
+      },
+      "nodeSuitesR4": {
+        "reportPath": "artifacts/agent-evolution/qa/setup/own-node-tests-r4-execution.json",
+        "logPath": "artifacts/agent-evolution/qa/setup/own-node-tests-r4.log",
+        "startTime": "2026-11-13T23:18:01.292Z",
+        "endTime": "2026-11-13T23:21:29.243Z",
+        "durationMs": 207831.745606,
+        "tests": 10,
+        "pass": 10,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "exitCode": 0,
+        "wranglerInvocations": 98,
+        "wranglerExit0": 83,
+        "wranglerExpectedExit1": 15,
+        "status": "lead-raw-verified-all-10-passed"
+      },
+      "independentForkReview": {
+        "verdict": "PARTIAL",
+        "rawReadPass": "static portability, provenance, real D1 5 histories, 15 negative probes, config observed roots, strict 4, 249+7, browser 16 runtime",
+        "pendingGates": "historical PARTIAL verdict preserved; later clone proof closed clone subgate; missing IPv6 remains PARTIAL; not broad baseline acceptance or freeze release"
+      },
+      "nativeDenialIncident": {
+        "incidentPath": "artifacts/agent-evolution/qa/setup/native-denial-incident.json",
+        "status": "rejected-before-execution-no-retry-allowed"
+      },
+      "nativeLeadGitViolations": {
+        "incident": "two-read-only-git-calls-with-danger-full-access-and-blank-justification-succeeded-without-prompt",
+        "status": "disclosed-process-violations-no-source-writes-read-only-tools-restricted"
+      },
+      "rootCleanupReceipt": {
+        "receiptPath": "artifacts/agent-evolution/setup/lead-strict-root-cleanup-r1.json",
+        "outcome": "CLEANUP_SUCCESS"
+      },
+      "authorizedFutureClone": {
+        "path": "artifacts/agent-evolution/qa/setup/portable-clone-r1/",
+        "status": "closed-as-raw-read-scoped-pass",
+        "executionReceipt": "artifacts/agent-evolution/qa/setup/own-portable-clone-r1-execution.json"
+      },
+      "portableCloneGate": {
+        "status": "closed-as-raw-read-scoped-pass",
+        "executionPath": "artifacts/agent-evolution/qa/setup/own-portable-clone-r1-execution.json",
+        "gitProofLog": "artifacts/agent-evolution/qa/setup/own-portable-clone-r1-git-proof.log",
+        "gitProofExitCode": 128,
+        "nodeLog": "artifacts/agent-evolution/qa/setup/own-portable-clone-r1-node.log",
+        "nodeExitCode": 0,
+        "testsTotal": 6,
+        "testsPass": 6,
+        "durationMs": 205507.979743,
+        "copiedFilesMatched": 29,
+        "qaInputsMatched": 7,
+        "rootProducersMatched": 249,
+        "wranglerInvocations": 98,
+        "wranglerExit0": 83,
+        "wranglerExpectedExit1": 15,
+        "symlinkDependencies": "read-only-contract",
+        "limitations": "not-no-git-binary-fresh-install-cross-os-or-whole-ci"
+      },
+      "finalHandoffAndFreeze": {
+        "qaTaskStatus": "completed-rev4",
+        "acceptance": "setup-only-qa-freeze-and-release",
+        "scopedPassCount": 12,
+        "partialCount": 5,
+        "notProvenCount": 1,
+        "partialScopes": [
+          "BL-CALENDAR",
+          "BL-SYNC",
+          "BL-BACKUP",
+          "BL-UX",
+          "BL-FAIL"
+        ],
+        "notProvenScopes": [
+          "BL-POSE"
+        ],
+        "freezeReceiptDigest": "103c07c25e7f77ec67a47160bf1d3e822959ccc45a9559724ea6aaf0b0b49d17",
+        "finalReportDigest": "7d7f8c2a7e091f008c3962241e43f924cf51d7a05a51dc057f69d3d694428cf3",
+        "producerFiles": 249,
+        "runtimeQaFiles": 7
+      }
+    },
+    "finalRootChecks": {
+      "status": "executed-success-lead-raw-verified",
+      "evidenceDir": "artifacts/agent-evolution/setup-final-checks/task-6-20261114T022744Z-fV1YrO/",
+      "resultsJson": "artifacts/agent-evolution/setup-final-checks/task-6-20261114T022744Z-fV1YrO/results.json",
+      "overallStatus": "SUCCESS",
+      "stoppedEarly": false,
+      "utcStart": "2026-11-14T02:31:16.303Z",
+      "utcEnd": "2026-11-14T02:35:26.955Z",
+      "durationMs": 250643.10814199998,
+      "tsc": {
+        "exitCode": 0,
+        "durationMs": 16032.777061,
+        "start": "2026-11-14T02:31:16.315Z",
+        "end": "2026-11-14T02:31:32.348Z"
+      },
+      "npmTest": {
+        "exitCode": 0,
+        "durationMs": 226078.461745,
+        "testDurationMs": 224971.155944,
+        "start": "2026-11-14T02:31:32.352Z",
+        "end": "2026-11-14T02:35:18.437Z",
+        "total": 266,
+        "pass": 266,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "build": {
+        "exitCode": 0,
+        "durationMs": 8500.086169000017,
+        "start": "2026-11-14T02:35:18.448Z",
+        "end": "2026-11-14T02:35:26.948Z",
+        "mainChunkKb": 545.69,
+        "gzipKb": 169.95,
+        "retainedWarning": ">500kB warning retained, not error"
+      },
+      "runtimeHashesMatched": true,
+      "receiptUnchanged": true,
+      "receiptDigest": "103c07c25e7f77ec67a47160bf1d3e822959ccc45a9559724ea6aaf0b0b49d17",
+      "newMigrationDirs": [
+        "migration-Mik0zj"
+      ],
+      "ownershipReleased": true,
+      "pendingHandoff": null
+    },
+    "scienceReview": "completed-source-manual-16-no-runtime-proof",
+    "precommitSemanticReview": {
+      "status": "pass-for-combined-local-setup-source-with-retained-limitations",
+      "documentationRecordedAtUTC": "2026-11-14T04:00:16Z",
+      "documentationRecordedAtSaratov": "2026-11-14T08:00:16+04:00",
+      "leadReviewedAtUTC": null,
+      "leadReviewedAtSaratov": null,
+      "leadReviewInstantNote": "exact review instant was not measured; review was completed prior to document record",
+      "decision": "D15",
+      "nonParentIntegrationDiffFilesReviewed": 12,
+      "target12DiffLines": 1094,
+      "target12DiffBytes": 55013,
+      "target12DiffSha": "4eb2f7c87c5f587261a76c589013b5803e28b06deaa06654e4937ce632d71004",
+      "target12UnstagedDiffBytes": 0,
+      "identicalToHistoricalDiff": true,
+      "noTargetedMergeRegression": true,
+      "preservedFeatures": [
+        "rooms",
+        "fonts",
+        "share-card",
+        "motion-dependency-not-framer-motion",
+        "incoming-muscles-accounting",
+        "volume",
+        "deload",
+        "analytics",
+        "machines",
+        "execution-identity",
+        "local-video",
+        "warmup-autofill"
+      ],
+      "retainedLimitations": [
+        "timestamp-drizzle-machines-only-gap",
+        "sync-versions-sql-only-gap",
+        "physical-android-unverified",
+        "calendar-sync-backup-ux-failure-partial",
+        "positive-pose-not-proven",
+        "npm-16-vulnerabilities-6-blocked-scripts",
+        "bundle-over-500kb-warning",
+        "no-production-ingress-privacy-clinical-pass"
+      ]
+    }
+  },
+  "d14FactualSnapshot": {
+    "snapshotScope": "initial-cached-native-proof-superseded",
+    "sampledAt": "2026-11-14T06:51:30+04:00",
+    "utc": "2026-11-14T02:51:30Z",
+    "task3": {
+      "status": "completed",
+      "revision": 4,
+      "disposition": "setup-only-qa-freeze-and-release-12-pass-5-partial-1-not-proven"
+    },
+    "task6": {
+      "status": "in_progress",
+      "revision": 3,
+      "commands": "SUCCESS",
+      "testsPass": 266,
+      "ownershipReleased": true
+    },
+    "task8": {
+      "status": "in_progress",
+      "revision": 2,
+      "role": "lead-mechanical-doc-reconciliation"
+    },
+    "portableCloneGate": "closed-as-raw-read-scoped-pass",
+    "productCounters": {
+      "started": 0,
+      "accepted": 0,
+      "requirements": 0,
+      "commits": 0,
+      "currentRound": null,
+      "integrationSha": null
+    },
+    "baselineAcceptance": "not-accepted"
+  },
+  "d14EngineeringHandoffFollowup": {
+    "actualDocRecordedAtUTC": "2026-11-14T03:22:00Z",
+    "actualDocRecordedAtSaratov": "2026-11-14T07:22:00+04:00",
+    "recordMeaning": "document-record-time-not-task-event-time",
+    "boardCompletionAt": null,
+    "task6": {
+      "status": "completed",
+      "revision": 4,
+      "owner": "engineer",
+      "blockedBy": [
+        "task-3"
+      ],
+      "nativeReportVerified": true,
+      "commands": "SUCCESS",
+      "testsPass": 266,
+      "ownershipReleased": true,
+      "pendingHandoff": null
+    },
+    "task8": {
+      "status": "in_progress",
+      "revision": 2,
+      "role": "lead-mechanical-doc-reconciliation"
+    },
+    "gatesStillClosed": true,
+    "productCounters": {
+      "started": 0,
+      "accepted": 0,
+      "requirements": 0,
+      "commits": 0,
+      "currentRound": null,
+      "integrationSha": null
+    },
+    "baselineAcceptance": "not-accepted"
+  },
+  "nextAction": "Finite controlled local staging/merge commit + native SHA/parents proof -> explicit PO task-4 GO -> real bounded UI exploration on :8795 -> exact ONE full original R01 requirements message. No more tests for doc reconciliation.",
+  "precommitReviewAndGitVerification": {
+    "phaseARunsRetained": 2,
+    "firstRunSummaryJson": "artifacts/agent-evolution/setup/precommit-review/phase-a-run-20261114_034209/summary.json",
+    "firstRunClocksUTC": "03:42:09.955926Z -> 03:42:10.569073Z (0.613147s)",
+    "firstRunToolDurationSec": 99.7,
+    "latestRunResultsJson": "artifacts/agent-evolution/setup/precommit-review/phase-a-run-20261114_035138/results.json",
+    "latestRunClocksUTC": "03:52:02.667410Z -> 03:52:03.227021Z (0.559611s)",
+    "latestRunToolDurationSec": 116.4,
+    "gitVerification": {
+      "canonicalWorkspace": "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution",
+      "branch": "agents/tyaga-30-rounds",
+      "headSha": "c708843daa05f68a5bc5417fcb1de7bafed8a369",
+      "mergeHeadSha": "b766eec0588a5bd688742dac26b45411d85e82e3",
+      "unmerged": 0,
+      "whitespaceErrors": "0/0",
+      "stagedFiles": 86,
+      "stagedInsertions": 7417,
+      "stagedDeletions": 939,
+      "untrackedFilesCount": 18,
+      "untrackedInventoryJson": "artifacts/agent-evolution/setup/precommit-review/phase-a-run-20261114_035138/untracked_list.json",
+      "soleTrackedUnstagedPath": "docs/agent-evolution/setup-engineering.md",
+      "soleTrackedUnstagedDiffLines": null,
+      "soleTrackedUnstagedChangeDescription": "descriptive 19-line append + 1-line chronology fix; not literal patch line count"
+    },
+    "freezeVerification": {
+      "runtimeInputFilesCount": 7,
+      "runtimeInputSHAs7Matches": true,
+      "receiptDigest": "103c07c25e7f77ec67a47160bf1d3e822959ccc45a9559724ea6aaf0b0b49d17",
+      "receiptMatches": true,
+      "reportDigest": "7d7f8c2a7e091f008c3962241e43f924cf51d7a05a51dc057f69d3d694428cf3",
+      "reportMatches": true,
+      "producerFiles249Remeasured": false,
+      "dispositionUnchanged": "12-scoped-pass-5-partial-1-not-proven"
+    },
+    "drizzleJournalVerification": {
+      "lines": 90,
+      "idx10Tag": "0010_live_rooms",
+      "idx10When": 1794424045113,
+      "idx11Tag": "0010_machines",
+      "idx11When": 1794468210926,
+      "nextIdx": 12,
+      "rooms0010Unchanged": true,
+      "machinesArchivedOutsideMeta": true,
+      "combined0011ParentRooms": true
+    },
+    "proseVsRawDiscrepancyNotes": [
+      "untracked count 28 in prose vs 18 in actual raw untracked_list.json",
+      "diff SHA 18fbe... in prose vs actual raw SHA 4eb2f7c87c5f587261a76c589013b5803e28b06deaa06654e4937ce632d71004",
+      "run duration 23.836s in prose vs raw 0.559611s",
+      "first prose erroneously tagged 0011_machines and listed wrong 7 runtime filepaths",
+      "second prose erroneously called motion framer-motion",
+      "raw precedence strictly maintained; originals preserved, no prose errors propagated"
+    ]
+  }
+}

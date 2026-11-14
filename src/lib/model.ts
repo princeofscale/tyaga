@@ -1,3 +1,6 @@
+import { AnalyticsFacts, type FactsOptions } from "../domain/AnalyticsFacts";
+import { TrainingVolume } from "../domain/TrainingVolume";
+import { WorkoutReference } from "../domain/WorkoutReference";
 import {
   TrainingAnalytics,
   type AnalysisOptions,
@@ -51,7 +54,7 @@ export function muscleLoad(
   settings = DEFAULT_SETTINGS,
   options: AnalysisOptions = {},
 ): MuscleLoad[] {
-  return new TrainingAnalytics(workouts, options).zoneLoad(settings);
+  return new TrainingAnalytics(workouts, { timeZone: settings.timeZone, ...options }).zoneLoad(settings);
 }
 export function anatomicalLoad(
   workouts: Workout[],
@@ -93,57 +96,10 @@ export const balanceScore = (loads: MuscleLoad[]) =>
           100,
       )
     : 0;
-export function volumeSummary(workouts: Workout[], kind: "working" | "warmup" | "all" = "working") {
-  let total = 0,
-    omittedSets = 0;
-  for (const w of workouts)
-    for (const we of w.exercises) {
-      const spec = exerciseForEntry(we)?.recording;
-      for (const s of we.sets)
-        if (s.done && (kind === "all" || (kind === "warmup" ? s.warmup : !s.warmup))) {
-          if (
-            !spec ||
-            spec.type === "duration" ||
-            !["total_external", "per_implement"].includes(spec.loadMode)
-          ) {
-            omittedSets++;
-            continue;
-          }
-          const sides =
-            spec.repsMode === "per_side" &&
-            (we.performedSides ?? "both") === "both"
-              ? 2
-              : 1;
-          total += s.weight * s.reps * spec.implementCount * sides;
-        }
-    }
-  return { total, omittedSets };
-}
+export const volumeSummary = TrainingVolume.summarize.bind(TrainingVolume);
 export const volume = (workouts: Workout[]) => volumeSummary(workouts).total;
-export const workingSets = (workouts: Workout[]) =>
-  workouts.reduce(
-    (s, w) =>
-      s +
-      w.exercises.reduce(
-        (n, e) => n + e.sets.filter((x) => x.done && !x.warmup).length,
-        0,
-      ),
-    0,
-  );
-export function estimatedOneRepMax(set: SetEntry, we: WorkoutExercise) {
-  const spec = exerciseForEntry(we)?.recording;
-  if (
-    !spec?.e1rmEligible ||
-    spec.type === "duration" ||
-    !set.done ||
-    set.warmup ||
-    set.weight <= 0 ||
-    set.reps < 1 ||
-    set.reps > 12
-  )
-    return null;
-  return set.reps === 1 ? set.weight : set.weight * (1 + set.reps / 30);
-}
+export const workingSets = (workouts: Workout[], options: FactsOptions = {}) => new AnalyticsFacts(workouts,options).sets().length;
+export const estimatedOneRepMax = TrainingVolume.e1rm.bind(TrainingVolume);
 export function makeSets(count = 3, weight = 0, reps = 10): SetEntry[] {
   return Array.from({ length: count }, () => ({
     id: crypto.randomUUID(),
@@ -155,25 +111,12 @@ export function makeSets(count = 3, weight = 0, reps = 10): SetEntry[] {
   }));
 }
 /** The same exercise variant from the most recent workout, skipping `excludeId`. */
-export function lastEntry(
-  history: Workout[],
-  entry: WorkoutExercise,
-  excludeId?: string,
-) {
-  return [...history]
-    .filter((w) => w.id !== excludeId)
-    .sort(
-      (a, b) =>
-        b.date.localeCompare(a.date) ||
-        (b.createdAt ?? "").localeCompare(a.createdAt ?? "") ||
-        b.id.localeCompare(a.id),
-    )
-    .flatMap((w) => w.exercises)
-    .find((we) => progressKey(we) === progressKey(entry));
-}
+export const lastEntry = WorkoutReference.latest.bind(WorkoutReference);
 export function makeExerciseEntry(
   id: string,
   history: Workout[] = [],
+  referenceDate = localDate(),
+  timeZone?: string,
 ): WorkoutExercise {
   const entry: WorkoutExercise = { ...entrySpec(id), sets: makeSets() };
   const e = exerciseById(id)!;
@@ -183,7 +126,7 @@ export function makeExerciseEntry(
       rir: null,
       durationSeconds: 30,
     }));
-  const previous = lastEntry(history, entry)
+  const previous = lastEntry(history, entry, undefined, referenceDate, { timeZone })
     ?.sets.filter((s) => s.done && !s.warmup)
     .at(-1);
   if (previous)
@@ -213,7 +156,7 @@ export function makeWorkout(
     date: localDate(new Date(), timeZone),
     duration: 0,
     notes: "",
-    exercises: ids.map((id) => makeExerciseEntry(id, history)),
+    exercises: ids.map((id) => makeExerciseEntry(id, history, localDate(new Date(), timeZone),timeZone)),
     revision: 0,
     timeZone,
     createdAt: new Date().toISOString(),
@@ -228,7 +171,7 @@ export function repeatWorkout(
   return {
     ...w,
     name: original.name,
-    analysisVersion: original.analysisVersion ?? 1,
+    analysisVersion: ANALYSIS_VERSION,
     exercises: original.exercises.map((we) => ({
       ...structuredClone(we),
       sets: we.sets.map((s) => ({

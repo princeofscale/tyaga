@@ -1,0 +1,21 @@
+{
+  "utcStart": "2026-11-14T02:49:23.181786+00:00",
+  "utcEnd": "2026-11-14T02:49:23.184170+00:00",
+  "targetCanonicalPath": "/Users/princeofscale/Desktop/gym/tyaga-agent-evolution/docs/agent-evolution/setup-engineering.md",
+  "beforeBytes": 29444,
+  "afterBytes": 35025,
+  "beforeSha256": "8e54f2b80ee608abf244103db20cc6a218e20f017123a5f6a56876be8988c9d8",
+  "afterSha256": "933dab639b7d70d14132c18ddeb6dbca72ad5fbb5b250393dd3969b038a235c1",
+  "originalPrefixPreserved": true,
+  "intendedSuffixMatches": true,
+  "previousLineCount": 138,
+  "newLineCount": 157,
+  "appendixStartLine": 140,
+  "appendixEndLine": 157,
+  "commandStatus": {
+    "commandExitCode": 0,
+    "signal": null,
+    "allJobsCollected": true,
+    "activeRemaining": 0
+  }
+}

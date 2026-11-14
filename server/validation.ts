@@ -1,3 +1,6 @@
+import { ExecutionProfile } from "../src/domain/ExecutionProfile";
+import { MachineRegistry } from "../src/domain/MachineRegistry";
+import type { MachineInstance, SetEntry } from "../src/lib/types";
 import {
   exerciseById,
   MUSCLES,
@@ -51,6 +54,7 @@ export function validWorkout(
     now?: Date;
     timeZone?: string;
     importedExercises?: Map<string, Exercise>;
+    machines?: Map<string, MachineInstance>;
     allowIncomplete?: boolean;
   } = {},
 ): Workout {
@@ -119,6 +123,19 @@ export function validWorkout(
       if (catalogRevision === 3 && (exercise.source || exercise.custom))
         metadata.externalDefinition = exercise;
     }
+    if (e.muscleModelRevision !== undefined) metadata.muscleModelRevision = num(e.muscleModelRevision,1,1,true) as 1;
+    if (e.execution !== undefined) metadata.execution = validExecution(e.execution);
+    if (e.supersetId !== undefined) metadata.supersetId = str(e.supersetId, 80, 1);
+    if (e.machineInstanceId !== undefined) {
+      const id = str(e.machineInstanceId, 80, 1);
+      const machine = options.machines?.get(id);
+      if (options.machines && !machine) throw new InputError("Выбранный тренажёр недоступен");
+      const snapshot = e.machineSnapshot !== undefined ? validMachine(e.machineSnapshot) : machine;
+      if (!snapshot || snapshot.id !== id) throw new InputError("Не хватает данных тренажёра");
+      if (machine && snapshot.model.id !== machine.model.id) throw new InputError("Снимок относится к другой модели тренажёра");
+      metadata.machineInstanceId = id;
+      metadata.machineSnapshot = snapshot;
+    }
     if (e.equipmentNote !== undefined)
       metadata.equipmentNote = str(e.equipmentNote, 120);
     if (e.progressionNote !== undefined)
@@ -137,7 +154,7 @@ export function validWorkout(
       ["machine_stack", "assisted_bodyweight"].includes(
         exercise.recording.loadMode,
       ) &&
-      !metadata.equipmentNote &&
+      !metadata.equipmentNote && !metadata.machineInstanceId &&
       !options.allowIncomplete
     )
       throw new InputError(
@@ -166,7 +183,7 @@ export function validWorkout(
       const id = str(s.id, 80, 1);
       if (setIds.has(id)) throw new InputError("Повторяющийся ID подхода");
       setIds.add(id);
-      const set = {
+      const set: SetEntry = {
         id,
         weight: num(s.weight, 0, 1000),
         reps:
@@ -186,6 +203,16 @@ export function validWorkout(
           ? { distanceKm: num(s.distanceKm, 0, 1000) }
           : {}),
       };
+      if (s.execution !== undefined) set.execution = validExecution(s.execution);
+      if (s.kind !== undefined) {
+        if (!["normal", "warmup", "dropset", "myorep"].includes(String(s.kind))) throw new InputError("Неизвестный тип подхода");
+        set.kind = s.kind as SetEntry["kind"];
+        if ((set.kind === "warmup") !== set.warmup) throw new InputError("Тип подхода не совпадает с отметкой разминки");
+      }
+      if (s.performedSides !== undefined) {
+        if (exercise.recording.laterality !== "unilateral" || !["both", "left", "right"].includes(String(s.performedSides))) throw new InputError("Проверь стороны подхода");
+        set.performedSides = s.performedSides as SetEntry["performedSides"];
+      }
       if (
         ["bodyweight", "assisted_bodyweight"].includes(
           exercise.recording.loadMode,
@@ -303,6 +330,7 @@ function validCycle(value: unknown): RoutineCycle {
 export function validRoutine(
   value: unknown,
   importedExercises: Map<string, Exercise>,
+  machines?: Map<string, MachineInstance>,
 ): Routine {
   const v = object(value);
   if (
@@ -324,7 +352,7 @@ export function validRoutine(
       notes: "",
       exercises: v.exercises,
     },
-    { timeZone: "UTC", importedExercises, allowIncomplete: true },
+    { timeZone: "UTC", importedExercises, machines, allowIncomplete: true },
   ).exercises;
   if (!exercises.some((e) => e.sets.some((s) => !s.warmup)))
     throw new InputError("Добавь хотя бы один рабочий подход в программу");
@@ -360,4 +388,13 @@ export function validSettings(value: unknown): Settings {
     revision: validRevision(v.revision),
     ...(v.timeZone !== undefined ? { timeZone: zone(v.timeZone) } : {}),
   };
+}
+
+export function validMachine(value: unknown): MachineInstance {
+  try { return MachineRegistry.parse(value); }
+  catch (error) { throw new InputError(error instanceof Error ? error.message : "Проверь тренажёр"); }
+}
+export function validExecution(value: unknown) {
+  try { return ExecutionProfile.parse(value); }
+  catch (error) { throw new InputError(error instanceof Error ? error.message : "Проверь выполнение"); }
 }

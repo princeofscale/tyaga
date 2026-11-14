@@ -1,3 +1,4 @@
+import { AnalyticsFacts } from "./AnalyticsFacts";
 import { addCalendarDays, localDate } from "../lib/calendar";
 import { volumeSummary, workingSets, type Workout } from "../lib/model";
 import { PersonalRecordsCalculator } from "./PersonalRecords";
@@ -12,23 +13,20 @@ export class ProgressOverview {
     const end = localDate(now, timeZone),
       start = addCalendarDays(end, 1 - days),
       priorStart = addCalendarDays(start, -days);
-    const current = workouts.filter(
-      (w) => w.date >= start && w.date <= end && workingSets([w]) > 0,
-    );
-    const previous = workouts.filter(
-      (w) => w.date >= priorStart && w.date < start && workingSets([w]) > 0,
-    );
+    const options = { now, timeZone };
+    const current = new AnalyticsFacts(workouts, { ...options, from: start, through: end }).workouts();
+    const previous = new AnalyticsFacts(workouts, { ...options, from: priorStart, through: addCalendarDays(start,-1) }).workouts();
     const weeks = new Set(
       current.map((w) =>
         Math.floor((Date.parse(w.date) - Date.parse(start)) / (7 * 86400000)),
       ),
     );
     const currentPrs = new PersonalRecordsCalculator(
-      current,
-    ).calculateRecords();
+      current, now,
+    ).calculateRecords(timeZone);
     const priorPrs = new Map(
-      new PersonalRecordsCalculator(previous)
-        .calculateRecords()
+      new PersonalRecordsCalculator(previous, now)
+        .calculateRecords(timeZone)
         .map((p) => [p.key, p]),
     );
     const changes = currentPrs.flatMap((p) => {
@@ -36,8 +34,8 @@ export class ProgressOverview {
         after = p.bestE1rm?.e1rm;
       return before && after ? [((after - before) / before) * 100] : [];
     });
-    const sets = workingSets(current),
-      previousSets = workingSets(previous);
+    const sets = new AnalyticsFacts(current, options).sets().length,
+      previousSets = new AnalyticsFacts(previous, options).sets().length;
     return {
       current,
       previous,
@@ -47,7 +45,7 @@ export class ProgressOverview {
       activeWeeks: weeks.size,
       totalWeeks: days / 7,
       sets,
-      volumeKg: volumeSummary(current).total,
+      volumeKg: volumeSummary(current,"working",options).total,
       workloadChange: previousSets
         ? Math.round(((sets - previousSets) / previousSets) * 100)
         : null,
