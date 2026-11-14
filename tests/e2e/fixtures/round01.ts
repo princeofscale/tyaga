@@ -187,7 +187,10 @@ export async function round01Fixture(page: Page, options: Round01Options = {}) {
     if (path === "/api/workouts" && method === "PUT") {
       const w = r.postDataJSON();
       const saved = { ...w, revision: 1 };
-      workouts.unshift(saved);
+      // Как воркер: тот же id — та же запись (повторная отправка не плодит дубль).
+      const at = workouts.findIndex((x) => x.id === w.id);
+      if (at !== -1) workouts[at] = saved;
+      else workouts.unshift(saved);
       savedBodies.push(w);
       return json({ workout: saved });
     }

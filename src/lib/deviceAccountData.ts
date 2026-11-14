@@ -12,7 +12,7 @@ export class DeviceAccountData {
   /** Ключи, у которых после префикса стоит id аккаунта. */
   private static readonly perAccount = [
     "tyaga-draft-account:", "tyaga-bodyweight-sync:", "tyaga-bodyweight-bound:", "tyaga-bodyweight-goal:",
-    "tyaga-bodyweight:", "tyaga-last-import:", "tyaga-offline:data:",
+    "tyaga-bodyweight:", "tyaga-last-import:", "tyaga-offline:data:", "tyaga-pending-workouts:",
   ];
 
   constructor(private storage: () => Store | null = () => (typeof localStorage === "undefined" ? null : localStorage)) {}
@@ -32,6 +32,16 @@ export class DeviceAccountData {
   /** Выход из аккаунта: на устройстве не остаётся ничего личного. Возвращает стёртые ключи. */
   wipe() {
     return this.remove(this.keys().filter((k) => k.startsWith("tyaga-") && !DeviceAccountData.kept.has(k)));
+  }
+
+  /**
+   * Сессия истекла: стираются копии, которые сервер отдаст заново (офлайн-копия, кэш журнала веса,
+   * сведения об импорте). Начатая тренировка и очередь отправки остаются: это ещё не сохранённая работа,
+   * её стирает только выход из аккаунта (с предупреждением) или вход под другим аккаунтом.
+   */
+  wipeCaches() {
+    const caches = ["tyaga-offline:", "tyaga-bodyweight", "tyaga-last-import:", "tyaga-import-run:"];
+    return this.remove(this.keys().filter((k) => caches.some((p) => k.startsWith(p))));
   }
 
   /** Вошёл другой аккаунт: данные прежних аккаунтов на этом устройстве стираются, свои остаются. */

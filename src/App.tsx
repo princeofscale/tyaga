@@ -141,6 +141,8 @@ import {
 } from "./lib/draft";
 import { WorkoutSession } from "./domain/WorkoutSession";
 import { api, ApiError } from "./services/ApiClient";
+import { PendingWorkouts } from "./domain/PendingWorkouts";
+import { usePendingWorkouts } from "./hooks/usePendingWorkouts";
 import { productService } from "./services/ProductService";
 import { TrainingProgram, nextScheduled } from "./domain/TrainingProgram";
 import { useTrainingTools } from "./lib/webmcp";
@@ -192,7 +194,8 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
   const [initialRoutine, setInitialRoutine] = useState<Routine | null>(null);
   const pendingFavorites = useRef(new Set<string>());
   const [importBusy, setImportBusy] = useState(false);
-  const [workouts, setWorkouts] = useState<Workout[]>([]);
+  /** Журнал с сервера. На экране он слит с очередью отправки (см. `workouts` ниже). */
+  const [stored, setWorkouts] = useState<Workout[]>([]);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -237,6 +240,17 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
   >(null);
   const [detail, setDetail] = useState<Workout | null>(null);
   const [justSaved, setJustSaved] = useState<Workout | null>(null);
+  const pending = usePendingWorkouts(
+    account.id,
+    (saved) => setWorkouts((ws) => [saved, ...ws.filter((w) => w.id !== saved.id)].sort((a, b) => b.date.localeCompare(a.date))),
+    (text) => setNotice({ text, tone: "ok" }),
+  );
+  const pendingError = pending.items.find((i) => i.error)?.error ?? "";
+  /** Завершённые без связи тренировки лежат в истории сразу, с меткой «Ждёт отправки». */
+  const workouts = useMemo(
+    () => PendingWorkouts.merge(stored, pending.items),
+    [stored, pending.items],
+  );
   const [deleteId, setDeleteId] = useState<string | null>(null);
   // Каталог упражнений — отдельный файл: докачиваем его, пока есть связь, чтобы «Добавить упражнение» открылось и без неё.
   useEffect(() => {
@@ -349,11 +363,16 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
     window.addEventListener("online", back);
     return () => window.removeEventListener("online", back);
   }, [offlineData, load]);
+  // Загрузка прошла: связь есть, отправляем то, что завершили без неё.
+  const flushPending = pending.flush;
+  useEffect(() => {
+    if (!loading && !offlineData && !demo) void flushPending();
+  }, [loading, offlineData, demo, flushPending]);
   // Копия для запуска без связи следует за журналом: сохранили, удалили, правили программу.
   useEffect(() => {
     if (loading || demo || offlineData) return;
-    offlineSnapshot.saveData(account.id, { workouts, settings, product });
-  }, [loading, demo, offlineData, workouts, settings, product, account.id]);
+    offlineSnapshot.saveData(account.id, { workouts: stored, settings, product });
+  }, [loading, demo, offlineData, stored, settings, product, account.id]);
   const [update, setUpdate] = useState<Release | null>(null);
   const [updateProgress, setUpdateProgress] = useState<number | null>(null);
   useEffect(() => {
@@ -697,11 +716,25 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
       manualDuration: true,
     });
     try {
-      const result = await api<{ workout: Workout }>(
-        "/api/workouts",
-        "PUT",
-        workout,
-      );
+      let result: { workout: Workout };
+      try {
+        result = await api<{ workout: Workout }>("/api/workouts", "PUT", workout);
+      } catch (e) {
+        if (PendingWorkouts.isRetryable(e) && pending.enqueue(workout)) {
+          // Нет связи: тренировка не черновик и не потеряна — лежит в истории и уйдёт сама.
+          persistDraft(localStorage, null, draftKey); // сразу, не дожидаясь эффекта: перезагрузка не вернёт черновик
+          setDraft(null);
+          setConflict(null);
+          setSaveError("");
+          go("history");
+          warn("Нет связи: тренировка сохранена на устройстве и ждёт отправки. Уйдёт сама, когда появится связь.");
+          return;
+        }
+        throw e;
+      }
+      pending.queue.remove(workout.id);
+      pending.sync();
+      persistDraft(localStorage, null, draftKey); // сразу: перезагрузка сразу после «Завершить» не вернёт готовую тренировку черновиком
       setWorkouts((ws) =>
         [result.workout, ...ws.filter((w) => w.id !== result.workout.id)].sort(
           (a, b) => b.date.localeCompare(a.date),
@@ -739,6 +772,11 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
   };
   const editWorkout = (w: Workout) => {
     if (demo) return;
+    if (pending.ids.has(w.id)) {
+      setDetail(null);
+      warn("Тренировка ещё не отправлена. Править её можно после отправки.");
+      return;
+    }
     if (draft) {
       setDetail(null);
       go("workout");
@@ -753,6 +791,15 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
   };
   const deleteWorkout = async () => {
     if (!deleteId || saving) return;
+    if (pending.ids.has(deleteId)) {
+      // Ещё не на сервере: удалять там нечего, снимаем с очереди.
+      pending.queue.remove(deleteId);
+      pending.sync();
+      setDeleteId(null);
+      setDetail(null);
+      setToast("Тренировка удалена");
+      return;
+    }
     setSaving(true);
     try {
       await api("/api/workouts/" + encodeURIComponent(deleteId), "DELETE", {
@@ -905,7 +952,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
         </span>
       </div>
       <div className="session-item-info">
-        <h3>{w.name}</h3>
+        <h3>{w.name}{pending.ids.has(w.id) ? <span className="pending-badge">Ждёт отправки</span> : null}</h3>
         <p>
           {w.exercises.length} упр. <span>·</span> {workingSets([w])} подх.{" "}
           {expanded ? (
@@ -1028,9 +1075,26 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
           {offlineData ? (
             <div className="offline-banner" role="status">
               <Info size={18} />
-              <span>Нет связи: показаны данные с этого устройства. Тренировка сохранена на устройстве; нажми «Завершить», когда появится связь — сама она не отправится.</span>
+              <span>
+                Нет связи: показаны данные с этого устройства.
+                {draft ? " Начатая тренировка хранится на устройстве; нажми «Завершить» — без связи она встанет в очередь и уйдёт сама." : ""}
+              </span>
               <button className="text-button" onClick={() => void load()}>
                 Обновить
+              </button>
+            </div>
+          ) : null}
+          {pending.items.length ? (
+            <div className={pendingError ? "error-banner pending-banner" : "offline-banner pending-banner"} role="status">
+              <Info size={18} />
+              <span>
+                {pending.items.length === 1 ? "Ждёт отправки: 1 тренировка." : `Ждут отправки: ${pending.items.length}.`}{" "}
+                {pendingError
+                  ? `Сервер не принял: ${pendingError.replace(/[.\s]+$/, "")}. Тренировка осталась на устройстве.`
+                  : "Она сохранена на устройстве и уйдёт сама, когда появится связь."}
+              </span>
+              <button className="text-button" disabled={saving} onClick={() => void pending.flush(true)}>
+                Отправить сейчас
               </button>
             </div>
           ) : null}
@@ -2347,7 +2411,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
         </Modal>
       ) : null}
       {modal === "profile" ? <Modal title="Мой профиль" onClose={() => setModal(null)}>
-        <AccountProfileForm account={account} hasDraft={!!draft}
+        <AccountProfileForm account={account} hasDraft={!!draft} queued={pending.items.length}
           onChange={p => { onAccountChange(p); void load(); }} onLogout={onLogout} />
       </Modal> : null}
       {modal === "plate" ? (

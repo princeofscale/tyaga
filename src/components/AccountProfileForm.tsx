@@ -25,13 +25,18 @@ export function AccountProfileForm({
   onChange,
   onLogout,
   hasDraft,
+  queued = 0,
 }: {
   account: AccountProfile;
   onChange: (p: AccountProfile) => void;
   onLogout: () => void;
+  /** Начатая тренировка на этом устройстве: при выходе она пропадёт. */
   hasDraft: boolean;
+  /** Завершённые без связи тренировки, которые ещё не ушли на сервер: при выходе тоже пропадут. */
+  queued?: number;
 }) {
   const journal = useBodyweight();
+  const [confirmLogout, setConfirmLogout] = useState(false);
   const latestMass = journal.massAt(
     localDate(new Date(), account.timeZone),
     account.bodyMassKg,
@@ -49,6 +54,18 @@ export function AccountProfileForm({
   const [currentTheme, setCurrentTheme] = useState<ThemeId>(() =>
     getCurrentTheme(),
   );
+  const signOut = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      await api("/api/auth/logout", "POST", {});
+      onLogout();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось выйти");
+      setBusy(false);
+      setConfirmLogout(false);
+    }
+  };
   const save = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
@@ -280,12 +297,6 @@ export function AccountProfileForm({
               </button>
             </form>
           </details>
-          {hasDraft && (
-            <p className="tiny">
-              Текущий черновик останется на этом устройстве и вернётся после
-              входа в этот профиль.
-            </p>
-          )}
           <a
             className="button secondary android-download"
             href="/tyaga.apk"
@@ -297,20 +308,26 @@ export function AccountProfileForm({
           <button
             className="button secondary account-logout"
             disabled={busy}
-            onClick={async () => {
-              setBusy(true);
-              setError("");
-              try {
-                await api("/api/auth/logout", "POST", {});
-                onLogout();
-              } catch (e) {
-                setError(e instanceof Error ? e.message : "Не удалось выйти");
-                setBusy(false);
-              }
-            }}
+            onClick={() => (hasDraft || queued ? setConfirmLogout(true) : void signOut())}
           >
             Выйти из аккаунта
           </button>
+          {confirmLogout && (hasDraft || queued) ? (
+            <div className="account-logout-confirm" role="alertdialog" aria-label="Выйти из аккаунта?">
+              <p>
+                Выйти? Несохранённая тренировка на этом устройстве пропадёт
+                {queued ? ` (ждёт отправки: ${queued})` : ""}.
+              </p>
+              <div className="actions">
+                <button className="button danger" disabled={busy} onClick={() => void signOut()}>
+                  Выйти
+                </button>
+                <button className="button secondary" disabled={busy} autoFocus onClick={() => setConfirmLogout(false)}>
+                  Остаться
+                </button>
+              </div>
+            </div>
+          ) : null}
         </>
       )}
     </div>

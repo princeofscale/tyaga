@@ -10,6 +10,8 @@ import { TrainingProgram } from "../src/domain/TrainingProgram";
 import { WorkoutSession } from "../src/domain/WorkoutSession";
 import { OfflineSnapshot } from "../src/lib/offlineSnapshot";
 import { DeviceAccountData } from "../src/lib/deviceAccountData";
+import { PendingWorkouts } from "../src/domain/PendingWorkouts";
+import { ApiError } from "../src/services/ApiClient";
 import { estimatedOneRepMax, exerciseById, makeExerciseEntry, makeSets, makeWorkout} from "../src/lib/model";
 import type { Routine, Workout } from "../src/lib/types";
 
@@ -212,4 +214,91 @@ test("QA-R03-03: выход стирает всё личное с tyaga-, офо
   data.wipe();
   assert.deepEqual([...map.keys()].sort(), [...neutral].sort());
   assert.doesNotThrow(() => new DeviceAccountData(() => { throw new Error("blocked"); }).wipe());
+});
+
+const memoryStore = () => {
+  const map = new Map<string, string>();
+  return {
+    map,
+    storage: {
+      get length() { return map.size; }, key: (i: number) => [...map.keys()][i] ?? null,
+      getItem: (k: string) => map.get(k) ?? null, setItem: (k: string, v: string) => void map.set(k, v), removeItem: (k: string) => void map.delete(k),
+    },
+  };
+};
+const finished = (date = "2026-11-10") => {
+  const w = makeWorkout(["bench"], [], "UTC", true);
+  w.date = date;
+  w.exercises[0].sets = [{ ...makeSets(bench(), 1)[0], weight: 60, reps: 8, done: true }];
+  return w;
+};
+
+test("Доработка 2 / R03-REQ04: очередь отправки привязана к аккаунту, переживает перезагрузку и не плодит дубли", () => {
+  const { map, storage } = memoryStore();
+  const a = new PendingWorkouts(() => storage, "a1");
+  const w = finished();
+  assert.equal(a.add(w, new Date("2026-11-10T12:00:00Z")), true);
+  assert.equal(a.add(w), true, "повторная постановка той же тренировки заменяет, а не дублирует");
+  assert.equal(a.list().length, 1);
+  assert.equal(new PendingWorkouts(() => storage, "a1").list()[0].workout.id, w.id, "после перезагрузки лежит там же");
+  assert.equal(new PendingWorkouts(() => storage, "b2").list().length, 0, "чужой аккаунт очередь не видит");
+  assert.ok(map.has("tyaga-pending-workouts:a1"));
+  a.fail(w.id, "Версия устарела");
+  assert.equal(a.list()[0].error, "Версия устарела");
+  assert.deepEqual(a.list()[0].workout, w, "ошибка сервера данные не меняет");
+  a.clearError(w.id);
+  assert.equal(a.list()[0].error, undefined);
+  a.remove(w.id);
+  assert.equal(map.has("tyaga-pending-workouts:a1"), false, "пустая очередь ключ не оставляет");
+  const broken = new PendingWorkouts(() => { throw new Error("blocked"); }, "a1");
+  assert.equal(broken.add(w), false, "хранилище не приняло — вызывающий оставит тренировку как есть");
+  assert.deepEqual(broken.list(), []);
+  map.set("tyaga-pending-workouts:a1", "{не json");
+  assert.deepEqual(a.list(), [], "битая запись не роняет приложение");
+});
+
+test("Доработка 2 / R03-REQ04: повторять можно только обрыв связи и 5xx; отказ сервера остаётся в очереди с ошибкой", () => {
+  assert.equal(PendingWorkouts.isRetryable(new TypeError("Failed to fetch")), true);
+  assert.equal(PendingWorkouts.isRetryable(new Error("Нет связи")), true);
+  assert.equal(PendingWorkouts.isRetryable(new ApiError("Сервер недоступен", 503, {})), true);
+  assert.equal(PendingWorkouts.isRetryable(new ApiError("Версия устарела", 409, {})), false);
+  assert.equal(PendingWorkouts.isRetryable(new ApiError("Неверные данные", 400, {})), false);
+  assert.equal(PendingWorkouts.isRetryable(new ApiError("Войди снова", 401, {})), false);
+  assert.equal(PendingWorkouts.needsSignIn(new ApiError("Войди снова", 401, {})), true);
+  assert.equal(PendingWorkouts.needsSignIn(new ApiError("x", 409, {})), false);
+  const abort = new Error("aborted"); abort.name = "AbortError";
+  assert.equal(PendingWorkouts.isRetryable(abort), false);
+});
+
+test("Доработка 2 / R03-REQ04: в истории ожидающая тренировка стоит один раз; серверная версия новее — побеждает", () => {
+  const fresh = finished("2026-11-10");
+  const old = { ...finished("2026-11-01"), revision: 1 };
+  const queued = [{ workout: fresh, queuedAt: "2026-11-10T12:00:00Z" }];
+  assert.deepEqual(PendingWorkouts.merge([old], queued).map((w) => w.id), [fresh.id, old.id]);
+  assert.deepEqual(PendingWorkouts.merge([old], []), [old], "пустая очередь журнал не меняет");
+  // Потерянный ответ: сервер уже записал тренировку (ревизия 1), очередь ещё держит её с ревизией 0.
+  const written = { ...fresh, revision: 1 };
+  const merged = PendingWorkouts.merge([written, old], queued);
+  assert.equal(merged.filter((w) => w.id === fresh.id).length, 1, "без дубля");
+  assert.equal(merged.find((w) => w.id === fresh.id)?.revision, 1);
+  // Правка, не ушедшая на сервер: очередь с той же ревизией показывается вместо серверной.
+  const edit = { ...old, name: "Правка", revision: 1 };
+  assert.equal(PendingWorkouts.merge([old], [{ workout: edit, queuedAt: "x" }])[0].name, "Правка");
+});
+
+test("QA-R03-08: истёкшая сессия стирает кэши журнала веса, импорта и офлайн-копию, но не начатую тренировку и очередь", () => {
+  const { map, storage } = memoryStore();
+  const caches = ["tyaga-offline:session", "tyaga-offline:data:a1", "tyaga-bodyweight-sync:a1", "tyaga-bodyweight-sync:a1:cloud:offline", "tyaga-bodyweight-bound:a1", "tyaga-bodyweight:a1", "tyaga-bodyweight-goal:a1", "tyaga-last-import:a1", "tyaga-import-run:abc"];
+  const work = ["tyaga-draft-account:a1", "tyaga-pending-workouts:a1"];
+  const neutral = ["tyaga_theme_accent", "tyaga_sound_muted", "tyaga-cloud", "other-site-key"];
+  for (const k of [...caches, ...work, ...neutral]) map.set(k, "x");
+  const data = new DeviceAccountData(() => storage);
+  data.wipeCaches();
+  assert.deepEqual([...map.keys()].sort(), [...work, ...neutral].sort());
+  data.purgeOthers("b2");
+  assert.deepEqual([...map.keys()].sort(), [...neutral].sort(), "вход другого аккаунта стирает и очередь прежнего");
+  map.set("tyaga-pending-workouts:a1", "x"); map.set("tyaga-draft-account:a1", "x");
+  new DeviceAccountData(() => storage).wipe();
+  assert.equal(map.has("tyaga-pending-workouts:a1"), false, "выход стирает очередь");
+  assert.equal(map.has("tyaga-draft-account:a1"), false);
 });

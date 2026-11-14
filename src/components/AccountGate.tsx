@@ -19,7 +19,7 @@ export default function AccountGate() {
     try {
       const session = await api<AccountState>("/api/auth/session");
       // Копия профиля нужна только для запуска без связи; без входа её не бывает.
-      if (session.profile) { offlineSnapshot.saveSession(session.profile); deviceAccountData.purgeOthers(session.profile.id); } else offlineSnapshot.clear();
+      if (session.profile) { offlineSnapshot.saveSession(session.profile); deviceAccountData.purgeOthers(session.profile.id); } else { offlineSnapshot.clear(); deviceAccountData.wipeCaches(); }
       setState(session); setError("");
     }
     catch (e) {

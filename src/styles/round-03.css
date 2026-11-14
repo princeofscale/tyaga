@@ -51,3 +51,37 @@
   display: block;
   padding-bottom: 6px;
 }
+
+/* Доработка 2 (R03-REQ04): завершённая без связи тренировка ждёт отправки. */
+.pending-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border: 1px solid var(--accent, #cafa64);
+  border-radius: 999px;
+  color: var(--accent, #cafa64);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.pending-banner button {
+  flex: none;
+}
+.account-logout-confirm {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--danger, #ff7a6b);
+  border-radius: 10px;
+}
+.account-logout-confirm p {
+  margin: 0;
+}
+.account-logout-confirm .actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}

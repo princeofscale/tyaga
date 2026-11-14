@@ -353,20 +353,17 @@ test("lost response after commit is safely retried with frozen duration", async 
   await page
     .getByRole("button", { name: "Завершить тренировку", exact: true })
     .click();
-  await expect(
-    page.getByText("Запрос не завершился.", { exact: false }),
-  ).toBeVisible();
+  // Ответ потерян после записи: тренировка не пропала и не осталась черновиком — она ждёт отправки (R03-REQ04).
+  await expect(page.locator(".pending-banner")).toContainText("Ждёт отправки: 1");
+  await expect(page.locator(".session-item .pending-badge")).toHaveText("Ждёт отправки");
   const before = await (await request.get("/api/data")).json();
   expect(before.workouts).toHaveLength(1);
   await page.unroute("**/api/workouts");
   await page.clock.install();
   await page.clock.fastForward(61000);
-  await page
-    .getByRole("button", { name: "Завершить тренировку", exact: true })
-    .click();
-  await expect(
-    page.getByRole("heading", { name: "История тренировок", exact: true }),
-  ).toBeVisible();
+  // Повтор тем же содержимым: сервер возвращает уже записанную тренировку, дубля и пересчёта длительности нет.
+  await page.getByRole("button", { name: "Отправить сейчас", exact: true }).click();
+  await expect(page.locator(".pending-banner")).toHaveCount(0);
   const after = await (await request.get("/api/data")).json();
   expect(after.workouts).toHaveLength(1);
   expect(after.workouts[0].revision).toBe(before.workouts[0].revision);

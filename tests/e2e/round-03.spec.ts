@@ -293,8 +293,9 @@ test.describe("R03-REQ04: запуск без сети после первого
     await page.reload();
     await expect(page.getByRole("heading", { name: "Сегодня", exact: true })).toBeVisible({ timeout: 15000 });
     await expect(page.locator(".offline-banner")).toContainText("Нет связи");
-    // QA-R03-04: баннер не обещает автоматическую отправку.
-    await expect(page.locator(".offline-banner")).toContainText("нажми «Завершить»");
+    // QA-R03-06: тренировка не начата — баннер ничего не говорит про неё.
+    await expect(page.locator(".offline-banner")).not.toContainText("Тренировка сохранена");
+    await expect(page.locator(".offline-banner")).not.toContainText("Завершить");
     await expect(page.locator(".offline-banner")).not.toContainText("сработает");
     await nav(page, "Программы").click();
     await expect(page.getByRole("heading", { name: "Программы" })).toBeVisible();
@@ -307,6 +308,9 @@ test.describe("R03-REQ04: запуск без сети после первого
     await expect(reps(page, 1)).toHaveValue("8");
     await check(page, 1).click();
     await expect(uncheck(page, 1)).toBeVisible();
+    // Начатая тренировка есть — баннер говорит про неё и про очередь, без обещаний «само сработает».
+    await expect(page.locator(".offline-banner")).toContainText("нажми «Завершить»");
+    await expect(page.locator(".offline-banner")).toContainText("очередь");
     await page.reload();
     await expect(page.getByRole("heading", { name: "Сегодня", exact: true })).toBeVisible({ timeout: 15000 });
     await page.getByRole("button", { name: "Продолжить тренировку", exact: true }).first().click();
@@ -373,6 +377,7 @@ test("QA-R03-03: выход стирает всё личное с устройс
   await expect.poll(personal).toEqual(expect.arrayContaining(["tyaga-draft-account:round01-user", "tyaga-offline:session", "tyaga-offline:data:round01-user", "tyaga-bodyweight-sync:round01-user", "tyaga-last-import:round01-user"]));
   await page.locator(".profile-button").click();
   await page.getByRole("dialog").getByRole("button", { name: "Выйти из аккаунта", exact: true }).click();
+  await page.getByRole("button", { name: "Выйти", exact: true }).click(); // QA-R03-07: с черновиком выход подтверждается
   await expect(page.getByRole("heading", { name: "Снова в зале" })).toBeVisible();
   await expect.poll(personal).toEqual([]);
   expect(await page.evaluate(() => localStorage.getItem("tyaga_theme_accent")), "оформление не личное и остаётся").toBe("lime");
@@ -419,4 +424,241 @@ test("QA-R03-02: тренировка из программы — подход N
   await page.getByRole("button", { name: /^Повторить прошлые/ }).first().click();
   for (const [n, expected] of [[1, "8"], [2, "8"], [3, "7"]] as const) await expect(reps(page, n)).toHaveValue(expected);
   void f;
+});
+
+/** Начать тренировку жима и записать один подход, как человек. */
+async function oneSet(page: Page) {
+  await startWith(page, BENCH);
+  await weight(page, 1).fill("60");
+  await reps(page, 1).fill("8");
+  await check(page, 1).click();
+  await expect(uncheck(page, 1)).toBeVisible();
+}
+const stored = (page: Page, key: string) => page.evaluate((k) => localStorage.getItem(k), key);
+const PENDING_KEY = "tyaga-pending-workouts:round01-user";
+const DRAFT_KEY = "tyaga-draft-account:round01-user";
+const comeBack = (page: Page) => page.evaluate(() => window.dispatchEvent(new Event("online")));
+
+/** Запись тренировки — единственный отказывающий запрос: журнал, профиль и остальное отвечают как обычно. */
+async function workoutsLink(page: Page) {
+  const state = { mode: "down" as "down" | "up" | "conflict", puts: 0, attempts: 0 };
+  await page.route("**/api/workouts", async (route) => {
+    if (route.request().method() !== "PUT") return route.fallback();
+    state.attempts++;
+    if (state.mode === "down") return route.abort("internetdisconnected");
+    if (state.mode === "conflict")
+      return route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ error: "Тренировка изменена на другом устройстве", current: null }) });
+    state.puts++;
+    return route.fallback();
+  });
+  return state;
+}
+
+test.describe("Доработка 2 / R03-REQ04: очередь отправки завершённой тренировки", () => {
+  test("«Завершить» без связи → «Ждёт отправки» → связь вернулась → ровно один PUT, одна тренировка, после перезагрузки без дубля", async ({ page }) => {
+    const f = await round01Fixture(page);
+    const link = await workoutsLink(page);
+    await oneSet(page);
+    await finish(page).click();
+    // Не черновик и не потеря: тренировка в истории со статусом, баннер и очередь на устройстве.
+    await expect(page.getByRole("heading", { name: "История" })).toBeVisible();
+    await expect(page.locator(".session-item")).toHaveCount(1);
+    await expect(page.locator(".session-item .pending-badge")).toHaveText("Ждёт отправки");
+    await expect(page.locator(".pending-banner")).toContainText("Ждёт отправки: 1");
+    await expect(page.locator(".toast")).toContainText("ждёт отправки");
+    expect(f.savedBodies).toHaveLength(0);
+    expect(await stored(page, DRAFT_KEY), "черновика нет").toBeNull();
+    expect(JSON.parse((await stored(page, PENDING_KEY))!)).toHaveLength(1);
+    await nav(page, "Сегодня").click();
+    await expect(page.getByRole("button", { name: "Продолжить тренировку", exact: true })).toHaveCount(0);
+    await expect(page.locator(".pending-banner")).toContainText("Ждёт отправки");
+
+    // Перезагрузка без связи: тренировка на месте, один раз.
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Сегодня", exact: true })).toBeVisible();
+    await nav(page, "История").click();
+    await expect(page.locator(".session-item")).toHaveCount(1);
+    await expect(page.locator(".session-item .pending-badge")).toHaveCount(1);
+
+    // Связь вернулась: событие `online` отправляет её сама, одним запросом.
+    const before = link.attempts;
+    link.mode = "up";
+    await comeBack(page);
+    await expect.poll(() => f.savedBodies.length).toBe(1);
+    await expect(page.locator(".pending-banner")).toHaveCount(0);
+    await expect(page.locator(".session-item .pending-badge")).toHaveCount(0);
+    await expect(page.locator(".session-item")).toHaveCount(1);
+    expect(await stored(page, PENDING_KEY), "очередь пуста").toBeNull();
+    expect(link.puts).toBe(1);
+    expect(link.attempts - before, "ровно одна попытка после возвращения связи").toBe(1);
+    expect(f.savedBodies[0].exercises[0].sets[0]).toMatchObject({ done: true, weight: 60, reps: 8 });
+
+    // После перезагрузки дубля нет, повторной отправки нет.
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Сегодня", exact: true })).toBeVisible();
+    await nav(page, "История").click();
+    await expect(page.locator(".session-item")).toHaveCount(1);
+    expect(f.savedBodies).toHaveLength(1);
+    expect(link.attempts - before).toBe(1);
+    expect(f.errors).toEqual([]);
+  });
+
+  test("очередь уходит и при следующей загрузке: связь вернулась, пока приложение было закрыто", async ({ page }) => {
+    const f = await round01Fixture(page);
+    const link = await workoutsLink(page);
+    await oneSet(page);
+    await finish(page).click();
+    await expect(page.locator(".pending-banner")).toContainText("Ждёт отправки: 1");
+    link.mode = "up";
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Сегодня", exact: true })).toBeVisible();
+    await expect.poll(() => f.savedBodies.length).toBe(1);
+    await expect(page.locator(".pending-banner")).toHaveCount(0);
+    await nav(page, "История").click();
+    await expect(page.locator(".session-item")).toHaveCount(1);
+    await expect(page.locator(".pending-badge")).toHaveCount(0);
+  });
+
+  test("повторная отправка после потерянного ответа не даёт дубля: сервер уже записал, очередь снимается", async ({ page }) => {
+    const f = await round01Fixture(page);
+    const link = await workoutsLink(page);
+    await oneSet(page);
+    await finish(page).click();
+    await expect(page.locator(".pending-banner")).toContainText("Ждёт отправки: 1");
+    // Запрос дошёл и записан, а ответ потерялся: на сервере уже есть эта тренировка.
+    const queued = JSON.parse((await stored(page, PENDING_KEY))!)[0].workout;
+    f.workouts.unshift({ ...queued, revision: 1 });
+    link.mode = "up";
+    await comeBack(page);
+    await expect.poll(() => link.puts).toBe(1);
+    await expect(page.locator(".pending-banner")).toHaveCount(0);
+    await nav(page, "История").click();
+    await expect(page.locator(".session-item")).toHaveCount(1);
+    expect(f.workouts.filter((w) => w.id === queued.id)).toHaveLength(1);
+  });
+
+  test("отказ сервера (409) — данные не теряются: понятная ошибка, тренировка остаётся в очереди, «Отправить сейчас» потом уходит", async ({ page }) => {
+    const f = await round01Fixture(page);
+    const link = await workoutsLink(page);
+    await oneSet(page);
+    await finish(page).click();
+    await expect(page.locator(".pending-banner")).toContainText("Ждёт отправки: 1");
+    link.mode = "conflict";
+    await comeBack(page);
+    const banner = page.locator(".pending-banner");
+    await expect(banner).toContainText("Сервер не принял: Тренировка изменена на другом устройстве");
+    await expect(banner).toContainText("осталась на устройстве");
+    expect(await stored(page, PENDING_KEY)).not.toBeNull();
+    await page.reload();
+    await nav(page, "История").click();
+    await expect(page.locator(".session-item .pending-badge")).toHaveText("Ждёт отправки");
+    // Молча отказ не повторяется: пока человек не нажал, лишних запросов нет.
+    const attempts = link.attempts;
+    await comeBack(page);
+    await page.waitForTimeout(400);
+    expect(link.attempts).toBe(attempts);
+    link.mode = "up";
+    await page.getByRole("button", { name: "Отправить сейчас", exact: true }).click();
+    await expect.poll(() => f.savedBodies.length).toBe(1);
+    await expect(page.locator(".pending-banner")).toHaveCount(0);
+    await expect(page.locator(".session-item")).toHaveCount(1);
+  });
+
+  test("ожидающую тренировку нельзя править до отправки; её можно удалить — она снимается с очереди", async ({ page }) => {
+    const f = await round01Fixture(page);
+    await workoutsLink(page);
+    await oneSet(page);
+    await finish(page).click();
+    await expect(page.locator(".session-item")).toHaveCount(1);
+    await page.locator(".session-item").click();
+    await page.getByRole("button", { name: "Редактировать", exact: true }).click();
+    await expect(page.locator(".toast")).toContainText("ещё не отправлена");
+    await expect(page.getByRole("button", { name: "Продолжить тренировку", exact: true })).toHaveCount(0);
+    // Удаление — снять с очереди: на сервере её ещё нет, DELETE не уходит.
+    await page.locator(".session-item").click();
+    await page.getByRole("button", { name: "Удалить", exact: true }).click();
+    await page.getByRole("dialog", { name: "Удалить тренировку?" }).getByRole("button", { name: "Удалить", exact: true }).click();
+    await expect(page.locator(".session-item")).toHaveCount(0);
+    await expect(page.locator(".pending-banner")).toHaveCount(0);
+    expect(await stored(page, PENDING_KEY)).toBeNull();
+    expect(f.deleted).toEqual([]);
+  });
+});
+
+test.describe("QA-R03-07: выход из аккаунта не стирает несохранённое молча", () => {
+  test.use({ viewport: { width: 1280, height: 900 }, isMobile: false, hasTouch: false });
+  const logout = (page: Page) => page.getByRole("dialog").getByRole("button", { name: "Выйти из аккаунта", exact: true });
+
+  test("без черновика и очереди — выход как раньше, одним нажатием", async ({ page }) => {
+    await round01Fixture(page);
+    await page.locator(".profile-button").click();
+    await logout(page).click();
+    await expect(page.getByRole("heading", { name: "Снова в зале" })).toBeVisible();
+  });
+
+  test("с начатой тренировкой: вопрос, «Остаться» ничего не трогает, «Выйти» стирает", async ({ page }) => {
+    await round01Fixture(page);
+    await oneSet(page);
+    await page.locator(".profile-button").click();
+    await logout(page).click();
+    const ask = page.getByRole("alertdialog");
+    await expect(ask).toContainText("Выйти? Несохранённая тренировка на этом устройстве пропадёт");
+    await ask.getByRole("button", { name: "Остаться", exact: true }).click();
+    await expect(ask).toHaveCount(0);
+    await expect(page.getByRole("dialog", { name: "Мой профиль" })).toBeVisible();
+    expect(await stored(page, DRAFT_KEY), "черновик на месте").not.toBeNull();
+    await logout(page).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Выйти", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Снова в зале" })).toBeVisible();
+    await expect
+      .poll(() => page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("tyaga-"))))
+      .toEqual([]);
+  });
+
+  test("с очередью отправки: тоже вопрос; после «Выйти» очереди на устройстве нет", async ({ page }) => {
+    await round01Fixture(page);
+    await workoutsLink(page);
+    await oneSet(page);
+    await finish(page).click();
+    await expect(page.locator(".pending-banner")).toContainText("Ждёт отправки: 1");
+    await page.locator(".profile-button").click();
+    await logout(page).click();
+    await expect(page.getByRole("alertdialog")).toContainText("ждёт отправки: 1");
+    await page.getByRole("alertdialog").getByRole("button", { name: "Выйти", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Снова в зале" })).toBeVisible();
+    expect(await stored(page, PENDING_KEY)).toBeNull();
+    await expect
+      .poll(() => page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("tyaga-"))))
+      .toEqual([]);
+  });
+});
+
+test("QA-R03-08: истёкшая сессия стирает кэши журнала веса, импорта и офлайн-копию; начатая тренировка остаётся и возвращается после входа", async ({ page }) => {
+  const f = await round01Fixture(page);
+  void f;
+  await oneSet(page);
+  await page.evaluate(() => {
+    localStorage.setItem("tyaga-bodyweight-sync:round01-user", "{}");
+    localStorage.setItem("tyaga-last-import:round01-user", "{}");
+  });
+  let expired = true;
+  await page.route("**/api/auth/session", (route) =>
+    expired
+      ? route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ registered: true, profile: null }) })
+      : route.fallback(),
+  );
+  await page.evaluate(() => window.dispatchEvent(new Event("tyaga:auth-expired")));
+  await expect(page.getByRole("heading", { name: "Снова в зале" })).toBeVisible();
+  const keys = await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("tyaga-")));
+  expect(keys).not.toContain("tyaga-bodyweight-sync:round01-user");
+  expect(keys).not.toContain("tyaga-last-import:round01-user");
+  expect(keys).not.toContain("tyaga-offline:session");
+  expect(keys.some((k) => k.startsWith("tyaga-offline:data:"))).toBe(false);
+  expect(keys, "несохранённая тренировка не стирается тихо").toContain(DRAFT_KEY);
+  expired = false;
+  await page.getByLabel("Почта").fill("round01@example.test");
+  await page.getByLabel("Пароль", { exact: true }).fill("correct horse battery");
+  await page.getByRole("button", { name: "Войти в Тягу", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Сегодня", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Продолжить тренировку", exact: true }).first()).toBeVisible();
 });
