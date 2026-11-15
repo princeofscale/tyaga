@@ -28,6 +28,11 @@ export function workingSets(value: number) {
   return quantity(value, "рабочий подход", "рабочих подхода", "рабочих подходов");
 }
 
+/** «подход / подхода / подходов» без числа и без «рабочих»: подпись под числом на карточке тренировки. */
+export function setsWord(value: number) {
+  return quantityWord(value, "подход", "подхода", "подходов");
+}
+
 /** То же без числа: для разметки вида `<strong>N</strong> рабочих подходов`. */
 export function workingSetsWord(value: number) {
   return quantityWord(value, "рабочий подход", "рабочих подхода", "рабочих подходов");

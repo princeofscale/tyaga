@@ -224,3 +224,22 @@ main .friend-week .text-button {
   min-height: 44px;
   white-space: nowrap;
 }
+
+/* QA-R07-03: блок итогов сразу после «Завершить» — «Карточка для сторис» и «Текст» не меньше 44 px, между ними 8 px. */
+main .celebration-actions-group {
+  gap: 8px;
+}
+main .story-card-trigger-btn,
+main .share-summary-btn {
+  box-sizing: border-box;
+  height: auto;
+  min-height: 44px;
+  min-width: 44px;
+}
+/* Тот же блок итогов: «Как учитывается разминка» и ссылки на исследования — отдельные строки, а не ссылки в абзаце. */
+main .warmup-science summary,
+main .warmup-science a {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+}

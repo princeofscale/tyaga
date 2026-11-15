@@ -1,4 +1,4 @@
-import { workingSets } from "../lib/quantity";
+import { setsWord, workingSets } from "../lib/quantity";
 import { useState, useRef, useEffect } from "react";
 import { Download, Image as ImageIcon, Share2, Smartphone } from "lucide-react";
 import type { Workout } from "../lib/model";
@@ -168,7 +168,7 @@ export function ShareStoryCardModal({
     const metrics = [
       { val: `${fmt(summary.total)}`, unit: "кг", label: "Тоннаж", accent: "#cafa64" },
       { val: `${durationMin}`, unit: "мин", label: "Время", accent: "#ffffff" },
-      { val: `${workingSetsCount}`, unit: "подходов", label: "Рабочий объём", accent: "#58c0ff" },
+      { val: `${workingSetsCount}`, unit: setsWord(workingSetsCount), label: "Рабочий объём", accent: "#58c0ff" },
     ];
     metrics.forEach((m, i) => {
       const cx = 80 + i * (cardW + gap);

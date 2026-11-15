@@ -1,4 +1,5 @@
 import { AnalyticsFacts } from "./AnalyticsFacts";
+import { workingSets as workingSetsText } from "../lib/quantity";
 /**
  * DeloadEngine
  *
@@ -119,7 +120,7 @@ export class DeloadEngine {
         status: "overreaching",
         statusLabel: "Очень высокий записанный объём",
         recommendedMode: "volume",
-        reason: `За 30 дней записано ${totalWorkingSets} рабочих подходов (${failureSets} с RIR 0). Если результаты падают и усталость сохраняется, попробуй уменьшить объём. По журналу нельзя определить состояние ЦНС или перетренированность.`,
+        reason: `За 30 дней записано ${workingSetsText(totalWorkingSets)} (${failureSets} с RIR 0). Если результаты падают и усталость сохраняется, попробуй уменьшить объём. По журналу нельзя определить состояние ЦНС или перетренированность.`,
         recentWorkoutsCount: recent.length,
         recentSetsCount: totalWorkingSets,
         recentFailureSetsCount: failureSets,

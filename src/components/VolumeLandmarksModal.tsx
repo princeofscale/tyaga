@@ -3,6 +3,7 @@ import { Zap, Info } from "lucide-react";
 import { VolumeLandmarksCalculator, type VolumeStatusKind } from "../domain/VolumeLandmarks";
 import { dateLabel, fmt } from "../lib/model";
 import type { Workout } from "../lib/types";
+import { quantityWord } from "../lib/quantity";
 
 export function VolumeLandmarksModal({ workouts, today, mapping, timeZone }: {
   workouts: Workout[];
@@ -32,7 +33,7 @@ export function VolumeLandmarksModal({ workouts, today, mapping, timeZone }: {
           <div className="rp-stat-chip under"><b>{count("below_reference") + count("no_sets")}</b><span>Ниже ориентира</span></div>
         </div>
         <p>Считаем выполненные рабочие подходы при любом RIR: прямые + 0,5 × помощь. Стабилизация и разминка исключены. Коэффициент 0,5 — приближение для учёта объёма, а не доля силы или роста.</p>
-        <p>Без RIR: {report.unknownRirSets} из {report.workingSets} рабочих подходов. При неизвестном запасе или лёгкой работе стимул оценить нельзя. Отказ не обязателен.</p>
+        <p>Без RIR: {report.unknownRirSets} из {report.workingSets} {quantityWord(report.workingSets, "рабочего подхода", "рабочих подходов", "рабочих подходов")}. При неизвестном запасе или лёгкой работе стимул оценить нельзя. Отказ не обязателен.</p>
       </div>
       <div className="rp-muscle-list">
         {report.assessments.map((item) => (

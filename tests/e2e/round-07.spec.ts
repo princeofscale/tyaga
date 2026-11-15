@@ -89,6 +89,7 @@ function smallTargets(page: Page) {
   });
 }
 
+const BENCH = "Жим штанги лёжа";
 const TABS = ["Сегодня", "Программы", "Друзья", "История", "Прогресс", "Упражнения"];
 
 for (const size of SIZES) {
@@ -264,11 +265,17 @@ for (const size of SIZES) {
     expect(box.height).toBeGreaterThanOrEqual(44);
     // одно нажатие — поля те же, что в «Деталях тренировки»
     await chip.click();
-    const date = page.getByRole("group", { name: "Дата и длительность записи" }).getByLabel("Дата", { exact: true });
+    const date = page.getByRole("group", { name: "Дата и длительность записи" }).getByLabel("Дата записи", { exact: true });
     await expect(date).toBeVisible();
     await date.fill("2026-11-08");
     await expect(chip).toHaveText("8 нояб. · задним числом");
-    const minutes = page.getByRole("group", { name: "Дата и длительность записи" }).getByLabel("Длительность тренировки, минуты");
+    // дата позже сегодняшней не принимается: остаётся выбранная
+    await date.fill("2026-11-20");
+    await expect(date).toHaveValue("2026-11-08");
+    await expect(chip).toHaveText("8 нояб. · задним числом");
+    // в DOM одна «Дата» с таким именем: панель и «Детали» различаются
+    await expect(page.getByLabel("Дата", { exact: true })).toHaveCount(1);
+    const minutes = page.getByRole("group", { name: "Дата и длительность записи" }).getByLabel("Длительность записи, минуты");
     await minutes.fill("50");
     await expect(page.locator(".live-clock-badge")).toContainText("50 мин");
     await expect(page.locator(".live-clock-badge")).toContainText("Длительность");
@@ -298,7 +305,6 @@ test("R07-REQ04: обычная сегодняшняя тренировка — 
   await expect(page.locator(".live-clock-badge")).toContainText("Счётчик");
 });
 
-const BENCH = "Жим штанги лёжа";
 const openTool = async (page: Page, name: RegExp | string) => {
   await page.getByRole("button", { name: /^Инструменты/ }).last().click();
   await page.getByRole("button", { name: typeof name === "string" ? new RegExp(name) : name }).click();
@@ -378,3 +384,76 @@ test("R07-REQ05: программа в разгрузке ведёт себя к
   await expect(page.getByLabel(`${BENCH}, подход 1, вес`, { exact: true })).toHaveValue("80");
   await expect(page.locator(".deload-hint")).toHaveCount(0);
 });
+
+for (const size of SIZES) {
+  test(`QA-R07-01: тренировка, начатая в 23:50 по поясу профиля, в 00:10 остаётся обычной — без «задним числом», таймер идёт ${size.width}×${size.height}`, async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize(size);
+    await round01Fixture(page);
+    await page.clock.setFixedTime(new Date("2026-11-10T19:50:00Z")); // 23:50 в Саратове, вторник 10 нояб.
+    await page.reload();
+    await startWith(page, BENCH);
+    await expect(page.locator(".retro-chip")).toHaveCount(0);
+    await expect(page.locator(".live-clock-badge")).toContainText("Счётчик");
+    await page.clock.setFixedTime(new Date("2026-11-10T20:10:00Z")); // 00:10, уже среда 11 нояб.
+    await page.waitForTimeout(1500);
+    await expect(page.locator(".retro-chip")).toHaveCount(0);
+    await expect(page.locator(".workout-bar")).not.toContainText("задним числом");
+    await expect(page.locator(".live-clock-badge")).toContainText("Счётчик");
+    await expect(page.locator(".live-clock-badge")).not.toContainText("Длительность");
+  });
+}
+
+/** Начать тренировку с жимом, отметить `sets` рабочих подходов и завершить: открывается «История» с блоком итогов. */
+async function finishSession(page: Page, sets = 1) {
+  await startWith(page, BENCH);
+  for (let n = 1; n <= sets; n++) await mark(page, n);
+  await page.getByRole("button", { name: "Завершить тренировку", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Завершить тренировку", exact: true })).toHaveCount(0);
+  await expect(page.locator(".celebration-actions-group")).toBeVisible();
+}
+
+for (const size of SIZES) {
+  test(`QA-R07-03: «История» сразу после «Завершить» — «Карточка для сторис» и «Текст» не меньше 44 px, между ними 8 px, без прокрутки вбок ${size.width}×${size.height}`, async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize(size);
+    await round01Fixture(page);
+    await finishSession(page, 2);
+    await expect(nav(page, "История")).toHaveAttribute("aria-current", "page");
+    const small = await smallTargets(page);
+    expect(small, `мелкие цели после «Завершить»: ${JSON.stringify(small)}`).toEqual([]);
+    const story = page.getByRole("button", { name: "Карточка для сторис", exact: true });
+    const text = page.getByRole("button", { name: "Текст", exact: true });
+    const a = (await story.boundingBox())!, b = (await text.boundingBox())!;
+    for (const box of [a, b]) { expect(box.height).toBeGreaterThanOrEqual(43.99); expect(box.width).toBeGreaterThanOrEqual(43.99); }
+    const gap = Math.max(b.x - (a.x + a.width), a.x - (b.x + b.width), b.y - (a.y + a.height), a.y - (b.y + b.height));
+    expect(gap, "отступ между кнопками").toBeGreaterThanOrEqual(8);
+    expect(await overflow(page)).toBeLessThanOrEqual(1);
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/История-после-завершения-${size.width}.png` });
+  });
+}
+
+for (const [sets, word] of [[1, "подход"], [3, "подхода"]] as const) {
+  test(`QA-R07-02: на картинке «Карточка для сторис» подпись под числом — «${word}» при ${sets}`, async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.addInitScript(() => {
+      const w = window as unknown as { __cardTexts: string[] };
+      w.__cardTexts = [];
+      const original = CanvasRenderingContext2D.prototype.fillText;
+      CanvasRenderingContext2D.prototype.fillText = function (text: string, ...rest: [number, number, number?]) {
+        w.__cardTexts.push(String(text));
+        return original.call(this, text, ...rest);
+      };
+    });
+    await round01Fixture(page);
+    await page.reload();
+    await finishSession(page, sets);
+    await page.getByRole("button", { name: "Карточка для сторис", exact: true }).click();
+    await expect(page.locator("canvas")).toBeVisible();
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __cardTexts: string[] }).__cardTexts.includes("Рабочий объём"))).toBe(true);
+    const texts = await page.evaluate(() => (window as unknown as { __cardTexts: string[] }).__cardTexts);
+    expect(texts, "число подходов на картинке").toContain(String(sets));
+    expect(texts, "подпись под числом").toContain(word);
+    expect(texts.filter((t) => /^подход/.test(t)), `лишние подписи: ${JSON.stringify(texts)}`).toEqual([word]);
+  });
+}

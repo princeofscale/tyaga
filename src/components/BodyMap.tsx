@@ -2,6 +2,7 @@ import type { AnalysisOptions } from "../domain/TrainingAnalytics";
 import { useMemo, useState } from "react";
 import { m } from "motion/react";
 import { RotateCw, Layers } from "lucide-react";
+import { quantity } from "../lib/quantity";
 import atlas from "../assets/anatomy/muscle-map.json";
 import {
   AnatomyPresenter,
@@ -219,7 +220,7 @@ export default function BodyMap({
                       tabIndex={clickable ? 0 : undefined}
                       aria-label={
                         clickable
-                          ? `${part!.name}: ${activity?.direct ?? 0} прямых подходов`
+                          ? `${part!.name}: ${quantity(activity?.direct ?? 0, "прямой подход", "прямых подхода", "прямых подходов")}`
                           : undefined
                       }
                       aria-pressed={clickable ? !!active : undefined}
@@ -539,7 +540,7 @@ export default function BodyMap({
                                   stabilizer: "стабилизация",
                                 }[role]
                               : ""
-                            : ` · ${activity?.direct ?? 0} прямых подходов`}
+                            : ` · ${quantity(activity?.direct ?? 0, "прямой подход", "прямых подхода", "прямых подходов")}`}
                         </title>
                       ) : null}
                     </g>

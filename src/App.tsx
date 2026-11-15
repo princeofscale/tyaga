@@ -784,7 +784,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
     }
     const { workout: performed, removed } = new WorkoutSession(draft.workout).withoutUnperformed();
     const workout = new WorkoutSession(performed).completedWithDuration(
-      BackdatedWorkout.manualDuration(draft.manualDuration, draft.workout.date, draft.workout.timeZone ?? settings.timeZone)
+      BackdatedWorkout.manualDuration(draft, settings.timeZone)
         ? draft.workout.duration
         : Math.floor(elapsedMs(draft) / 60000),
     );
@@ -1260,7 +1260,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                       {draft
                         ? `${draft.workout.exercises.length} упр. · ${workingSets([draft.workout])} раб. подх. сделано`
                         : todayPlan
-                          ? `${todayPlan.exercises.length} упр. · ${todayPlan.exercises.reduce((n, e) => n + e.sets.length, 0)} подх.`
+                          ? `${todayPlan.exercises.length} упр. · ${todayPlan.exercises.reduce((n, e) => n + e.sets.filter((s) => !s.warmup).length, 0)} подх.`
                           : "Записывай подходы — веса и прогресс посчитаем сами."}
                     </p>
                     {!todayPlan && !draft && nextProgramDay ? (
@@ -1960,7 +1960,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
           >
             <span className="resume-dot" aria-hidden="true" />
             Вернуться к тренировке
-            <b>{BackdatedWorkout.manualDuration(draft.manualDuration, draft.workout.date, draft.workout.timeZone ?? settings.timeZone) ? draft.workout.duration : Math.floor(elapsedMs(draft) / 60000)} мин</b>
+            <b>{BackdatedWorkout.manualDuration(draft, settings.timeZone) ? draft.workout.duration : Math.floor(elapsedMs(draft) / 60000)} мин</b>
           </m.button>
         ) : null}
       </AnimatePresence>

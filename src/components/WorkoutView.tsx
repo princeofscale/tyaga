@@ -76,6 +76,7 @@ export type { Draft } from "../lib/draft";
 import { WarmupPlanner } from "../domain/WarmupPlanner";
 import { BackdatedWorkout } from "../domain/BackdatedWorkout";
 import { DeloadHint } from "../domain/DeloadHint";
+import { setsWord } from "../lib/quantity";
 import type { DeloadPlanRecord } from "../domain/DeloadPlan";
 import Select from "./Select";
 
@@ -462,7 +463,7 @@ export default function WorkoutView({
 
   // R07-REQ04: у записи задним числом длительность задана, а не считается от «сейчас».
   const zone = w.timeZone ?? settings.timeZone;
-  const retroLabel = draft.editing ? null : BackdatedWorkout.label(w.date, zone, !!draft.retro);
+  const retroLabel = draft.editing ? null : BackdatedWorkout.label(draft, settings.timeZone);
   const deloadLine =
     !draft.editing && !DeloadEngine.isDeloadName(w.name) ? DeloadHint.line(deloadPlan, localDate(new Date(), zone)) : null;
   const applyDeload = () => {
@@ -474,32 +475,38 @@ export default function WorkoutView({
       (entry) => lastEntry(regular, entry, workoutId, w.date, { timeZone: settings.timeZone })?.sets.filter((s) => s.done && !s.warmup),
     );
     if (result.changed) setWorkout(result.workout);
+    const skipped = result.skipped ? ` Тренажёры и вес тела пропущены: ${result.skipped} упр.` : "";
     onToast?.(
       result.changed
-        ? `Подставлено ${DeloadHint.percent(deloadPlan.mode)} % от последней обычной тренировки: ${result.changed} подх.`
-        : "Подставлять нечего: веса уже разгрузочные или нет прошлой обычной тренировки с этими упражнениями.",
+        ? `Подставлено ${DeloadHint.percent(deloadPlan.mode)} % от последней обычной тренировки: ${result.exercises} упр.${skipped}`
+        : `Подставлять нечего: веса уже разгрузочные или нет прошлой обычной тренировки с этими упражнениями.${skipped}`,
     );
   };
-  const manualClock = BackdatedWorkout.manualDuration(draft.manualDuration, w.date, zone);
+  const manualClock = BackdatedWorkout.manualDuration(draft, settings.timeZone);
   const elapsed = manualClock
     ? w.duration
     : Math.floor(elapsedMs(draft, now) / 60000);
-  const dateField = (
+  // Дату позже сегодняшней не принимаем (max у поля это и обещает, но вручную вводится любая).
+  const dateField = (panel = false) => (
     <label>
       Дата
       <input
         type="date"
+        aria-label={panel ? "Дата записи" : undefined}
         max={localDate(new Date(), zone)}
         value={w.date}
-        onChange={(e) => setWorkout({ ...w, date: e.target.value })}
+        onChange={(e) => {
+          if (e.target.value > localDate(new Date(), zone)) return;
+          setWorkout({ ...w, date: e.target.value });
+        }}
       />
     </label>
   );
-  const durationField = (
+  const durationField = (panel = false) => (
     <label>
       Длительность, минуты
       <input
-        aria-label="Длительность тренировки, минуты"
+        aria-label={panel ? "Длительность записи, минуты" : "Длительность тренировки, минуты"}
         disabled={saving}
         type="number"
         min="0"
@@ -661,8 +668,8 @@ export default function WorkoutView({
             </button>
             {datePanel ? (
               <div className="retro-panel" id="retro-date-panel" role="group" aria-label="Дата и длительность записи">
-                {dateField}
-                {durationField}
+                {dateField(true)}
+                {durationField(true)}
               </div>
             ) : null}
           </div>
@@ -921,7 +928,7 @@ export default function WorkoutView({
                     </span>
                     <span className={`exercise-set-status ${allSetsDone ? "complete" : ""}`}>
                       {allSetsDone ? <CheckCircle2 size={13} aria-hidden="true" /> : null}
-                      {completedSets} / {we.sets.length} подходов
+                      {completedSets} / {we.sets.length} {setsWord(we.sets.length)}
                     </span>
                   </div>
                   <div className="title-with-badges">
@@ -1591,9 +1598,9 @@ changeSet(ei, si, PreviousSets.patch(deloaded(we, last, comparableIndex, s.warmu
         </button>
         <details className="workout-details panel" open={draft.editing}>
           <summary>Детали тренировки</summary>
-          {dateField}
+          {dateField()}
           <div className="duration-controls">
-            {durationField}
+            {durationField()}
             {!draft.editing ? (
               <button
                 className="icon-button"

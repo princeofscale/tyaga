@@ -28,20 +28,27 @@ export class DeloadHint {
   /**
    * Ставит разгрузочный вес невыполненным рабочим подходам свободных весов. Вес считается от последней обычной
    * (не разгрузочной) тренировки, а не от текущего значения, поэтому повторное нажатие ничего не снижает второй раз.
-   * Машины без внешней нагрузки, «вес тела», разминка и уже отмеченные подходы не меняются.
+   * Тренажёры (блок/стек), «вес тела», «помощь», разминка и уже отмеченные подходы не меняются:
+   * `skipped` — сколько упражнений пропущено как тренажёры или вес тела.
    */
   static apply(
     workout: Workout,
     mode: DeloadMode,
     base: (entry: WorkoutExercise) => SetEntry[] | undefined,
-  ): { workout: Workout; changed: number } {
+  ): { workout: Workout; changed: number; exercises: number; skipped: number } {
     let changed = 0;
+    let touched = 0;
+    let skipped = 0;
     const exercises = workout.exercises.map((entry) => {
       const loadMode = exerciseForEntry(entry)?.recording.loadMode;
-      if (!DeloadEngine.isScalable(loadMode)) return entry;
+      if (!DeloadHint.isFree(loadMode)) {
+        if (entry.sets.some((set) => !set.warmup && !set.done)) skipped += 1;
+        return entry;
+      }
       const source = (base(entry) ?? []).filter((set) => !set.warmup && set.weight > 0);
       if (!source.length) return entry;
       let index = 0;
+      const before = changed;
       const sets = entry.sets.map((set) => {
         if (set.warmup) return set;
         const reference = source[Math.min(index++, source.length - 1)];
@@ -51,8 +58,14 @@ export class DeloadHint {
         changed += 1;
         return { ...set, weight };
       });
+      if (changed > before) touched += 1;
       return { ...entry, sets };
     });
-    return { workout: changed ? { ...workout, exercises } : workout, changed };
+    return { workout: changed ? { ...workout, exercises } : workout, changed, exercises: touched, skipped };
+  }
+
+  /** Свободные веса: штанга, гантели, блины/«вес тела + пояс». Тренажёры, «вес тела» и «помощь» сюда не входят. */
+  static isFree(loadMode: string | undefined) {
+    return loadMode === "total_external" || loadMode === "per_implement" || loadMode === "added_bodyweight";
   }
 }
