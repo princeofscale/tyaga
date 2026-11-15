@@ -1,85 +1,67 @@
-# Tyaga — рабочий итог и продолжение
+# Tyaga — рабочий итог после раунда 6
 
-> **НЕ ФИНАЛЬНЫЙ ОТЧЁТ О ЗАВЕРШЕНИИ. PR НЕ ГОТОВ (NOT READY).** Эволюция продукта находится на этапе подготовки (setup); никаких фиктивных 30 раундов или ложных утверждений об успешном QA PASS. Ниже приведены только проверенные факты текущей стадии на 2026-11-14 09:25:00 Europe/Saratov / 2026-11-14T05:25:00Z UTC (согласование документации task-10 Phase E / решение D16 follow-up; задача task-10 завершена rev3, задача task-4 выпущена и находится in_progress rev5 под управлением product-owner-v2; локальный интеграционный коммит setup 555a9b3f7a8bfa3de19f5c92a17bf3299293dea7 зафиксирован; исторические снимки: D16 09:05:00, D15 08:00:16, D14 follow-up 07:22:00, D14 06:51:30+04 / 02:51:30Z, 03:56:56, 03:03:16, 01:48).
+> **Это промежуточный итог, не отчёт о завершении 30 раундов.** Принято 6 раундов из 30. Ветка запушена в `origin/agents/tyaga-30-rounds`; в `main` ничего не вливалось. **Production не обновлялся** — см. раздел «Деплой».
+
+Дата: 15 ноября 2026 (Europe/Saratov). Репозиторий `princeofscale/tyaga`.
 
 ## Счётчики
 
-- Цель: до 30 полноценных последовательных раундов, без искусственных требований. Goal revision 1 / max 120 без изменений.
-- Основных сообщений USER REQUIREMENTS: **0**.
-- Полностью принятых раундов: **0**.
-- Зарегистрированных требований: **0**.
-- Реализованных/QA PASS/user accepted требований: **0**.
-- Локальных продуктовых commits: **0**.
-- Интеграционный коммит этапа setup: `555a9b3f7a8bfa3de19f5c92a17bf3299293dea7` (два родителя `c708843...` и `b766eec...`, clock `2026-11-14T08:45:51+04:00`, 130 файлов; локальный merge завершён; в продуктовые счётчики не входит).
-- Подготовка не входит в продуктовые счётчики.
+| Показатель | Значение |
+|---|---|
+| Раундов принято PO | **6 из 30** (R1 11/11, R2 10/10, R3 8/8, R4 9/9, R5 7/7, R6 6/6) |
+| Принято требований | 51 из 51 |
+| Коммитов ветки поверх интеграционной точки 555a9b3 | 51 |
+| Объём (весь дифф от 555a9b3) | 160 файлов, +18,3 тыс. / −1,2 тыс. строк; `src/server/tests/drizzle/scripts` — 130 файлов, +14,1 тыс. / −1,1 тыс. |
+| `npx tsc --noEmit` | 0 ошибок |
+| `npm test` | 378/378 |
+| `npm run build` | успешно |
+| Единый Playwright (14 файлов) | 183/183 (прогон инженера и QA) |
+| Миграции | 0000–0011; в раундах добавилась только 0011 `import_receipts` (R2) |
+| Предки HEAD | `origin/main` (b766eec) и `feat/ui-polish-and-rooms` (c708843) — деплой с этой ветки не откатывает ни одну из линий |
 
-## Сделано фактически
+## Что сделано по раундам
 
-1. Первым выполнен safe `git pull --ff-only`; исходная ветка актуальна, main получен.
-2. Создана отдельная worktree `/Users/princeofscale/Desktop/gym/tyaga-agent-evolution`, branch `agents/tyaga-30-rounds` из `c708843daa05f68a5bc5417fcb1de7bafed8a369`.
-3. Завершены задачи инженера по интеграции (`task-1 rev3`); инженер передал владение install/test/build (нет активных инженерных фоновых задач), общий исходный код и `dist` заморожены.
-4. Выполнен `npm ci` (exit code 0; 237 пакетов, 16 уязвимостей, 6 install scripts заблокировано; не является security PASS).
-5. Проведена проверка типизации: лид проинспектировал исторические отчёты инженера ([tsc.exit-code=0](<../../artifacts/agent-evolution/setup/tsc.exit-code>), [tsc-retry.exit-code](<../../artifacts/agent-evolution/setup/tsc-retry.exit-code>)=0, [setup-test-types-retry.exit-code](<../../artifacts/agent-evolution/setup/setup-test-types-retry.exit-code>)=0) — 0 ошибок типизации. Финальная проверка всего дерева в рамках `task-6` фактически выполнена: exit 0 (16032 мс, notice stderr 2 строки).
-6. Проанализированы миграции схемы:
-   - Относительный вызов Drizzle CLI дал no-op exit 0 на 22 таблицах; тестовая аддитивная проба создала только `0012_setup_probe`. В тестах Wrangler 4.148.0 миграции пустой схемы/rooms/machines применились штатно (свидетельства инженера в [migration-tool-results.json](<../../artifacts/agent-evolution/setup/migration-tool-results.json>), относительные результаты в [drizzle-generation-results.json](<../../artifacts/agent-evolution/setup/drizzle-generation-results.json>)). Ограничение DrizzleORM по таймстампам зафиксировано, имена файлов сохранены. Утверждение о 22 таблицах расценивается как условное заявление инженера.
-   - Независимый QA провел калибровку миграций: в R2 матричные тесты D1 и доменные тесты прошли (PASS), а проверка неизменности схемы завершилась ошибкой (FAIL, внешний код Node exit 1). Адресный тест R3 подтвердил корректность происхождения схемы (exit 0), но матричные тесты повторно не выполнялись.
-   - Переносимый тест миграций QA устраняет привязку к mac cwd через `import.meta.url` canonical root. 12 SHA опубликованных SQL проверены лидом по [migration-gV65zF/results.json#L8-L68](<../../artifacts/agent-evolution/qa/setup/migration-gV65zF/results.json#L8-L68>) и [own-provenance-portability-prep.json#L10-L83](<../../artifacts/agent-evolution/qa/setup/own-provenance-portability-prep.json#L10-L83>) (все 12 64-hex хешей побайтово совпали; prep UTC 2026-11-13T22:21:48.268074+00:00; лид свежий Git не вызывал). Пять историй D1 выполняют по 3 отрицательные проверки PK/FK = 15 проверок схемы (не 15 дополнительных тестов); все 15 успешно отклонены (Wrangler exit 1). 59 DDL (вкл. `_cf_METADATA`), 58 прикладных объектов (23 таблицы + 17 индексов + 18 триггеров), 22 таблицы в снимке, разрыв `sync_versions` точечный.
-7. Проведены unit/integration тесты (`npm test`):
-   - Первый запуск зафиксирован в истории: `exit 1` (255 pass, 1 fail из 256; сбой в [tests/machines-execution-api.test.ts:190](<../../tests/machines-execution-api.test.ts#L190>)).
-   - Лид изучил сырой лог диагностики ([machines-import-diagnostic.log](<../../artifacts/agent-evolution/setup/machines-import-diagnostic.log>)): ошибка 400 возникла из-за перехода даты в Europe/Saratov на 14 ноября, в то время как фикстура проверялась относительно UTC (13 ноября). Валидатор, продуктовый код и ожидаемый статус 200 не менялись; инженер поправил только тестовую фикстуру `makeWorkout(['row'], [], 'UTC')` и ассерт (это setup, не R01).
-   - Повторный запуск: сырой лог [test-retry.log](<../../artifacts/agent-evolution/setup/test-retry.log>) и [test-retry.exit-code](<../../artifacts/agent-evolution/setup/test-retry.exit-code>) подтвердили **256/256 PASS**, fail 0, skip 0, длительность 29046.341642 мс (исторический результат до добавления QA-файлов).
-   - Финальный прогон полного дерева в рамках `task-6` фактически выполнен инженером и проверен лидом: exit 0, **266 total / 266 pass / 0 fail / 0 cancelled / 0 skipped / 0 todo**, длительность 226078 мс (тесты 224971 мс; сборка Worker в pretest; 266 тестов наблюдались на итоговом дереве, а не выводились как 256+10).
-8. Выполнена сборка `npm run build`: исторический лог инженера [build.log](<../../artifacts/agent-evolution/setup/build.log>) (54 строки, exit 0, Vite 7.93s, main chunk 545.69 kB). Финальная сборка текущего дерева в рамках `task-6` фактически выполнена: exit 0, длительность 8500 мс (Vite 6.4.4, 2175 модулей за 7.25s, main chunk 545.69 kB gzip 169.95 kB, сохранено нефатальное предупреждение > 500 kB).
-9. Выполнен фактический прогон оригинального Playwright (Runtime):
-   - Завершился успешно: exit 0, 60 pass, 0 fail, 8 файлов, длительность 208.055163 с. Логи и результаты проверены лидом: [full-run.log](<../../artifacts/agent-evolution/baseline-e2e/full-run.log>), [full-run.exit-code](<../../artifacts/agent-evolution/baseline-e2e/full-run.exit-code>), [results.json](<../../artifacts/agent-evolution/baseline-e2e/results.json>), [verification.json](<../../artifacts/agent-evolution/baseline-e2e/verification.json>), подтвержден teardown портов ([teardown-ports.json](<../../artifacts/agent-evolution/baseline-e2e/teardown-ports.json>)).
-   - 16 тестов обращаются к реальному локальному серверу, 44 используют перехват API в UI; 2 теста используют CPU/WASM инференс MediaPipe на фиксированных медиа. Это подтверждает работоспособность тестового комплекта, но не доказывает общую персистентность, клиническую валидность или общую приватность видеопотока.
-10. Выполнено секционирование и инвентарное обнаружение (Discovery Only):
-    - В [playwright.agent-baseline.config.ts](<../../playwright.agent-baseline.config.ts>) добавлено правило `testMatch` на 8 оригинальных файлов.
-    - В каталоге [baseline-inventory-20261114-012400](<../../artifacts/agent-evolution/setup/baseline-inventory-20261114-012400>) выполнено обнаружение: exit 0, 2.124 с, точное соответствие 60 тестов в 8 файлах ([inventory-comparison.json](<../../artifacts/agent-evolution/setup/baseline-inventory-20261114-012400/inventory-comparison.json>), [discovery.json](<../../artifacts/agent-evolution/setup/baseline-inventory-20261114-012400/discovery.json>), [duration.json](<../../artifacts/agent-evolution/setup/baseline-inventory-20261114-012400/duration.json>), [exit.marker](<../../artifacts/agent-evolution/setup/baseline-inventory-20261114-012400/exit.marker>), [stderr.log](<../../artifacts/agent-evolution/setup/baseline-inventory-20261114-012400/stderr.log>)). Хеш SHA-256 файла [results.json](<../../artifacts/agent-evolution/baseline-e2e/results.json>) остался неизменным (`9de1bdf2d3d17e512c96b1dc45263bffb56be2f2716416c00621c467f00b496d`). Новый рантайм-запуск не проводился.
-11. Завершена экспертиза спортивной науки (`task-5 rev3`):
-    - Заключение зафиксировано в [setup-science-review.md](<setup-science-review.md>): 16 сценариев ручного анализа кода (SOURCE/MANUAL), без выполнения функций в рантайме или физических/клинических тестов.
-    - подтверждённой целевой merge-регрессии не установлено в SOURCE/MANUAL review; не исполненный регрессионный набор; унаследованные кандидаты из кода не являются наблюдаемыми требованиями PO. Раскрыто 5 технологических инцидентов процесса вызова инструментов.
-12. Выполнены собственные браузерные запуски QA (`baseline-r1`, `baseline-r2` и `baseline-r3`):
-    - `baseline-r1`: `exit 1` (16 попыток, 4 pass, 12 fail, длительность 320596.938 мс). Прошли live-room и калькулятор с невалидным MIME; инференс поз для невалидного MIME не заявляется. Стенд QA остановлен (код 143, [owned-teardown.json](<../../artifacts/agent-evolution/qa/setup/server-8796-ACnGZM/owned-teardown.json>)).
-    - `baseline-r2`: изучен сырой JSON [browser-report-baseline-r2.json#L1358-L1373](<../../artifacts/agent-evolution/qa/setup/browser-report-baseline-r2.json#L1358-L1373>): старт 2026-11-13T21:38:44.316Z, длительность 420001.022 мс, expected 4, unexpected 5, skipped 7, flaky 0; глобальный тайм-аут 420 с для набора и teardown. История остановки стенда, не готовность baseline. Ошибки устранены QA без изменения приложения.
-    - `baseline-r3`: изучен сырой отчёт [browser-report.json](<../../artifacts/agent-evolution/qa/setup/browser-run-baseline-r3/browser-report.json>), префлайт [browser-execution-preflight.json](<../../artifacts/agent-evolution/qa/setup/browser-run-baseline-r3/browser-execution-preflight.json>) (40 строк), завершение [browser-execution-teardown.json](<../../artifacts/agent-evolution/qa/setup/browser-run-baseline-r3/browser-execution-teardown.json>) (41 строка) и остановка сервера [owned-teardown.json](<../../artifacts/agent-evolution/qa/setup/server-8796-jtAUUH/owned-teardown.json>) (16 строк). Фактический `exit 0`, длительность 68495.02399999999 мс, старт 2026-11-13T23:03:01.902Z; 16 expected, 0 unexpected, 0 skipped, 0 flaky; все 16 тестов passed, retries 0. Конфигурация: workers 1, retries 0, repeatEach 1, forbidOnly true, `--global-timeout=2400000`, per-case timeout 120s. Процесс сервера остановлен (код 143), порт 127.0.0.1:8796 свободен ПОСЛЕ остановки, 249 файлов продюсеров и 7 файлов QA неизменны. Это свидетельства остановки стенда, а не постоянная готовность; свидетельства для `::1` отсутствуют (PARTIAL). Хелпер IPv4-only, без явного assert realpath persist containment. Отсутствие сиротских процессов в R3 — результат конкретного прогона, а не общая гарантия.
-13. Строгие проверки (Strict E2E), инциденты и очистка артефактов:
-    - R1: лог и exit 0 проверены лидом; ошибочно созданные QA файлы в корне репозитория (`own-strict-e2e-r1.log` и `own-strict-e2e-r1.exit-code`) проверены побайтово с архивными копиями и безопасно удалены ([lead-strict-root-cleanup-r1.json](<../../artifacts/agent-evolution/setup/lead-strict-root-cleanup-r1.json>)); архивные копии сохранены в [own-strict-e2e-r1.log](<../../artifacts/agent-evolution/qa/setup/own-strict-e2e-r1.log>) и [own-strict-e2e-r1.exit-code](<../../artifacts/agent-evolution/qa/setup/own-strict-e2e-r1.exit-code>).
-    - R2: сырой лог 24 строки прочитан лидом, фактический exit 2 (duplicate suffix).
-    - R3: exit 2 (TS2339) заявлено ролью QA (ROLE-REPORTED).
-    - R4: лид лично прочитал [own-strict-all-r4-execution.json](<../../artifacts/agent-evolution/qa/setup/own-strict-all-r4-execution.json>) (61 строка, лог ошибок пуст) и [own-strict-included-all-r4.log](<../../artifacts/agent-evolution/qa/setup/own-strict-included-all-r4.log>) (строки 103–108 включают все 4 целевых TS входа: `agent-qa-baseline.spec.ts`, `agent-qa-domain.test.ts`, `agent-qa-migrations.test.ts`, `playwright.qa.config.ts`; JS-хелпер не включен). Статус `0`, включение `status 0`, 7 QA входов до и после идентичны. Это дополнительная проверка QA, а не общепроектный обязательный контроль.
-    - Discovery R3: лид лично прочитал [discovery-execution.json](<../../artifacts/agent-evolution/qa/setup/browser-run-discovery-r3/discovery-execution.json>) (44 строки) и [discovery.log](<../../artifacts/agent-evolution/qa/setup/browser-run-discovery-r3/discovery.log>) (18 строк). Фактический `exit 0`, обнаружено ровно 16 тестов в 1 файле, отдельный изолированный nonce и каталог корня.
-14. Полный прогон тестов Node QA (Node R4):
-    - Лид лично прочитал сырой лог [own-node-tests-r4.log](<../../artifacts/agent-evolution/qa/setup/own-node-tests-r4.log>) (118 строк) и метаданные [own-node-tests-r4-execution.json](<../../artifacts/agent-evolution/qa/setup/own-node-tests-r4-execution.json>) (48 строк). Фактический запуск `node --import tsx --test domain+migrations`, длительность 207831.745606 мс, старт 2026-11-13T23:18:01.292Z, завершение 23:21:29.243Z, фактический код `exit 0`. Выполнено 10 тестов: 10 pass, 0 fail, 0 cancelled, 0 skipped, 0 todo. Все 7 QA файлов неизменны.
-    - 98 вызовов Wrangler: 83 с кодом `exit 0` и 15 с ОЖИДАЕМЫМ кодом отклонения ограничений `exit 1` (duplicate model owner PK, duplicate instance owner PK, live member account FK для каждой из 5 историй); это отрицательные проверки ограничений схемы, а не 15 дополнительных тестов. Сохраняется полная история матричных сбоев R1/R2 и целевого R3. Статическая переносимость использует канонический корень `import.meta.url`, без обращения к git в рантайме. Пять реальных историй D1, 6 эффектов триггеров на двух владельцев, 15 проверок ограничений. Внешний ключ машинной модели отсутствует, единственный исторический разрыв снимка схемы `sync_versions` против SQL сохраняется точечно.
-15. Независимое форк-ревью (Independent Fork Review):
-    - Форк-ревью завершено с итоговым вердиктом: **PARTIAL**.
-    - Статическая переносимость, провенанс, 5 историй D1, 15 отрицательных проверок ограничений схемы, изолированные корни конфигурации, строгие 4 файла, 249+7 файлов и 16 браузерных рантайм-тестов получили подтверждение RAW-READ PASS. Исторический вердикт PARTIAL сохраняется; последующий переносимый клон закрыл подгейт клона, но отсутствие проверки IPv6 (`::1`) остаётся в статусе PARTIAL. Ревью не является широкой приёмкой baseline или снятием заморозки.
-16. Технологические инциденты и закрытие гейта переносимого клона (Portable Clone Gate):
-    - Попытка QA выполнить нативный bash-цикл проверки хешей SQL отклонена платформой до исполнения (`Error: the user rejected tool "bash"`, [native-denial-incident.json](<../../artifacts/agent-evolution/qa/setup/native-denial-incident.json>)). Нативные команды/записи QA запрещены; операция не повторялась.
-    - Раскрыты ДВА нативных read-only вызова Git со стороны Lead с `sandbox_permissions=danger-full-access` без запроса подтверждения; процессные нарушения, без модификации файлов/индекса; первый без маркера выхода, второй с exit 0. Нативные инструменты Lead ограничены чтением/поиском.
-    - **Гейт переносимого клона ЗАКРЫТ КАК RAW-READ SCOPED PASS**: лид лично изучил [own-portable-clone-r1-execution.json](<../../artifacts/agent-evolution/qa/setup/own-portable-clone-r1-execution.json>) (167 строк), git proof (exit 128, stderr `fatal: not a git repository`), Node лог (114 строк, exit 0, 6 PASS / 0 fail / cancel-skip-todo 0, длительность 205507 мс) и результаты клона (730 строк). Отдельный канонический путь, `GIT_CEILING_DIRECTORIES` на родитель клона, 5 переменных `GIT_*` очищены. 29 скопированных файлов по SHA совпали с исходными, 7 QA совпали, 249 продюсеров совпали; 5 историй D1 и 98 вызовов Wrangler = 83 exit 0 + 15 expected exit 1. Зависимости через симлинк по read-only контракту. Не является доказательством отсутствия Git, чистой установки, кроссплатформенности или прохождения всего CI проекта. Временные метки обёртки в JSON были null и не домысливаются.
-17. Роли и координация задач:
-    - Задача QA `task-3` завершена нативно (rev4 `completed`): лид принял SETUP-only QA FREEZE + RELEASE, ровно 12 SCOPED PASS / 5 PARTIAL / 1 NOT PROVEN (BL-CALENDAR, BL-SYNC, BL-BACKUP, BL-UX, BL-FAIL — PARTIAL; BL-POSE — NOT PROVEN). Продюсеры 249 и 7 файлов QA неизменны; квитанция `103c07c2...`, дайджест отчёта QA `7d7f8c2a...`.
-    - Агент `product-owner-v2` успешно завершил подготовительную задачу `task-7` (rev3, `completed`): документальная подготовка выполнена, создана заметка [tyaga-product-owner-v2-2026-11-14.md](</Users/princeofscale/.agents/notes/tyaga-product-owner-v2-2026-11-14.md>) (110 строк, проверена лидом).
-    - Задача инженера `task-6` (rev4, `completed`, владелец `engineer`): была запущена после явного выпуска QA task-3. Все обязательные команды выполнены с полным успехом (tsc exit 0, npm test exit 0 на 266 тестах, npm run build exit 0; длительность 250643 мс, overall SUCCESS). Инженер передал владение («RELEASE test/build ownership NOW»). Добавление отчёта инженера (строки 138–157 в [setup-engineering.md#L140-L157](<setup-engineering.md#L140-L157>)) и квитанция добавления [report-append.json](<../../artifacts/agent-evolution/setup-final-checks/task-6-20261114T022744Z-fV1YrO/report-append.json>) (все 21 строка проверены: originalPrefixPreserved true, intendedSuffixMatches true, commandExit 0, signal null, allJobsCollected true, activeRemaining 0; исходный размер 138 строк / 29444 байт сохранён, результат 157 строк / 35025 байт; исторический хеш аппендикса 933dab63...) проверены лидом лично. На доске подтверждено завершение задачи (rev4 completed, blockedBy `[task-3]` удовлетворён). Владение полностью передано, открытых инженерных задач нет.
-    - Задача Product Owner `task-4` выпущена Лидом (`releaseAuthorized=true`, GO `send_message` отправлен): редактирование rev3 → 4, переназначение на `product-owner-v2` возвращено как `in_progress` rev5. PO проводит автономное исследование UI на ограниченном стенде и эксклюзивно владеет своими артефактами (`product-exploration.md`, `round-01-user-requirements.md`, `tests/e2e/agent-po-initial.spec.ts`, `product-visits`). Первичное исходное сообщение требований ещё не получено; продуктовые счётчики строго 0.
+**Раунд 1 — экран тренировки (11/11).** Отмена без тупика, видимая «Отменить удаление», «Прошлый» читается целиком, набор трёх одинаковых подходов 9 касаний вместо 21–24, строка подхода 50 px вместо 123, вес тела не теряется в профиле.
 
-## Ещё не доказано
+**Раунд 2 — импорт истории Strong/Hevy (10/10).** Серверные receipts импорта, откат одним касанием (run-scoped undo с CAS), импорт частями ≤30 тренировок (до 60 частей, 200 личных упражнений), восстановление после обрыва. Годовой файл 240 тренировок / 4 758 подходов импортируется за секунды. Добавлена миграция 0011.
 
-Общий baseline не принят (baseline not accepted). Обязательные проверки инженера task-6 и добавление отчёта/CAS-завершение задачи завершены (266 PASS, rev4 completed); предварительное семантическое ревью слияния лидом task-10 завершено со статусом PASS FOR COMBINED LOCAL SETUP SOURCE WITH RETAINED LIMITATIONS (решения D15, D16); локальный SETUP merge коммит `555a9b3f7a8bfa3de19f5c92a17bf3299293dea7` физически создан и проверен. Исследование реального UI Product Owner на ограниченном стенде 8795 выпущено и выполняется в параллельном контексте, но продуктовые требования и подтверждения приёмки ещё не поступили. Продуктовых коммитов нет. PR **не готов** (NOT READY). Никаких улучшений, категорий и ускорений пока заявлять нельзя. 16 уязвимостей npm audit, 6 заблокированных install scripts, ограничения DrizzleORM по таймстампам схемы, отсутствие испытаний на физическом устройстве Android остаются действующими ограничениями. Production и исходная worktree не изменялись; remote D1/deploy/push запрещены.
+**Раунд 3 — надёжность в зале (8/8).** ✓ не ставится без веса и повторов, подход N из «Прошлого», service worker и локальная копия данных, очередь отправки завершённой тренировки (идемпотентный PUT по id), выход с подтверждением при черновике и очереди, стирание персональных данных при выходе.
 
-## Следующий шаг и восстановление
+**Раунд 4 — калькуляторы, доступ, комнаты (9/9).** Вес вводится набором (запятая и точка), разгрузка — локальный недельный флаг с отменой, код восстановления можно получить заново (`POST /api/auth/recovery-code`, в базе только хэш), плашка комнаты «Вместе» в строке названия, единая формула 1ПМ по Эпли, единые названия мышц и часовой пояс из списка.
 
-Читать [state](<state.json>), [overview](<overview.md>), [раунды](<rounds.md>), [требования](<requirements.md>), [QA](<qa-results.md>), [решения](<decisions.md>).
-Точная последовательность дальнейших действий:
-1. Инженерная задача `task-6` завершена нативно (rev4), отчёт и CAS проверены.
-2. Предварительное семантическое ревью интеграции лидом (`task-10`) завершено успешно (D15).
-3. Лид выполнил локальный коммит этапа подготовки (`555a9b3f7a8bfa3de19f5c92a17bf3299293dea7`) с нативным подтверждением SHA и двух родителей (D16).
-4. Подготовительная задача `task-7` завершена `product-owner-v2` (rev3).
-5. Задача `task-10` завершена на доске (rev3 completed).
-6. Задача `task-4` выпущена (`releaseAuthorized=true`, GO доставлен, статус `in_progress` rev5 под управлением `product-owner-v2`).
-7. Ожидание завершения автономного UI-исследования Product Owner и поступления ровно ОДНОГО полного исходного сообщения требований R01 → перевод требований в стабильные R01-REQxx лидом → постановка инженерной задачи раунда 1.
-Никаких новых тестов ради этих правок документации.
+**Раунд 5 — длинная история (7/7).** Названия Strong/Hevy узнаются как упражнения каталога («Сопоставлено 41 из 52»), «Не учтено» в «Мышцах» и массовая разметка «Моих», «История» с месяцами и годом, отбор по периоду и типу и поиск по дню, «Обзор» на 6 месяцев / Год / Всё, окно «Восстановление из копии» с арифметикой «Новых · Уже есть · Отличаются», честный баннер «Отменить импорт».
 
-При прерывании сохранять текущий статус и указать точное продолжение. Итог после завершения включает реальные counts/category breakdown, измеримые before/after, regression accounting, проверенные сценарии/границы, ветку/все SHAs, PR readiness/release prerequisites и отдельно Android limitations.
+**Раунд 6 — повседневные сценарии (6/6).** Название тренировки в шапке комнаты читается целиком, кнопки «Поделиться»/«Выйти» с подписью. «Повторить прошлые» в разгрузке ставит разгрузочный вес (80, а не 95), повторная разгрузка не снижает вес дважды, «Ноги А [Разгрузка]» не дробит отбор по типам. Станция в «Мои тренажёры» добавляется по одному названию. «Перейти к месяцу» всегда ставит заголовок под верх экрана (корень — оценочная высота при `content-visibility`). Итог тренировки и баннер импорта компактнее, «Объём за 28 дней» над списком. В предпросмотре импорта «Будет создано своих упражнений: N» рядом с «Принять близкие движения».
+
+Домен не менялся ни в одном раунде: тоннаж, 1ПМ по Эпли (100×8 → 126,7), разминка вне рабочего тоннажа, формат экспорта, профиль (AGENTS.md §2.1).
+
+## Как проверялось
+
+Цикл раунда: ТЗ от PO (агент-пользователь на своём стенде с чистой D1) → регистрация требований → инженер → мои `tsc` / `npm test` / `npm run build` → независимый QA → доработки → приёмка PO → закрытие в журналах. QA и PO находили настоящие дефекты в каждом раунде (в R5 — 5 Medium, в R6 — 5 Medium, включая регрессию правки инженера); все Medium закрыты до приёмки. Подробности: [раунды](<rounds.md>) · [требования](<requirements.md>) · [QA](<qa-results.md>) · [решения](<decisions.md>) · [промежуточный отчёт R5](<intermediate-report-round-05.md>).
+
+## Известные ограничения
+
+- Облачная D1 не проверялась: импорт года гоняли только в Miniflare; лимиты размера запросов на боевой D1 не подтверждены.
+- Браузер — только Chromium; реальный телефон, iOS Safari, Firefox, iOS-клавиатура не проверялись. Офлайн и service worker — тоже только Chromium.
+- Не проверено: «Друзья» и челленджи с напарником на импортированной истории (второй аккаунт на стенде завести нельзя), видео-анализ техники, «Вес тела» на годовых данных.
+- Внешний вес у упражнений «только вес тела» при импорте не записывается (−2 222,5 кг из 1 316 352,5 кг на годовом файле; в предпросмотре предупреждено).
+- Разгрузка и вид операции баннера отмены хранятся на устройстве, не на сервере.
+- На годовом файле «Мои» по умолчанию 17, после «Принять близкие движения» — 11.
+- Бэклог Low: переименование станции, очень длинное название в шапке комнаты, пометка «· разгрузка» без смены веса, целевой RIR при «Повторить прошлые», баннер + пустое восстановление на 360 px (1128 px при пороге 1100), цели касания <44 px в старых вкладках.
+
+## Деплой
+
+**Сделано:** `git push -u origin agents/tyaga-30-rounds` (новая ветка, без force, `main` не тронут). Ссылка для PR: https://github.com/princeofscale/tyaga/pull/new/agents/tyaga-30-rounds.
+
+**Не сделано: деплой production.** Перед деплоем по регламенту нужно прочитать состояние прода (журнал `d1_migrations`, список деплоев), а классификатор разрешений сессии заблокировал чтение прода через `wrangler ... --remote` (дважды, «Unauthorized Access»). Обходить блокировку нельзя. Что известно без доступа к проду:
+
+- Ветка содержит новые миграции относительно выката 2026-11-12 (`0010_machines`, `0011_import_receipts`): их нужно применить **до** деплоя Worker, только добавочные, предварительно сохранив Time Travel bookmark.
+- Серверный код менялся (receipts импорта, `POST /api/auth/recovery-code`, `SyncService`, `index.ts`), поэтому деплой Worker без миграций сломает импорт.
+- APK и `app-version.json` стираются сборкой: пара лежит в `/Users/princeofscale/Desktop/gym/tyaga/dist/client/` (и `artifacts/deploy/2026-11-08/production-tyaga-1.2.apk`) — после `npm run build` вернуть в `dist/client` и сверить sha256 с боевым.
+- Конфиг только `wrangler.production.jsonc` (D1 `ad437b48-4328-40fa-8cad-0c198a8c3587`).
+
+Порядок (README «Безопасное обновление»): чтение прода (SELECT журнала миграций, `wrangler deployments list`) → Time Travel bookmark → `npx wrangler d1 migrations apply DB --remote --config wrangler.production.jsonc` → `npm run build` → вернуть APK-пару → `npm run deploy:cloud:check` → `npm run deploy:cloud` → проверка прода только чтением (страница, ресурсы, анонимные API).
+
+## Продолжение
+
+Раунды 7–30 не начаты; раунд 7 стартует только по сигналу пользователя. Следующий промежуточный отчёт — после раунда 10. Машинное состояние: [state.json](<state.json>).
