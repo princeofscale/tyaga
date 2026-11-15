@@ -56,3 +56,7 @@ PASS — реально проверенный критерий, FAIL — вос
 
 ## Раунд 4
 Полный отчёт: `round-04-qa-report.md`. 0637960: REQ01–03, 05–09 PASS, REQ04 PARTIAL (QA-R04-01 Medium: плашка комнаты раздувала липкую шапку, ✓ перекрыты на 360×800), Low QA-R04-02…08. b8cb54a: REQ01–REQ09 PASS, QA-R04-01…08 FIXED, новые Low QA-R04-09…11. tsc 0, npm test 356/356, build 0, Playwright 158/158; числа тоннажа/1ПМ до и после идентичны. Не проверено: реальный телефон, Safari/Firefox, вход в комнату со второго устройства по ссылке.
+
+
+## Раунд 5
+Полные отчёты: `round-05-qa-report.md`, `round-05-qa-recheck-report.md`. 28ccce7: REQ01/03/04/06/07 PASS, REQ02/REQ05 PARTIAL (QA-R05-01…04 Medium, Low 05…11). c784587: REQ01–REQ07 PASS, QA-R05-01…04, 06, 08, 09 FIXED; частично 07, 10(1); новый Medium QA-R05-12 (горизонтальный скролл «Обзор → Всё» на истории >2 лет) и Low 13…16. ebe851a: QA-R05-12, 15 FIXED (e2e на 141 и 270 неделях). tsc 0, npm test 372/372, build 0, Playwright 168/168. Не проверено: реальный телефон, Safari/Firefox, облачная D1 на годовом импорте, реальная база wger (918).

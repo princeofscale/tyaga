@@ -134,6 +134,6 @@ ID форков не являются ID фоновых задач (job IDs). Н
 
 ## Навигация и продолжение
 
-[Раунды](<rounds.md>) · [Требования](<requirements.md>) · [QA](<qa-results.md>) · [Решения](<decisions.md>) · [Итог/продолжение](<final-report.md>) · [Машинное состояние](<state.json>).
+[Раунды](<rounds.md>) · [Требования](<requirements.md>) · [QA](<qa-results.md>) · [Решения](<decisions.md>) · [Итог/продолжение](<final-report.md>) · [Промежуточный отчёт после раунда 5](<intermediate-report-round-05.md>) · [Машинное состояние](<state.json>).
 
 Persistent goal: `goal-1588dc6a-45a6-4c72-8239-7d62bba32138` (120 continuation rounds maximum; это не счётчик продуктовых раундов). Перед продолжением читать state + незавершённые shared tasks + последние reports; после resume перепроверять Git/runtime вместо доверия старому claim.
