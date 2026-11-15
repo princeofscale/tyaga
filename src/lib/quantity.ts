@@ -22,3 +22,13 @@ export function quantityWord(
         ? few
         : many;
 }
+
+/** «1 рабочий подход», «2 рабочих подхода», «5 рабочих подходов», «21 рабочий подход». */
+export function workingSets(value: number) {
+  return quantity(value, "рабочий подход", "рабочих подхода", "рабочих подходов");
+}
+
+/** То же без числа: для разметки вида `<strong>N</strong> рабочих подходов`. */
+export function workingSetsWord(value: number) {
+  return quantityWord(value, "рабочий подход", "рабочих подхода", "рабочих подходов");
+}

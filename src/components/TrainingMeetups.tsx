@@ -1,4 +1,4 @@
-import { quantity } from "../lib/quantity";
+import { quantity, workingSets } from "../lib/quantity";
 import { useState } from "react";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import { CalendarDays, MapPin, Plus, CheckCheck } from "lucide-react";
@@ -155,12 +155,7 @@ export default function TrainingMeetups({
                         <span>
                           {p.response === "finished"
                             ? p.summary
-                              ? quantity(
-                                  p.summary.setsCount,
-                                  "рабочий подход",
-                                  "рабочих подхода",
-                                  "рабочих подходов",
-                                )
+                              ? workingSets(p.summary.setsCount)
                               : "Итог недоступен"
                             : p.response === "accepted"
                               ? "Участвует"
@@ -186,12 +181,7 @@ export default function TrainingMeetups({
                           )}
                         </b>
                         <small>
-                          {quantity(
-                            total.sets,
-                            "рабочий подход",
-                            "рабочих подхода",
-                            "рабочих подходов",
-                          )}{" "}
+                          {workingSets(total.sets)}{" "}
                           · {total.minutes} мин суммарно
                         </small>
                       </span>

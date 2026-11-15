@@ -38,7 +38,7 @@ import {
 import { friendsApi } from "../services/FriendsApi";
 import { CLOUD_URL, cloudState } from "../device/cloudSync";
 import { fmt } from "../lib/model";
-import { quantity } from "../lib/quantity";
+import { quantity, workingSetsWord } from "../lib/quantity";
 import Modal from "./Modal";
 import RoomInvite from "./RoomInvite";
 import TogetherCard from "./TogetherCard";
@@ -653,7 +653,7 @@ export default function FriendsScreen({
                       <h3>{workout.name}</h3>
                       <div className="friend-workout-stats">
                         <span>
-                          <strong>{workout.setsCount}</strong> рабочих подходов
+                          <strong>{workout.setsCount}</strong> {workingSetsWord(workout.setsCount)}
                         </span>
                         <span>
                           <strong>{workout.duration}</strong> мин

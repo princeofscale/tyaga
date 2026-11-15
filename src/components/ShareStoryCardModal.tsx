@@ -1,3 +1,4 @@
+import { workingSets } from "../lib/quantity";
 import { useState, useRef, useEffect } from "react";
 import { Download, Image as ImageIcon, Share2, Smartphone } from "lucide-react";
 import type { Workout } from "../lib/model";
@@ -311,7 +312,7 @@ export function ShareStoryCardModal({
           await navigator.share({
             files: [file],
             title: `Тренировка в Тяге: ${workout.name}`,
-            text: `Тоннаж: ${fmt(summary.total)} кг • ${workingSetsCount} рабочих подходов`,
+            text: `Тоннаж: ${fmt(summary.total)} кг • ${workingSets(workingSetsCount)}`,
           });
         } catch {
           // человек закрыл окно «Поделиться»

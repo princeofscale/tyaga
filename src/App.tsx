@@ -147,6 +147,7 @@ import { PendingWorkouts } from "./domain/PendingWorkouts";
 import { TimeZoneField } from "./components/TimeZoneField";
 import { DeloadPlan, type DeloadPlanRecord } from "./domain/DeloadPlan";
 import { DeloadEngine } from "./domain/DeloadEngine";
+import { PlanLine } from "./domain/PlanLine";
 import { usePendingWorkouts } from "./hooks/usePendingWorkouts";
 import { productService } from "./services/ProductService";
 import { TrainingProgram, nextScheduled } from "./domain/TrainingProgram";
@@ -1272,9 +1273,9 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                           <li key={e.exerciseId}>
                             <span>{entryName(e)}</span>
                             <b>
-                              {e.sets.length} × {e.sets[0]?.reps ?? 0}
-                              {e.sets[0]?.weight ? ` · ${fmt(e.sets[0].weight)} кг` : ""}
-                              {e.sets[0]?.weight ? (
+                              {PlanLine.sets(e)}
+                              {e.sets.find((s) => !s.warmup)?.weight ? ` · ${fmt(e.sets.find((s) => !s.warmup)!.weight)} кг` : ""}
+                              {e.sets.find((s) => !s.warmup)?.weight ? (
                                 <small className="plan-source">
                                   {todaySources[i] === "history" ? "вес из истории" : "по плану"}
                                 </small>
