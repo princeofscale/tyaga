@@ -1,7 +1,7 @@
 import { useBodyweight } from "../state/BodyweightContext";
 import { JournalBackup, type ProfileBackup } from "../domain/JournalBackup";
 import type { ThemeId } from "../lib/theme";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Check, FileUp, Import, ShieldCheck } from "lucide-react";
 import {
   WorkoutImport,
@@ -10,6 +10,10 @@ import {
   type ImportOptions,
 } from "../domain/WorkoutImport";
 import { ImportMapping } from "../domain/ImportMapping";
+import { ImportNameMatcher } from "../domain/ImportNameMatcher";
+import { DateText } from "../domain/DateText";
+import { RestorePlan, type ExistingData } from "../domain/RestorePlan";
+import { quantity } from "../lib/quantity";
 import { importService } from "../services/ImportService";
 import Select from "./Select";
 import { EXERCISES, exerciseById, localDate } from "../lib/model";
@@ -30,19 +34,29 @@ type Props = {
     profile?: ProfileBackup;
   }) => Promise<void>;
   onBusy: (busy: boolean) => void;
+  /** «restore» — окно «Восстановление из копии»: только JSON Тяги, итог остаётся на экране до закрытия. */
+  mode?: "import" | "restore";
+  /** Что уже есть в аккаунте — для строк «Новых · Уже есть · Отличаются». */
+  existing?: ExistingData;
+  onClose?: () => void;
 };
 export default function HistoryImporter({
   timeZone,
   onComplete,
   onBusy,
+  mode = "import",
+  existing,
+  onClose,
 }: Props) {
+  const restoring = mode === "restore";
+  const [finished, setFinished] = useState<string[] | null>(null);
   const journal = useBodyweight();
   const [restoreProfile, setRestoreProfile] = useState(false);
   const [restoreWeight, setRestoreWeight] = useState(true),
     [replaceWeight, setReplaceWeight] = useState(false);
   const [text, setText] = useState(""),
     [fileName, setFileName] = useState("");
-  const [format, setFormat] = useState<ImportFormat>("strong");
+  const [format, setFormat] = useState<ImportFormat>(restoring ? "tyaga" : "strong");
   const [options, setOptions] = useState<ImportOptions>({
     dateOrder: "dmy",
     weightUnit: "kg",
@@ -58,6 +72,7 @@ export default function HistoryImporter({
   // «Как моя» by default: a barbell number in a Strong/Hevy/FitNotes file is the
   // total bar weight unless the user says otherwise.
   const [weightTotal, setWeightTotal] = useState<"yes" | "no">("yes"),
+    [weightEach, setWeightEach] = useState<"yes" | "no">("yes"),
     [replaceImported, setReplaceImported] = useState(true),
     [restoreExtras, setRestoreExtras] = useState(true),
     [restoreSettings, setRestoreSettings] = useState(false);
@@ -84,6 +99,10 @@ export default function HistoryImporter({
     if (!file) return;
     if (file.size > 10 * 1024 * 1024) {
       setError("Выбери файл не больше 10 МБ.");
+      return;
+    }
+    if (restoring && !file.name.toLowerCase().endsWith(".json")) {
+      setError("Для восстановления нужен JSON-файл копии Тяги («Скачать полную копию»). CSV из Strong, Hevy и FitNotes — в «История → Импорт истории».");
       return;
     }
     try {
@@ -131,15 +150,57 @@ export default function HistoryImporter({
       markBusy(false);
     }
   }
+  // Что каталог знает про каждое название: точные, близкие варианты, спорные и совсем свои.
+  const verdicts = useMemo(
+    () =>
+      preview && preview.format !== "tyaga"
+        ? ImportNameMatcher.classifyAll(preview.exerciseNames, matches, new Set(ImportNameMatcher.weights(preview).keys()))
+        : {},
+    [preview, matches],
+  );
   const suggestion = (name: string) =>
-    ImportMapping.suggestForImport(name) ?? matches[name]?.[0] ?? null;
+    verdicts[name]?.exercise ?? verdicts[name]?.candidates[0] ?? null;
+  const autoFor = (name: string) => {
+    const verdict = verdicts[name];
+    if (!verdict?.exercise || !["matched", "variant"].includes(verdict.kind))
+      return "";
+    const mode = verdict.exercise.recording.loadMode;
+    if (mode === "total_external" && weightTotal !== "yes") return "";
+    if (mode === "per_implement" && weightEach !== "yes") return "";
+    return verdict.exercise.id;
+  };
   const choiceFor = (name: string) =>
-    name in userChoices
-      ? userChoices[name]
-      : weightTotal === "yes" &&
-          ImportMapping.appliesByDefault(ImportMapping.suggestForImport(name))
-        ? ImportMapping.suggestForImport(name)!.id
-        : "";
+    name in userChoices ? userChoices[name] : autoFor(name);
+  const names = preview?.exerciseNames ?? [];
+  const weightPlan = useMemo(() => {
+    if (!preview?.extras?.bodyweight) return null;
+    const m = JournalBackup.merge(journal.tracker.getEntries(), preview.extras.bodyweight.entries);
+    return { added: m.added, same: m.same, differs: m.conflictDates.length };
+  }, [preview, journal]);
+  const plan = useMemo(() => {
+    if (!preview || preview.format !== "tyaga" || !existing) return null;
+    const workouts = RestorePlan.workouts(preview.workouts, existing.workouts);
+    const routines = RestorePlan.routines(preview.extras?.routines ?? [], existing.routines);
+    const customs = RestorePlan.customExercises(preview.extras?.customExercises ?? [], existing.customExercises);
+    const favorites = RestorePlan.favorites(preview.extras?.favorites ?? [], existing.favorites);
+    return { workouts, routines, customs, favorites, nothing: RestorePlan.nothingNew(workouts, [routines, customs, favorites]) };
+  }, [preview, existing]);
+  const summary = ImportNameMatcher.summary(
+    verdicts,
+    Object.fromEntries(names.map((n) => [n, choiceFor(n)]).filter(([n, id]) => id || n in userChoices)),
+    names,
+  );
+  const dropped = preview
+    ? ImportNameMatcher.droppedWeights(preview, choiceFor, exerciseById)
+    : [];
+  const autoKinds = (kind: "variant" | "ask") =>
+    names.filter((n) => verdicts[n]?.kind === kind && !(n in userChoices));
+  const needsTotal = names.some(
+    (n) => verdicts[n]?.exercise?.recording.loadMode === "total_external" && ["matched", "variant"].includes(verdicts[n].kind),
+  );
+  const needsEach = names.some(
+    (n) => verdicts[n]?.exercise?.recording.loadMode === "per_implement" && ["matched", "variant"].includes(verdicts[n].kind),
+  );
   async function run() {
     if (!preview) return;
     markBusy(true);
@@ -152,46 +213,13 @@ export default function HistoryImporter({
       skipped: 0,
     });
     try {
-      const prepared: ImportPreview = {
-        ...preview,
-        workouts: preview.workouts.map((w) => ({
-          ...w,
-          exercises: w.exercises.map((e) => {
-            const chosen = choiceFor(e.sourceName)
-              ? exerciseById(choiceFor(e.sourceName))
-              : undefined;
-            if (preview.format === "tyaga") return e;
-            if (chosen && (chosen.recording.type ?? "reps") === e.type) {
-              if (
-                ["machine_stack", "assisted_bodyweight"].includes(
-                  chosen.recording.loadMode,
-                ) &&
-                !machines[e.sourceName]?.trim()
-              )
-                throw new Error(
-                  `Укажи тренажёр для «${e.sourceName}» или выбери буквальную запись.`,
-                );
-              return {
-                ...e,
-                exerciseId: chosen.id,
-                displayName: chosen.name,
-                catalogRevision: chosen.catalogRevision,
-                equipmentNote: machines[e.sourceName],
-                ...(chosen.recording.laterality === "unilateral"
-                  ? { performedSides: sides[e.sourceName] ?? ("both" as const) }
-                  : {}),
-                sets: e.sets.map((s) => ({
-                  ...s,
-                  ...(chosen.recording.loadMode === "assisted_bodyweight"
-                    ? { assistanceKg: s.weight, weight: 0 }
-                    : {}),
-                })),
-              };
-            }
-            return e;
-          }),
-        })),
-      };
+      const prepared = ImportNameMatcher.prepare(preview, {
+        choiceFor,
+        find: exerciseById,
+        verdicts,
+        machines,
+        sides,
+      });
       const result = await importService.import(prepared, setProgress, {
         replace: replaceImported && prepared.format !== "tyaga",
       });
@@ -225,31 +253,63 @@ export default function HistoryImporter({
           ? { settings: prepared.extras.settings }
           : {}),
       });
+      if (restoring) {
+        const added = result.imported - (result.replaced ?? 0);
+        const lines = [
+          `Тренировки: добавлено ${added}, уже было ${Math.max(0, result.skipped - (result.kept ?? 0))}` +
+            (plan?.workouts.differs ? `, отличаются и остались как в аккаунте ${plan.workouts.differs}` : ""),
+        ];
+        if (restored) lines.push(`Вес: добавлено ${restored.added}${restored.conflictDates.length ? (replaceWeight ? `, заменено ${restored.conflictDates.length}` : `, отличаются и остались твои ${restored.conflictDates.length}`) : ""}`);
+        if (restoreExtras && plan) {
+          if (plan.routines.total) lines.push(`Программы: добавлено ${plan.routines.added}, уже было ${plan.routines.same + plan.routines.differs}`);
+          if (plan.customs.total) lines.push(`Свои упражнения: добавлено ${plan.customs.added}, уже было ${plan.customs.same + plan.customs.differs}`);
+          if (plan.favorites.total) lines.push(`Избранное: добавлено ${plan.favorites.added}, уже было ${plan.favorites.same}`);
+        }
+        const anything = added > 0 || (restored?.added ?? 0) > 0 || (restoreExtras && plan && (plan.routines.added + plan.customs.added + plan.favorites.added) > 0);
+        setFinished([anything ? "Восстановление завершено." : `Ничего не добавлено: ${plan?.nothing ? plan.nothing.replace("Ничего нового: ", "") : "всё из копии уже в аккаунте"}.`, ...lines]);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Импорт остановлен");
     } finally {
       markBusy(false);
     }
   }
+  if (finished)
+    return (
+      <div className="history-importer">
+        <section className="restore-result" role="status" aria-label="Итог восстановления">
+          <h3>{finished[0]}</h3>
+          <ul>
+            {finished.slice(1).map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+          <button type="button" className="button primary full-width" onClick={onClose}>
+            Закрыть
+          </button>
+        </section>
+      </div>
+    );
   return (
     <div className="history-importer">
       <p className="modal-intro">
-        Перенеси историю из Strong, Hevy, FitNotes или JSON Тяги. Сначала
-        проверь предпросмотр; существующие тренировки останутся.
+        {restoring
+          ? "Восстановление из полной копии Тяги (JSON). Сначала посмотри, что внутри и что изменится; существующие тренировки и записи не перезаписываются."
+          : "Перенеси историю из Strong, Hevy, FitNotes или JSON Тяги. Сначала проверь предпросмотр; существующие тренировки останутся."}
       </p>
       <label className="import-file">
         <FileUp size={30} />
-        <b>{fileName || "Выбрать файл экспорта"}</b>
-        <span>CSV или JSON · до 10 МБ</span>
+        <b>{fileName || (restoring ? "Выбрать файл копии" : "Выбрать файл экспорта")}</b>
+        <span>{restoring ? "JSON копии Тяги · до 10 МБ" : "CSV или JSON · до 10 МБ"}</span>
         <input
           aria-label="Файл истории тренировок"
           type="file"
-          accept=".csv,.json,text/csv,application/json"
+          accept={restoring ? ".json,application/json" : ".csv,.json,text/csv,application/json"}
           disabled={busy}
           onChange={(e) => void file(e.target.files?.[0])}
         />
       </label>
-      <fieldset disabled={busy} className="import-options">
+      {restoring ? null : <fieldset disabled={busy} className="import-options">
         <label>
           Формат
           <Select
@@ -322,7 +382,7 @@ export default function HistoryImporter({
             </label>
           </>
         ) : null}
-      </fieldset>
+      </fieldset>}
       {!preview ? (
         <button
           className="button primary full-width"
@@ -348,6 +408,42 @@ export default function HistoryImporter({
               <span>названий</span>
             </div>
           </div>
+          {plan ? (
+            <section className="restore-plan" aria-label="Что в копии">
+              <h3>Что в копии</h3>
+              <ul>
+                <li>
+                  <b>Тренировки: {plan.workouts.total}</b>
+                  <span>{RestorePlan.words(plan.workouts)}</span>
+                </li>
+                {preview.extras?.bodyweight ? (
+                  <li>
+                    <b>Вес: {preview.extras.bodyweight.entries.length}</b>
+                    <span>{RestorePlan.words({ total: preview.extras.bodyweight.entries.length, ...weightPlan! })}</span>
+                  </li>
+                ) : null}
+                {plan.routines.total ? (
+                  <li>
+                    <b>Программы: {plan.routines.total}</b>
+                    <span>{RestorePlan.words(plan.routines)}</span>
+                  </li>
+                ) : null}
+                {plan.customs.total ? (
+                  <li>
+                    <b>Свои упражнения: {plan.customs.total}</b>
+                    <span>{RestorePlan.words(plan.customs)}</span>
+                  </li>
+                ) : null}
+                {plan.favorites.total ? (
+                  <li>
+                    <b>Избранное: {plan.favorites.total}</b>
+                    <span>{RestorePlan.words(plan.favorites)}</span>
+                  </li>
+                ) : null}
+              </ul>
+              {plan.nothing ? <p className="restore-nothing" role="status"><b>{plan.nothing}</b></p> : null}
+            </section>
+          ) : null}
           {preview.extras?.bodyweight && (
             <section
               className="backup-weight-preview"
@@ -355,27 +451,7 @@ export default function HistoryImporter({
             >
               <h3>Взвешивания: {preview.extras.bodyweight.entries.length}</h3>
               <p className="tiny">
-                Новых:{" "}
-                {
-                  JournalBackup.merge(
-                    journal.tracker.getEntries(),
-                    preview.extras.bodyweight.entries,
-                  ).added
-                }{" "}
-                · Совпадают:{" "}
-                {
-                  JournalBackup.merge(
-                    journal.tracker.getEntries(),
-                    preview.extras.bodyweight.entries,
-                  ).same
-                }{" "}
-                · Различаются:{" "}
-                {
-                  JournalBackup.merge(
-                    journal.tracker.getEntries(),
-                    preview.extras.bodyweight.entries,
-                  ).conflictDates.length
-                }
+                {RestorePlan.words({ total: preview.extras.bodyweight.entries.length, ...weightPlan! })}
               </p>
               <p className="tiny">
                 Цель из файла:{" "}
@@ -429,7 +505,7 @@ export default function HistoryImporter({
           <div className="import-sessions">
             {preview.workouts.slice(0, 5).map((w) => (
               <div key={w.sourceKey}>
-                <span>{w.date}</span>
+                <span>{DateText.day(w.date)}</span>
                 <b>{w.name}</b>
                 <small>{w.exercises.length} упр.</small>
               </div>
@@ -440,7 +516,29 @@ export default function HistoryImporter({
           </div>
           {preview.format !== "tyaga" ? (
             <>
-              {ImportMapping.needsWeightQuestion(preview.exerciseNames) ? (
+              <p className="import-match-summary" role="status">
+                <b>
+                  Сопоставлено {summary.matched} из {summary.total} · нужно
+                  решить {summary.toDecide}
+                </b>
+                {summary.own ? (
+                  <small>
+                    {" "}
+                    Ещё {summary.own} останутся отдельными записями — в
+                    каталоге похожего нет.
+                  </small>
+                ) : null}
+              </p>
+              {dropped.length ? (
+                <p className="import-dropped tiny" role="status">
+                  Доп. вес в файле у {dropped.length}{" "}
+                  {dropped.length === 1 ? "упражнения" : "упражнений"} с «только
+                  весом тела» ({dropped.slice(0, 3).map((d) => `${d.name} до ${d.kg} кг`).join(", ")}
+                  {dropped.length > 3 ? "…" : ""}) не записывается; максимум
+                  сохранён в заметке к упражнению.
+                </p>
+              ) : null}
+              {needsTotal ? (
                 <fieldset className="import-question" disabled={busy}>
                   <legend>Вес в файле — это общий вес штанги с грифом?</legend>
                   <label className="check-label">
@@ -468,6 +566,106 @@ export default function HistoryImporter({
                     </span>
                   </label>
                 </fieldset>
+              ) : null}
+              {needsEach ? (
+                <fieldset className="import-question" disabled={busy}>
+                  <legend>Вес гантелей в файле — это вес одной гантели?</legend>
+                  <label className="check-label">
+                    <input
+                      type="radio"
+                      name="import-weight-each"
+                      checked={weightEach === "yes"}
+                      onChange={() => setWeightEach("yes")}
+                    />
+                    <span>Да — одной (так считает тоннаж каталог)</span>
+                  </label>
+                  <label className="check-label">
+                    <input
+                      type="radio"
+                      name="import-weight-each"
+                      checked={weightEach === "no"}
+                      onChange={() => setWeightEach("no")}
+                    />
+                    <span>
+                      Нет или не знаю — сохранить числа буквально, отдельными
+                      записями
+                    </span>
+                  </label>
+                </fieldset>
+              ) : null}
+              {summary.toDecide > 0 ? (
+                <section
+                  className="import-decide"
+                  aria-label="Нужно решить"
+                >
+                  <h3>Нужно решить · {summary.toDecide}</h3>
+                  <p className="tiny">
+                    Точного совпадения в каталоге нет. Выбери похожее
+                    упражнение или оставь отдельной записью — иначе оно станет
+                    «Моим».
+                  </p>
+                  {autoKinds("ask").map((name) => (
+                    <div className="import-mapping-row" key={name}>
+                      <label>
+                        <span>{name}</span>
+                        <Select
+                          searchable
+                          value={choiceFor(name)}
+                          disabled={busy}
+                          onChange={(v) =>
+                            setUserChoices({ ...userChoices, [name]: v })
+                          }
+                          options={[
+                            {
+                              value: "",
+                              label: "Отдельная запись, вес буквально",
+                            },
+                            ...[
+                              ...new Map(
+                                [
+                                  ...(verdicts[name]?.candidates ?? []),
+                                  ...EXERCISES,
+                                ].map((e) => [e.id, e]),
+                              ).values(),
+                            ].map((e) => ({
+                              value: e.id,
+                              label: e.source ? `${e.name} · база` : e.name,
+                              search: [e.nameEn, ...(e.aliases ?? [])].join(
+                                " ",
+                              ),
+                            })),
+                          ]}
+                        />
+                      </label>
+                      <small>
+                        Похоже на «{verdicts[name]?.candidates[0]?.name}»
+                        {verdicts[name]?.candidates.length > 1
+                          ? ` и ещё ${verdicts[name].candidates.length - 1}`
+                          : ""}
+                      </small>
+                    </div>
+                  ))}
+                </section>
+              ) : null}
+              {autoKinds("variant").length ? (
+                <details className="import-variants">
+                  <summary>
+                    Близкие варианты · {autoKinds("variant").length}
+                  </summary>
+                  <ul>
+                    {autoKinds("variant").map((name) => (
+                      <li key={name}>
+                        <span>{name}</span>
+                        <b>{verdicts[name].exercise?.name}</b>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="tiny">
+                    Это тот же вид движения с чуть другой техникой или
+                    оборудованием. Если нужна отдельная запись, измени
+                    сопоставление ниже.
+                  </p>
+                </details>
               ) : null}
               <ul className="import-recognized" aria-label="Что распознано">
                 {preview.exerciseNames.map((name) => {
@@ -578,7 +776,7 @@ export default function HistoryImporter({
                             ? candidate.recording.loadMode === "per_implement"
                               ? "Вес — одной гантели. Проверь, что в файле так же."
                               : "Используем правило записи выбранного упражнения"
-                            : first && !ImportMapping.appliesByDefault(first)
+                            : first && verdicts[name]?.kind === "ask"
                               ? `Похоже на «${first.name}», но вес в файле может значить другое — выбери вручную, если уверен`
                               : "Вес сохранится буквально; в «Силе» это будет отдельный ряд"}
                         </small>

@@ -105,6 +105,9 @@ import { VolumeChart, Sparkline } from "./components/Charts";
 import Modal from "./components/Modal";
 import Select from "./components/Select";
 import WorkoutView from "./components/WorkoutView";
+import HistoryList from "./components/HistoryList";
+import { MuscleCoverage } from "./domain/MuscleCoverage";
+import { DateText } from "./domain/DateText";
 import TrainingPlate from "./components/TrainingPlate";
 import { AnimatePresence, m } from "motion/react";
 import {
@@ -236,6 +239,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
     | "deload"
     | "warmup"
     | "ios_install"
+    | "restore"
     | "rp_volume"
     | null
   >(null);
@@ -277,7 +281,10 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
   const [lastImportRun, setLastImportRun] = useState<{ runId: string; at: string; total: number; activeCount: number } | null>(null);
   const [pendingImport, setPendingImport] = useState<{ runId: string; total: number } | null>(null);
   const [undoAsk, setUndoAsk] = useState(false);
+  // Последняя операция, которая ничего не добавила: баннер отмены остаётся у прежнего импорта и говорит об этом.
+  const [lastNoop, setLastNoop] = useState<{ at: string; kind: "import" | "restore" } | null>(null);
   const [muscleFilter, setMuscleFilter] = useState<Muscle | "all">("all");
+  const [startMarking, setStartMarking] = useState(false);
   const [selectedMuscle, setSelectedMuscle] = useState<Muscle | null>(null);
   const [weekOffset, setWeekOffset] = useState(0);
   const [minutes, setMinutes] = useState(40);
@@ -286,7 +293,6 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [progressPick, setProgressExercise] = useState<string | null>(null);
-  const [historySearch, setHistorySearch] = useState("");
   const [settingsDraft, setSettingsDraft] =
     useState<Settings>(DEFAULT_SETTINGS);
   const [exerciseDetail, setExerciseDetail] = useState<string | null>(null);
@@ -466,13 +472,25 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
     () => ({ mapping, timeZone: settings.timeZone, ...(hardSetsOnly ? { maxRir: 3 } : {}) }),
     [mapping, hardSetsOnly, settings.timeZone],
   );
+  // Актуальные версии «Моих» нужны каталогу до расчёта: разметка действует и на старые тренировки.
+  const familyKey = useMemo(
+    () => `${exerciseCatalog.adoptFamilies(product.customExercises)}:${product.customExercises.map((e) => e.id).join("|")}`,
+    [product.customExercises],
+  );
   const loads = useMemo(
     () => muscleLoad(weekWorkouts, settings, analysisOptions),
-    [weekWorkouts, settings, analysisOptions],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [weekWorkouts, settings, analysisOptions, familyKey],
   );
   const anatomy = useMemo(
     () => anatomicalLoad(weekWorkouts, analysisOptions),
-    [weekWorkouts, analysisOptions],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [weekWorkouts, analysisOptions, familyKey],
+  );
+  const coverage = useMemo(
+    () => MuscleCoverage.report(weekWorkouts, { timeZone: settings.timeZone, ...(hardSetsOnly ? { maxRir: 3 } : {}) }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [weekWorkouts, settings.timeZone, hardSetsOnly, familyKey],
   );
   const hasLegacy = weekWorkouts.some((w) =>
     w.exercises.some((e) => (e.catalogRevision ?? 1) === 1),
@@ -562,6 +580,44 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
     setView(v);
     window.scrollTo({ top: 0, behavior: "instant" });
   };
+  const unmarkedNote = coverage.sets ? (
+    <p className="zones-unmarked" role="status">
+      <b>
+        Не учтено: {quantity(coverage.exercises, "упражнение", "упражнения", "упражнений")},{" "}
+        {quantity(coverage.sets, "подход", "подхода", "подходов")}
+      </b>{" "}
+      — у них нет разметки мышц, поэтому группы ниже занижены
+      {coverage.items.length ? ` (${coverage.items.slice(0, 3).map((i) => i.name).join(", ")}${coverage.items.length > 3 ? "…" : ""})` : ""}.
+      <button
+        type="button"
+        className="text-button"
+        onClick={() => {
+          setMuscleFilter("all");
+          setStartMarking(true);
+          go("library");
+        }}
+      >
+        Разметить
+      </button>
+    </p>
+  ) : null;
+  useEffect(() => {
+    if (view !== "library") setStartMarking(false);
+  }, [view]);
+  const markExercises = (saved: Exercise[]) => {
+    exerciseCatalog.register(saved);
+    setProduct((p) => {
+      const families = new Set(saved.map((e) => e.custom?.familyId));
+      const oldIds = p.customExercises.filter((e) => families.has(e.custom?.familyId)).map((e) => e.id);
+      const favored = new Set(p.favorites.filter((id) => oldIds.includes(id)));
+      const nextFavorite = saved.filter((e) => p.customExercises.some((o) => o.custom?.familyId === e.custom?.familyId && favored.has(o.id))).map((e) => e.id);
+      return {
+        ...p,
+        customExercises: [...saved, ...p.customExercises.filter((e) => !oldIds.includes(e.id))],
+        favorites: [...p.favorites.filter((id) => !oldIds.includes(id)), ...nextFavorite],
+      };
+    });
+  };
   // Android's back button (and the browser's) closes the top layer first;
   // from Today with nothing open it leaves the app.
   const layered =
@@ -580,7 +636,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
     else if (exerciseDetail) setExerciseDetail(null);
     else if (deleteId) setDeleteId(null);
     else if (detail) setDetail(null);
-    else if (modal && !(modal === "import" && importBusy)) setModal(null);
+    else if (modal && !((modal === "import" || modal === "restore") && importBusy)) setModal(null);
     else if (view !== "overview") go("overview");
   };
   useEffect(() => {
@@ -843,6 +899,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
         importUndo.clear();
         setLastImport(null);
         setLastImportRun(null);
+        setLastNoop(null);
       }
       if (run === pendingImport?.runId) setPendingImport(null);
       setUndoAsk(false);
@@ -896,11 +953,6 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
   const exportDraft = () => {
     if (draft) void saveFile("tyaga-draft.json", JSON.stringify(draft, null, 2));
   };
-  const historyFiltered = displayed.filter((w) =>
-    `${w.name} ${w.exercises.map((e) => entryName(e)).join(" ")}`
-      .toLowerCase()
-      .includes(historySearch.toLowerCase()),
-  );
   // Только то, что делал: свежие и частые первыми; без истории — один жим лёжа, чтобы экран не был пустым.
   const strengthRows = StrengthExercises.list(displayed);
   const progressOptions = strengthRows.length
@@ -948,9 +1000,12 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
         onFavorite={(id) => void favoriteExercise(id)}
         onCreate={createPersonal}
         onEdit={editPersonal}
+        onMarked={markExercises}
+        startMarking={startMarking && !picker}
       />
     </Suspense>
   );
+  const currentYear = localDate(new Date(), settings.timeZone).slice(0, 4);
   const sessionItem = (w: Workout, expanded = false) => {
     const tonnage = volumeSummary([w], "all");
     return (
@@ -962,6 +1017,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
             .toLocaleDateString("ru-RU", { month: "short" })
             .replace(".", "")}
         </span>
+        {w.date.slice(0, 4) !== currentYear ? <small className="session-year">{w.date.slice(0, 4)}</small> : null}
       </div>
       <div className="session-item-info">
         <h3>{w.name}{pending.ids.has(w.id) ? <span className="pending-badge">Ждёт отправки</span> : null}</h3>
@@ -1337,10 +1393,19 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                       account={account}
                     />
                   )}
-                  {lastImportRun ? (
-                    <section className="import-undo panel" role="status">
+                  {lastImportRun ? (() => {
+                    const when = DateText.moment(lastImportRun.at, settings.timeZone, currentYear);
+                    const scope = `${quantity(lastImportRun.activeCount, "тренировку", "тренировки", "тренировок")}, добавленных ${when}`;
+                    return (
+                    <section className="import-undo panel" role="status" aria-label="Последний импорт">
                       <div className="import-undo-text">
                         <b>Импорт: записано {lastImportRun.activeCount} из {lastImportRun.total}</b>
+                        <small className="import-undo-scope">Отмена удалит {scope}.</small>
+                        {lastNoop ? (
+                          <small className="import-undo-noop">
+                            {lastNoop.kind === "restore" ? "Восстановление" : "Импорт"} {DateText.moment(lastNoop.at, settings.timeZone, currentYear)} ничего не добавил — отмена относится к импорту от {when}.
+                          </small>
+                        ) : null}
                         <details className="import-undo-more">
                           <summary>Как работает отмена</summary>
                           <small>Убираются только записи этого импорта, которые ты не менял. Твои правки и тренировки с других устройств остаются.</small>
@@ -1348,6 +1413,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                       </div>
                       {undoAsk ? (
                         <div>
+                          <p className="import-undo-confirm"><b>Удалить {scope}?</b> Вернуть их можно только повторным импортом файла.</p>
                           <button className="button danger" disabled={saving} onClick={() => void undoImport(lastImportRun.runId)}>
                             Убрать {lastImportRun.activeCount}
                           </button>
@@ -1360,28 +1426,24 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                         </div>
                       )}
                     </section>
-                  ) : null}
-                  <div className="history-toolbar">
-                    <div className="search-field">
-                      <Search size={18} />
-                      <input
-                        aria-label="Поиск по истории"
-                        placeholder="Название или упражнение…"
-                        value={historySearch}
-                        onChange={(e) => setHistorySearch(e.target.value)}
-                      />
-                    </div>
-                    <button className="button secondary" onClick={() => void exportHistory()}>
-                      <Download size={17} />
-                      Экспорт JSON
-                    </button>
-                    <button className="button secondary" onClick={() => setModal("import")}>
-                      Импорт истории
-                    </button>
-                  </div>
-                  <div className="panel history-panel">
-                    {historyFiltered.map((w) => sessionItem(w, true))}
-                    {!displayed.length ? (
+                    );
+                  })() : null}
+                  <HistoryList
+                    workouts={displayed}
+                    entryName={entryName}
+                    renderItem={(w) => sessionItem(w, true)}
+                    actions={
+                      <>
+                        <button className="button secondary" onClick={() => void exportHistory()}>
+                          <Download size={17} />
+                          Экспорт JSON
+                        </button>
+                        <button className="button secondary" onClick={() => setModal("import")}>
+                          Импорт истории
+                        </button>
+                      </>
+                    }
+                    empty={
                       <div className="empty-state">
                         <History size={36} />
                         <h2>История начинается сегодня</h2>
@@ -1390,11 +1452,8 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                           Записать тренировку
                         </button>
                       </div>
-                    ) : null}
-                    {displayed.length && !historyFiltered.length ? (
-                      <div className="no-results">Таких тренировок пока нет.</div>
-                    ) : null}
-                  </div>
+                    }
+                  />
                   {monthWorkouts.length ? (
                     <section className="panel volume-panel">
                       <div className="panel-header">
@@ -1511,6 +1570,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                               из {loads.reduce((n, m) => n + m.goal, 0)} по твоим целям
                             </p>
                             {zonesNote ? <p className="tiny">{zonesNote}</p> : null}
+                            {unmarkedNote}
                           </div>
                         </div>
                         <div className="analysis-controls">
@@ -1604,6 +1664,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                                   .join(" и ")}. Соберём короткую тренировку под твоё время.`
                               : "Прямые подходы этой недели покрывают твои цели. Решение о дополнительной работе зависит от прогресса и самочувствия."}
                           </p>
+                          {unmarkedNote}
                         </div>
                         <div className="planner-controls">
                           <div className="segmented" role="group" aria-label="Сколько есть времени">
@@ -2287,10 +2348,10 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
         </Modal>
       ) : null}
       {modal === "rest_notifications" && <Modal title="Уведомления отдыха" onClose={()=>setModal(null)}><RestNotificationSettings/></Modal>}
-      {modal === "backup" && <Modal title="Резервная копия" onClose={()=>setModal(null)}><div className="backup-tools"><p>В одном файле: тренировки, программы, личные упражнения, избранное, вес, цели и настройки. Пароли и сессии в копию не входят.</p><button className="button primary" onClick={()=>void exportHistory()}><Download size={18}/>Скачать полную копию</button><button className="button secondary" onClick={()=>setModal("import")}>Восстановить из файла</button><p className="tiny">Перед восстановлением можно просмотреть содержимое и выбрать, как поступить с разными замерами за один день.</p></div></Modal>}
-      {modal === "import" ? (
+      {modal === "backup" && <Modal title="Резервная копия" onClose={()=>setModal(null)}><div className="backup-tools"><p>В одном файле: тренировки, программы, личные упражнения, избранное, вес, цели и настройки. Пароли и сессии в копию не входят.</p><button className="button primary" onClick={()=>void exportHistory()}><Download size={18}/>Скачать полную копию</button><button className="button secondary" onClick={()=>setModal("restore")}>Восстановить из файла</button><p className="tiny">Перед восстановлением можно просмотреть содержимое и выбрать, как поступить с разными замерами за один день.</p></div></Modal>}
+      {modal === "import" || modal === "restore" ? (
         <Modal
-          title="Импорт истории"
+          title={modal === "restore" ? "Восстановление из копии" : "Импорт истории"}
           wide
           onClose={() => {
             if (!importBusy) setModal(null);
@@ -2298,6 +2359,12 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
         >
           <Suspense fallback={<p>Открываем импорт…</p>}>
             <HistoryImporter
+              mode={modal === "restore" ? "restore" : "import"}
+              existing={{ workouts, routines: product.routines, customExercises: product.customExercises, favorites: product.favorites }}
+              onClose={() => {
+                setModal(null);
+                go("history");
+              }}
               timeZone={settings.timeZone ?? browserTimeZone()}
               onBusy={setImportBusy}
               onComplete={async (result) => {
@@ -2311,9 +2378,12 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                 if(result.profile){const latest=await api<{profile:AccountProfile}>("/api/auth/session");const restored=await api<{profile:AccountProfile}>("/api/auth/profile","PUT",{...result.profile,revision:latest.profile.revision});onAccountChange(restored.profile);}
                 await load();
                 if(result.theme)applyTheme(result.theme);
-                setModal(null);
+                // Восстановление из копии остаётся на экране с итогом, пока его не закроют.
+                if (modal !== "restore") {
+                  setModal(null);
+                  go("history");
+                }
                 setDemo(false);
-                go("history");
                 if (result.addedIds?.length) {
                   const record: ImportRecord = {
                     at: new Date().toISOString(),
@@ -2329,6 +2399,9 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                     // Черновик другого файла остаётся виден: сервер — единственный источник правды.
                     setPendingImport(currentRuns.pending?.[0] ? { runId: currentRuns.pending[0].runId, total: currentRuns.pending[0].total } : null);
                   setUndoAsk(false);
+                  setLastNoop(null);
+                } else {
+                  setLastNoop({ at: new Date().toISOString(), kind: modal === "restore" ? "restore" : "import" });
                 }
                 const added = result.imported - (result.replaced ?? 0);
                 setToast(

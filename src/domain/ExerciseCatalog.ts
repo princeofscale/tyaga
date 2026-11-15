@@ -4,6 +4,8 @@ import { ExerciseSearchRank } from "./ExerciseSearchRank";
 
 export class ExerciseCatalog {
   private entries = new Map<string, Exercise>();
+  /** Актуальная версия каждого личного упражнения (по семье): правка разметки не должна оставлять старую историю «без мышц». */
+  private families = new Map<string, Exercise>();
   constructor(
     private curated: Exercise[],
     private legacy: Exercise[],
@@ -33,14 +35,31 @@ export class ExerciseCatalog {
         undefined)
     );
   }
+  /** Запоминает актуальные версии личных упражнений; возвращает число семей — удобно как ключ пересчёта. */
+  adoptFamilies(exercises: Exercise[]) {
+    this.families = new Map(
+      exercises.filter((e) => e.custom?.familyId).map((e) => [e.custom!.familyId, e]),
+    );
+    return this.families.size;
+  }
+  private static bare(e: Exercise) {
+    return !e.primary.length && !e.secondary.length && !(e.custom?.declaredZones?.length ?? 0);
+  }
   forEntry(entry: WorkoutExercise): Exercise | undefined {
     if (
       entry.catalogRevision === 3 &&
       entry.externalDefinition?.id === entry.exerciseId &&
       (entry.externalDefinition.source?.provider === "wger" ||
         !!entry.externalDefinition.custom)
-    )
-      return entry.externalDefinition;
+    ) {
+      const snapshot = entry.externalDefinition;
+      // Снимок без мышц заменяем актуальной версией той же семьи, если в ней мышцы уже есть: так разметка
+      // «Моих» действует и на старые тренировки. Размеченные снимки не трогаем — история остаётся как записана.
+      const latest = snapshot.custom ? this.families.get(snapshot.custom.familyId) : undefined;
+      if (latest && latest.id !== snapshot.id && ExerciseCatalog.bare(snapshot) && !ExerciseCatalog.bare(latest))
+        return latest;
+      return snapshot;
+    }
     return this.find(entry.exerciseId, entry.catalogRevision ?? 1);
   }
   curatedExercises() {

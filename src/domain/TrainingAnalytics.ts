@@ -30,7 +30,12 @@ export class TrainingAnalytics {
       ratio: 0,
     }));
     const zones = new Map(ANATOMICAL_MUSCLES.map((m) => [m.id, m.zone]));
-    for (const { exercise: e, count } of this.observations()) {
+    for (const { exercise, count } of this.observations()) {
+      // Упражнение «Моё» без разметки каталога, но с отмеченными группами: группы считаем основными.
+      const e =
+        !exercise.primary.length && exercise.custom?.declaredZones?.length
+          ? { ...exercise, primary: exercise.custom.declaredZones }
+          : exercise;
       const stabilizers = new Set(
         e.muscles
           .filter((m) => m.role === "stabilizer")

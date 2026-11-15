@@ -25,6 +25,9 @@ import { ExerciseSearchRank } from "../domain/ExerciseSearchRank";
 import { quantity } from "../lib/quantity";
 import { exerciseLibraryService } from "../services/ExerciseLibraryService";
 import { MuscleParticipation } from "../domain/MuscleParticipation";
+import { MuscleCoverage } from "../domain/MuscleCoverage";
+import { PersonalExerciseMarking, type Marking } from "../domain/PersonalExerciseMarking";
+import { productService } from "../services/ProductService";
 
 function LibraryContent({
   picker = false,
@@ -38,6 +41,8 @@ function LibraryContent({
   onFavorite,
   onCreate,
   onEdit,
+  onMarked,
+  startMarking = false,
 }: {
   picker?: boolean;
   onAdd: (id: string) => void;
@@ -50,10 +55,20 @@ function LibraryContent({
   onFavorite?: (id: string) => void;
   onCreate?: () => void;
   onEdit?: (exercise: Exercise) => void;
+  /** Упражнения сохранены с новой разметкой (массовое назначение группы или упражнения каталога). */
+  onMarked?: (exercises: Exercise[]) => void;
+  /** Открыть «Мои» сразу в режиме разметки (переход из «Прогресс → Мышцы»). */
+  startMarking?: boolean;
 }) {
   const [source, setSource] = useState<
     "tyaga" | "wger" | "personal" | "favorites"
-  >("tyaga");
+  >(startMarking ? "personal" : "tyaga");
+  const [bulk, setBulk] = useState(startMarking);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [zonePick, setZonePick] = useState("");
+  const [basePick, setBasePick] = useState("");
+  const [marking, setMarking] = useState<{ done: number; total: number } | null>(null);
+  const [markResult, setMarkResult] = useState("");
   const [search, setSearch] = useState("");
   const [debounced, setDebounced] = useState("");
   const [muscle, setMuscle] = useState(defaultMuscle);
@@ -118,6 +133,35 @@ function LibraryContent({
     subheadFilter !== "all"
       ? baseExercises.filter((e) => MuscleParticipation.headRole(subheadFilter, e) !== undefined)
       : baseExercises;
+  const unmarked = useMemo(() => MuscleCoverage.unmarkedPersonal(personal), [personal]);
+  const togglePicked = (id: string) =>
+    setPicked((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
+  async function applyMarking(patch: Marking) {
+    const chosen = personal.filter((e) => picked.includes(e.id));
+    const todo = patch.basedOn ? chosen.filter(PersonalExerciseMarking.canBaseOn) : chosen;
+    const skipped = chosen.length - todo.length;
+    const saved: Exercise[] = [];
+    setMarkResult("");
+    setMarking({ done: 0, total: todo.length });
+    try {
+      for (const exercise of todo) {
+        const result = await productService.saveExercise(PersonalExerciseMarking.payload(exercise, patch));
+        saved.push(result.exercise);
+        setMarking({ done: saved.length, total: todo.length });
+      }
+      setMarkResult(
+        `Размечено ${saved.length} из ${chosen.length}.` +
+          (skipped ? ` ${skipped} на время — им подходит только группа мышц.` : "") +
+          " Мышцы в «Прогрессе» пересчитаны, в том числе за прошлые тренировки.",
+      );
+      setPicked([]);
+    } catch (e) {
+      setMarkResult(`Размечено ${saved.length} из ${todo.length}. ${e instanceof Error ? e.message : "Не удалось сохранить"}`);
+    } finally {
+      if (saved.length) onMarked?.(saved);
+      setMarking(null);
+    }
+  }
   // Число на вкладке — весь список без поиска и фильтров, а не устаревшая константа.
   const curatedTotal = useMemo(() => exerciseCatalog.search({}).length, []);
   const count = source !== "wger" ? exercises.length : (query.data?.total ?? 0);
@@ -180,6 +224,97 @@ function LibraryContent({
           <Plus size={17} />
           Создать упражнение
         </button>
+      ) : null}
+      {source === "personal" && onMarked && personal.length ? (
+        <div className="bulk-head">
+          <span>
+            {unmarked.length
+              ? `Без разметки мышц: ${unmarked.length} из ${personal.length}`
+              : "У всех упражнений есть разметка мышц"}
+          </span>
+          <button
+            type="button"
+            className="button secondary"
+            aria-pressed={bulk}
+            onClick={() => {
+              setBulk((v) => !v);
+              setPicked([]);
+              setMarkResult("");
+            }}
+          >
+            {bulk ? "Готово" : "Разметить несколько"}
+          </button>
+        </div>
+      ) : null}
+      {source === "personal" && bulk && onMarked ? (
+        <section className="bulk-panel panel" aria-label="Массовая разметка">
+          <p>
+            <b>Выбрано {picked.length}</b> из {filteredLocal.length}
+          </p>
+          <div className="bulk-select">
+            <button type="button" className="button secondary" onClick={() => setPicked(filteredLocal.filter((e) => MuscleCoverage.unmarked(e)).map((e) => e.id))}>
+              Выбрать без разметки ({filteredLocal.filter((e) => MuscleCoverage.unmarked(e)).length})
+            </button>
+            <button type="button" className="button secondary" onClick={() => setPicked(filteredLocal.map((e) => e.id))}>
+              Выбрать все показанные
+            </button>
+            <button type="button" className="button secondary" disabled={!picked.length} onClick={() => setPicked([])}>
+              Снять выбор
+            </button>
+          </div>
+          <div className="bulk-apply">
+            <label>
+              Группа мышц
+              <Select
+                value={zonePick}
+                disabled={!!marking}
+                onChange={setZonePick}
+                options={[{ value: "", label: "Выбери группу" }, ...MUSCLES.map((m) => ({ value: m.id, label: m.name }))]}
+              />
+            </label>
+            <button
+              type="button"
+              className="button primary"
+              disabled={!picked.length || !zonePick || !!marking}
+              onClick={() => void applyMarking({ zones: [zonePick] })}
+            >
+              Назначить группу
+            </button>
+          </div>
+          <div className="bulk-apply">
+            <label>
+              Это то же, что…
+              <Select
+                searchable
+                value={basePick}
+                disabled={!!marking}
+                onChange={setBasePick}
+                options={[
+                  { value: "", label: "Выбери упражнение каталога" },
+                  ...exerciseCatalog.curatedExercises().map((e) => ({
+                    value: e.id,
+                    label: e.name,
+                    search: [e.nameEn, ...(e.aliases ?? [])].join(" "),
+                  })),
+                ]}
+              />
+            </label>
+            <button
+              type="button"
+              className="button primary"
+              disabled={!picked.length || !basePick || !!marking}
+              onClick={() => void applyMarking({ basedOn: basePick })}
+            >
+              Назначить упражнение каталога
+            </button>
+          </div>
+          {marking ? (
+            <p role="status">
+              Сохраняем {marking.done} из {marking.total}…
+            </p>
+          ) : null}
+          {markResult ? <p role="status" className="bulk-result">{markResult}</p> : null}
+        </section>
       ) : null}
       <div className="exercise-filters">
         <div className="search-field">
@@ -328,6 +463,16 @@ function LibraryContent({
                   data-exercise-id={e.id}
                   className={picker ? "picker-exercise" : "library-card panel"}
                 >
+                  {source === "personal" && bulk && onMarked ? (
+                    <label className="bulk-check">
+                      <input
+                        type="checkbox"
+                        aria-label={`Выбрать ${e.name}`}
+                        checked={picked.includes(e.id)}
+                        onChange={() => togglePicked(e.id)}
+                      />
+                    </label>
+                  ) : null}
                   <div className="library-icon">
                     <Dumbbell size={21} />
                   </div>

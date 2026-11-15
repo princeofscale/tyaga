@@ -549,7 +549,7 @@ test("full restore previews weights and keeps existing conflicting dates unless 
       .click();
     await expect(
       dialog.getByRole("region", { name: "Вес в резервной копии" }),
-    ).toContainText("Различаются: 1");
+    ).toContainText("Отличаются 1");
     if (replace)
       await dialog
         .getByLabel("При различиях использовать замеры и цель из файла", {

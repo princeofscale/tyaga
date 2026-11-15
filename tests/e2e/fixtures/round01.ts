@@ -1,6 +1,7 @@
 import { expect, type Page } from "@playwright/test";
 import { DEFAULT_SETTINGS, makeWorkout } from "../../../src/lib/model";
-import type { Routine, Workout } from "../../../src/lib/types";
+import type { Exercise, Routine, Workout } from "../../../src/lib/types";
+import { PersonalExerciseFactory } from "../../../server/PersonalExerciseFactory";
 import { mockWeights, weightFixture } from "./bodyweight";
 import { mockLive } from "./live";
 
@@ -18,6 +19,10 @@ export type Round01Options = {
   holdWeights?: boolean;
   /** Выход из аккаунта: приложение стартует без входа, `POST /api/auth/register|login` впускает (другая почта — другой аккаунт). */
   signedOut?: boolean;
+  /** Личные упражнения аккаунта (`/api/product`); импорт добавляет к ним «Мои» так же, как воркер. */
+  customExercises?: Exercise[];
+  /** Точные совпадения базы упражнений для `POST /api/exercises/resolve` (имя из файла → упражнения). */
+  resolveMatches?: Record<string, Exercise[]>;
 };
 
 /** Законченная тренировка: подходы выполнены, `exercises` — [id, вес, повторы, число подходов]. */
@@ -54,6 +59,10 @@ export async function round01Fixture(page: Page, options: Round01Options = {}) {
   const savedBodies: Workout[] = [];
   const recoveryRequests: Array<{ currentPassword?: string }> = [];
   /** Серверные квитанции импорта: запись, отмена и «уже отменён» ведут себя как на воркере. */
+  const customs: Exercise[] = [...(options.customExercises ?? [])];
+  const customPuts: unknown[] = [];
+  const staged = new Map<string, any[]>();
+  const customByKey = new Map<string, Exercise>();
   const runs: Array<{ runId: string; manifestHash: string; at: string; total: number; ids: string[] }> = [];
   const undone = new Set<string>();
   const pending = (options.pendingImports ?? []).map((p) => ({ ...p, manifestHash: "pending", at: NOW.toISOString() }));
@@ -102,19 +111,62 @@ export async function round01Fixture(page: Page, options: Round01Options = {}) {
     if (path === "/api/challenges") return json({ accountId: profile.id, challenges: [] });
     if (path === "/api/data")
       return json({ workouts: active === profile ? workouts : [], settings: { ...DEFAULT_SETTINGS, timeZone: ZONE } });
-    if (path === "/api/product") return json({ routines: options.routines ?? [], favorites: [], customExercises: [] });
-    if (path === "/api/exercises/resolve" && method === "POST") return json({ matches: {} });
+    if (path === "/api/product") return json({ routines: options.routines ?? [], favorites: [], customExercises: customs });
+    if (path === "/api/exercises/resolve" && method === "POST") {
+      const names: string[] = r.postDataJSON().names ?? [];
+      return json({ matches: Object.fromEntries(names.map((n) => [n, options.resolveMatches?.[n] ?? []])) });
+    }
+    if (path === "/api/import/metadata" && method === "POST") return json({ idMap: {}, exercises: [] });
+    if (path === "/api/custom-exercises" && method === "PUT") {
+      const body = r.postDataJSON();
+      customPuts.push(body);
+      const exercise = await new PersonalExerciseFactory().create(body);
+      const at = customs.findIndex((e) => e.custom?.familyId === exercise.custom?.familyId);
+      if (at !== -1) customs.splice(at, 1);
+      customs.unshift(exercise);
+      return json({ exercise });
+    }
     if (path === "/api/import" && method === "POST") {
       const body = r.postDataJSON();
       importBodies.push(body);
       if (undone.has(body.runId)) return json({ error: "Этот импорт уже отменён. Начни новую операцию." }, 400);
       if (body.dryRun) return json({ imported: 0, skipped: 0, exercises: [], exerciseIdMap: {}, workouts: [] });
+      // Длинный файл приходит частями: части копятся, «записать» публикует их одним run.
+      if (body.parts > 1 && !body.finalize) {
+        staged.set(body.runId, [...(staged.get(body.runId) ?? []), ...body.workouts]);
+        return json({ imported: body.workouts.length, part: body.part });
+      }
+      if (body.finalize) body.workouts = staged.get(body.runId) ?? [];
+      // Названия без упражнения каталога становятся «Моими» с происхождением файла, как на воркере.
+      const newCustoms: Exercise[] = [];
+      const idMap: Record<string, string> = {};
+      for (const source of body.workouts)
+        for (const e of source.exercises) {
+          if (e.exerciseId) continue;
+          const key = `${e.sourceName}|${e.type}`;
+          let found = customByKey.get(key);
+          if (!found) {
+            found = await new PersonalExerciseFactory().create({
+              familyId: `fam-${customByKey.size + customs.length + 1}`,
+              name: e.displayName ?? e.sourceName, nameEn: e.sourceName, aliases: [e.sourceName], notes: `Импорт из ${body.format}.`,
+              equipment: "gym", declaredZones: [], origin: body.format,
+              recording: { type: e.type ?? "reps", loadMode: "legacy_unspecified", implementCount: 1, laterality: "bilateral" },
+            });
+            customByKey.set(key, found);
+            customs.unshift(found);
+            newCustoms.push(found);
+          }
+          e.exerciseId = found.id;
+          e.customDefinition = found;
+        }
       const added: Workout[] = [];
       let replaced = 0,
         kept = 0;
       for (const source of body.workouts) {
         const id = `import:test:${source.sourceKey}`;
         const at = workouts.findIndex((w) => w.id === id);
+        // Копия Тяги: тренировка с тем же идентификатором уже есть — сервер её не трогает.
+        if (body.format === "tyaga" && source.nativeId && workouts.some((w) => w.id === source.nativeId)) continue;
         if (at !== -1 && !(body.replace && workouts[at].revision === 1)) {
           if (at !== -1 && body.replace) kept++;
           continue;
@@ -134,7 +186,9 @@ export async function round01Fixture(page: Page, options: Round01Options = {}) {
           revision: 1,
           exercises: source.exercises.map((e: any) => ({
             exerciseId: e.exerciseId,
-            catalogRevision: e.catalogRevision,
+            catalogRevision: e.customDefinition ? 3 : e.catalogRevision,
+            ...(e.customDefinition ? { externalDefinition: e.customDefinition } : {}),
+            ...(e.equipmentNote ? { equipmentNote: e.equipmentNote } : {}),
             displayNameSnapshot: e.displayName,
             sets: e.sets.map((s: any, i: number) => ({ ...s, id: `${id}:${i}` })),
           })),
@@ -152,8 +206,8 @@ export async function round01Fixture(page: Page, options: Round01Options = {}) {
         addedIds: added.map((w) => w.id),
         skipped: body.workouts.length - added.length,
         workouts: added,
-        exercises: [],
-        exerciseIdMap: {},
+        exercises: newCustoms,
+        exerciseIdMap: idMap,
       });
     }
     if (path === "/api/import/runs" && method === "GET")
@@ -222,7 +276,7 @@ export async function round01Fixture(page: Page, options: Round01Options = {}) {
   await mockLive(page);
   await page.goto("/");
   if (!options.signedOut) await expect(page.getByRole("heading", { name: "Сегодня", exact: true })).toBeVisible();
-  return { workouts, runs, pending, profile, profileBodies, importBodies, deleted, savedBodies, recoveryRequests, weights, errors, unexpected, releaseWeights: () => releaseWeights() };
+  return { workouts, customs, customPuts, runs, pending, profile, profileBodies, importBodies, deleted, savedBodies, recoveryRequests, weights, errors, unexpected, releaseWeights: () => releaseWeights() };
 }
 
 export const nav = (page: Page, name: string) =>

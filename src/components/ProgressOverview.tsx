@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { m, useReducedMotion } from "motion/react";
-import { ProgressOverview as Overview } from "../domain/ProgressOverview";
+import { ProgressOverview as Overview, OVERVIEW_PERIODS, type OverviewPeriod } from "../domain/ProgressOverview";
+import { DateText } from "../domain/DateText";
+import WeeklyTrendChart from "./WeeklyTrendChart";
 import { fmt, type Workout, type Settings } from "../lib/model";
 import StatsAnalytics from "./StatsAnalytics";
 import { quantityWord } from "../lib/quantity";
@@ -14,12 +16,14 @@ export default function ProgressOverview({
   settings: Settings;
   onStrength: (key: string) => void;
 }) {
-  const [days, setDays] = useState(28);
+  const [period, setPeriod] = useState<OverviewPeriod>("4w");
   const reduced = useReducedMotion();
-  const data = useMemo(
-    () => Overview.calculate(workouts, days, settings.timeZone ?? "UTC"),
-    [workouts, days, settings.timeZone],
-  );
+  const zone = settings.timeZone ?? "UTC";
+  const days = useMemo(() => Overview.days(period, workouts, zone), [period, workouts, zone]);
+  const data = useMemo(() => Overview.calculate(workouts, days, zone), [workouts, days, zone]);
+  const long = days > 84;
+  const buckets = useMemo(() => (long ? Overview.weekly(data.current, data.start, data.end, zone) : []), [long, data, zone]);
+  const label = OVERVIEW_PERIODS.find((p) => p.id === period)!.label.toLowerCase();
   return (
     <m.div
       className="progress-overview"
@@ -30,20 +34,18 @@ export default function ProgressOverview({
       <div className="overview-period">
         <div>
           <h2>Твой тренировочный ритм</h2>
-          <p>Сравнение с предыдущим периодом той же длины.</p>
+          <p>
+            За {period === "all" ? "всё время" : label}: {DateText.day(data.start)} — {DateText.day(data.end)}. Сравнение с предыдущим периодом той же длины.
+          </p>
         </div>
         <div
           className="progress-period"
           role="group"
           aria-label="Период прогресса"
         >
-          {[28, 56, 84].map((d) => (
-            <button
-              key={d}
-              aria-pressed={d === days}
-              onClick={() => setDays(d)}
-            >
-              {d / 7} нед.
+          {OVERVIEW_PERIODS.map((p) => (
+            <button key={p.id} aria-pressed={p.id === period} onClick={() => setPeriod(p.id)}>
+              {p.label}
             </button>
           ))}
         </div>
@@ -64,7 +66,7 @@ export default function ProgressOverview({
             </small>
           </strong>
           <p>
-            Активных недель: {data.activeWeeks} · период {data.totalWeeks} нед.
+            Активных недель: {data.activeWeeks} из {data.totalWeeks}
           </p>
         </article>
         <article className="progress-metric accent">
@@ -102,12 +104,19 @@ export default function ProgressOverview({
           </p>
         </article>
       </div>
+      {data.bestGrowth && long ? (
+        <p className="overview-best-growth">
+          Лучший рост за период: <b>{data.bestGrowth.name}</b> {data.bestGrowth.percent > 0 ? "+" : ""}
+          {data.bestGrowth.percent}% по расчётному 1ПМ.
+        </p>
+      ) : null}
+      {long ? <WeeklyTrendChart buckets={buckets} /> : null}
       <StatsAnalytics
-        key={days}
+        key={period}
         workouts={data.current}
         settings={settings}
         compact
-        weeks={days / 7}
+        weeks={Math.max(Math.ceil(days / 7), data.totalWeeks)}
         rangeStart={data.start}
         onOpenExerciseStrength={onStrength}
       />

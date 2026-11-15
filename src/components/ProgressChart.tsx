@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { m, useReducedMotion } from "motion/react";
 import { ProgressSeries, type ChartPoint } from "../domain/ProgressSeries";
-import { fmt, dateLabel } from "../lib/model";
+import { fmt } from "../lib/model";
+import { DateText } from "../domain/DateText";
 
 /** Fixed-height responsive plot with an in-flow readout and keyboard/touch point selection. */
 export default function ProgressChart({
@@ -38,7 +39,7 @@ export default function ProgressChart({
         <>
           <div className="progress-chart-readout" aria-live="polite">
             <div>
-              <span>{dateLabel(active.date, true)}</span>
+              <span>{DateText.day(active.date)}</span>
               <strong>
                 {fmt(active.value)} <small>{unit}</small>
               </strong>
@@ -131,7 +132,7 @@ export default function ProgressChart({
               }
               className="progress-chart-axis"
             >
-              {dateLabel(points[0].date)}
+              {DateText.day(points[0].date)}
             </text>
             {points[0].date !== points.at(-1)!.date && (
               <text
@@ -140,7 +141,7 @@ export default function ProgressChart({
                 textAnchor="end"
                 className="progress-chart-axis"
               >
-                {dateLabel(points.at(-1)!.date)}
+                {DateText.day(points.at(-1)!.date)}
               </text>
             )}
           </svg>
@@ -159,7 +160,7 @@ export default function ProgressChart({
               >
                 {points.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {dateLabel(p.date)} · {fmt(p.value)} {unit}
+                    {DateText.day(p.date)} · {fmt(p.value)} {unit}
                   </option>
                 ))}
               </select>
