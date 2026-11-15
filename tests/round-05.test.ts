@@ -27,7 +27,7 @@ function yearFile() {
   );
 }
 const wgerLike = (id: string, name: string) =>
-  ({ ...exerciseById("pushup"), id, name, nameEn: name, source: { provider: "wger" } }) as unknown as Exercise;
+  ({ ...exerciseById("pushup"), id, name, nameEn: name, catalogRevision: 3, source: { provider: "wger" } }) as unknown as Exercise;
 
 test("R05-REQ01: годовой файл Strong — названия узнаются как упражнения каталога, а не десятки «Моих»", () => {
   const data = yearFile();
@@ -35,20 +35,46 @@ test("R05-REQ01: годовой файл Strong — названия узнаю�
   assert.equal(data.exerciseNames.length, 52);
   // Точные ответы базы упражнений (их отдаёт сервер /api/exercises/resolve).
   const wger = {
-    Plank: [wgerLike("wger:plank", "Планка")],
+    Plank: [{ ...wgerLike("wger:plank", "Планка"), recording: { ...exerciseById("pushup")!.recording, type: "duration" as const, loadMode: "bodyweight" as const } } as Exercise],
     Dip: [wgerLike("wger:dip", "Отжимания на брусьях")],
     "Kettlebell Swing": [wgerLike("wger:swing", "Мах гирей")],
     "Farmers Walk (Dumbbell)": [wgerLike("wger:farmers", "Прогулка фермера")],
     "Good Morning (Barbell)": [wgerLike("wger:gm", "Наклоны со штангой")],
   };
-  const verdicts = ImportNameMatcher.classifyAll(data.exerciseNames, wger);
-  const summary = ImportNameMatcher.summary(verdicts);
-  assert.equal(summary.total, 52);
-  assert.ok(summary.matched >= 40, `сопоставлено ${summary.matched} из 52`);
-  // «Мои» после импорта без единого ручного выбора: нерешённые + совсем свои.
+  // Как в приложении: ответы базы регистрируются в каталоге до расчёта выбора.
+  exerciseCatalog.register(Object.values(wger).flat());
+  const verdicts = ImportNameMatcher.classifyAll(data.exerciseNames, wger, new Set(ImportNameMatcher.weights(data).keys()));
+  const types = ImportNameMatcher.types(data);
+  const defaults = ImportNameMatcher.summary(verdicts);
+  assert.equal(defaults.total, 52);
+  assert.ok(defaults.matched >= 35, `сопоставлено ${defaults.matched} из 52`);
+  // Близкие, но другие движения не применяются молча: Sumo Deadlift, Shrug (Dumbbell), Skullcrusher, Chin Up — вопрос.
+  for (const name of ["Sumo Deadlift (Barbell)", "Shrug (Dumbbell)", "Skullcrusher (Barbell)", "Chin Up", "Arnold Press (Dumbbell)", "Pec Deck (Machine)"]) {
+    assert.equal(verdicts[name].kind, "ask", name);
+    assert.equal(verdicts[name].related, true, name);
+    assert.equal(verdicts[name].exercise, null, name);
+  }
+  // Одним касанием («Принять близкие движения») «Мои» остаются ≤12: считаем, как предпросмотр.
+  const related = data.exerciseNames.filter((n) => verdicts[n].related);
+  assert.equal(related.length, 6);
+  const accepted = Object.fromEntries(related.map((n) => [n, verdicts[n].candidates[0].id]));
+  const choose = (name: string) => {
+    const raw = name in accepted ? accepted[name] : ["matched", "variant"].includes(verdicts[name].kind) ? verdicts[name].exercise!.id : "";
+    return raw && ImportNameMatcher.usable(exerciseById(raw), types.get(name)) ? raw : "";
+  };
+  const summary = ImportNameMatcher.summary(
+    verdicts,
+    Object.fromEntries(data.exerciseNames.filter((n) => n in accepted || ["matched", "variant"].includes(verdicts[n].kind)).map((n) => [n, choose(n)])),
+  );
   assert.ok(summary.toDecide + summary.own <= 12, `останется «Моими»: ${summary.toDecide + summary.own}`);
+  // Chin Up с весом в файле принимается как «Подтягивания с дополнительным весом» — в один ряд с Pull Up.
+  assert.equal(verdicts["Chin Up"].candidates[0].id, "pullup-weighted");
+  // «Планка» в базе — на время, а в файле повторы: честно «отдельная запись», а не «сопоставлено».
+  assert.equal(types.get("Plank"), "reps");
+  assert.equal(choose("Plank"), "");
+  assert.ok(!ImportNameMatcher.usable(exerciseById("pushup"), "duration"));
   const id = (name: string) => verdicts[name].exercise?.id;
-  assert.equal(id("Pull Up"), "pullup");
+  assert.equal(id("Pull Up"), "pullup-weighted"); // в файле у Pull Up есть вес — вся история одним рядом «с доп. весом»
   assert.equal(id("Lat Pulldown (Cable)"), "lat-pulldown");
   assert.equal(id("Hanging Leg Raise"), "hanging-leg-raise");
   assert.equal(id("Leg Press (Machine)"), "legpress");
@@ -307,15 +333,21 @@ test("R05-REQ01: годовой файл на воркере — «Мои» не
   try {
     const data = yearFile();
     const verdicts = ImportNameMatcher.classifyAll(data.exerciseNames, {}, new Set(ImportNameMatcher.weights(data).keys()));
-    // Пользователь решает часть спорных: берёт первое предложенное для явно подходящих.
+    const types = ImportNameMatcher.types(data);
+    // Пользователь принимает близкие движения одним касанием и решает ещё часть спорных вручную.
     const choices: Record<string, string> = {
       "Walking Lunge (Dumbbell)": "lunge-reverse", "Cable Crunch": "crunch", "Chest Fly (Dumbbell)": "fly", "Close Grip Bench Press (Barbell)": "bench",
+      ...Object.fromEntries(data.exerciseNames.filter((n) => verdicts[n].related).map((n) => [n, verdicts[n].candidates[0].id])),
     };
-    const prepared = ImportNameMatcher.prepare(data, {
-      choiceFor: (name) => choices[name] ?? (["matched", "variant"].includes(verdicts[name].kind) ? verdicts[name].exercise!.id : ""),
-      find: (id) => exerciseById(id),
+    const choiceFor = (name: string) => {
+      const raw = name in choices ? choices[name] : ["matched", "variant"].includes(verdicts[name].kind) ? verdicts[name].exercise!.id : "";
+      return raw && ImportNameMatcher.usable(exerciseById(raw), types.get(name)) ? raw : "";
+    };
+    const summary = ImportNameMatcher.summary(
       verdicts,
-    });
+      Object.fromEntries(data.exerciseNames.filter((n) => n in choices || ["matched", "variant"].includes(verdicts[n].kind)).map((n) => [n, choiceFor(n)])),
+    );
+    const prepared = ImportNameMatcher.prepare(data, { choiceFor, find: (id) => exerciseById(id), verdicts });
     const service = new ImportService(client as never, () => memoryStore());
     const started = Date.now();
     const result = await service.import(prepared, () => undefined, { replace: true });
@@ -325,6 +357,8 @@ test("R05-REQ01: годовой файл на воркере — «Мои» не
     const product = (await (await raw("/api/product")).json()) as { customExercises: Exercise[] };
     const mine = product.customExercises.map((e) => e.name);
     assert.ok(mine.length <= 12, `«Мои» после импорта: ${mine.length} (${mine.join(", ")})`);
+    // Предпросмотр = итог: счётчик «нужно решить + отдельные записи» совпадает с числом «Моих».
+    assert.equal(mine.length, summary.toDecide + summary.own);
     for (const english of ["Pull Up", "Lat Pulldown (Cable)", "Hanging Leg Raise", "Leg Press (Machine)", "Face Pull (Cable)", "Calf Raise (Machine)", "Back Extension"])
       assert.ok(!mine.includes(english), `${english} не должно стать «Моим»`);
     const journal = ((await (await raw("/api/data")).json()) as { workouts: Workout[] }).workouts;
@@ -341,4 +375,100 @@ test("R05-REQ01: годовой файл на воркере — «Мои» не
   } finally {
     await mf.dispose();
   }
+});
+
+// ---------- Доработка по QA ----------
+test("QA-R05-01: «Активных недель» и «Пустых недель» считают одни календарные недели (годовой файл)", () => {
+  const data = yearFile();
+  const verdicts = ImportNameMatcher.classifyAll(data.exerciseNames);
+  const prepared = ImportNameMatcher.prepare(data, {
+    choiceFor: (n) => (["matched", "variant"].includes(verdicts[n].kind) ? verdicts[n].exercise!.id : ""),
+    find: (id) => exerciseById(id),
+    verdicts,
+  });
+  const journalYear = prepared.workouts.map((source, i) => ({
+    id: `y-${i}`, name: source.name, date: source.date, duration: source.duration, notes: "", timeZone: "Europe/Saratov",
+    exercises: source.exercises.filter((e) => e.exerciseId).map((e) => ({
+      exerciseId: e.exerciseId!, catalogRevision: e.catalogRevision ?? 2, displayNameSnapshot: e.displayName,
+      sets: e.sets.map((x, n) => ({ ...x, id: `y-${i}-${e.exerciseId}-${n}` })),
+    })),
+  })) as unknown as Workout[];
+  const now = new Date("2026-11-10T08:00:00Z");
+  const tz = "Europe/Saratov";
+  for (const days of [366, ProgressOverview.days("all", journalYear, tz, now)]) {
+    const overview = ProgressOverview.calculate(journalYear, days, tz, now);
+    const weeks = ProgressOverview.weekly(overview.current, overview.start, overview.end, tz, now);
+    const empty = weeks.filter((w) => !w.workouts).length;
+    assert.equal(overview.totalWeeks, weeks.length, "«из N» = число столбцов графика");
+    assert.equal(overview.activeWeeks, weeks.length - empty, "активные = столбцы с тренировками");
+    assert.ok(overview.activeWeeks >= 48);
+  }
+  const year = ProgressOverview.calculate(journalYear, 366, tz, now);
+  assert.equal(year.totalWeeks, 53);
+  assert.ok(year.activeWeeks >= 51 && year.activeWeeks <= 52, `активных недель ${year.activeWeeks} из 53`);
+});
+
+test("QA-R05-06: поиск по дню — «20 янв», «20 янв 2026», «20.01.2026», «2026-01-20», «20.01»", () => {
+  const find = (text: string) => HistoryFilter.filter(journal, { ...HistoryFilter.EMPTY, text }, entryName);
+  const day = journal.find((w) => w.date.startsWith("2026-01"))!.date;
+  const [y, m, d] = day.split("-");
+  const monthWord = ["янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"][+m - 1];
+  const expected = journal.filter((w) => w.date === day).length;
+  assert.ok(expected >= 1);
+  for (const text of [`${+d} ${monthWord}`, `${+d} ${monthWord} ${y}`, `${d}.${m}.${y}`, day, `${+d}.${m}`])
+    assert.deepEqual(find(text).map((w) => w.date), journal.filter((w) => w.date === day).map((w) => w.date), text);
+  assert.equal(find(`${+d} ${monthWord}`).length, journal.filter((w) => +w.date.slice(8) === +d && w.date.slice(5, 7) === m).length);
+});
+
+test("QA-R05-09: копия с чужим полем format не принимается, обычные копии Тяги — да", () => {
+  const importer = new WorkoutImport({ dateOrder: "dmy", weightUnit: "kg", distanceUnit: "km", timeZone: "UTC" });
+  const copy = (format?: unknown) => JSON.stringify({ ...(format === undefined ? {} : { format }), version: 5, workouts: [], favorites: ["bench"] });
+  assert.doesNotThrow(() => importer.parse(copy("tyaga-backup"), "tyaga"));
+  assert.doesNotThrow(() => importer.parse(copy(), "tyaga"));
+  assert.throws(() => importer.parse(copy("strong"), "tyaga"), /не поддерживаемый экспорт Тяги/);
+  assert.throws(() => importer.parse(copy(42), "tyaga"), /не поддерживаемый экспорт Тяги/);
+});
+
+test("QA-R05-03: упражнение каталога без мышц размечается своей копией, «не учтено» исчезает, история подхватывает мышцы", async () => {
+  const gap = { ...exerciseById("pushup")!, id: "wger:919", name: "Тяга Т-грифа — вариант", nameEn: "T-bar row", primary: [], secondary: [], muscles: [], catalogRevision: 3, source: { provider: "wger" } } as unknown as Exercise;
+  exerciseCatalog.register([gap]);
+  const entry = (id: string, date: string): Workout => ({
+    id, name: "Тяга", date, duration: 40, notes: "", timeZone: "Europe/Saratov",
+    exercises: [{ exerciseId: "wger:919", catalogRevision: 3, displayNameSnapshot: gap.name, sets: [1, 2, 3, 4].map((n) => ({ id: `${id}${n}`, weight: 40, reps: 8, rir: 2, warmup: false, done: true })) }],
+  }) as unknown as Workout;
+  const week = [entry("t1", "2026-10-20")];
+  const options = { timeZone: "Europe/Saratov", now: new Date("2026-11-10T08:00:00Z") };
+  exerciseCatalog.adoptFamilies([]);
+  assert.equal(MuscleCoverage.catalogGaps(week, options).map((e) => e.id).join(), "wger:919");
+  assert.equal(MuscleCoverage.report(week, options).sets, 4);
+  const back = () => new TrainingAnalytics(week, options).zoneLoad().find((m) => m.id === "back")!.direct;
+  assert.equal(back(), 0);
+  // Копия: то же название и правило записи, происхождение указывает на каталожное упражнение; мышцы — из «Тяга горизонтального блока».
+  const payload = PersonalExerciseMarking.copyPayload(gap, { basedOn: "row" }, "copy-fam-1");
+  assert.equal(payload.origin, "catalog:wger:919");
+  const copy = await new PersonalExerciseFactory().create(payload);
+  assert.equal(copy.name, gap.name);
+  assert.ok(copy.primary.includes("back"));
+  exerciseCatalog.adoptFamilies([copy]);
+  assert.equal(MuscleCoverage.catalogGaps(week, options).length, 0, "после разметки «Не учтено» нет");
+  assert.equal(MuscleCoverage.report(week, options).sets, 0);
+  assert.ok(back() > 0);
+  // Группа без движения тоже работает; «на время» можно разметить только группой.
+  const byZone = await new PersonalExerciseFactory().create(PersonalExerciseMarking.copyPayload(gap, { zones: ["back"] }, "copy-fam-2"));
+  exerciseCatalog.adoptFamilies([byZone]);
+  assert.ok(back() > 0);
+  exerciseCatalog.adoptFamilies([]);
+  assert.equal(back(), 0, "без копии каталог остаётся как был — ничего не подменяется");
+});
+
+test("QA-R05-04: массовая разметка не переписывает размеченное молча — делит на «размечено» и «без разметки»", async () => {
+  const factory = new PersonalExerciseFactory();
+  const fresh = await factory.create(customBody("fam-fresh", "Cable Crunch"));
+  const chest = await factory.create(customBody("fam-dip", "Dip", { declaredZones: ["chest"] }));
+  const based = await factory.create(customBody("fam-based", "Strange Row", { basedOnExerciseId: "row" }));
+  const { marked, unmarked } = PersonalExerciseMarking.split([fresh, chest, based]);
+  assert.deepEqual(marked.map((e) => e.name), ["Dip", "Strange Row"]);
+  assert.deepEqual(unmarked.map((e) => e.name), ["Cable Crunch"]);
+  // Замена возможна, но только явно: payload чужую группу не добавляет сам.
+  assert.deepEqual(PersonalExerciseMarking.payload(chest, { zones: ["core"] }).declaredZones, ["core"]);
 });

@@ -1,7 +1,7 @@
 import type { Exercise, Workout } from "../lib/types";
 import { AnalyticsFacts, type FactsOptions } from "./AnalyticsFacts";
 
-export type UnmarkedExercise = { exerciseId: string; name: string; sets: number };
+export type UnmarkedExercise = { exerciseId: string; name: string; sets: number; exercise?: Exercise };
 export type CoverageReport = { exercises: number; sets: number; items: UnmarkedExercise[] };
 
 /**
@@ -20,6 +20,11 @@ export class MuscleCoverage {
     return personal.filter((e) => this.unmarked(e));
   }
 
+  /** Упражнения каталога (не «Мои») без мышц, которые есть в журнале: их размечают своей копией. */
+  static catalogGaps(workouts: Workout[], options: FactsOptions = {}) {
+    return this.report(workouts, options).items.filter((i) => i.exercise && !i.exercise.custom).map((i) => i.exercise!);
+  }
+
   /** Подходы выбранных тренировок (те же, что идут в «Мышцы»), которые попали в упражнения без разметки. */
   static report(workouts: Workout[], options: FactsOptions = {}, nameOf?: (id: string, fallback: string) => string): CoverageReport {
     const byId = new Map<string, UnmarkedExercise>();
@@ -29,6 +34,7 @@ export class MuscleCoverage {
         exerciseId: fact.entry.exerciseId,
         name: nameOf?.(fact.entry.exerciseId, fact.exercise?.name ?? fact.entry.exerciseId) ?? fact.exercise?.name ?? fact.entry.exerciseId,
         sets: 0,
+        exercise: fact.exercise,
       };
       row.sets += 1;
       byId.set(fact.entry.exerciseId, row);

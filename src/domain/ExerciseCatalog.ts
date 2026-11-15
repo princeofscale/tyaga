@@ -6,6 +6,8 @@ export class ExerciseCatalog {
   private entries = new Map<string, Exercise>();
   /** Актуальная версия каждого личного упражнения (по семье): правка разметки не должна оставлять старую историю «без мышц». */
   private families = new Map<string, Exercise>();
+  /** Своя размеченная копия упражнения каталога без мышц (origin «catalog:<id>»): история по каталожному id берёт мышцы из неё. */
+  private copies = new Map<string, Exercise>();
   constructor(
     private curated: Exercise[],
     private legacy: Exercise[],
@@ -40,10 +42,19 @@ export class ExerciseCatalog {
     this.families = new Map(
       exercises.filter((e) => e.custom?.familyId).map((e) => [e.custom!.familyId, e]),
     );
+    this.copies = new Map(
+      exercises
+        .filter((e) => e.custom?.origin?.startsWith("catalog:"))
+        .map((e) => [e.custom!.origin!.slice("catalog:".length), e]),
+    );
     return this.families.size;
   }
   private static bare(e: Exercise) {
     return !e.primary.length && !e.secondary.length && !(e.custom?.declaredZones?.length ?? 0);
+  }
+  private withCopy(found: Exercise | undefined) {
+    const copy = found && !found.custom ? this.copies.get(found.id) : undefined;
+    return copy && ExerciseCatalog.bare(found!) && !ExerciseCatalog.bare(copy) ? copy : found;
   }
   forEntry(entry: WorkoutExercise): Exercise | undefined {
     if (
@@ -58,9 +69,9 @@ export class ExerciseCatalog {
       const latest = snapshot.custom ? this.families.get(snapshot.custom.familyId) : undefined;
       if (latest && latest.id !== snapshot.id && ExerciseCatalog.bare(snapshot) && !ExerciseCatalog.bare(latest))
         return latest;
-      return snapshot;
+      return this.withCopy(snapshot);
     }
-    return this.find(entry.exerciseId, entry.catalogRevision ?? 1);
+    return this.withCopy(this.find(entry.exerciseId, entry.catalogRevision ?? 1));
   }
   curatedExercises() {
     return this.curated;

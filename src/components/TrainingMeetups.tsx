@@ -10,6 +10,7 @@ import type { FriendsData } from "../domain/FriendsService";
 import type { Workout } from "../lib/types";
 import { localDate } from "../lib/calendar";
 import Modal from "./Modal";
+import { DateText } from "../domain/DateText";
 type Mutate = (
   path: string,
   method: string,
@@ -447,7 +448,7 @@ export default function TrainingMeetups({
                   )
                   .map((w) => (
                     <option key={w.id} value={w.id}>
-                      {w.name} · {w.date}
+                      {w.name} · {DateText.day(w.date)}
                     </option>
                   ))}
               </select>

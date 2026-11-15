@@ -21,6 +21,7 @@ import { saveFile } from "../lib/saveFile";
 import { cloudState, syncCloud } from "../device/cloudSync";
 import ProgressChart from "./ProgressChart";
 import "../styles/progress.css";
+import { DateText } from "../domain/DateText";
 
 /** Account-scoped weighing journal, reused by Progress and the quick tool dialog. */
 export function BodyweightModal({
@@ -504,14 +505,14 @@ export function BodyweightModal({
                   <div className="weight-row-actions">
                     <button
                       className="icon-button"
-                      aria-label={`Изменить замер ${entry.date}`}
+                      aria-label={`Изменить замер ${DateText.day(entry.date)}`}
                       onClick={() => edit(entry)}
                     >
                       <Pencil size={16} />
                     </button>
                     <button
                       className="icon-button"
-                      aria-label={`Удалить замер ${entry.date}`}
+                      aria-label={`Удалить замер ${DateText.day(entry.date)}`}
                       onClick={() => setDeleting(entry.id)}
                     >
                       <Trash2 size={16} />

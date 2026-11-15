@@ -30,6 +30,7 @@ import {
   type Workout,
   type Settings,
 } from "../lib/model";
+import { DateText } from "../domain/DateText";
 
 export default function StatsAnalytics({
   workouts: history,
@@ -272,13 +273,13 @@ export default function StatsAnalytics({
                 key={day.date}
                 type="button"
                 className={`heat-cell lvl-${day.intensity} ${selectedDay?.date === day.date ? "selected" : ""}`}
-                aria-label={`${day.date}: ${day.workingSets} рабочих подходов`}
+                aria-label={`${DateText.day(day.date)}: ${day.workingSets} рабочих подходов`}
                 aria-pressed={selectedDay?.date === day.date}
                 disabled={
                   day.date > localDate(new Date(), settings.timeZone) ||
                   !!(rangeStart && day.date < rangeStart)
                 }
-                title={`${day.date}: ${day.workingSets} подходов (${fmt(day.totalVolume)} кг)`}
+                title={`${DateText.day(day.date)}: ${day.workingSets} подходов (${fmt(day.totalVolume)} кг)`}
                 onClick={() => setSelectedDate(day.date)}
               />
             ))}

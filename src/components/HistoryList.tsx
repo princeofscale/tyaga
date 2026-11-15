@@ -162,7 +162,7 @@ export default function HistoryList({
           <div className="no-results" role="status">
             <p>Таких тренировок нет.</p>
             <p className="tiny">
-              Попробуй месяц с годом («октябрь 2026»), название тренировки («Ноги») или выбери период и тип выше.
+              Попробуй день («20 янв», «20.01.2026»), месяц с годом («октябрь 2026»), название тренировки («Ноги») или выбери период и тип выше.
             </p>
             <button type="button" className="button secondary" onClick={reset}>
               Сбросить отбор

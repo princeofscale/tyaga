@@ -5,6 +5,7 @@ import {
   volumeSummary,
   type Workout,
 } from "../lib/model";
+import { DateText } from "../domain/DateText";
 
 export function VolumeChart({
   workouts,
@@ -42,7 +43,7 @@ export function VolumeChart({
               style={{
                 height: `${Math.max(d.value ? 5 : 2, (d.value / max) * 100)}%`,
               }}
-              title={`${d.date}: ${fmt(d.value)} кг`}
+              title={`${DateText.day(d.date)}: ${fmt(d.value)} кг`}
             />
             <span>{i % 7 === 0 || i === 27 ? d.day : ""}</span>
           </div>

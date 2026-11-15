@@ -210,7 +210,7 @@ test("two devices synchronize weight, retain offline edits, resolve conflicts an
   await expect(second.locator(".weight-history-row")).toContainText("61,5");
   secondState.offline = true;
   await second
-    .getByRole("button", { name: "Изменить замер 2026-11-10", exact: true })
+    .getByRole("button", { name: "Изменить замер 10 нояб. 2026", exact: true })
     .click();
   await second.getByLabel("Вес, кг", { exact: true }).fill("62");
   await second

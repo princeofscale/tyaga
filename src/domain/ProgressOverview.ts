@@ -83,11 +83,10 @@ export class ProgressOverview {
     const options = { now, timeZone };
     const current = new AnalyticsFacts(workouts, { ...options, from: start, through: end }).workouts();
     const previous = new AnalyticsFacts(workouts, { ...options, from: priorStart, through: addCalendarDays(start,-1) }).workouts();
-    const weeks = new Set(
-      current.map((w) =>
-        Math.floor((Date.parse(w.date) - Date.parse(start)) / (7 * 86400000)),
-      ),
-    );
+    // Недели — календарные (пн–вс), как столбцы графика: «активных» и «всего» считаются одним способом.
+    const weekOf = (date: string) => weekStart(new Date(date + "T12:00:00Z"), "UTC");
+    const weeks = new Set(current.map((w) => weekOf(w.date)));
+    const calendarWeeks = Math.round(daysBetween(weekOf(start), weekOf(end)) / 7) + 1;
     const currentPrs = new PersonalRecordsCalculator(
       current, now,
     ).calculateRecords(timeZone);
@@ -116,7 +115,7 @@ export class ProgressOverview {
       end,
       workouts: current.length,
       activeWeeks: weeks.size,
-      totalWeeks: Math.ceil(days / 7),
+      totalWeeks: calendarWeeks,
       days,
       sets,
       volumeKg: volumeSummary(current,"working",options).total,

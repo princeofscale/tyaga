@@ -4,6 +4,7 @@ import { mockImportRuns } from "./fixtures/importRuns";
 import { test, expect, type Page } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 import { makeWorkout, DEFAULT_SETTINGS } from "../../src/lib/model";
+import { DateText } from "../../src/domain/DateText";
 
 async function setup(page: Page, empty = false) {
   await page.clock.setFixedTime(new Date("2026-11-10T12:00:00Z"));
@@ -181,7 +182,7 @@ test("weighing CRUD accepts commas, keeps notes and history across reload, confi
   await weightTab(page);
   await expect(page.locator(".weight-history-row")).toHaveCount(1);
   await page
-    .getByRole("button", { name: `Изменить замер ${date}`, exact: true })
+    .getByRole("button", { name: `Изменить замер ${DateText.day(date)}`, exact: true })
     .click();
   await page.getByLabel("Вес, кг", { exact: true }).fill("61,7");
   await page.getByLabel("Заметка", { exact: true }).fill("");
@@ -193,7 +194,7 @@ test("weighing CRUD accepts commas, keeps notes and history across reload, confi
     "Без заметки",
   );
   await page
-    .getByRole("button", { name: `Удалить замер ${date}`, exact: true })
+    .getByRole("button", { name: `Удалить замер ${DateText.day(date)}`, exact: true })
     .click();
   await expect(page.locator(".weight-history-row")).toHaveCount(1);
   await page

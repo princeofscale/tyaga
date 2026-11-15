@@ -487,6 +487,12 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [weekWorkouts, analysisOptions, familyKey],
   );
+  // Все упражнения каталога без мышц, что есть в журнале: «Разметить» ведёт и к ним.
+  const catalogGaps = useMemo(
+    () => MuscleCoverage.catalogGaps(displayed, { timeZone: settings.timeZone }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [displayed, settings.timeZone, familyKey],
+  );
   const coverage = useMemo(
     () => MuscleCoverage.report(weekWorkouts, { timeZone: settings.timeZone, ...(hardSetsOnly ? { maxRir: 3 } : {}) }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1001,6 +1007,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
         onCreate={createPersonal}
         onEdit={editPersonal}
         onMarked={markExercises}
+        catalogGaps={catalogGaps}
         startMarking={startMarking && !picker}
       />
     </Suspense>
@@ -1013,9 +1020,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
       <div className="session-date">
         <b>{new Date(w.date + "T12:00:00").getDate()}</b>
         <span>
-          {new Date(w.date + "T12:00:00")
-            .toLocaleDateString("ru-RU", { month: "short" })
-            .replace(".", "")}
+          {DateText.monthShort(w.date)}
         </span>
         {w.date.slice(0, 4) !== currentYear ? <small className="session-year">{w.date.slice(0, 4)}</small> : null}
       </div>
@@ -1395,15 +1400,19 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                   )}
                   {lastImportRun ? (() => {
                     const when = DateText.moment(lastImportRun.at, settings.timeZone, currentYear);
+                    const restored = lastImport?.kind === "restore";
+                    const noun = restored ? "Восстановление" : "Импорт";
                     const scope = `${quantity(lastImportRun.activeCount, "тренировку", "тренировки", "тренировок")}, добавленных ${when}`;
                     return (
                     <section className="import-undo panel" role="status" aria-label="Последний импорт">
                       <div className="import-undo-text">
-                        <b>Импорт: записано {lastImportRun.activeCount} из {lastImportRun.total}</b>
-                        <small className="import-undo-scope">Отмена удалит {scope}.</small>
+                        <b>{noun}: записано {lastImportRun.activeCount} из {lastImportRun.total}</b>
+                        <small className="import-undo-scope">
+                          Отмена удалит {scope}.{restored ? " Программы, свои упражнения, избранное и вес останутся." : ""}
+                        </small>
                         {lastNoop ? (
                           <small className="import-undo-noop">
-                            {lastNoop.kind === "restore" ? "Восстановление" : "Импорт"} {DateText.moment(lastNoop.at, settings.timeZone, currentYear)} ничего не добавил — отмена относится к импорту от {when}.
+                            {lastNoop.kind === "restore" ? "Восстановление" : "Импорт"} {DateText.moment(lastNoop.at, settings.timeZone, currentYear)} ничего не добавил{lastNoop.kind === "restore" ? "о" : ""} — отмена относится к {restored ? "восстановлению" : "импорту"} от {when}.
                           </small>
                         ) : null}
                         <details className="import-undo-more">
@@ -1421,7 +1430,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                         </div>
                       ) : (
                         <div>
-                          <button className="button secondary" onClick={() => setUndoAsk(true)}>Отменить импорт</button>
+                          <button className="button secondary" onClick={() => setUndoAsk(true)}>{restored ? "Отменить восстановление" : "Отменить импорт"}</button>
                           <button className="text-button" onClick={() => setLastImportRun(null)}>Скрыть</button>
                         </div>
                       )}
@@ -2391,6 +2400,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                     imported: result.imported - (result.replaced ?? 0),
                     replaced: result.replaced ?? 0,
                     kept: result.kept ?? 0,
+                    kind: modal === "restore" ? "restore" : "import",
                   };
                   importUndo.save(record);
                   setLastImport(record);

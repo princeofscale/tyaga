@@ -376,6 +376,7 @@ export class WorkoutImport {
   }
   private native(text: string): ImportPreview {
     let data: {
+      format?: unknown;
       version?: number;
       workouts?: Workout[];
       machines?: MachineInstance[];
@@ -395,6 +396,7 @@ export class WorkoutImport {
     if (
       !data ||
       typeof data !== "object" ||
+      (data.format !== undefined && !(typeof data.format === "string" && data.format.startsWith("tyaga"))) ||
       typeof data.version !== "number" ||
       ![1, 2, 3, 4, 5].includes(data.version) ||
       !Array.isArray(data.workouts) ||

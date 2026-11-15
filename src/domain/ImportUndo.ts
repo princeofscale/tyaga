@@ -7,6 +7,8 @@ export type ImportRecord = {
   imported: number;
   replaced: number;
   kept: number;
+  /** Что это было: импорт файла или восстановление из копии (для подписи баннера). */
+  kind?: "import" | "restore";
 };
 type Store = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
@@ -40,6 +42,7 @@ export class ImportUndo {
           imported: Number(value.imported) || 0,
           replaced: Number(value.replaced) || 0,
           kept: Number(value.kept) || 0,
+          ...(value.kind === "restore" ? { kind: "restore" as const } : {}),
         };
     } catch {
       /* unreadable record: nothing to undo */

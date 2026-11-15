@@ -169,9 +169,15 @@ export default function HistoryImporter({
     if (mode === "per_implement" && weightEach !== "yes") return "";
     return verdict.exercise.id;
   };
-  const choiceFor = (name: string) =>
-    name in userChoices ? userChoices[name] : autoFor(name);
   const names = preview?.exerciseNames ?? [];
+  // Тип записи в файле («повторы» или «время») должен совпасть с упражнением: «Планка» на время не примет повторы.
+  const types = useMemo(() => (preview ? ImportNameMatcher.types(preview) : new Map<string, "reps" | "duration">()), [preview]);
+  const rawChoice = (name: string) => (name in userChoices ? userChoices[name] : autoFor(name));
+  const choiceFor = (name: string) => {
+    const id = rawChoice(name);
+    return id && ImportNameMatcher.usable(exerciseById(id), types.get(name)) ? id : "";
+  };
+  const mismatch = (name: string) => !!rawChoice(name) && !choiceFor(name);
   const weightPlan = useMemo(() => {
     if (!preview?.extras?.bodyweight) return null;
     const m = JournalBackup.merge(journal.tracker.getEntries(), preview.extras.bodyweight.entries);
@@ -185,10 +191,18 @@ export default function HistoryImporter({
     const favorites = RestorePlan.favorites(preview.extras?.favorites ?? [], existing.favorites);
     return { workouts, routines, customs, favorites, nothing: RestorePlan.nothingNew(workouts, [routines, customs, favorites]) };
   }, [preview, existing]);
+  // Счётчик считает ровно то, что случится при импорте: применённое упражнение — «сопоставлено», остальное — «Моё».
   const summary = ImportNameMatcher.summary(
     verdicts,
-    Object.fromEntries(names.map((n) => [n, choiceFor(n)]).filter(([n, id]) => id || n in userChoices)),
+    Object.fromEntries(
+      names
+        .filter((n) => n in userChoices || ["matched", "variant"].includes(verdicts[n]?.kind))
+        .map((n) => [n, choiceFor(n)]),
+    ),
     names,
+  );
+  const relatedNames = names.filter(
+    (n) => verdicts[n]?.related && !(n in userChoices) && ImportNameMatcher.usable(verdicts[n].candidates[0], types.get(n)),
   );
   const dropped = preview
     ? ImportNameMatcher.droppedWeights(preview, choiceFor, exerciseById)
@@ -255,15 +269,15 @@ export default function HistoryImporter({
       });
       if (restoring) {
         const added = result.imported - (result.replaced ?? 0);
-        const lines = [
-          `Тренировки: добавлено ${added}, уже было ${Math.max(0, result.skipped - (result.kept ?? 0))}` +
-            (plan?.workouts.differs ? `, отличаются и остались как в аккаунте ${plan.workouts.differs}` : ""),
-        ];
-        if (restored) lines.push(`Вес: добавлено ${restored.added}${restored.conflictDates.length ? (replaceWeight ? `, заменено ${restored.conflictDates.length}` : `, отличаются и остались твои ${restored.conflictDates.length}`) : ""}`);
+        // Те же слова и та же арифметика, что в предпросмотре: «Новых · Уже есть · Отличаются».
+        const tally = (label: string, added: number, t?: { same: number; differs: number }) =>
+          `${label}: добавлено ${added}` + (t ? `, уже есть ${t.same}, отличаются ${t.differs}` : "");
+        const lines = [tally("Тренировки", added, plan?.workouts)];
+        if (restored) lines.push(`Вес: добавлено ${restored.added}${restored.conflictDates.length ? (replaceWeight ? `, заменено ${restored.conflictDates.length}` : `, отличаются ${restored.conflictDates.length}, остались твои`) : ""}`);
         if (restoreExtras && plan) {
-          if (plan.routines.total) lines.push(`Программы: добавлено ${plan.routines.added}, уже было ${plan.routines.same + plan.routines.differs}`);
-          if (plan.customs.total) lines.push(`Свои упражнения: добавлено ${plan.customs.added}, уже было ${plan.customs.same + plan.customs.differs}`);
-          if (plan.favorites.total) lines.push(`Избранное: добавлено ${plan.favorites.added}, уже было ${plan.favorites.same}`);
+          if (plan.routines.total) lines.push(tally("Программы", plan.routines.added, plan.routines));
+          if (plan.customs.total) lines.push(tally("Свои упражнения", plan.customs.added, plan.customs));
+          if (plan.favorites.total) lines.push(tally("Избранное", plan.favorites.added, plan.favorites));
         }
         const anything = added > 0 || (restored?.added ?? 0) > 0 || (restoreExtras && plan && (plan.routines.added + plan.customs.added + plan.favorites.added) > 0);
         setFinished([anything ? "Восстановление завершено." : `Ничего не добавлено: ${plan?.nothing ? plan.nothing.replace("Ничего нового: ", "") : "всё из копии уже в аккаунте"}.`, ...lines]);
@@ -416,12 +430,6 @@ export default function HistoryImporter({
                   <b>Тренировки: {plan.workouts.total}</b>
                   <span>{RestorePlan.words(plan.workouts)}</span>
                 </li>
-                {preview.extras?.bodyweight ? (
-                  <li>
-                    <b>Вес: {preview.extras.bodyweight.entries.length}</b>
-                    <span>{RestorePlan.words({ total: preview.extras.bodyweight.entries.length, ...weightPlan! })}</span>
-                  </li>
-                ) : null}
                 {plan.routines.total ? (
                   <li>
                     <b>Программы: {plan.routines.total}</b>
@@ -516,7 +524,13 @@ export default function HistoryImporter({
           </div>
           {preview.format !== "tyaga" ? (
             <>
-              <p className="import-match-summary" role="status">
+              <p
+                className="import-match-summary"
+                role="status"
+                data-matched={summary.matched}
+                data-decide={summary.toDecide}
+                data-own={summary.own}
+              >
                 <b>
                   Сопоставлено {summary.matched} из {summary.total} · нужно
                   решить {summary.toDecide}
@@ -638,13 +652,28 @@ export default function HistoryImporter({
                         />
                       </label>
                       <small>
-                        Похоже на «{verdicts[name]?.candidates[0]?.name}»
+                        {verdicts[name]?.related ? "Близкое, но другое движение: " : "Похоже на "}«{verdicts[name]?.candidates[0]?.name}»
                         {verdicts[name]?.candidates.length > 1
                           ? ` и ещё ${verdicts[name].candidates.length - 1}`
                           : ""}
                       </small>
                     </div>
                   ))}
+                  {relatedNames.length ? (
+                    <button
+                      type="button"
+                      className="button secondary"
+                      disabled={busy}
+                      onClick={() =>
+                        setUserChoices({
+                          ...userChoices,
+                          ...Object.fromEntries(relatedNames.map((n) => [n, verdicts[n].candidates[0].id])),
+                        })
+                      }
+                    >
+                      Принять близкие движения ({relatedNames.length})
+                    </button>
+                  ) : null}
                 </section>
               ) : null}
               {autoKinds("variant").length ? (
@@ -678,7 +707,9 @@ export default function HistoryImporter({
                       <b>
                         {chosen
                           ? chosen.name
-                          : "отдельная запись, вес буквально"}
+                          : mismatch(name)
+                            ? `отдельная запись: в каталоге ${types.get(name) === "reps" ? "упражнение на время, а в файле повторы" : "упражнение с повторами, а в файле время"}`
+                            : "отдельная запись, вес буквально"}
                       </b>
                     </li>
                   );
@@ -846,9 +877,9 @@ export default function HistoryImporter({
             <ShieldCheck size={20} />
             <div>
               <p>
-                Повторный импорт не создаёт дублей: те же сессии заменяются или
-                пропускаются. Если соединение прервётся, открой этот файл ещё
-                раз.
+                {restoring || preview.format === "tyaga"
+                  ? "Повторное восстановление не создаёт дублей: тренировки, которые уже есть, пропускаются. Если соединение прервётся, открой этот файл ещё раз."
+                  : "Повторный импорт не создаёт дублей: те же сессии заменяются или пропускаются. Если соединение прервётся, открой этот файл ещё раз."}
               </p>
               {preview.warnings.map((w) => (
                 <p key={w}>{w}</p>

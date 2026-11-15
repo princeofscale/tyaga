@@ -12,6 +12,41 @@ export class PersonalExerciseMarking {
     return (exercise.recording.type ?? "reps") === "reps";
   }
 
+  /** Уже размечено: есть группы мышц или привязка к движению каталога — такое не переписываем молча. */
+  static hasMarking(exercise: Exercise) {
+    return !!(exercise.custom?.declaredZones?.length || exercise.custom?.basedOnExerciseId || exercise.primary.length);
+  }
+
+  /** Делит выбранное на уже размеченное и без разметки (для предупреждения «Заменить разметку у N?»). */
+  static split(exercises: Exercise[]) {
+    return { marked: exercises.filter((e) => this.hasMarking(e)), unmarked: exercises.filter((e) => !this.hasMarking(e)) };
+  }
+
+  /**
+   * Упражнение каталога без мышц получает свою размеченную копию (`origin: "catalog:<id>"`): история по каталожному
+   * id берёт мышцы из неё, название и правило записи остаются теми же.
+   */
+  static copyPayload(exercise: Exercise, marking: Marking, familyId: string) {
+    const equipment = ["gym", "dumbbells", "bodyweight"].includes(String(exercise.equipment)) ? exercise.equipment : "gym";
+    return {
+      familyId,
+      name: exercise.name,
+      nameEn: exercise.nameEn ?? "",
+      aliases: (exercise.aliases ?? []).slice(0, 20),
+      notes: "",
+      equipment,
+      declaredZones: [...new Set(marking.zones ?? [])],
+      basedOnExerciseId: marking.basedOn && this.canBaseOn(exercise) ? marking.basedOn : "",
+      origin: `catalog:${exercise.id}`,
+      recording: {
+        type: exercise.recording.type ?? "reps",
+        loadMode: exercise.recording.loadMode,
+        implementCount: exercise.recording.implementCount ?? 1,
+        laterality: exercise.recording.laterality ?? "bilateral",
+      },
+    };
+  }
+
   static payload(exercise: Exercise, marking: Marking) {
     const custom = exercise.custom;
     if (!custom) throw new Error("Это не личное упражнение");

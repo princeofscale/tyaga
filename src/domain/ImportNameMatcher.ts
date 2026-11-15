@@ -18,6 +18,8 @@ export type NameVerdict = {
   candidates: Exercise[];
   /** «Machine», «Cable» и т.п. из скобок названия, как в файле. */
   equipment: string | null;
+  /** `ask` с уверенным, но не тем же движением предложением (Sumo Deadlift → становая): можно принять одним касанием. */
+  related?: boolean;
 };
 
 type Rule = {
@@ -29,6 +31,8 @@ type Rule = {
   /** Если оборудования в названии нет, правило всё равно подходит (для движений с собственным весом). */
   bare?: boolean;
   variant?: boolean;
+  /** Другое движение, лишь похожее на упражнение каталога: не применяется молча, а предлагается («близкое»). */
+  related?: boolean;
 };
 
 const BAR = ["barbell"];
@@ -46,7 +50,7 @@ const RULES: Rule[] = [
   { id: "flat-db-press", names: ["bench press", "dumbbell bench press", "flat dumbbell press"], equipment: DB },
   { id: "ohp-bar", names: ["overhead press", "shoulder press", "military press", "standing overhead press"], equipment: BAR },
   { id: "ohp", names: ["overhead press", "shoulder press", "seated shoulder press"], equipment: DB },
-  { id: "ohp", names: ["arnold press"], equipment: DB, variant: true },
+  { id: "ohp", names: ["arnold press"], equipment: DB, variant: true, related: true },
   { id: "shoulder-press-machine", names: ["shoulder press", "overhead press"], equipment: ["machine", "machine plate loaded"] },
   { id: "squat", names: ["squat", "back squat"], equipment: BAR },
   { id: "legpress", names: ["leg press", "leg press horizontal"], equipment: ["machine", "plate loaded", "sled"], bare: true },
@@ -55,7 +59,7 @@ const RULES: Rule[] = [
   { id: "rdl", names: ["romanian deadlift", "rdl"], equipment: BAR },
   { id: "db-rdl", names: ["romanian deadlift", "rdl"], equipment: DB },
   { id: "deadlift-bar", names: ["deadlift", "conventional deadlift"], equipment: BAR },
-  { id: "deadlift-bar", names: ["sumo deadlift"], equipment: BAR, variant: true },
+  { id: "deadlift-bar", names: ["sumo deadlift"], equipment: BAR, variant: true, related: true },
   { id: "row-bent-bar", names: ["bent over row", "barbell row", "bent over barbell row"], equipment: BAR, bare: true },
   { id: "row-bent-bar", names: ["pendlay row"], equipment: BAR, variant: true },
   { id: "row", names: ["seated row", "seated cable row", "cable row"], equipment: CABLE, bare: true },
@@ -63,7 +67,7 @@ const RULES: Rule[] = [
   { id: "lat-pulldown", names: ["lat pulldown", "wide grip lat pulldown"], equipment: CABLE, bare: true },
   { id: "pulldown-reverse", names: ["reverse grip lat pulldown", "underhand lat pulldown"], bare: true },
   { id: "pullup", names: ["pull up", "pullup", "pull ups", "pull-up"], equipment: ["bodyweight"], bare: true },
-  { id: "pullup", names: ["chin up", "chinup", "chin ups"], equipment: ["bodyweight"], bare: true, variant: true },
+  { id: "pullup", names: ["chin up", "chinup", "chin ups"], equipment: ["bodyweight"], bare: true, variant: true, related: true },
   { id: "pullup-weighted", names: ["pull up", "pullup"], equipment: ["weighted"] },
   { id: "pullup-assisted", names: ["pull up", "pullup", "assisted pull up"], equipment: ["assisted"], bare: true },
   { id: "pushup", names: ["push up", "pushup", "push ups"], equipment: ["bodyweight"], bare: true },
@@ -79,9 +83,9 @@ const RULES: Rule[] = [
   { id: "triceps-push", names: ["triceps pushdown", "tricep pushdown", "triceps push down", "pushdown"], equipment: ["cable", "machine"], bare: true },
   { id: "extension-overhead-cable", names: ["overhead triceps extension", "triceps extension", "rope overhead triceps extension"], equipment: ["cable"] },
   { id: "skullcrusher-ez", names: ["skullcrusher", "skull crusher", "lying triceps extension"], equipment: ["ez bar", "ez curl bar"] },
-  { id: "skullcrusher-ez", names: ["skullcrusher", "skull crusher", "lying triceps extension"], equipment: ["barbell", "dumbbell"], variant: true },
+  { id: "skullcrusher-ez", names: ["skullcrusher", "skull crusher", "lying triceps extension"], equipment: ["barbell", "dumbbell"], variant: true, related: true },
   { id: "fly", names: ["chest fly", "cable fly", "cable crossover", "crossover"], equipment: ["cable"] },
-  { id: "fly", names: ["pec deck", "chest fly", "butterfly"], equipment: ["machine"], bare: true, variant: true },
+  { id: "fly", names: ["pec deck", "chest fly", "butterfly"], equipment: ["machine"], bare: true, variant: true, related: true },
   { id: "rear-delt-fly", names: ["rear delt fly", "rear delt reverse fly", "reverse fly"], equipment: ["machine"], bare: true },
   { id: "barbell-hip-thrust", names: ["hip thrust"], equipment: BAR },
   { id: "glute-bridge", names: ["glute bridge"], equipment: ["bodyweight"], bare: true },
@@ -97,7 +101,7 @@ const RULES: Rule[] = [
   { id: "bulgarian-split-squat", names: ["bulgarian split squat"], equipment: DB, bare: true },
   { id: "back-extension", names: ["back extension", "hyperextension", "back hyperextension"], bare: true },
   { id: "shrug-bar", names: ["shrug"], equipment: BAR },
-  { id: "shrug-db-incline", names: ["shrug"], equipment: DB, variant: true },
+  { id: "shrug-db-incline", names: ["shrug"], equipment: DB, variant: true, related: true },
   { id: "pullover-cable", names: ["pullover", "straight arm pulldown"], equipment: ["cable"] },
   { id: "woodchopper-cable", names: ["woodchopper", "wood chop"], equipment: ["cable"], bare: true },
 ];
@@ -170,8 +174,11 @@ export class ImportNameMatcher {
   /** Сопоставление одного названия. `wger` — точные совпадения из базы (ответ сервера `resolve`). */
   static classify(sourceName: string, wger: Exercise[] = [], weighted = false): NameVerdict {
     const verdict = this.classifyName(sourceName, wger);
-    const sibling = weighted && verdict.exercise?.recording.loadMode === "bodyweight" ? this.byId.get(WEIGHTED_SIBLING[verdict.exercise.id] ?? "") : undefined;
-    return sibling ? { ...verdict, exercise: sibling, candidates: [sibling, ...verdict.candidates.filter((c) => c.id !== sibling.id)] } : verdict;
+    const head = verdict.exercise ?? (verdict.related ? verdict.candidates[0] : undefined);
+    const sibling = weighted && head?.recording.loadMode === "bodyweight" ? this.byId.get(WEIGHTED_SIBLING[head.id] ?? "") : undefined;
+    if (!sibling) return verdict;
+    const candidates = [sibling, ...verdict.candidates.filter((c) => c.id !== sibling.id)];
+    return verdict.exercise ? { ...verdict, exercise: sibling, candidates } : { ...verdict, candidates };
   }
 
   private static classifyName(sourceName: string, wger: Exercise[] = []): NameVerdict {
@@ -185,6 +192,7 @@ export class ImportNameMatcher {
     });
     const rule = this.byRule(sourceName);
     const ruled = rule ? this.byId.get(rule.id) : undefined;
+    if (rule && ruled && rule.related) return { ...done("ask", null, [ruled]), related: true };
     if (rule && ruled) return done(rule.variant ? "variant" : "matched", ruled);
     // Точное имя/синоним каталога с указанным оборудованием — как и раньше, без вопросов.
     const exact = ImportMapping.suggestForImport(sourceName);
@@ -220,6 +228,18 @@ export class ImportNameMatcher {
       if (chosen && chosen.recording.loadMode === "bodyweight") out.push({ name, kg });
     }
     return out;
+  }
+
+  /** Тип записи каждого названия в файле: «повторы» или «время». */
+  static types(preview: ImportPreview) {
+    const out = new Map<string, "reps" | "duration">();
+    for (const w of preview.workouts) for (const e of w.exercises) if (!out.has(e.sourceName)) out.set(e.sourceName, e.type);
+    return out;
+  }
+
+  /** Упражнение можно подставить, только если тип записи совпадает: «Планка» (время) не принимает повторы из файла. */
+  static usable(exercise: Exercise | undefined, type: "reps" | "duration" | undefined) {
+    return !exercise || !type || (exercise.recording.type ?? "reps") === type;
   }
 
   /** «Сопоставлено N из M · нужно решить K»: выбор пользователя считается решением. */

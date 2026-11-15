@@ -295,3 +295,61 @@
   margin: 0 0 8px;
   flex-basis: 100%;
 }
+
+/* QA-R05-07: цели нажатия не меньше 44 px */
+.progress-period button {
+  min-width: 44px;
+  min-height: 44px;
+}
+.import-variants summary,
+.import-mapping summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+}
+.bulk-check input {
+  width: 44px;
+  height: 44px;
+  margin: 0;
+}
+.exercise-library .muscle-chips-row button {
+  min-height: 44px;
+}
+
+/* QA-R05-03/04: упражнения каталога без мышц и подтверждение замены разметки */
+.bulk-gaps {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 12px;
+}
+.bulk-gaps h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+.bulk-gaps ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 2px;
+}
+.bulk-gaps li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.bulk-gaps li span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.bulk-confirm {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--danger, #c0504d);
+  border-radius: 10px;
+}
+.bulk-confirm p {
+  margin: 0;
+}

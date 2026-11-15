@@ -46,10 +46,17 @@ export class HistoryFilter {
   }
 
   private static dateMatch(date: string, token: string) {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(token)) return date === token;
     if (/^\d{4}-\d{2}$/.test(token)) return date.startsWith(token);
+    const full = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(token);
+    if (full) return date === `${full[3]}-${full[2].padStart(2, "0")}-${full[1].padStart(2, "0")}`;
+    const dayMonth = /^(\d{1,2})\.(\d{1,2})$/.exec(token);
+    if (dayMonth) return date.slice(5) === `${dayMonth[2].padStart(2, "0")}-${dayMonth[1].padStart(2, "0")}`;
     const dotted = /^(\d{1,2})\.(\d{4})$/.exec(token);
     if (dotted) return date.startsWith(`${dotted[2]}-${dotted[1].padStart(2, "0")}`);
     if (/^\d{4}$/.test(token)) return date.startsWith(token);
+    // «20 янв»: число — день месяца (если не подошло по тексту), слово — месяц.
+    if (/^\d{1,2}$/.test(token)) return +token === +date.slice(8, 10);
     const month = this.monthOf(token);
     return month > 0 && +date.slice(5, 7) === month;
   }

@@ -43,6 +43,7 @@ function LibraryContent({
   onEdit,
   onMarked,
   startMarking = false,
+  catalogGaps = [],
 }: {
   picker?: boolean;
   onAdd: (id: string) => void;
@@ -59,6 +60,8 @@ function LibraryContent({
   onMarked?: (exercises: Exercise[]) => void;
   /** Открыть «Мои» сразу в режиме разметки (переход из «Прогресс → Мышцы»). */
   startMarking?: boolean;
+  /** Упражнения каталога (например, из базы) без мышц, которые уже есть в журнале: размечаются своей копией. */
+  catalogGaps?: Exercise[];
 }) {
   const [source, setSource] = useState<
     "tyaga" | "wger" | "personal" | "favorites"
@@ -69,6 +72,7 @@ function LibraryContent({
   const [basePick, setBasePick] = useState("");
   const [marking, setMarking] = useState<{ done: number; total: number } | null>(null);
   const [markResult, setMarkResult] = useState("");
+  const [confirm, setConfirm] = useState<{ patch: Marking; marked: number; fresh: number } | null>(null);
   const [search, setSearch] = useState("");
   const [debounced, setDebounced] = useState("");
   const [muscle, setMuscle] = useState(defaultMuscle);
@@ -136,22 +140,45 @@ function LibraryContent({
   const unmarked = useMemo(() => MuscleCoverage.unmarkedPersonal(personal), [personal]);
   const togglePicked = (id: string) =>
     setPicked((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
-  async function applyMarking(patch: Marking) {
+  const gapsShown = catalogGaps.filter((e) => matchesSearch(`${e.name} ${e.nameEn}`, search));
+  /** Сначала спрашиваем, если среди выбранных есть уже размеченные: молча их не переписываем. */
+  function requestMarking(patch: Marking) {
     const chosen = personal.filter((e) => picked.includes(e.id));
-    const todo = patch.basedOn ? chosen.filter(PersonalExerciseMarking.canBaseOn) : chosen;
-    const skipped = chosen.length - todo.length;
+    const { marked, unmarked: fresh } = PersonalExerciseMarking.split(chosen);
+    if (marked.length) {
+      setConfirm({ patch, marked: marked.length, fresh: fresh.length + catalogGaps.filter((e) => picked.includes(e.id)).length });
+      return;
+    }
+    void applyMarking(patch, false);
+  }
+  async function applyMarking(patch: Marking, onlyUnmarked: boolean) {
+    setConfirm(null);
+    const chosenPersonal = personal.filter((e) => picked.includes(e.id));
+    const chosenGaps = catalogGaps.filter((e) => picked.includes(e.id));
+    const own = onlyUnmarked ? PersonalExerciseMarking.split(chosenPersonal).unmarked : chosenPersonal;
+    const total = own.length + chosenGaps.length;
+    const eligible = (e: Exercise) => !patch.basedOn || PersonalExerciseMarking.canBaseOn(e);
+    const todo: Array<{ exercise: Exercise; copy: boolean }> = [
+      ...own.filter(eligible).map((exercise) => ({ exercise, copy: false })),
+      ...chosenGaps.filter(eligible).map((exercise) => ({ exercise, copy: true })),
+    ];
+    const skipped = total - todo.length;
     const saved: Exercise[] = [];
     setMarkResult("");
     setMarking({ done: 0, total: todo.length });
     try {
-      for (const exercise of todo) {
-        const result = await productService.saveExercise(PersonalExerciseMarking.payload(exercise, patch));
+      for (const { exercise, copy } of todo) {
+        const body = copy
+          ? PersonalExerciseMarking.copyPayload(exercise, patch, crypto.randomUUID())
+          : PersonalExerciseMarking.payload(exercise, patch);
+        const result = await productService.saveExercise(body);
         saved.push(result.exercise);
         setMarking({ done: saved.length, total: todo.length });
       }
       setMarkResult(
-        `Размечено ${saved.length} из ${chosen.length}.` +
+        `Размечено ${saved.length} из ${total}.` +
           (skipped ? ` ${skipped} на время — им подходит только группа мышц.` : "") +
+          (onlyUnmarked && chosenPersonal.length > own.length ? ` Уже размеченные (${chosenPersonal.length - own.length}) не тронуты.` : "") +
           " Мышцы в «Прогрессе» пересчитаны, в том числе за прошлые тренировки.",
       );
       setPicked([]);
@@ -225,11 +252,11 @@ function LibraryContent({
           Создать упражнение
         </button>
       ) : null}
-      {source === "personal" && onMarked && personal.length ? (
+      {source === "personal" && onMarked && (personal.length || catalogGaps.length) ? (
         <div className="bulk-head">
           <span>
-            {unmarked.length
-              ? `Без разметки мышц: ${unmarked.length} из ${personal.length}`
+            {unmarked.length + catalogGaps.length
+              ? `Без разметки мышц: ${unmarked.length + catalogGaps.length} из ${personal.length + catalogGaps.length}`
               : "У всех упражнений есть разметка мышц"}
           </span>
           <button
@@ -249,13 +276,13 @@ function LibraryContent({
       {source === "personal" && bulk && onMarked ? (
         <section className="bulk-panel panel" aria-label="Массовая разметка">
           <p>
-            <b>Выбрано {picked.length}</b> из {filteredLocal.length}
+            <b>Выбрано {picked.length}</b> из {filteredLocal.length + gapsShown.length}
           </p>
           <div className="bulk-select">
-            <button type="button" className="button secondary" onClick={() => setPicked(filteredLocal.filter((e) => MuscleCoverage.unmarked(e)).map((e) => e.id))}>
-              Выбрать без разметки ({filteredLocal.filter((e) => MuscleCoverage.unmarked(e)).length})
+            <button type="button" className="button secondary" onClick={() => setPicked([...filteredLocal.filter((e) => MuscleCoverage.unmarked(e)), ...gapsShown].map((e) => e.id))}>
+              Выбрать без разметки ({filteredLocal.filter((e) => MuscleCoverage.unmarked(e)).length + gapsShown.length})
             </button>
-            <button type="button" className="button secondary" onClick={() => setPicked(filteredLocal.map((e) => e.id))}>
+            <button type="button" className="button secondary" onClick={() => setPicked([...filteredLocal, ...gapsShown].map((e) => e.id))}>
               Выбрать все показанные
             </button>
             <button type="button" className="button secondary" disabled={!picked.length} onClick={() => setPicked([])}>
@@ -276,7 +303,7 @@ function LibraryContent({
               type="button"
               className="button primary"
               disabled={!picked.length || !zonePick || !!marking}
-              onClick={() => void applyMarking({ zones: [zonePick] })}
+              onClick={() => requestMarking({ zones: [zonePick] })}
             >
               Назначить группу
             </button>
@@ -303,17 +330,56 @@ function LibraryContent({
               type="button"
               className="button primary"
               disabled={!picked.length || !basePick || !!marking}
-              onClick={() => void applyMarking({ basedOn: basePick })}
+              onClick={() => requestMarking({ basedOn: basePick })}
             >
               Назначить упражнение каталога
             </button>
           </div>
+          {confirm ? (
+            <div className="bulk-confirm" role="alert">
+              <p>
+                <b>У {confirm.marked} уже есть разметка.</b> Заменить её на выбранную? Прежняя группа или привязка пропадёт.
+              </p>
+              <div className="bulk-select">
+                <button type="button" className="button danger" onClick={() => void applyMarking(confirm.patch, false)}>
+                  Заменить разметку у {confirm.marked}
+                </button>
+                {confirm.fresh ? (
+                  <button type="button" className="button secondary" onClick={() => void applyMarking(confirm.patch, true)}>
+                    Только без разметки ({confirm.fresh})
+                  </button>
+                ) : null}
+                <button type="button" className="button secondary" onClick={() => setConfirm(null)}>
+                  Отмена
+                </button>
+              </div>
+            </div>
+          ) : null}
           {marking ? (
             <p role="status">
               Сохраняем {marking.done} из {marking.total}…
             </p>
           ) : null}
           {markResult ? <p role="status" className="bulk-result">{markResult}</p> : null}
+        </section>
+      ) : null}
+      {source === "personal" && bulk && onMarked && gapsShown.length ? (
+        <section className="bulk-gaps panel" aria-label="Из каталога без мышц">
+          <h3>Из каталога без мышц · {gapsShown.length}</h3>
+          <p className="tiny">
+            В каталоге у этих упражнений нет разметки мышц. Выбери их и назначь группу или движение: появится своя копия с тем же названием, а история подхватит мышцы.
+          </p>
+          <ul>
+            {gapsShown.map((e) => (
+              <li key={e.id}>
+                <label className="bulk-check">
+                  <input type="checkbox" aria-label={`Выбрать ${e.name}`} checked={picked.includes(e.id)} onChange={() => togglePicked(e.id)} />
+                </label>
+                <span>{e.name}</span>
+                <small>из каталога</small>
+              </li>
+            ))}
+          </ul>
         </section>
       ) : null}
       <div className="exercise-filters">
