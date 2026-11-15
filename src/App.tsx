@@ -149,6 +149,7 @@ import { DeloadPlan, type DeloadPlanRecord } from "./domain/DeloadPlan";
 import { DeloadEngine } from "./domain/DeloadEngine";
 import { PlanLine } from "./domain/PlanLine";
 import { BackdatedWorkout } from "./domain/BackdatedWorkout";
+import { DeloadHint } from "./domain/DeloadHint";
 import { usePendingWorkouts } from "./hooks/usePendingWorkouts";
 import { productService } from "./services/ProductService";
 import { TrainingProgram, nextScheduled } from "./domain/TrainingProgram";
@@ -1313,6 +1314,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                         Программы
                       </button>
                     </div>
+                    {!draft && DeloadHint.line(deload, today) ? <p className="deload-line">{DeloadHint.line(deload, today)}</p> : null}
                     </div>
                     <div className="plan-art" aria-hidden="true">
                       <TrainingPlate />
@@ -1361,6 +1363,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
               {view === "workout" ? (
                 <WorkoutView
                   deloadMode={deload?.mode}
+                  deloadPlan={deload}
                   focusRequest={restNotification.focus}
                   notificationError={restNotification.error}
                   draft={draft}

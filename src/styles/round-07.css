@@ -194,3 +194,33 @@ main .friend-week .text-button {
   width: 100%;
   min-width: 0;
 }
+
+/* R07-REQ05: напоминание о разгрузке на «Сегодня» и в шапке свободной тренировки. */
+.deload-line {
+  margin: 10px 0 0;
+  color: var(--text-soft, var(--muted));
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+.deload-hint {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  font-size: 0.8125rem;
+}
+.deload-hint span {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.deload-hint .button {
+  min-height: 44px;
+  white-space: nowrap;
+}

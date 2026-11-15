@@ -1,3 +1,5 @@
+import { DeloadHint } from "../src/domain/DeloadHint";
+import { makeWorkout } from "../src/lib/model";
 import { BackdatedWorkout } from "../src/domain/BackdatedWorkout";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -51,4 +53,35 @@ test("R07-REQ04: задним числом — по поясу профиля, �
   assert.equal(BackdatedWorkout.manualDuration(false, "2026-11-10", "UTC", now), false);
   assert.equal(BackdatedWorkout.manualDuration(true, "2026-11-10", "UTC", now), true);
   assert.equal(BackdatedWorkout.isBackdated("не дата", "UTC", now), false);
+});
+
+test("R07-REQ05: строка разгрузки и «Подставить 85 %» — от последней обычной, идемпотентно, только свободные веса", () => {
+  const record = { mode: "volume" as const, from: "2026-11-15", until: "2026-11-21", programs: ["Ноги А"], sets: { before: 14, after: 9 } };
+  assert.equal(DeloadHint.line(record, "2026-11-16"), "Разгрузка до 21 нояб.: 85 % веса, 64 % подходов");
+  assert.equal(DeloadHint.line(record, "2026-11-21"), "Разгрузка до 21 нояб.: 85 % веса, 64 % подходов");
+  assert.equal(DeloadHint.line(record, "2026-11-22"), null);
+  assert.equal(DeloadHint.line(null, "2026-11-16"), null);
+  assert.equal(DeloadHint.line({ ...record, sets: undefined }, "2026-11-16"), "Разгрузка до 21 нояб.: 85 % веса, 50 % подходов");
+  assert.equal(DeloadHint.percent("volume"), 85);
+
+  const w = makeWorkout(["bench", "pullup"], [], "UTC");
+  const sets = (kg: number, done = false) => [0, 1, 2].map((k) => ({ id: `s${k}${kg}${done}`, weight: kg, reps: 8, rir: 2, warmup: false, done })) as SetEntry[];
+  w.exercises[0].sets = [{ ...sets(20)[0], id: "warm", warmup: true }, ...sets(90), { ...sets(90, true)[0], id: "d" }];
+  w.exercises[1].sets = sets(10);
+  const base = (e: { exerciseId: string }) => (e.exerciseId === "bench" ? sets(95, true) : sets(10, true));
+  const once = DeloadHint.apply(w, "volume", base as never);
+  const bench = once.workout.exercises[0].sets;
+  // 95 × 0,85 = 80,75 → шаг 2,5 → 80; разминка и уже отмеченный подход не тронуты
+  assert.deepEqual(bench.map((s) => s.weight), [20, 80, 80, 80, 90]);
+  assert.equal(once.changed, 3);
+  // «вес тела» не меняется
+  assert.deepEqual(once.workout.exercises[1].sets.map((s) => s.weight), [10, 10, 10]);
+  // повторное нажатие: те же 80, а не 67,5; ничего нового не изменено
+  const twice = DeloadHint.apply(once.workout, "volume", base as never);
+  assert.deepEqual(twice.workout.exercises[0].sets.map((s) => s.weight), [20, 80, 80, 80, 90]);
+  assert.equal(twice.changed, 0);
+  // без нажатия исходная тренировка не меняется
+  assert.deepEqual(w.exercises[0].sets.map((s) => s.weight), [20, 90, 90, 90, 90]);
+  // нет прошлой обычной тренировки — ничего не меняется
+  assert.equal(DeloadHint.apply(w, "volume", () => undefined).changed, 0);
 });

@@ -75,6 +75,8 @@ import {
 export type { Draft } from "../lib/draft";
 import { WarmupPlanner } from "../domain/WarmupPlanner";
 import { BackdatedWorkout } from "../domain/BackdatedWorkout";
+import { DeloadHint } from "../domain/DeloadHint";
+import type { DeloadPlanRecord } from "../domain/DeloadPlan";
 import Select from "./Select";
 
 type Props = {
@@ -100,6 +102,8 @@ type Props = {
   onToast?: (text: string) => void;
   /** Режим действующей разгрузки (R06-REQ02): быстрые кнопки «прошлое» не возвращают вес выше разгрузочного. */
   deloadMode?: DeloadMode;
+  /** Действующая разгрузка: строка и «Подставить 85 %» на свободной тренировке (R07-REQ05). */
+  deloadPlan?: DeloadPlanRecord | null;
 };
 const clock = (seconds: number) =>
   `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
@@ -211,6 +215,7 @@ export default function WorkoutView({
   onOpenTogether,
   onToast,
   deloadMode,
+  deloadPlan,
 }: Props) {
   const [undoError,setUndoError] = useState("");
   const reducedMotion = useReducedMotion();
@@ -458,6 +463,23 @@ export default function WorkoutView({
   // R07-REQ04: у записи задним числом длительность задана, а не считается от «сейчас».
   const zone = w.timeZone ?? settings.timeZone;
   const retroLabel = draft.editing ? null : BackdatedWorkout.label(w.date, zone, !!draft.retro);
+  const deloadLine =
+    !draft.editing && !DeloadEngine.isDeloadName(w.name) ? DeloadHint.line(deloadPlan, localDate(new Date(), zone)) : null;
+  const applyDeload = () => {
+    if (!deloadPlan) return;
+    const regular = DeloadEngine.regular(history);
+    const result = DeloadHint.apply(
+      w,
+      deloadPlan.mode,
+      (entry) => lastEntry(regular, entry, workoutId, w.date, { timeZone: settings.timeZone })?.sets.filter((s) => s.done && !s.warmup),
+    );
+    if (result.changed) setWorkout(result.workout);
+    onToast?.(
+      result.changed
+        ? `Подставлено ${DeloadHint.percent(deloadPlan.mode)} % от последней обычной тренировки: ${result.changed} подх.`
+        : "Подставлять нечего: веса уже разгрузочные или нет прошлой обычной тренировки с этими упражнениями.",
+    );
+  };
   const manualClock = BackdatedWorkout.manualDuration(draft.manualDuration, w.date, zone);
   const elapsed = manualClock
     ? w.duration
@@ -617,6 +639,14 @@ export default function WorkoutView({
             {saving ? "…" : draft.editing ? "Сохранить" : "Завершить"}
           </button>
         </div>
+        {deloadLine ? (
+          <div className="deload-hint" role="status">
+            <span>{deloadLine}</span>
+            <button type="button" className="button secondary" disabled={saving} onClick={applyDeload}>
+              Подставить {deloadPlan ? DeloadHint.percent(deloadPlan.mode) : 85} %
+            </button>
+          </div>
+        ) : null}
         {retroLabel ? (
           <div className="retro-date">
             <button

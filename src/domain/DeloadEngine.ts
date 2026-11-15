@@ -177,9 +177,11 @@ export class DeloadEngine {
     return name.replace(/\s*\[Разгрузка\]\s*$/, "").trim() || name;
   }
   /** Вес подхода в разгрузке: не выше прошлого, с шагом 2,5; веса без внешней нагрузки не меняются. */
+  static isScalable(loadMode: string | undefined) {
+    return !!loadMode && ["total_external", "per_implement", "machine_stack", "added_bodyweight"].includes(loadMode);
+  }
   static scaleLoad(weight: number, loadMode: string | undefined, mode: DeloadMode) {
-    const scalable = !!loadMode && ["total_external", "per_implement", "machine_stack", "added_bodyweight"].includes(loadMode);
-    if (!scalable) return weight;
+    if (!DeloadEngine.isScalable(loadMode)) return weight;
     return Math.min(weight, Math.max(0, Math.round((weight * DELOAD_PRESETS[mode].intensityMultiplier) / 2.5) * 2.5));
   }
 

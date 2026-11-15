@@ -297,3 +297,84 @@ test("R07-REQ04: обычная сегодняшняя тренировка — 
   await expect(page.locator(".workout-bar")).not.toContainText("задним числом");
   await expect(page.locator(".live-clock-badge")).toContainText("Счётчик");
 });
+
+const BENCH = "Жим штанги лёжа";
+const openTool = async (page: Page, name: RegExp | string) => {
+  await page.getByRole("button", { name: /^Инструменты/ }).last().click();
+  await page.getByRole("button", { name: typeof name === "string" ? new RegExp(name) : name }).click();
+};
+
+for (const size of SIZES) {
+  test(`R07-REQ05: разгрузка на свободной тренировке — строка, «Подставить 85 %» один раз, отмена убирает строку ${size.width}×${size.height}`, async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize(size);
+    const base = makeWorkout(["bench"], [], "Europe/Saratov", true);
+    base.exercises.forEach((e) => (e.sets = e.sets.slice(0, 3).map((s) => ({ ...s, weight: 95, reps: 11 }))));
+    const routine = { ...TrainingProgram.empty(), id: "r-legs", name: "Ноги А", days: [1], revision: 1, exercises: base.exercises };
+    await round01Fixture(page, { routines: [routine], workouts: [benchSession("old-1", "2026-11-03", "Ноги А")] });
+    // разгрузки нет — строки нет
+    await expect(page.locator(".deload-line")).toHaveCount(0);
+    await openTool(page, "Разгрузочная неделя");
+    await page.getByRole("button", { name: "Применить разгрузку к тренировкам", exact: true }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Закрыть", exact: true }).click();
+    await nav(page, "Сегодня").click();
+    await expect(page.locator(".deload-line")).toHaveText(/^Разгрузка до 16 нояб\.: 85 % веса, \d+ % подходов$/);
+    // свободная тренировка рядом с «Пустая тренировка»
+    await page.getByRole("button", { name: "Пустая тренировка", exact: true }).click();
+    await page.getByRole("button", { name: "Добавить упражнение", exact: true }).click();
+    await page.getByRole("button", { name: `Добавить ${BENCH}`, exact: true }).click();
+    await page.getByRole("button", { name: "Готово", exact: true }).click();
+    await expect(page.getByRole("textbox", { name: "Название тренировки" })).toHaveValue("Новая тренировка");
+    const hint = page.locator(".deload-hint");
+    await expect(hint).toContainText(/Разгрузка до 16 нояб\.: 85 % веса, \d+ % подходов/);
+    // без нажатия веса не менялись
+    const weight = page.getByLabel(`${BENCH}, подход 1, вес`, { exact: true });
+    await expect(weight).toHaveValue("95");
+    expect(await overflow(page)).toBeLessThanOrEqual(1);
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/Разгрузка-свободная-${size.width}.png` });
+    const apply = hint.getByRole("button", { name: "Подставить 85 %", exact: true });
+    await apply.click();
+    await expect(weight).toHaveValue("80");
+    await expect(page.getByLabel(`${BENCH}, подход 3, вес`, { exact: true })).toHaveValue("80");
+    // повторное нажатие не снижает второй раз
+    await apply.click();
+    await expect(weight).toHaveValue("80");
+    await expect(page.getByLabel(`${BENCH}, подход 3, вес`, { exact: true })).toHaveValue("80");
+  });
+}
+
+const deloadRoutine = () => {
+  const base = makeWorkout(["bench"], [], "Europe/Saratov", true);
+  base.exercises.forEach((e) => (e.sets = e.sets.slice(0, 3).map((x) => ({ ...x, weight: 95, reps: 11 }))));
+  return { ...TrainingProgram.empty(), id: "r-legs", name: "Ноги А", days: [1], revision: 1, exercises: base.exercises };
+};
+const applyDeload = async (page: Page) => {
+  await openTool(page, "Разгрузочная неделя");
+  await page.getByRole("button", { name: "Применить разгрузку к тренировкам", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Закрыть", exact: true }).click();
+  await nav(page, "Сегодня").click();
+};
+
+test("R07-REQ05: разгрузку отменили — строки нет ни на «Сегодня», ни в свободной тренировке", async ({ page }) => {
+  test.setTimeout(120_000);
+  await round01Fixture(page, { routines: [deloadRoutine()], workouts: [benchSession("old-1", "2026-11-03", "Ноги А")] });
+  await applyDeload(page);
+  await expect(page.locator(".deload-line")).toHaveCount(1);
+  await openTool(page, "Разгрузочная неделя");
+  await page.getByRole("button", { name: "Отменить", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Закрыть", exact: true }).click();
+  await nav(page, "Сегодня").click();
+  await expect(page.locator(".deload-line")).toHaveCount(0);
+  await page.getByRole("button", { name: "Пустая тренировка", exact: true }).click();
+  await expect(page.locator(".deload-hint")).toHaveCount(0);
+});
+
+test("R07-REQ05: программа в разгрузке ведёт себя как раньше — «[Разгрузка]» и 80 вместо 95, плашки «Подставить» нет", async ({ page }) => {
+  test.setTimeout(120_000);
+  await round01Fixture(page, { routines: [deloadRoutine()], workouts: [benchSession("old-1", "2026-11-03", "Ноги А")] });
+  await applyDeload(page);
+  await page.getByRole("button", { name: "Начать тренировку", exact: true }).first().click();
+  await expect(page.getByRole("textbox", { name: "Название тренировки" })).toHaveValue("Ноги А [Разгрузка]");
+  await expect(page.getByLabel(`${BENCH}, подход 1, вес`, { exact: true })).toHaveValue("80");
+  await expect(page.locator(".deload-hint")).toHaveCount(0);
+});
