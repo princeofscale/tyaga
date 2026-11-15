@@ -1,4 +1,5 @@
 import type { Workout } from "../lib/types";
+import { DeloadEngine } from "./DeloadEngine";
 import { normalizeSearch } from "../lib/search";
 import { DateText } from "./DateText";
 
@@ -63,7 +64,7 @@ export class HistoryFilter {
 
   static matches(workout: Workout, query: HistoryQuery, entryName: (e: Workout["exercises"][number]) => string) {
     if (query.month !== "all" && DateText.monthKey(workout.date) !== query.month) return false;
-    if (query.type !== "all" && workout.name !== query.type) return false;
+    if (query.type !== "all" && DeloadEngine.baseName(workout.name) !== query.type) return false;
     if (query.from && workout.date < query.from) return false;
     if (query.to && workout.date > query.to) return false;
     const tokens = query.text.trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -93,7 +94,11 @@ export class HistoryFilter {
   /** Названия тренировок по частоте («Ноги», «Тяга»…). */
   static types(workouts: Workout[]) {
     const counts = new Map<string, number>();
-    for (const w of workouts) counts.set(w.name, (counts.get(w.name) ?? 0) + 1);
+    // «Ноги А» и «Ноги А [Разгрузка]» — один тип: разгрузка видна в названии карточки, но не дробит отбор.
+    for (const w of workouts) {
+      const type = DeloadEngine.baseName(w.name);
+      counts.set(type, (counts.get(type) ?? 0) + 1);
+    }
     return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ru")).map(([name, count]) => ({ name, count }));
   }
 

@@ -163,6 +163,22 @@ export class DeloadEngine {
   /**
    * Generates a deload version of a workout session according to the chosen deload config.
    */
+  /** Название программы с пометкой разгрузки: «Ноги А [Разгрузка]». */
+  static readonly SUFFIX = " [Разгрузка]";
+  static isDeloadName(name: string) {
+    return name.includes("[Разгрузка]");
+  }
+  /** Тип тренировки без пометки разгрузки: «Ноги А [Разгрузка]» → «Ноги А». */
+  static baseName(name: string) {
+    return name.replace(/\s*\[Разгрузка\]\s*$/, "").trim() || name;
+  }
+  /** Вес подхода в разгрузке: не выше прошлого, с шагом 2,5; веса без внешней нагрузки не меняются. */
+  static scaleLoad(weight: number, loadMode: string | undefined, mode: DeloadMode) {
+    const scalable = !!loadMode && ["total_external", "per_implement", "machine_stack", "added_bodyweight"].includes(loadMode);
+    if (!scalable) return weight;
+    return Math.min(weight, Math.max(0, Math.round((weight * DELOAD_PRESETS[mode].intensityMultiplier) / 2.5) * 2.5));
+  }
+
   public static transformWorkoutForDeload(workout: Workout, mode: DeloadMode): Workout {
     const config = DELOAD_PRESETS[mode];
 
@@ -180,10 +196,7 @@ export class DeloadEngine {
       const scaledWorking: SetEntry[] = slicedWorking.map((s, idx) => {
         // Never turn bodyweight/unknown loads into invented external kilograms,
         // or round a light working weight up beyond the original load.
-        const canScale = spec && ["total_external", "per_implement", "machine_stack", "added_bodyweight"].includes(spec.loadMode);
-        const scaledWeight = canScale
-          ? Math.min(s.weight, Math.max(0, Math.round((s.weight * config.intensityMultiplier) / 2.5) * 2.5))
-          : s.weight;
+        const scaledWeight = DeloadEngine.scaleLoad(s.weight, spec?.loadMode, mode);
         const bodyMass = e.bodyMassKg;
         const assistance = s.assistanceKg ?? 0;
         const assistedLoad = (bodyMass ?? 0) + s.weight;
@@ -211,7 +224,7 @@ export class DeloadEngine {
     return {
       ...workout,
       id: `workout-deload-${Date.now()}`,
-      name: workout.name.includes("[Разгрузка]") ? workout.name : `${workout.name} [Разгрузка]`,
+      name: DeloadEngine.isDeloadName(workout.name) ? workout.name : `${workout.name}${DeloadEngine.SUFFIX}`,
       exercises: deloadExercises,
     };
   }

@@ -2,6 +2,7 @@ import ExecutionFields from "./ExecutionFields";
 import { MuscleParticipation } from "../domain/MuscleParticipation";
 import { ExecutionIdentity } from "../domain/ExecutionIdentity";
 import { PreviousSets } from "../domain/PreviousSets";
+import { DeloadEngine, type DeloadMode } from "../domain/DeloadEngine";
 import { SetCompleteness, type MissingField } from "../domain/SetCompleteness";
 import type { MachineInstance } from "../lib/types";
 import { WorkoutUndo } from "../domain/WorkoutUndo";
@@ -43,6 +44,7 @@ import ExerciseSwapModal from "./ExerciseSwapModal";
 import BodyMap from "./BodyMap";
 import LiveStrip from "./LiveStrip";
 import RoomBadge from "./RoomBadge";
+import { useLiveRoom } from "./LiveRoomProvider";
 import Modal from "./Modal";
 import { audioHaptics } from "../lib/audioHaptics";
 import type { Exercise } from "../lib/types";
@@ -94,6 +96,8 @@ type Props = {
   onOpenTogether: () => void;
   /** Короткое уведомление (комната, поделиться). */
   onToast?: (text: string) => void;
+  /** Режим действующей разгрузки (R06-REQ02): быстрые кнопки «прошлое» не возвращают вес выше разгрузочного. */
+  deloadMode?: DeloadMode;
 };
 const clock = (seconds: number) =>
   `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
@@ -204,6 +208,7 @@ export default function WorkoutView({
   onMinimize,
   onOpenTogether,
   onToast,
+  deloadMode,
 }: Props) {
   const [undoError,setUndoError] = useState("");
   const reducedMotion = useReducedMotion();
@@ -218,6 +223,14 @@ export default function WorkoutView({
   const [activeSetKey, setActiveSetKey] = useState<string | null>(null);
   const [focusMode, setFocusMode] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const { room } = useLiveRoom();
+  const nameBox = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const box = nameBox.current;
+    if (!box) return;
+    box.style.height = "auto";
+    box.style.height = `${box.scrollHeight + (box.offsetHeight - box.clientHeight)}px`;
+  }, [room, draft?.workout.name]);
   const [contextKey, setContextKey] = useState<string | null>(null);
   const barRef = useRef<HTMLElement>(null);
   const pinRef = useRef<HTMLSpanElement>(null);
@@ -334,6 +347,12 @@ export default function WorkoutView({
       </div>
     );
   const w = draft.workout;
+  // R06-REQ02: в разгрузочной тренировке «прошлые» числа подставляются с разгрузочным весом, а не с полным.
+  const deloadNow: DeloadMode | undefined = DeloadEngine.isDeloadName(w.name) ? (deloadMode ?? "volume") : undefined;
+  const deloaded = (entry: WorkoutExercise, previous?: SetEntry): SetEntry | undefined =>
+    previous && deloadNow
+      ? { ...previous, weight: DeloadEngine.scaleLoad(previous.weight, exerciseForEntry(entry)?.recording.loadMode, deloadNow) }
+      : previous;
   const setWorkout = (workout: Workout) => update({ ...draft, workout });
   const patchExercise = (ei: number, patch: Partial<WorkoutExercise>) =>
     setWorkout({
@@ -459,13 +478,30 @@ export default function WorkoutView({
           <span className="workout-session-label" aria-hidden="true">
             {draft.editing ? "Редактирование тренировки" : "Активная тренировка"}
           </span>
-          <input
-            aria-label="Название тренировки"
-            value={w.name}
-            maxLength={120}
-            disabled={saving}
-            onChange={(e) => setWorkout({ ...w, name: e.target.value })}
-          />
+          {room ? (
+            // R06-REQ01: в комнате название переносится на вторую строку, а не обрезается многоточием.
+            <textarea
+              ref={nameBox}
+              rows={1}
+              className="workout-name-wrap"
+              aria-label="Название тренировки"
+              value={w.name}
+              maxLength={120}
+              disabled={saving}
+              onChange={(e) => setWorkout({ ...w, name: e.target.value.replace(/\n/g, " ") })}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.preventDefault();
+              }}
+            />
+          ) : (
+            <input
+              aria-label="Название тренировки"
+              value={w.name}
+              maxLength={120}
+              disabled={saving}
+              onChange={(e) => setWorkout({ ...w, name: e.target.value })}
+            />
+          )}
           {/* QA-R04-01: комната — в строке названия (подпись над ним + два значка справа), а не отдельной плашкой: шапка не растёт. */}
           <RoomBadge onToast={onToast ?? (() => {})} />
         </div>
@@ -1057,21 +1093,25 @@ export default function WorkoutView({
                   <button
                     type="button"
                     className="autofill-pill-btn repeat"
-                    title="Заполнить рабочие подходы весами и повторениями с прошлой тренировки"
+                    title={
+                      deloadNow
+                        ? `Заполнить рабочие подходы повторениями с прошлой тренировки. Вес разгрузочный: прошлый ${previousLabel(we, before.working[0])} → ${previousLabel(we, deloaded(we, before.working[0]))}`
+                        : "Заполнить рабочие подходы весами и повторениями с прошлой тренировки"
+                    }
                     onClick={() => {
                       const newSets = we.sets.map((s) => {
                         if (s.warmup) return s;
-                        const prevW = PreviousSets.pick(before.working, ExecutionIdentity.setIndex(we, s));
+                        const prevW = deloaded(we, PreviousSets.pick(before.working, ExecutionIdentity.setIndex(we, s)));
                         return prevW ? { ...s, ...PreviousSets.patch(prevW, { timed, assistance }) } : s;
                       });
                       patchExercise(ei, { sets: newSets });
                     }}
                   >
                     <RotateCcw size={13} />
-                    <span>Повторить прошлые: {previousLabel(we, before.working[0])}</span>
+                    <span>Повторить прошлые: {previousLabel(we, deloaded(we, before.working[0]))}{deloadNow ? " · разгрузка" : ""}</span>
                   </button>
 
-                  {!noLoad && !assistance && !timed && (
+                  {!noLoad && !assistance && !timed && !deloadNow && (
                     <button
                       type="button"
                       className="autofill-pill-btn progress"
@@ -1212,13 +1252,13 @@ export default function WorkoutView({
                           disabled={!last}
                           aria-label={
                             last
-                              ? `Подставить прошлый результат: ${lastText}`
+                              ? `Подставить прошлый результат: ${lastText}${deloadNow ? ` (в разгрузку — ${previousLabel(we, deloaded(we, last))})` : ""}`
                               : "Прошлого результата нет"
                           }
                           onClick={(e) => {
                             e.stopPropagation();
                             last &&
-changeSet(ei, si, PreviousSets.patch(last, { timed, assistance }), true);
+changeSet(ei, si, PreviousSets.patch(deloaded(we, last)!, { timed, assistance }), true);
                           }}
                         >
                           {wrapSafe(lastText)}

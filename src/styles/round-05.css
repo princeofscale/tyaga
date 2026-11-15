@@ -36,6 +36,9 @@
   contain-intrinsic-size: auto 640px;
   scroll-margin-top: 12px;
 }
+.history-exact .history-month {
+  content-visibility: visible;
+}
 .history-month-title {
   position: sticky;
   top: 0;

@@ -58,8 +58,10 @@ export default function MachineManager({
                 setAliases(machine.aliases.join(", "));
               }}
             >
-              {machine.nickname} · {machine.gym || "Зал не указан"} ·{" "}
-              {machine.model.manufacturer} {machine.model.model}
+              {machine.nickname} · {machine.gym || "Зал не указан"}
+              {[machine.model.manufacturer, machine.model.model].filter((part) => part && part !== machine.nickname).length
+                ? ` · ${[machine.model.manufacturer, machine.model.model].filter((part) => part && part !== machine.nickname).join(" ")}`
+                : ""}
             </button>
             <button
               className="text-button"
@@ -78,6 +80,8 @@ export default function MachineManager({
             onSave(
               MachineRegistry.parse({
                 ...draft,
+                // Достаточно названия станции: без модели она называется так же (R06-REQ03).
+                model: { ...draft.model, model: draft.model.model.trim() || draft.nickname.trim() },
                 aliases: aliases
                   .split(",")
                   .map((s) => s.trim())
@@ -108,6 +112,10 @@ export default function MachineManager({
               onChange={(e) => setDraft({ ...draft, gym: e.target.value })}
             />
           </label>
+        </div>
+        <details className="machine-details">
+          <summary>Подробности (необязательно)</summary>
+        <div className="execution-grid">
           <label>
             Номер станции
             <input
@@ -173,7 +181,7 @@ export default function MachineManager({
             Модель
             <input
               aria-label="Модель тренажёра"
-              required
+              placeholder="Если пусто — как название станции"
               disabled={modelLocked}
               maxLength={120}
               value={draft.model.model}
@@ -258,6 +266,7 @@ export default function MachineManager({
             </label>
           ))}
         </div>
+        </details>
         <p className="tiny">
           Передаточные отношения — справочные данные. Приложение не
           пересчитывает по ним мышечную силу или общий тоннаж.

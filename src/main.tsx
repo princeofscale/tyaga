@@ -13,6 +13,7 @@ import "./styles/workflow.css";
 import "./styles/round-03.css";
 import "./styles/round-04.css";
 import "./styles/round-05.css";
+import "./styles/round-06.css";
 const loadMotionFeatures = () =>
   import("./lib/motionFeatures").then((module) => module.default);
 const backend =

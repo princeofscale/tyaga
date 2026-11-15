@@ -254,7 +254,7 @@ for (const size of SIZES) {
     // Комната — в строке названия: подпись и два значка 44×44 рядом, без отдельного блока.
     const parts = await page.evaluate(() => {
       const r = (sel: string) => { const b = document.querySelector(sel)!.getBoundingClientRect(); return { top: Math.round(b.top), bottom: Math.round(b.bottom), left: Math.round(b.left), right: Math.round(b.right), height: Math.round(b.height) }; };
-      return { titleText: Math.ceil(document.querySelector<HTMLElement>(".room-badge-title b")!.scrollWidth) + 22, title: r(".room-badge-title"), actions: r(".room-badge-actions"), name: r(".workout-bar-title > input"), vw: innerWidth };
+      return { titleText: Math.ceil(document.querySelector<HTMLElement>(".room-badge-title b")!.scrollWidth) + 22, title: r(".room-badge-title"), actions: r(".room-badge-actions"), name: r(".workout-bar-title > :is(input, textarea)"), vw: innerWidth };
     });
     expect(parts.actions.height, "значки — одна строка 44 px").toBeLessThanOrEqual(46);
     expect(parts.title.bottom, "подпись комнаты над названием").toBeLessThanOrEqual(parts.name.top + 1);

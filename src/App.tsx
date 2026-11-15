@@ -1355,6 +1355,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
               ) : null}
               {view === "workout" ? (
                 <WorkoutView
+                  deloadMode={deload?.mode}
                   focusRequest={restNotification.focus}
                   notificationError={restNotification.error}
                   draft={draft}
@@ -1437,6 +1438,24 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                     </section>
                     );
                   })() : null}
+                  {monthWorkouts.length ? (
+                    // R06-REQ05: «Объём за 28 дней» — над списком одной строкой, график раскрывается касанием.
+                    <details className="panel volume-panel volume-fold">
+                      <summary>
+                        <span>
+                          <b>Объём за 28 дней</b>
+                          <small>Свободные веса, включая разминку</small>
+                        </span>
+                        <b
+                          className="volume-total"
+                          title={VolumeLabel.reason(volumeSummary(monthWorkouts, "all").omittedSets)}
+                        >
+                          {VolumeLabel.short(volumeSummary(monthWorkouts, "all").total)}
+                        </b>
+                      </summary>
+                      <VolumeChart workouts={monthWorkouts} timeZone={settings.timeZone} />
+                    </details>
+                  ) : null}
                   <HistoryList
                     workouts={displayed}
                     entryName={entryName}
@@ -1463,23 +1482,6 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                       </div>
                     }
                   />
-                  {monthWorkouts.length ? (
-                    <section className="panel volume-panel">
-                      <div className="panel-header">
-                        <div>
-                          <h2>Объём за 28 дней</h2>
-                          <p>Свободные веса, включая разминку</p>
-                        </div>
-                        <b
-                          className="volume-total"
-                          title={VolumeLabel.reason(volumeSummary(monthWorkouts, "all").omittedSets)}
-                        >
-                          {VolumeLabel.short(volumeSummary(monthWorkouts, "all").total)}
-                        </b>
-                      </div>
-                      <VolumeChart workouts={monthWorkouts} timeZone={settings.timeZone} />
-                    </section>
-                  ) : null}
                 </>
               ) : null}
               {view === "progress" ? (

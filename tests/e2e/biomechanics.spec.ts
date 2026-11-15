@@ -296,6 +296,8 @@ test("machine picker and per-set execution survive draft reload and save with se
   await page
     .getByLabel("Название станции", { exact: true })
     .fill("Блок у окна");
+  // R06-REQ03: модель и «Другие названия» — в необязательных подробностях станции.
+  await page.getByText("Подробности (необязательно)", { exact: true }).click();
   await page.getByLabel("Модель тренажёра", { exact: true }).fill("Row 100");
   await page
     .getByLabel("Другие названия тренажёра", { exact: true })

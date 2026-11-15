@@ -54,7 +54,6 @@ export default function SessionInsights({
         <div className="celebration-hero-copy">
           <div className="celebration-tag">ТРЕНИРОВКА ЗАВЕРШЕНА</div>
           <h3>Твоя работа за тренировку</h3>
-          <p>Разминка тоже остаётся в журнале и общем объёме.</p>
         </div>
         <div className="celebration-actions-group">
           <button
@@ -144,6 +143,9 @@ export default function SessionInsights({
       </div>
 
       {volume.all.invalidSets > 0 && <p role="status">Исключено повреждённых подходов: {volume.all.invalidSets}. Проверь значения в журнале.</p>}
+      {/* R06-REQ05: итог не вытесняет список — мышцы, тренажёры и пояснения про разминку раскрываются по касанию. */}
+      <details className="insights-more">
+        <summary>Подробнее: мышцы, тренажёры, разминка</summary>
       {report.machineVolume.length > 0 && <section className="session-machine-volume"><h3>Тоннаж на отдельных тренажёрах</h3>
         {report.machineVolume.map((row)=><p key={row.key}>{row.label}: {fmt(row.volume)} кг·повт. · {row.sets} подх.</p>)}
         <p className="tiny">Значения стека сравниваются только на той же машине в том же варианте движения.</p></section>}
@@ -188,6 +190,7 @@ export default function SessionInsights({
         <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC7558980/" target="_blank" rel="noreferrer">
           Ribeiro et al., 2020 — жим и присед
         </a>
+      </details>
       </details>
     </section>
   );

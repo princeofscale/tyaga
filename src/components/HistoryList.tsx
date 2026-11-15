@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { ArrowUp, Search } from "lucide-react";
 import type { Workout } from "../lib/types";
 import { HistoryFilter, type HistoryQuery } from "../domain/HistoryFilter";
@@ -25,6 +26,9 @@ export default function HistoryList({
   const [query, setQuery] = useState<HistoryQuery>(HistoryFilter.EMPTY);
   const [range, setRange] = useState(false);
   const [showTop, setShowTop] = useState(false);
+  // R06-REQ04: у месяцев, не попавших на экран, высота — лишь оценка (`content-visibility`). Переход к месяцу по оценке
+  // промахивался на 1–2 экрана, поэтому перед переходом месяцы рисуются целиком и высоты становятся настоящими.
+  const [exact, setExact] = useState(false);
   const sorted = useMemo(
     () => [...workouts].sort((a, b) => b.date.localeCompare(a.date)),
     [workouts],
@@ -122,7 +126,9 @@ export default function HistoryList({
                 aria-label="Перейти к месяцу"
                 value=""
                 onChange={(e) => {
-                  document.getElementById(`history-month-${e.target.value}`)?.scrollIntoView({ block: "start" });
+                  const key = e.target.value;
+                  flushSync(() => setExact(true));
+                  document.getElementById(`history-month-${key}`)?.scrollIntoView({ block: "start" });
                 }}
               >
                 <option value="">Перейти к месяцу…</option>
@@ -147,7 +153,7 @@ export default function HistoryList({
           ) : null}
         </p>
       ) : null}
-      <div className="panel history-panel">
+      <div className={`panel history-panel${exact ? " history-exact" : ""}`}>
         {groups.map((group) => (
           <section className="history-month" key={group.key} id={`history-month-${group.key}`} aria-label={group.label}>
             <h2 className="history-month-title">

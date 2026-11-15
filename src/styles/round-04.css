@@ -234,35 +234,42 @@
   gap: 4px;
 }
 .room-badge-btn {
+  /* R06-REQ01: подпись видна под значком — «Поделиться» и «Выйти» понятны без касания. */
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 2px;
   min-width: 44px;
   min-height: 44px;
-  padding: 0 10px;
+  padding: 3px 6px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
   color: var(--text-soft);
-  font-size: 0.75rem;
+}
+.room-badge-btn:first-child {
+  min-width: 64px;
 }
 .room-badge-label {
-  display: none;
+  font-size: 0.625rem;
+  line-height: 1;
+  white-space: nowrap;
 }
-@media (min-width: 560px) {
-  .room-badge-label {
-    display: inline;
-  }
-}
+/* Вопрос «Выйти из комнаты?» — поверх страницы под шапкой: таймер и «Завершить» не сдвигаются. */
 .room-badge-ask {
-  grid-area: ask;
-  margin-top: 6px;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 30;
   display: grid;
   gap: 8px;
   padding: 10px;
   border: 1px solid var(--danger, #ff7a6b);
   border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--bg) 70%, transparent);
 }
 .room-badge-ask p {
   margin: 0;
@@ -334,4 +341,27 @@
 .modal-actions > .text-button {
   min-height: 44px;
   padding-inline: 12px;
+}
+
+/* R06-REQ01: в комнате название тренировки переносится, а не обрезается. */
+.workout-athletic .workout-bar-title:has(.room-badge) > .workout-name-wrap {
+  grid-area: name;
+  min-width: 0;
+  min-height: 44px;
+  padding: 6px 3px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.15;
+  resize: none;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.workout-athletic .workout-bar-title:has(.room-badge) > .workout-name-wrap:focus {
+  border-color: var(--accent);
+  background: var(--bg);
 }

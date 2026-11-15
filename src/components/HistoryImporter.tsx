@@ -543,6 +543,27 @@ export default function HistoryImporter({
                   </small>
                 ) : null}
               </p>
+              {/* R06-REQ06: сколько своих упражнений создастся и «Принять близкие» — в самой сводке, без прокрутки. */}
+              <div className="import-own-line" role="status">
+                <span>
+                  Будет создано своих упражнений: <b data-own-total={summary.toDecide + summary.own}>{summary.toDecide + summary.own}</b>
+                </span>
+                {relatedNames.length ? (
+                  <button
+                    type="button"
+                    className="button secondary"
+                    disabled={busy}
+                    onClick={() =>
+                      setUserChoices({
+                        ...userChoices,
+                        ...Object.fromEntries(relatedNames.map((n) => [n, verdicts[n].candidates[0].id])),
+                      })
+                    }
+                  >
+                    Принять близкие движения ({relatedNames.length})
+                  </button>
+                ) : null}
+              </div>
               {dropped.length ? (
                 <p className="import-dropped tiny" role="status">
                   Доп. вес в файле у {dropped.length}{" "}
@@ -659,21 +680,6 @@ export default function HistoryImporter({
                       </small>
                     </div>
                   ))}
-                  {relatedNames.length ? (
-                    <button
-                      type="button"
-                      className="button secondary"
-                      disabled={busy}
-                      onClick={() =>
-                        setUserChoices({
-                          ...userChoices,
-                          ...Object.fromEntries(relatedNames.map((n) => [n, verdicts[n].candidates[0].id])),
-                        })
-                      }
-                    >
-                      Принять близкие движения ({relatedNames.length})
-                    </button>
-                  ) : null}
                 </section>
               ) : null}
               {autoKinds("variant").length ? (
@@ -898,6 +904,9 @@ export default function HistoryImporter({
                 </p>
               </div>
             </div>
+          ) : null}
+          {preview.format !== "tyaga" ? (
+            <p className="import-own-footer tiny">Будет создано своих упражнений: {summary.toDecide + summary.own}</p>
           ) : null}
           <button
             className="button primary full-width"

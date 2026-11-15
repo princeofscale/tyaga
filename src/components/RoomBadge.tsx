@@ -46,7 +46,7 @@ export default function RoomBadge({ onToast }: { onToast: (text: string) => void
             }}
           >
             <Share2 size={16} aria-hidden="true" />
-            <span className="room-badge-label">Поделиться</span>
+            <span className="room-badge-label" aria-hidden="true">Поделиться</span>
           </button>
           <button
             type="button"
@@ -57,7 +57,7 @@ export default function RoomBadge({ onToast }: { onToast: (text: string) => void
             onClick={() => setAsking(true)}
           >
             <LogOut size={16} aria-hidden="true" />
-            <span className="room-badge-label">Выйти</span>
+            <span className="room-badge-label" aria-hidden="true">Выйти</span>
           </button>
         </span>
       </div>
