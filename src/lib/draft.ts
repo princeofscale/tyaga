@@ -17,6 +17,8 @@ export type Draft = {
   restUntil: number | null;
   pausedRest: number | null;
   manualDuration: boolean;
+  /** Начата через «Записать тренировку»: в шапке видна дата записи (R07-REQ04). */
+  retro?: boolean;
   restored?: boolean;
 };
 export type PersistenceStatus = "saved" | "failed" | "pending";
@@ -127,6 +129,7 @@ export function parseDraft(text: string | null): Draft | null {
       restUntil: Number.isFinite(d.restUntil) ? d.restUntil : null,
       pausedRest: Number.isFinite(d.pausedRest) ? d.pausedRest : null,
       manualDuration: d.editing || !!d.manualDuration,
+      retro: d.retro === true ? true : undefined,
       restored: true,
     };
   } catch {

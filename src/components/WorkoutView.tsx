@@ -24,6 +24,7 @@ import {
   Download,
   X,
   Dumbbell,
+  Calendar,
   Target,
   Sparkles,
   Activity,
@@ -73,6 +74,7 @@ import {
 } from "../lib/draft";
 export type { Draft } from "../lib/draft";
 import { WarmupPlanner } from "../domain/WarmupPlanner";
+import { BackdatedWorkout } from "../domain/BackdatedWorkout";
 import Select from "./Select";
 
 type Props = {
@@ -215,6 +217,7 @@ export default function WorkoutView({
   const [now, setNow] = useState(Date.now());
   const [announcement, setAnnouncement] = useState("");
   const [rirHelp, setRirHelp] = useState(false);
+  const [datePanel, setDatePanel] = useState(false);
   const [needs, setNeeds] = useState<{ setId: string; field: MissingField } | null>(null);
   const [plateCalcTarget, setPlateCalcTarget] = useState<{ weight: number; ei: number } | null>(null);
   const [oneRepMaxTarget, setOneRepMaxTarget] = useState<{ weight: number; reps: number } | null>(null);
@@ -452,9 +455,44 @@ export default function WorkoutView({
     }
   };
 
-  const elapsed = draft.manualDuration
+  // R07-REQ04: у записи задним числом длительность задана, а не считается от «сейчас».
+  const zone = w.timeZone ?? settings.timeZone;
+  const retroLabel = draft.editing ? null : BackdatedWorkout.label(w.date, zone, !!draft.retro);
+  const manualClock = BackdatedWorkout.manualDuration(draft.manualDuration, w.date, zone);
+  const elapsed = manualClock
     ? w.duration
     : Math.floor(elapsedMs(draft, now) / 60000);
+  const dateField = (
+    <label>
+      Дата
+      <input
+        type="date"
+        max={localDate(new Date(), zone)}
+        value={w.date}
+        onChange={(e) => setWorkout({ ...w, date: e.target.value })}
+      />
+    </label>
+  );
+  const durationField = (
+    <label>
+      Длительность, минуты
+      <input
+        aria-label="Длительность тренировки, минуты"
+        disabled={saving}
+        type="number"
+        min="0"
+        max="1440"
+        value={elapsed}
+        onChange={(e) =>
+          update({
+            ...checkpointDraft(draft, Date.now(), true),
+            manualDuration: true,
+            workout: { ...w, duration: Number(e.target.value) },
+          })
+        }
+      />
+    </label>
+  );
   const summary = volumeSummary([w]);
   const warmupSummary = volumeSummary([w], "warmup");
   const warmupCount = w.exercises.reduce(
@@ -579,19 +617,39 @@ export default function WorkoutView({
             {saving ? "…" : draft.editing ? "Сохранить" : "Завершить"}
           </button>
         </div>
+        {retroLabel ? (
+          <div className="retro-date">
+            <button
+              type="button"
+              className="retro-chip"
+              aria-expanded={datePanel}
+              aria-controls="retro-date-panel"
+              onClick={() => setDatePanel((open) => !open)}
+            >
+              <Calendar size={15} aria-hidden="true" />
+              {retroLabel}
+            </button>
+            {datePanel ? (
+              <div className="retro-panel" id="retro-date-panel" role="group" aria-label="Дата и длительность записи">
+                {dateField}
+                {durationField}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         <div className="workout-live-hud">
           <span className="live-clock-badge" ref={pinRef}>
             <b>
               <span
                 aria-hidden="true"
-                className={`live-rec-dot ${draft.clock.runningSince !== null && !draft.manualDuration ? "recording" : "paused"}`}
+                className={`live-rec-dot ${draft.clock.runningSince !== null && !manualClock ? "recording" : "paused"}`}
               />
-              {draft.manualDuration
+              {manualClock
                 ? `${w.duration} мин`
                 : clock(Math.floor(elapsedMs(draft, now) / 1000))}
             </b>
             <span className="hud-label">
-              {draft.manualDuration
+              {manualClock
                 ? "Длительность"
                 : draft.clock.runningSince === null
                   ? "Счётчик · пауза"
@@ -1503,34 +1561,9 @@ changeSet(ei, si, PreviousSets.patch(deloaded(we, last, comparableIndex, s.warmu
         </button>
         <details className="workout-details panel" open={draft.editing}>
           <summary>Детали тренировки</summary>
-          <label>
-            Дата
-            <input
-              type="date"
-              max={localDate(new Date(), w.timeZone ?? settings.timeZone)}
-              value={w.date}
-              onChange={(e) => setWorkout({ ...w, date: e.target.value })}
-            />
-          </label>
+          {dateField}
           <div className="duration-controls">
-            <label>
-              Длительность, минуты
-              <input
-                aria-label="Длительность тренировки, минуты"
-                disabled={saving}
-                type="number"
-                min="0"
-                max="1440"
-                value={elapsed}
-                onChange={(e) =>
-                  update({
-                    ...checkpointDraft(draft, Date.now(), true),
-                    manualDuration: true,
-                    workout: { ...w, duration: Number(e.target.value) },
-                  })
-                }
-              />
-            </label>
+            {durationField}
             {!draft.editing ? (
               <button
                 className="icon-button"

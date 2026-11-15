@@ -148,6 +148,7 @@ import { TimeZoneField } from "./components/TimeZoneField";
 import { DeloadPlan, type DeloadPlanRecord } from "./domain/DeloadPlan";
 import { DeloadEngine } from "./domain/DeloadEngine";
 import { PlanLine } from "./domain/PlanLine";
+import { BackdatedWorkout } from "./domain/BackdatedWorkout";
 import { usePendingWorkouts } from "./hooks/usePendingWorkouts";
 import { productService } from "./services/ProductService";
 import { TrainingProgram, nextScheduled } from "./domain/TrainingProgram";
@@ -659,7 +660,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
     return () => window.removeEventListener("popstate", onPop);
   }, []);
   const restNotification=useRestNotifications(account.id,draft,setDraft,()=>go("workout"),view==="workout");
-  const start = (ids: string[] = [], name?: string, template?: Workout) => {
+  const start = (ids: string[] = [], name?: string, template?: Workout, retro = false) => {
     if (draft) {
       go("workout");
       warn("У тебя уже есть черновик. Продолжи или отмени его.");
@@ -669,7 +670,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
     const workout = template ?? makeWorkout(ids, DeloadEngine.regular(workouts), settings.timeZone, true);
     workout.exercises = BodyMass.workout(workout, weights.massAt(workout.date,account.bodyMassKg)).exercises;
     if (name) workout.name = name;
-    setDraft(newDraft(workout));
+    setDraft({ ...newDraft(workout), ...(retro ? { retro: true } : {}) });
     setConflict(null);
     setDemo(false);
     setSaveError("");
@@ -782,7 +783,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
     }
     const { workout: performed, removed } = new WorkoutSession(draft.workout).withoutUnperformed();
     const workout = new WorkoutSession(performed).completedWithDuration(
-      draft.manualDuration
+      BackdatedWorkout.manualDuration(draft.manualDuration, draft.workout.date, draft.workout.timeZone ?? settings.timeZone)
         ? draft.workout.duration
         : Math.floor(elapsedMs(draft) / 60000),
     );
@@ -1480,7 +1481,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                         <History size={36} />
                         <h2>История начинается сегодня</h2>
                         <p>Завершённая тренировка появится здесь.</p>
-                        <button className="button primary" onClick={() => start()}>
+                        <button className="button primary" onClick={() => start([], undefined, undefined, true)}>
                           Записать тренировку
                         </button>
                       </div>
@@ -1956,7 +1957,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
           >
             <span className="resume-dot" aria-hidden="true" />
             Вернуться к тренировке
-            <b>{draft.manualDuration ? draft.workout.duration : Math.floor(elapsedMs(draft) / 60000)} мин</b>
+            <b>{BackdatedWorkout.manualDuration(draft.manualDuration, draft.workout.date, draft.workout.timeZone ?? settings.timeZone) ? draft.workout.duration : Math.floor(elapsedMs(draft) / 60000)} мин</b>
           </m.button>
         ) : null}
       </AnimatePresence>
