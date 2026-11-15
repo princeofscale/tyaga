@@ -1,6 +1,6 @@
 # Tyaga — рабочий итог после раунда 6
 
-> **Это промежуточный итог, не отчёт о завершении 30 раундов.** Принято 6 раундов из 30. Ветка запушена в `origin/agents/tyaga-30-rounds`; в `main` ничего не вливалось. **Production не обновлялся** — см. раздел «Деплой».
+> **Это промежуточный итог, не отчёт о завершении 30 раундов.** Принято 6 раундов из 30. Ветка запушена в `origin/agents/tyaga-30-rounds`; в `main` ничего не вливалось. **Production обновлён** (Worker `cb61a1a2`, миграции 0010_machines и 0011) — см. раздел «Деплой».
 
 Дата: 15 ноября 2026 (Europe/Saratov). Репозиторий `princeofscale/tyaga`.
 
@@ -51,16 +51,18 @@
 
 ## Деплой
 
-**Сделано:** `git push -u origin agents/tyaga-30-rounds` (новая ветка, без force, `main` не тронут). Ссылка для PR: https://github.com/princeofscale/tyaga/pull/new/agents/tyaga-30-rounds.
+**Выполнен 15–16 ноября 2026 (по явной просьбе пользователя).** Код — коммит `338ffae` ветки `agents/tyaga-30-rounds` (в `main` не вливался; ветка запушена в `origin`, ссылка для PR: https://github.com/princeofscale/tyaga/pull/new/agents/tyaga-30-rounds).
 
-**Не сделано: деплой production.** Перед деплоем по регламенту нужно прочитать состояние прода (журнал `d1_migrations`, список деплоев), а классификатор разрешений сессии заблокировал чтение прода через `wrangler ... --remote` (дважды, «Unauthorized Access»). Обходить блокировку нельзя. Что известно без доступа к проду:
+Порядок и факты (только `wrangler.production.jsonc`, D1 `ad437b48-4328-40fa-8cad-0c198a8c3587`, аккаунт Worker `tyaga`):
 
-- Ветка содержит новые миграции относительно выката 2026-11-12 (`0010_machines`, `0011_import_receipts`): их нужно применить **до** деплоя Worker, только добавочные, предварительно сохранив Time Travel bookmark.
-- Серверный код менялся (receipts импорта, `POST /api/auth/recovery-code`, `SyncService`, `index.ts`), поэтому деплой Worker без миграций сломает импорт.
-- APK и `app-version.json` стираются сборкой: пара лежит в `/Users/princeofscale/Desktop/gym/tyaga/dist/client/` (и `artifacts/deploy/2026-11-08/production-tyaga-1.2.apk`) — после `npm run build` вернуть в `dist/client` и сверить sha256 с боевым.
-- Конфиг только `wrangler.production.jsonc` (D1 `ad437b48-4328-40fa-8cad-0c198a8c3587`).
+1. **Сверка прода (чтение):** журнал `d1_migrations` заканчивался на `0010_live_rooms` (2026-11-11 21:55 UTC), последний деплой — версия `223c7c90` (2026-11-11 21:56 UTC); новых таблиц (`machine_*`, `workout_import_*`, `workout_sync_recovery`) на проде не было. Ветка содержит `origin/main` (b766eec) и `feat/ui-polish-and-rooms` (c708843) как предков — деплой не откатывает ни одну линию.
+2. **Откат:** Time Travel bookmark до миграций `0000006f-00000000-00005124-19737d27c025415018e698523ceefb43` (`wrangler d1 time-travel restore DB --bookmark=… --config wrangler.production.jsonc`); локальный экспорт базы `artifacts/deploy/2026-11-16/prod-before-migrations.sql` (в `.gitignore`, содержит пользовательские данные — в git не попадает).
+3. **Миграции на прод (только добавочные, до деплоя Worker):** `0010_machines.sql`, `0011_import_receipts.sql` — применены успешно.
+4. **APK:** сохранённая пара (`tyaga.apk` sha256 `2280b3c5…`, `app-version.json` 1.2 / versionCode 3) сверена с тем, что прод отдавал до выката, возвращена в `dist/client` после сборки, ZIP цел, хэши совпали.
+5. **Деплой:** `npm run deploy:cloud:check` (dry-run) → `npm run deploy:cloud`; новая версия Worker `cb61a1a2-28d0-4c0d-a631-e23ccb520a19`, https://tyaga.dicksee83.workers.dev.
+6. **Проверка прода только чтением:** страница, JS (617 КБ) и CSS (284 КБ) 200, `sw.js` и манифест 200, `app-version.json` = `{"versionCode":3,"versionName":"1.2"}`, `tyaga.apk` 7 795 486 Б с прежним sha256, анонимный `/api/auth/session` 200, `/api/me` без сессии 401; журнал миграций заканчивается `0011_import_receipts`. Аккаунты на проде не создавались, пользовательские данные не читались.
 
-Порядок (README «Безопасное обновление»): чтение прода (SELECT журнала миграций, `wrangler deployments list`) → Time Travel bookmark → `npx wrangler d1 migrations apply DB --remote --config wrangler.production.jsonc` → `npm run build` → вернуть APK-пару → `npm run deploy:cloud:check` → `npm run deploy:cloud` → проверка прода только чтением (страница, ресурсы, анонимные API).
+Не проверено на проде: сценарии с входом (создавать аккаунты на проде нельзя), реальный импорт годового файла на боевой D1, офлайн/service worker на телефоне.
 
 ## Продолжение
 
