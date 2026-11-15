@@ -4,9 +4,10 @@ import { BodyweightTracker } from "../domain/BodyweightTracker";
 import { localDate } from "../lib/calendar";
 import { Suspense, useState, useEffect, type FormEvent } from "react";
 import { CloudSyncPanel } from "./chunks";
+import RecoveryCodeModal from "./RecoveryCodeModal";
+import { TimeZoneField } from "./TimeZoneField";
 import { Smartphone, UserRound, Sparkles } from "lucide-react";
 import { api } from "../services/ApiClient";
-import { browserTimeZone } from "../lib/calendar";
 import type { AccountProfile } from "../lib/account";
 import { cloudState } from "../device/cloudSync";
 import {
@@ -37,6 +38,8 @@ export function AccountProfileForm({
 }) {
   const journal = useBodyweight();
   const [confirmLogout, setConfirmLogout] = useState(false);
+  const [zone, setZone] = useState(account.timeZone);
+  const [newCode, setNewCode] = useState("");
   const latestMass = journal.massAt(
     localDate(new Date(), account.timeZone),
     account.bodyMassKg,
@@ -162,28 +165,7 @@ export function AccountProfileForm({
           Вес берётся из журнала взвешиваний. Изменённое значение сохранится как
           замер за сегодня.
         </p>
-        <label>
-          Часовой пояс
-          <input
-            name="timeZone"
-            defaultValue={account.timeZone}
-            list="time-zones"
-            required
-          />
-        </label>
-        <datalist id="time-zones">
-          {[
-            browserTimeZone(),
-            "Europe/Moscow",
-            "Europe/Amsterdam",
-            "Asia/Yekaterinburg",
-            "Asia/Novosibirsk",
-            "America/Los_Angeles",
-            "UTC",
-          ].map((z, i) => (
-            <option key={`${z}-${i}`} value={z} />
-          ))}
-        </datalist>
+        <TimeZoneField label="Часовой пояс" name="timeZone" value={zone} onChange={setZone} />
         {error && (
           <p className="form-error" role="alert">
             {error}
@@ -297,6 +279,49 @@ export function AccountProfileForm({
               </button>
             </form>
           </details>
+          <details className="password-details recovery-details">
+            <summary>Код восстановления</summary>
+            <p className="tiny">
+              Код нигде не хранится в открытом виде, поэтому старый показать нельзя. Введи пароль — выпустим новый код,
+              а прежний перестанет подходить.
+            </p>
+            <form
+              className="account-form"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const form = e.currentTarget;
+                const f = new FormData(form);
+                setBusy(true);
+                setError("");
+                try {
+                  const r = await api<{ recoveryCode: string }>("/api/auth/recovery-code", "POST", {
+                    currentPassword: f.get("currentPassword"),
+                  });
+                  form.reset();
+                  setNewCode(r.recoveryCode);
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : "Не удалось выпустить код");
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              <label>
+                Текущий пароль для нового кода
+                <input name="currentPassword" type="password" minLength={10} autoComplete="current-password" required />
+              </label>
+              <button className="button secondary" disabled={busy}>
+                Выпустить новый код
+              </button>
+            </form>
+          </details>
+          {newCode ? (
+            <RecoveryCodeModal
+              code={newCode}
+              onClose={() => setNewCode("")}
+              intro="Новый код восстановления. Прежний больше не подходит. Сохрани этот: он показывается один раз."
+            />
+          ) : null}
           <a
             className="button secondary android-download"
             href="/tyaga.apk"

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Dumbbell, LockKeyhole, LoaderCircle, ShieldCheck, Download, Smartphone, Eye, EyeOff, ArrowRight, ArrowUpRight, AlertCircle } from "lucide-react";
+import { Dumbbell, LockKeyhole, LoaderCircle, ShieldCheck, Smartphone, Eye, EyeOff, ArrowRight, ArrowUpRight, AlertCircle } from "lucide-react";
 import { m, useReducedMotion } from "motion/react";
 import App from "../App";
-import Modal from "./Modal";
+import RecoveryCodeModal from "./RecoveryCodeModal";
 import { LiveRoomProvider } from "./LiveRoomProvider";
 import { api, ApiError } from "../services/ApiClient";
 import { offlineSnapshot } from "../lib/offlineSnapshot";
@@ -46,14 +46,8 @@ export default function AccountGate() {
         offlineSnapshot.saveSession(profile);
         if (fresh) offlineSnapshot.saveData(profile.id, { workouts: [], settings: { ...DEFAULT_SETTINGS, timeZone: profile.timeZone || browserTimeZone() }, product: { routines: [], customExercises: [], favorites: [] } });
         setState({ registered: true, profile }); if (recoveryCode) setRecovery(recoveryCode); history.replaceState(null, "", location.pathname + location.search); }} />}
-    {recovery && <Modal title="Код восстановления" onClose={() => setRecovery("")}>
-      <p className="modal-intro">Сохрани этот код. Он позволит установить новый пароль, если забудешь старый. Почту мы используем для входа; письма восстановления пока не отправляем.</p>
-      <code className="recovery-code">{recovery}</code>
-      <div className="modal-actions"><button className="button secondary" onClick={() => {
-        const url = URL.createObjectURL(new Blob([`Тяга — код восстановления\n${recovery}\nХрани отдельно от пароля.\n`], { type: "text/plain" }));
-        const a = document.createElement("a"); a.href = url; a.download = "tyaga-recovery.txt"; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
-      }}><Download size={16} />Скачать код</button><button className="button primary" onClick={() => setRecovery("")}>Код сохранён</button></div>
-    </Modal>}
+    {recovery && <RecoveryCodeModal code={recovery} onClose={() => setRecovery("")}
+      intro="Сохрани этот код: он нигде больше не показывается. Он позволит установить новый пароль, если забудешь старый. Потерял — войди с паролем и выпусти новый в профиле. Почту мы используем для входа; письма восстановления пока не отправляем." />}
   </>;
 }
 function SignIn({ registered, onSignedIn }: { registered: boolean; onSignedIn: (profile: AccountProfile, code?: string, fresh?: boolean) => void }) {
@@ -121,6 +115,11 @@ function SignIn({ registered, onSignedIn }: { registered: boolean; onSignedIn: (
             <button type="button" onClick={() => changeMode("login")} aria-pressed={mode === "login"} className={mode === "login" ? "active" : ""}>Вход</button>
             <button type="button" onClick={() => changeMode("register")} aria-pressed={mode === "register"} className={mode === "register" ? "active" : ""}>Регистрация</button>
           </div>
+        )}
+        {mode === "recover" && (
+          <p className="auth-field-hint recover-no-code">
+            Нет кода? Без него пароль не восстановить. Если ты ещё входишь с паролем на другом устройстве, войди там и выпусти новый код в профиле.
+          </p>
         )}
         <form onSubmit={submit} className="account-form" aria-busy={busy}>
           {mode === "register" && (

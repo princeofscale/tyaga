@@ -123,7 +123,6 @@ import { BodyweightModal } from "./components/BodyweightModal";
 import { DeloadModal } from "./components/DeloadModal";
 import { WarmupModal } from "./components/WarmupModal";
 import { IosInstallPrompt } from "./components/IosInstallPrompt";
-import { DeloadEngine } from "./domain/DeloadEngine";
 import { VolumeLandmarksModal } from "./components/VolumeLandmarksModal";
 import StatsAnalytics from "./components/StatsAnalytics";
 import InteractiveStrengthChart from "./components/InteractiveStrengthChart";
@@ -142,6 +141,8 @@ import {
 import { WorkoutSession } from "./domain/WorkoutSession";
 import { api, ApiError } from "./services/ApiClient";
 import { PendingWorkouts } from "./domain/PendingWorkouts";
+import { TimeZoneField } from "./components/TimeZoneField";
+import { DeloadPlan, type DeloadPlanRecord } from "./domain/DeloadPlan";
 import { usePendingWorkouts } from "./hooks/usePendingWorkouts";
 import { productService } from "./services/ProductService";
 import { TrainingProgram, nextScheduled } from "./domain/TrainingProgram";
@@ -505,6 +506,16 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
     [currentLoads, minutes, planEquipment, excluded, settings.restSeconds],
   );
   const today = localDate(new Date(), settings.timeZone);
+  // R04-REQ02: «Применить разгрузку» — пометка на устройстве на неделю; программы не переписываются.
+  const deloadStore = useMemo(() => new DeloadPlan(undefined, account.id), [account.id]);
+  const [deload, setDeload] = useState<DeloadPlanRecord | null>(null);
+  useEffect(() => setDeload(deloadStore.read(today)), [deloadStore, today]);
+  /** Тренировка из программы: с действующей разгрузкой — с уменьшенным весом и числом подходов. */
+  const programWorkout = (r: Routine) => {
+    const program = new TrainingProgram(r);
+    const tz = settings.timeZone ?? browserTimeZone();
+    return DeloadPlan.workout(program.start(workouts, tz), deload, program.isDeload(workouts, today));
+  };
   const nextProgramDay = useMemo(() => nextScheduled(product.routines, today), [product.routines, today]);
   const todayRoutine = product.routines.find((r) =>
     new TrainingProgram(r).scheduled(today),
@@ -513,12 +524,13 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
   const todayPlan = useMemo(
     () =>
       todayRoutine
-        ? new TrainingProgram(todayRoutine).start(
-            workouts,
-            settings.timeZone ?? browserTimeZone(),
+        ? DeloadPlan.workout(
+            new TrainingProgram(todayRoutine).start(workouts, settings.timeZone ?? browserTimeZone()),
+            deload,
+            new TrainingProgram(todayRoutine).isDeload(workouts, today),
           )
         : null,
-    [todayRoutine, workouts, settings.timeZone],
+    [todayRoutine, workouts, settings.timeZone, deload, today],
   );
   const todaySources = useMemo(
     () =>
@@ -1217,10 +1229,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                             ? start(
                                 [],
                                 undefined,
-                                new TrainingProgram(todayRoutine).start(
-                                  workouts,
-                                  settings.timeZone ?? browserTimeZone(),
-                                ),
+                                programWorkout(todayRoutine),
                               )
                             : start()
                       }
@@ -1302,6 +1311,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                   onDiscard={discardDraft}
                   onMinimize={() => go("overview")}
                   onOpenTogether={() => go("friends")}
+                  onToast={setToast}
                 />
               ) : null}
               {view === "history" ? (
@@ -1837,15 +1847,14 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                       onSave={saveRoutine}
                       onDelete={deleteRoutine}
                       onStart={(r) =>
-                        start(
-                          [],
-                          undefined,
-                          new TrainingProgram(r).start(
-                            workouts,
-                            settings.timeZone ?? browserTimeZone(),
-                          ),
-                        )
+                        start([], undefined, programWorkout(r))
                       }
+                      deload={deload}
+                      onCancelDeload={() => {
+                        deloadStore.cancel();
+                        setDeload(null);
+                        setToast("Разгрузка отменена: программы запускаются как раньше.");
+                      }}
                       initial={initialRoutine}
                       onInitialUsed={() => setInitialRoutine(null)}
                     />
@@ -1971,20 +1980,15 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
             Числа — недельные рабочие подходы, которые программа v2 планирует
             сама; жимы в них считаются и подходами на трицепс.
           </p>
-          <label className="settings-zone">
-            Часовой пояс календаря
-            <input
-              aria-label="Часовой пояс календаря"
+          <div className="settings-zone">
+            <TimeZoneField
+              label="Часовой пояс календаря"
               value={settingsDraft.timeZone ?? browserTimeZone()}
-              placeholder="Europe/Amsterdam"
-              onChange={(e) =>
-                setSettingsDraft((v) => ({ ...v, timeZone: e.target.value }))
-              }
+              onChange={(zone) => setSettingsDraft((v) => ({ ...v, timeZone: zone }))}
+              required={false}
             />
-            <small className="tiny">
-              Например Europe/Amsterdam. Даты прошлых тренировок не сдвигаются.
-            </small>
-          </label>
+            <small className="tiny">Даты прошлых тренировок не сдвигаются.</small>
+          </div>
           <div className="settings-bottom">
             <label>
               Оборудование
@@ -2445,10 +2449,16 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
           <DeloadModal
             workouts={workouts}
             timeZone={settings.timeZone}
+            plan={deload}
+            hasDraft={!!draft}
             onApplyDeload={(mode) => {
-              if (draft) {
-                setDraft((d) => (d ? { ...d, workout: DeloadEngine.transformWorkoutForDeload(d.workout, mode) } : null));
-              }
+              const result = deloadStore.apply(mode, today, product.routines);
+              if (result.applied) setDeload(result.record);
+              return result;
+            }}
+            onCancelDeload={() => {
+              deloadStore.cancel();
+              setDeload(null);
             }}
             onClose={() => setModal(null)}
           />

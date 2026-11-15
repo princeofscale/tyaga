@@ -42,6 +42,7 @@ import OneRepMaxCalculator from "./OneRepMaxCalculator";
 import ExerciseSwapModal from "./ExerciseSwapModal";
 import BodyMap from "./BodyMap";
 import LiveStrip from "./LiveStrip";
+import RoomBadge from "./RoomBadge";
 import Modal from "./Modal";
 import { audioHaptics } from "../lib/audioHaptics";
 import type { Exercise } from "../lib/types";
@@ -91,6 +92,8 @@ type Props = {
   onMinimize: () => void;
   /** Открыть комнату «Вместе» (полоса напарников над подходами ведёт туда). */
   onOpenTogether: () => void;
+  /** Короткое уведомление (комната, поделиться). */
+  onToast?: (text: string) => void;
 };
 const clock = (seconds: number) =>
   `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
@@ -200,6 +203,7 @@ export default function WorkoutView({
   onExport,
   onMinimize,
   onOpenTogether,
+  onToast,
 }: Props) {
   const [undoError,setUndoError] = useState("");
   const reducedMotion = useReducedMotion();
@@ -533,6 +537,7 @@ export default function WorkoutView({
             <span className="hud-label">Тоннаж свободных весов</span>
           </span>
         </div>
+        <RoomBadge onToast={onToast ?? (() => {})} />
         <LiveStrip onOpen={onOpenTogether} />
         <div className="workout-session-progress" aria-hidden="true">
           <span style={{ transform: `scaleX(${totalWorking ? doneWorking / totalWorking : 0})` }} />

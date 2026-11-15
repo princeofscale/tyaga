@@ -52,6 +52,7 @@ export async function round01Fixture(page: Page, options: Round01Options = {}) {
   const importBodies: any[] = [];
   const deleted: string[] = [];
   const savedBodies: Workout[] = [];
+  const recoveryRequests: Array<{ currentPassword?: string }> = [];
   /** Серверные квитанции импорта: запись, отмена и «уже отменён» ведут себя как на воркере. */
   const runs: Array<{ runId: string; manifestHash: string; at: string; total: number; ids: string[] }> = [];
   const undone = new Set<string>();
@@ -85,6 +86,12 @@ export async function round01Fixture(page: Page, options: Round01Options = {}) {
       active = body.email === other.email ? other : profile;
       signedIn = true;
       return json({ profile: active, ...(path.endsWith("register") ? { recoveryCode: "RECOVERY-1" } : {}) }, path.endsWith("register") ? 201 : 200);
+    }
+    if (path === "/api/auth/recovery-code" && method === "POST") {
+      recoveryRequests.push(r.postDataJSON());
+      if (r.postDataJSON().currentPassword !== "correct horse battery")
+        return json({ error: "Текущий пароль не подошёл." }, 401);
+      return json({ recoveryCode: `0123456789abcdef0123456789abcd${String(recoveryRequests.length).padStart(2, "0")}` });
     }
     if (path === "/api/auth/profile" && method === "PUT") {
       const body = r.postDataJSON();
@@ -215,7 +222,7 @@ export async function round01Fixture(page: Page, options: Round01Options = {}) {
   await mockLive(page);
   await page.goto("/");
   if (!options.signedOut) await expect(page.getByRole("heading", { name: "Сегодня", exact: true })).toBeVisible();
-  return { workouts, runs, pending, profile, profileBodies, importBodies, deleted, savedBodies, weights, errors, unexpected, releaseWeights: () => releaseWeights() };
+  return { workouts, runs, pending, profile, profileBodies, importBodies, deleted, savedBodies, recoveryRequests, weights, errors, unexpected, releaseWeights: () => releaseWeights() };
 }
 
 export const nav = (page: Page, name: string) =>

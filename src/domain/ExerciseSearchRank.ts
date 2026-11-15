@@ -60,6 +60,24 @@ export class ExerciseSearchRank {
     return !!own && basics.some((basic) => basic === own || basic.startsWith(own + " "));
   }
 
+  /**
+   * «База» по общему слову («присед», «тяга»): в каталоге с сервера нет простых «Приседаний со штангой», они есть только в основных
+   * упражнениях приложения. Для запроса из одного слова основные штанговые движения идут первыми, затем ответ сервера;
+   * одноимённые записи сервера не повторяются. Для запросов из нескольких слов («жим лёжа») ответ не меняется.
+   */
+  static withCoreFirst<T extends { name: string }>(
+    server: T[],
+    local: Array<T & { recording: { e1rmEligible?: boolean } }>,
+    query: string,
+    normalize: (text: string) => string = (text) => text.toLowerCase(),
+  ): T[] {
+    if (words(query).length !== 1) return server;
+    const core = local.filter((exercise) => ExerciseSearchRank.isCore(exercise));
+    if (!core.length) return server;
+    const taken = new Set(core.map((exercise) => normalize(exercise.name)));
+    return [...core, ...server.filter((exercise) => !taken.has(normalize(exercise.name)))];
+  }
+
   /** Стабильная сортировка: одинаково близкие остаются в исходном порядке. */
   static sort<T>(items: T[], query: string, nameOf: (item: T) => string, editorialOf: (item: T) => boolean = () => false, prominentOf: (item: T) => boolean = () => false, preferredOf: (item: T) => boolean = () => false, coreOf: (item: T) => boolean = () => false): T[] {
     if (!words(query).length) return items;

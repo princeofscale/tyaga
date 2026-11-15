@@ -12,7 +12,7 @@ export class DeviceAccountData {
   /** Ключи, у которых после префикса стоит id аккаунта. */
   private static readonly perAccount = [
     "tyaga-draft-account:", "tyaga-bodyweight-sync:", "tyaga-bodyweight-bound:", "tyaga-bodyweight-goal:",
-    "tyaga-bodyweight:", "tyaga-last-import:", "tyaga-offline:data:", "tyaga-pending-workouts:",
+    "tyaga-bodyweight:", "tyaga-last-import:", "tyaga-offline:data:", "tyaga-pending-workouts:", "tyaga-deload:",
   ];
 
   constructor(private storage: () => Store | null = () => (typeof localStorage === "undefined" ? null : localStorage)) {}

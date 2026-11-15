@@ -30,7 +30,7 @@ export default function Modal({ title, children, onClose, wide = false }: { titl
     timer.current = window.setTimeout(finish, EXIT_FALLBACK_MS);
   }, [finish]);
   return <dialog ref={ref} className={`modal ${wide ? 'modal-wide' : ''} ${closing ? 'closing' : ''}`} aria-label={title}
-    onCancel={e => { e.preventDefault(); requestClose(); }}
+    onCancel={e => { e.preventDefault(); e.stopPropagation(); requestClose(); }}
     onClick={e => { if (e.target === e.currentTarget) requestClose(); }}
     onAnimationEnd={e => { if (closing && e.target === e.currentTarget) finish(); }}>
     <div className="modal-head"><h2>{title}</h2><button className="icon-button" onClick={requestClose} aria-label="Закрыть окно"><X size={20} /></button></div>

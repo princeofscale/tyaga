@@ -147,7 +147,7 @@ test("PlateCalculator renders bounded initial weights and keeps apply/step label
     { input: NaN, expected: 60 },
     { input: -10, expected: 0 },
     { input: 0, expected: 60 },
-    { input: 80.25, expected: 80.25 },
+    { input: 80.25, expected: "80,25" },
   ];
   for (const example of cases) {
     const html = renderToStaticMarkup(createElement(PlateCalculator, {
@@ -155,9 +155,11 @@ test("PlateCalculator renders bounded initial weights and keeps apply/step label
     }));
     assert.ok(html.includes(`Применить ${example.expected} кг к подходу`));
     assert.doesNotMatch(html, /NaN|Infinity/);
-    for (const label of ["Закрыть", "Минус 10 кг", "Минус 2.5 кг", "Плюс 2.5 кг", "Плюс 10 кг"]) {
+    for (const label of ["Минус 10 кг", "Минус 2,5 кг", "Плюс 2,5 кг", "Плюс 10 кг"]) {
       assert.ok(html.includes(`aria-label="${label}"`));
     }
+    // Раунд 4 (REQ05): собственного крестика в калькуляторе нет — остаётся один «Закрыть окно» самого окна (Modal).
+    assert.ok(!html.includes('aria-label="Закрыть'));
   }
 });
 
@@ -167,14 +169,19 @@ test("WarmupModal renders finite clamped defaults and keeps original labels and 
     { weight: Infinity, reps: Infinity, expectedWeight: 20, expectedReps: 1 },
     { weight: NaN, reps: NaN, expectedWeight: 20, expectedReps: 1 },
     { weight: -10, reps: -10, expectedWeight: 20, expectedReps: 1 },
-    { weight: 80.5, reps: 6, expectedWeight: 80.5, expectedReps: 6 },
+    { weight: 80.5, reps: 6, expectedWeight: "80,5", expectedReps: 6 },
   ];
+  // Раунд 4: поля — текстовые NumberField (запятая вместо точки, без type=number), предел 400/30 держит домен, а не атрибут max.
+  const inputValue = (html: string, label: string) => {
+    const tag = html.match(new RegExp(`<input[^>]*aria-label="${label}"[^>]*>`))?.[0] ?? "";
+    return tag.match(/value="([^"]*)"/)?.[1];
+  };
   for (const example of cases) {
     const html = renderToStaticMarkup(createElement(WarmupModal, {
       defaultWeight: example.weight, defaultReps: example.reps, onClose: () => {},
     }));
-    assert.match(html, new RegExp(`max="400"[^>]*value="${example.expectedWeight}"`));
-    assert.match(html, new RegExp(`max="30"[^>]*value="${example.expectedReps}"`));
+    assert.equal(inputValue(html, "Рабочий вес, кг"), String(example.expectedWeight));
+    assert.equal(inputValue(html, "Повторений в подходе"), String(example.expectedReps));
     assert.doesNotMatch(html, /NaN|Infinity/);
     for (const label of ["Разминочная лесенка (OpenGym)", "Рабочий вес (кг):", "Повторений в подходе:", "Гриф:"]) {
       assert.ok(html.includes(label));

@@ -1,5 +1,8 @@
 import { useState, useMemo } from "react";
-import { Zap, TrendingUp, Info, Minus, Plus, Award } from "lucide-react";
+import { TrendingUp, Info, Minus, Plus, Award } from "lucide-react";
+import { OneRepMaxFormulas } from "../domain/OneRepMaxFormulas";
+import { DecimalInput } from "../domain/DecimalInput";
+import { NumberField } from "./NumberField";
 
 export default function OneRepMaxCalculator({
   initialWeight = 80,
@@ -13,29 +16,17 @@ export default function OneRepMaxCalculator({
   const [weight, setWeight] = useState(initialWeight || 80);
   const [reps, setReps] = useState(initialReps || 8);
 
-  // Calculate 1RM using standard peer-reviewed formulas
+  // Основная формула приложения — Эпли (как в «Прогрессе» и «Зале рекордов»); остальные — для сравнения.
   const formulas = useMemo(() => {
     if (!weight || !reps) return null;
-    if (reps === 1) {
-      return { epley: weight, brzycki: weight, lombardi: weight, avg: weight };
-    }
-    // Epley: weight * (1 + reps / 30)
-    const epley = weight * (1 + reps / 30);
-    // Brzycki: weight * (36 / (37 - reps))
-    const brzycki = reps < 37 ? weight * (36 / (37 - reps)) : epley;
-    // Lombardi: weight * reps^0.10
-    const lombardi = weight * Math.pow(reps, 0.1);
-    const avg = Math.round(((epley + brzycki + lombardi) / 3) * 2) / 2;
-
     return {
-      epley: Math.round(epley * 2) / 2,
-      brzycki: Math.round(brzycki * 2) / 2,
-      lombardi: Math.round(lombardi * 2) / 2,
-      avg,
+      epley: OneRepMaxFormulas.round(OneRepMaxFormulas.epley(weight, reps)),
+      brzycki: OneRepMaxFormulas.round(OneRepMaxFormulas.brzycki(weight, reps)),
+      lombardi: OneRepMaxFormulas.round(OneRepMaxFormulas.lombardi(weight, reps)),
     };
   }, [weight, reps]);
 
-  const oneRepMax = formulas?.avg ?? weight;
+  const oneRepMax = formulas?.epley ?? weight;
 
   // Percentage Training Zones
   const percentages = useMemo(() => {
@@ -57,7 +48,7 @@ export default function OneRepMaxCalculator({
   }, [oneRepMax]);
 
   const adjustWeight = (delta: number) => {
-    setWeight((prev) => Math.max(0, Math.round((prev + delta) * 10) / 10));
+    setWeight((prev) => Math.min(600, Math.max(1, Math.round((prev + delta) * 10) / 10)));
   };
 
   const adjustReps = (delta: number) => {
@@ -83,17 +74,16 @@ export default function OneRepMaxCalculator({
               type="button"
               className="orm-step-btn"
               onClick={() => adjustWeight(-2.5)}
-              aria-label="Минус 2.5 кг"
+              aria-label="Минус 2,5 кг"
             >
               <Minus size={15} />
             </button>
             <div className="orm-val-display">
-              <input
-                type="number"
-                min="0"
-                step="0.5"
-                value={weight || ""}
-                onChange={(e) => setWeight(Math.max(0, parseFloat(e.target.value) || 0))}
+              <NumberField
+                label="Рабочий вес, кг"
+                value={weight}
+                onValue={setWeight}
+                bounds={{ min: 1, max: 600, unit: "кг" }}
               />
               <span className="orm-unit">кг</span>
             </div>
@@ -101,7 +91,7 @@ export default function OneRepMaxCalculator({
               type="button"
               className="orm-step-btn"
               onClick={() => adjustWeight(2.5)}
-              aria-label="Плюс 2.5 кг"
+              aria-label="Плюс 2,5 кг"
             >
               <Plus size={15} />
             </button>
@@ -128,12 +118,12 @@ export default function OneRepMaxCalculator({
               <Minus size={15} />
             </button>
             <div className="orm-val-display">
-              <input
-                type="number"
-                min="1"
-                max="30"
-                value={reps || ""}
-                onChange={(e) => setReps(Math.max(1, parseInt(e.target.value, 10) || 1))}
+              <NumberField
+                label="Повторений до отказа"
+                value={reps}
+                onValue={(n) => setReps(Math.round(n))}
+                bounds={{ min: 1, max: 30 }}
+                decimals={0}
               />
               <span className="orm-unit">повт.</span>
             </div>
@@ -170,14 +160,17 @@ export default function OneRepMaxCalculator({
             <span className="orm-hero-title">РАСЧЁТНЫЙ ОДНОПОВТОРНЫЙ МАКСИМУМ</span>
           </div>
           <div className="orm-hero-metric">
-            <span className="orm-hero-digits">{oneRepMax}</span>
+            <span className="orm-hero-digits">{DecimalInput.format(oneRepMax, 1)}</span>
             <span className="orm-hero-kg">кг</span>
           </div>
           <div className="orm-formulas-pills">
-            <span className="formula-pill">Epley: <b>{formulas?.epley} кг</b></span>
-            <span className="formula-pill">Brzycki: <b>{formulas?.brzycki} кг</b></span>
-            <span className="formula-pill">Lombardi: <b>{formulas?.lombardi} кг</b></span>
+            <span className="formula-pill formula-primary">Epley (основная): <b>{DecimalInput.format(formulas?.epley ?? 0, 1)} кг</b></span>
+            <span className="formula-pill">Brzycki: <b>{DecimalInput.format(formulas?.brzycki ?? 0, 1)} кг</b></span>
+            <span className="formula-pill">Lombardi: <b>{DecimalInput.format(formulas?.lombardi ?? 0, 1)} кг</b></span>
           </div>
+          <p className="orm-formula-note">
+            Основная формула в приложении — Эпли: по ней считаются «Прогресс» и «Зал рекордов». Brzycki и Lombardi — для сравнения.
+          </p>
         </div>
       </div>
 
@@ -195,7 +188,7 @@ export default function OneRepMaxCalculator({
                 <span className="zone-reps-target">{p.reps}</span>
               </div>
               <div className="zone-load-col">
-                <span className="zone-load-val">{p.load}</span>
+                <span className="zone-load-val">{DecimalInput.format(p.load)}</span>
                 <span className="zone-load-unit">кг</span>
               </div>
               <div className="zone-desc-col">

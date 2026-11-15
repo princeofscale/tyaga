@@ -118,7 +118,7 @@ test("account registration or login, profile, logout and returning session work 
   await page.getByLabel("Пароль",{exact:true}).fill("test account passphrase");
   await page.screenshot({path:"artifacts/account-mobile-v4.png",fullPage:true});
   await page.getByRole("button",{name:state.registered ? "Войти в Тягу" : "Создать аккаунт",exact:true}).click();
-  if (!state.registered) { await expect(page.getByRole("dialog",{name:"Код восстановления"})).toBeVisible(); await page.getByRole("button",{name:"Код сохранён"}).click(); }
+  if (!state.registered) { await expect(page.getByRole("dialog",{name:"Код восстановления"})).toBeVisible(); await page.getByLabel("Я сохранил код").check(); await page.getByRole("button",{name:"Код сохранён"}).click(); }
   await expect(page.getByRole("heading",{name:"Сегодня",exact:true})).toBeVisible();
   await page.reload(); await expect(page.getByRole("heading",{name:"Сегодня",exact:true})).toBeVisible();
   await page.getByRole("button",{name:"Мой профиль"}).click();
@@ -615,6 +615,8 @@ test("wger browse, attribution and recording survive reload and edit", async ({
   await page.screenshot({ path: "artifacts/wger-v3.png", fullPage: true });
   const card = page
     .locator(".library-card")
+    // Раунд 4 (REQ09): «Основные» упражнения идут первыми и без источника — нужна карточка из импортированной «Базы».
+    .filter({ has: page.locator(".exercise-source-tag") })
     .filter({ has: page.locator(".library-add:not([disabled])") })
     .first();
   const name = (await card.locator("h3").textContent())!;

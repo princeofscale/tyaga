@@ -1,4 +1,5 @@
 import { quantity } from "../lib/quantity";
+import { DecimalInput } from "../domain/DecimalInput";
 import { useBodyweight } from "../state/BodyweightContext";
 import {
   useEffect,
@@ -38,13 +39,13 @@ export function BodyweightModal({
   const [entries, setEntries] = useState(() => tracker.getEntries());
   const [goal, setGoal] = useState(() => tracker.getGoal());
   const [weight, setWeight] = useState(
-    () => entries.at(-1)?.weightKg.toString() ?? "",
+    () => (entries.at(-1) ? DecimalInput.format(entries.at(-1)!.weightKg, 1) : ""),
   );
   const today = localDate(new Date(), timeZone);
   const [date, setDate] = useState(today),
     [note, setNote] = useState("");
   const [goalInput, setGoalInput] = useState(
-      () => goal.targetWeightKg?.toString() ?? "",
+      () => (goal.targetWeightKg != null ? DecimalInput.format(goal.targetWeightKg, 1) : ""),
     ),
     [goalEditor, setGoalEditor] = useState(false);
   const [period, setPeriod] = useState(90),
@@ -55,10 +56,10 @@ export function BodyweightModal({
   const reduced = useReducedMotion();
   useEffect(() => {
     const latest = journal.tracker.getEntries();
-    setWeight(latest.at(-1)?.weightKg.toString() ?? "");
+    setWeight(latest.at(-1) ? DecimalInput.format(latest.at(-1)!.weightKg, 1) : "");
     setDate(localDate(new Date(), timeZone));
     setNote("");
-    setGoalInput(journal.tracker.getGoal().targetWeightKg?.toString() ?? "");
+    setGoalInput(journal.tracker.getGoal().targetWeightKg !== undefined ? DecimalInput.format(journal.tracker.getGoal().targetWeightKg!, 1) : "");
     setGoalEditor(false);
     setDeleting(null);
     setError(journal.tracker.storageIssue());
@@ -105,19 +106,21 @@ export function BodyweightModal({
   const save = (e: FormEvent) => {
     e.preventDefault();
     attempt(() => {
-      tracker.addEntry(BodyweightTracker.parseWeight(weight), date, note);
+      const kg = BodyweightTracker.parseWeight(weight);
+      tracker.addEntry(kg, date, note);
+      setWeight(DecimalInput.format(kg, 1));
       setNote("");
     }, "Замер сохранён");
   };
   const edit = (entry: BodyweightEntry) => {
-    setWeight(String(entry.weightKg));
+    setWeight(DecimalInput.format(entry.weightKg, 1));
     setDate(entry.date);
     setNote(entry.note ?? "");
     weightInputRef.current?.focus();
   };
   const step = (delta: number) => {
     try {
-      setWeight(String(BodyweightTracker.step(weight, delta)));
+      setWeight(DecimalInput.format(BodyweightTracker.step(weight, delta), 1));
       setError("");
     } catch (e) {
       setError((e as Error).message);

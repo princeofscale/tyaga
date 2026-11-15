@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
-import { X, Dumbbell, Minus, Plus, Check } from "lucide-react";
+import { Dumbbell, Minus, Plus, Check } from "lucide-react";
+import { DecimalInput } from "../domain/DecimalInput";
 import { PlateLoadingCalculator } from "../domain/PlateLoadingCalculator";
 
 export interface PlateSpec {
@@ -78,14 +79,6 @@ export default function PlateCalculator({
           <Dumbbell size={20} className="text-accent" />
           <h3>Калькулятор блинов на гриф</h3>
         </div>
-        <button
-          type="button"
-          className="icon-button close-btn"
-          onClick={onClose}
-          aria-label="Закрыть"
-        >
-          <X size={18} />
-        </button>
       </div>
 
       <div className="plate-calc-body">
@@ -104,13 +97,13 @@ export default function PlateCalculator({
               type="button"
               className="plate-quick-step"
               onClick={() => adjustWeight(-2.5)}
-              aria-label="Минус 2.5 кг"
+              aria-label="Минус 2,5 кг"
             >
               <Minus size={16} />
             </button>
 
             <div className="target-val-box">
-              <span className="target-val">{targetWeight}</span>
+              <span className="target-val">{DecimalInput.format(targetWeight)}</span>
               <span className="target-unit">кг</span>
             </div>
 
@@ -118,7 +111,7 @@ export default function PlateCalculator({
               type="button"
               className="plate-quick-step"
               onClick={() => adjustWeight(2.5)}
-              aria-label="Плюс 2.5 кг"
+              aria-label="Плюс 2,5 кг"
             >
               <Plus size={16} />
             </button>
@@ -170,10 +163,10 @@ export default function PlateCalculator({
         {/* SVG Olympic Barbell Visualizer */}
         <div className="barbell-graphic-container">
           <div className="barbell-sleeve-label">
-            <span>На сторону: <b>{weightPerSide.toFixed(2).replace(/\.00$/, "")} кг</b></span>
+            <span>На сторону: <b>{DecimalInput.format(weightPerSide)} кг</b></span>
             {actualLoaded !== targetWeight && (
               <span className="actual-loaded-warn">
-                (Собрано: {actualLoaded} кг)
+                (Собрано: {DecimalInput.format(actualLoaded)} кг)
               </span>
             )}
           </div>
@@ -267,7 +260,7 @@ export default function PlateCalculator({
                             fontFamily="sans-serif"
                             transform={`rotate(-90 ${plateX + p.width / 2} ${plateY + p.height / 2})`}
                           >
-                            {p.weight}
+                            {DecimalInput.format(p.weight)}
                           </text>
                         </g>
                       );
@@ -292,7 +285,7 @@ export default function PlateCalculator({
         <div className="plates-summary-list">
           <span className="summary-title">Порядок надевания блинов (на сторону):</span>
           {plateCounts.length === 0 ? (
-            <p className="tiny muted">Блины не требуются — пустой гриф {barWeight} кг</p>
+            <p className="tiny muted">Блины не требуются — пустой гриф {DecimalInput.format(barWeight)} кг</p>
           ) : (
             <div className="plates-pills-row">
               {plateCounts.map(({ count, spec }) => (
@@ -306,7 +299,7 @@ export default function PlateCalculator({
                   }}
                 >
                   <span className="chip-count">{count} ×</span>
-                  <span className="chip-weight">{spec.weight} кг</span>
+                  <span className="chip-weight">{DecimalInput.format(spec.weight)} кг</span>
                 </div>
               ))}
             </div>
@@ -323,7 +316,7 @@ export default function PlateCalculator({
             }}
           >
             <Check size={16} />
-            Применить {targetWeight} кг к подходу
+            Применить {DecimalInput.format(targetWeight)} кг к подходу
           </button>
         )}
       </div>

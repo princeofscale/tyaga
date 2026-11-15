@@ -56,7 +56,8 @@ export interface FatigueAssessment {
   fatigueScore: number; // 0-100 heuristic of recorded workload, not measured fatigue
   status: "fresh" | "optimal" | "fatigued" | "overreaching";
   statusLabel: string;
-  recommendedMode: DeloadMode;
+  /** `null`, когда по записанной работе разгрузка не напрашивается: формат тогда выбирает сам человек. */
+  recommendedMode: DeloadMode | null;
   reason: string;
   recentWorkoutsCount: number;
   recentSetsCount: number;
@@ -139,8 +140,8 @@ export class DeloadEngine {
         fatigueScore: score,
         status: "optimal",
         statusLabel: "Умеренный записанный объём",
-        recommendedMode: "intensity",
-        reason: "Журнал показывает умеренный объём, но не измеряет восстановление. Решение о разгрузке зависит от самочувствия и динамики результатов.",
+        recommendedMode: null,
+        reason: "Журнал показывает умеренный объём, но не измеряет восстановление. Решение о разгрузке зависит от самочувствия и динамики результатов. Формат ниже выбери сам.",
         recentWorkoutsCount: recent.length,
         recentSetsCount: totalWorkingSets,
         recentFailureSetsCount: failureSets,
@@ -150,8 +151,8 @@ export class DeloadEngine {
         fatigueScore: score,
         status: "fresh",
         statusLabel: totalWorkingSets ? "Небольшой записанный объём" : "Нет записанной работы за 30 дней",
-        recommendedMode: "intensity",
-        reason: "Недостаток записей не означает готовность к нагрузке. Учитывай пропущенные тренировки, сон, самочувствие и прогресс.",
+        recommendedMode: null,
+        reason: "По журналу разгрузка не напрашивается: записанного объёма немного. Недостаток записей не означает готовность к нагрузке — учитывай пропущенные тренировки, сон, самочувствие и прогресс. Формат ниже выбери сам.",
         recentWorkoutsCount: recent.length,
         recentSetsCount: totalWorkingSets,
         recentFailureSetsCount: failureSets,

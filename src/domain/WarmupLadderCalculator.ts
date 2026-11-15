@@ -65,7 +65,7 @@ export class WarmupLadderCalculator {
 
     const parts = Object.entries(counts)
       .sort((a, b) => Number(b[0]) - Number(a[0]))
-      .map(([plate, count]) => (count > 1 ? `${count}×${plate}` : `${plate}`));
+      .map(([plate, count]) => (count > 1 ? `${count}×${plate.replace(".", ",")}` : plate.replace(".", ",")));
 
     return `По ${parts.join(" + ")} кг на сторону`;
   }

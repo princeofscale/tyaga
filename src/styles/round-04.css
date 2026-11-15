@@ -1,0 +1,284 @@
+/* Раунд 4. Поля чисел, крупные кнопки калькуляторов, разгрузка, комната на экране тренировки. */
+
+.number-field {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+.number-field .field-hint {
+  flex-basis: 100%;
+  color: var(--muted, #9aa59b);
+  font-size: 0.75rem;
+}
+.warmup-input-wrap .number-field,
+.sim-input-inline .number-field {
+  width: 100%;
+}
+.number-field input {
+  min-height: 44px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Разгрузка. */
+.deload-active-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--accent, #cafa64);
+  border-radius: 12px;
+  font-size: 0.875rem;
+}
+.deload-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.deload-actions-row .button {
+  min-height: 44px;
+}
+.deload-nothing {
+  border-color: var(--border, #2f3a30);
+}
+.deload-card {
+  cursor: pointer;
+}
+
+/* R04-REQ05: калькуляторы блинов, 1ПМ и разминочной лесенки — цели касания не меньше 44×44. */
+.plate-calculator-modal .target-num-row {
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.plate-calculator-modal .target-val-box {
+  min-width: 64px;
+}
+.plate-calculator-modal .plate-quick-step {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+}
+.plate-calculator-modal .preset-btn {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 10px;
+  font-size: 0.875rem;
+}
+.plate-calculator-modal .bar-pill {
+  min-height: 44px;
+  padding: 0 12px;
+  font-size: 0.8125rem;
+}
+.onerep-calculator-v2 .orm-number-stepper {
+  flex-wrap: wrap;
+}
+.onerep-calculator-v2 .orm-val-display {
+  flex: 1 1 96px;
+  min-width: 96px;
+}
+.onerep-calculator-v2 .orm-val-display .orm-unit {
+  top: 22px;
+  transform: translateY(-50%);
+}
+.onerep-calculator-v2 .orm-step-btn {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 8px;
+}
+.onerep-calculator-v2 .orm-rep-presets {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.onerep-calculator-v2 .orm-preset-chip {
+  flex: 1 1 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  font-size: 0.875rem;
+}
+.orm-formula-note {
+  margin: 8px 0 0;
+  color: var(--muted, #9aa59b);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+.formula-pill.formula-primary {
+  border-color: var(--accent, #cafa64);
+}
+.warmup-ladder-content .warmup-select {
+  min-height: 44px;
+  width: 100%;
+}
+.number-field > .unit-label,
+.warmup-input-wrap .number-field > .unit-label {
+  top: 22px;
+  transform: translateY(-50%);
+}
+.number-field {
+  position: relative;
+  width: 100%;
+}
+.number-field > input {
+  flex: 1 1 100%;
+  min-width: 0;
+  padding-right: 3.2rem;
+}
+.sim-input-inline .number-field {
+  width: auto;
+  min-width: 80px;
+}
+.sim-input-inline .number-field > input {
+  width: 80px;
+  padding-right: 8px;
+}
+
+/* R04-REQ07: «Быстрая правка» — каждая кнопка не меньше 44×44, на узком экране кнопки переносятся, а не сжимаются. */
+@media (max-width: 420px) {
+  .workout-athletic .stepper-weights-group {
+    grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+  }
+  .workout-athletic .rir-quick-group {
+    grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+  }
+  .workout-athletic .rir-quick-group .steppers-label {
+    grid-column: 1 / -1;
+  }
+  .workout-athletic :is(.stepper-btn, .rir-quick-btn) {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+.workout-athletic .quick-controls-heading {
+  min-height: 44px;
+  padding-right: 150px;
+}
+.workout-athletic .set-context-toggle {
+  top: 4px;
+  right: 6px;
+  min-width: 44px;
+  min-height: 44px;
+}
+.workout-athletic .set-context-toggle::after {
+  inset: 0;
+}
+
+/* R04-REQ04: плашка комнаты на экране тренировки. */
+.room-badge {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--accent-line, var(--line));
+  border-radius: 12px;
+  background: var(--accent-soft, transparent);
+}
+.room-badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 8px;
+}
+.room-badge-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+.room-badge-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.room-badge-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text-soft);
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+.room-badge-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.6875rem;
+}
+.room-badge-ask {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--danger, #ff7a6b);
+  border-radius: 10px;
+}
+.room-badge-ask p {
+  margin: 0;
+  font-size: 0.8125rem;
+}
+.room-badge-ask-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.room-badge-ask-actions .button {
+  min-height: 44px;
+}
+
+/* R04-REQ03: код восстановления. */
+.recovery-confirm {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  margin: 12px 0 4px;
+}
+.recovery-confirm input {
+  width: 22px;
+  height: 22px;
+  min-height: 0;
+}
+.recover-no-code {
+  margin: 0 0 12px;
+}
+
+/* R04-REQ08: часовой пояс из списка. */
+.tz-field {
+  display: grid;
+  gap: 8px;
+}
+.tz-field select,
+.tz-field input {
+  min-height: 44px;
+}
+.tz-pick {
+  display: grid;
+  gap: 4px;
+}
+.tz-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+}
+.tz-actions .text-button {
+  min-height: 44px;
+}
+
+/* Крестик любого окна — тоже цель касания 44×44. */
+.modal-head .icon-button {
+  min-width: 44px;
+  min-height: 44px;
+}

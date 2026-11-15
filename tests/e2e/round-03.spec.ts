@@ -333,6 +333,7 @@ const register = async (page: Page, email = "fresh@example.test") => {
   await page.getByLabel("Почта").fill(email);
   await page.getByLabel("Пароль", { exact: true }).fill("correct horse battery");
   await page.getByRole("button", { name: "Создать аккаунт", exact: true }).click();
+  await page.getByLabel("Я сохранил код").check();
   await page.getByRole("button", { name: "Код сохранён", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Сегодня", exact: true })).toBeVisible();
 };

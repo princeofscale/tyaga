@@ -165,7 +165,7 @@ test('BL-AUTH BL-WORK BL-UX actual Chromium registration/profile/logout/login/dr
   const owner = 'qa-8796-ui-' + randomUUID(), email = owner + '@example.test';
   await context.setExtraHTTPHeaders({ 'oai-authenticated-user-id': owner });
   await page.goto(base); await page.getByLabel('Как тебя зовут').fill('QA UI'); await page.getByLabel('Почта').fill(email); await page.getByLabel('Пароль', { exact: true }).fill(password); await page.getByRole('button', { name: 'Создать аккаунт', exact: true }).click();
-  await expect(page.getByRole('dialog', { name: 'Код восстановления' })).toBeVisible(); await page.getByRole('button', { name: 'Код сохранён' }).click(); await expect(page.getByRole('heading', { name: 'Сегодня', exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Код восстановления' })).toBeVisible(); await page.getByLabel('Я сохранил код').check(); await page.getByRole('button', { name: 'Код сохранён' }).click(); await expect(page.getByRole('heading', { name: 'Сегодня', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Мой профиль', exact: true }).click(); const dialog = page.getByRole('dialog', { name: 'Мой профиль' });
   await expect(dialog.getByLabel('Имя', { exact: true })).toBeVisible(); await expect(dialog.getByLabel('Вес тела, кг')).toBeVisible(); await expect(dialog.getByLabel('Часовой пояс')).toBeVisible();
   await dialog.getByLabel('Имя', { exact: true }).fill('QA Profile saved'); await dialog.getByLabel('Вес тела, кг').fill('74'); await dialog.getByLabel('Часовой пояс').fill('Europe/Amsterdam'); await dialog.getByRole('button', { name: 'Сохранить профиль' }).click(); await expect(dialog.getByText('Профиль сохранён')).toBeVisible();

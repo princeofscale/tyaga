@@ -20,7 +20,8 @@ import {
 import Select from "./Select";
 import { MUSCLES, exerciseCatalog, type Exercise } from "../lib/model";
 import { WGER_ZONES } from "../domain/WgerExercise";
-import { matchesSearch } from "../lib/search";
+import { matchesSearch, normalizeSearch } from "../lib/search";
+import { ExerciseSearchRank } from "../domain/ExerciseSearchRank";
 import { quantity } from "../lib/quantity";
 import { exerciseLibraryService } from "../services/ExerciseLibraryService";
 import { MuscleParticipation } from "../domain/MuscleParticipation";
@@ -103,7 +104,14 @@ function LibraryContent({
     source === "tyaga"
       ? exerciseCatalog.search({ text: search, zone: muscle, equipment })
       : source === "wger"
-        ? (query.data?.exercises ?? [])
+        ? ExerciseSearchRank.withCoreFirst(
+            query.data?.exercises ?? [],
+            page === 1 && language !== "en"
+              ? exerciseCatalog.search({ text: debounced, zone: muscle, equipment })
+              : [],
+            debounced,
+            normalizeSearch,
+          )
         : filteredLocal;
 
   const exercises =

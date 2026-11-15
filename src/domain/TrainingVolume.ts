@@ -1,4 +1,5 @@
 import { AnalyticsFacts, type FactsOptions } from "./AnalyticsFacts";
+import { OneRepMaxFormulas } from "./OneRepMaxFormulas";
 import { ExecutionIdentity } from "./ExecutionIdentity";
 import { exerciseForEntry } from "../lib/catalog";
 import type { SetEntry, Workout, WorkoutExercise } from "../lib/types";
@@ -58,7 +59,7 @@ export class TrainingVolume {
       set.reps > 12
     )
       return null;
-    return set.reps === 1 ? set.weight : set.weight * (1 + set.reps / 30);
+    return OneRepMaxFormulas.epley(set.weight, set.reps);
   }
   /** Machine markings are compared only within the same movement/station/context. */
   static machines(workouts: Workout[], options: FactsOptions = {}) {

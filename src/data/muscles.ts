@@ -1,20 +1,21 @@
 // Display zones aggregate anatomical entries; a zone is not one anatomical muscle.
+// R04-REQ08: у группы одно название на всех экранах — `name` совпадает с `short`.
 export const MUSCLES = [
   { id: "chest", name: "Грудь", short: "Грудь", goal: 10 },
   { id: "back", name: "Спина", short: "Спина", goal: 12 },
   { id: "shoulders", name: "Плечи", short: "Плечи", goal: 8 },
-  { id: "biceps", name: "Сгибатели локтя", short: "Сгибатели рук", goal: 6 },
+  { id: "biceps", name: "Сгибатели рук", short: "Сгибатели рук", goal: 6 },
   { id: "triceps", name: "Трицепс", short: "Трицепс", goal: 6 },
   { id: "quads", name: "Квадрицепс", short: "Квадрицепс", goal: 10 },
   {
     id: "hamstrings",
-    name: "Задняя поверхность бедра",
+    name: "Задняя часть бедра",
     short: "Задняя часть бедра",
     goal: 8,
   },
-  { id: "glutes", name: "Ягодицы и приводящие", short: "Ягодицы", goal: 8 },
-  { id: "calves", name: "Мышцы голени", short: "Икры", goal: 6 },
-  { id: "core", name: "Мышцы живота", short: "Пресс", goal: 6 },
+  { id: "glutes", name: "Ягодицы", short: "Ягодицы", goal: 8 },
+  { id: "calves", name: "Икры", short: "Икры", goal: 6 },
+  { id: "core", name: "Пресс", short: "Пресс", goal: 6 },
 ] as const;
 export type Muscle = (typeof MUSCLES)[number]["id"];
 export const ANATOMICAL_MUSCLES = [

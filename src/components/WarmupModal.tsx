@@ -4,6 +4,8 @@ import {
   WarmupLadderCalculator,
   type WarmupStep,
 } from "../domain/WarmupLadderCalculator";
+import { DecimalInput } from "../domain/DecimalInput";
+import { NumberField } from "./NumberField";
 
 export function WarmupModal({
   defaultWeight = 80,
@@ -41,29 +43,27 @@ export function WarmupModal({
         <div className="warmup-config-item">
           <label>Рабочий вес (кг):</label>
           <div className="warmup-input-wrap">
-            <input
-              type="number"
-              step="2.5"
-              min="20"
-              max="400"
+            <NumberField
+              label="Рабочий вес, кг"
               value={targetWeight}
-              onChange={(e) => setTargetWeight(WarmupLadderCalculator.clampTargetWeight(e.target.value, 20))}
+              onValue={setTargetWeight}
+              bounds={{ min: Math.max(20, barWeight), max: WarmupLadderCalculator.MAX_TARGET_WEIGHT_KG, unit: "кг" }}
+              unit="кг"
             />
-            <span className="unit-label">кг</span>
           </div>
         </div>
 
         <div className="warmup-config-item">
           <label>Повторений в подходе:</label>
           <div className="warmup-input-wrap">
-            <input
-              type="number"
-              min="1"
-              max="30"
+            <NumberField
+              label="Повторений в подходе"
               value={targetReps}
-              onChange={(e) => setTargetReps(WarmupLadderCalculator.clampReps(e.target.value))}
+              onValue={(n) => setTargetReps(WarmupLadderCalculator.clampReps(n))}
+              bounds={{ min: 1, max: WarmupLadderCalculator.MAX_REPS }}
+              decimals={0}
+              unit="повт."
             />
-            <span className="unit-label">повт.</span>
           </div>
         </div>
 
@@ -73,6 +73,7 @@ export function WarmupModal({
             value={barWeight}
             onChange={(e) => setBarWeight(WarmupLadderCalculator.clampBarWeight(e.target.value))}
             className="warmup-select"
+            aria-label="Гриф"
           >
             <option value={20}>Олимпийский (20 кг)</option>
             <option value={15}>Женский (15 кг)</option>
@@ -96,7 +97,7 @@ export function WarmupModal({
 
             <div className="step-main-info">
               <div className="step-weight-row">
-                <b className="step-weight">{step.weightKg} кг</b>
+                <b className="step-weight">{DecimalInput.format(step.weightKg)} кг</b>
                 <span className="step-reps">× {step.reps} повт.</span>
                 {step.isWorkSet && (
                   <span className="work-tag">🎯 Целевой сет</span>

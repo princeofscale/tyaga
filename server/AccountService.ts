@@ -167,6 +167,18 @@ export class AccountService {
       await this.db.prepare("DELETE FROM sessions WHERE account_id = ?").bind(row.id).run();
       return this.reply({ profile: profile(updated) }, request, await this.newSession(row.id));
     }
+    if (path === "/api/auth/recovery-code" && request.method === "POST") {
+      // Старый код нигде не хранится (только хэш), поэтому показать его нельзя: выпускается новый, старый перестаёт подходить.
+      // Нужен вход и текущий пароль; попытки считаются так же, как у входа и смены пароля.
+      await this.limit();
+      const row = (await this.account())!;
+      if (!equal(await passwordHash(password(v.currentPassword), row.salt), row.password_hash)) throw new AuthError("Текущий пароль не подошёл.");
+      const recoveryCode = random(16);
+      const updated = await this.db.prepare("UPDATE accounts SET recovery_hash = ? WHERE id = ? AND recovery_hash = ? RETURNING id")
+        .bind(await hash(recoveryCode), row.id, row.recovery_hash).first<{ id: string }>();
+      if (!updated) throw new AuthError("Код только что выпустили на другом устройстве. Повтори.", 409);
+      return this.reply({ recoveryCode }, request);
+    }
     return this.reply({ error: "Не найдено" }, request, undefined, 404);
   }
 }

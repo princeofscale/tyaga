@@ -33,6 +33,8 @@ import { ApiError } from "../services/ApiClient";
 import Modal from "./Modal";
 import Select from "./Select";
 import { ExerciseLibrary } from "./chunks";
+import { DeloadPlan, type DeloadPlanRecord } from "../domain/DeloadPlan";
+import { dateLabel } from "../lib/calendar";
 
 type Props = {
   routines: Routine[];
@@ -44,6 +46,9 @@ type Props = {
   onSave: (r: Routine) => Promise<Routine>;
   onDelete: (r: Routine) => Promise<void>;
   onStart: (r: Routine) => void;
+  /** Действующая разгрузка на неделю (R04-REQ02) и её отмена. */
+  deload?: DeloadPlanRecord | null;
+  onCancelDeload?: () => void;
   initial?: Routine | null;
   onInitialUsed?: () => void;
 };
@@ -225,6 +230,19 @@ export default function ProgramsScreen(props: Props) {
     });
   return (
     <div className="programs-screen">
+      {props.deload ? (
+        <div className="deload-active-banner" role="status">
+          <span>
+            <b>Разгрузка активна до {dateLabel(props.deload.until)}.</b>{" "}
+            {DeloadPlan.parameters(props.deload.mode)}: программы запускаются уменьшенными, сами они не изменены.
+          </span>
+          {props.onCancelDeload ? (
+            <button type="button" className="button secondary" onClick={props.onCancelDeload}>
+              Отменить
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       <section className="week-planner panel">
         <div className="panel-header">
           <div>
@@ -315,7 +333,7 @@ export default function ProgramsScreen(props: Props) {
         </div>
         <button
           className="button primary"
-          onClick={() => open(TrainingProgram.empty())}
+          onClick={() => open({ ...TrainingProgram.empty(), name: "" })}
         >
           <Plus size={18} />
           Создать программу
@@ -540,6 +558,8 @@ export default function ProgramsScreen(props: Props) {
                 <input
                   required
                   maxLength={120}
+                  placeholder="Например, Мой push"
+                  autoFocus={editor.revision === 0 && editor.name === ""}
                   value={editor.name}
                   onChange={(e) =>
                     setEditor({ ...editor, name: e.target.value })

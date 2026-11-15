@@ -16,16 +16,27 @@ import {
   type FatigueAssessment,
 } from "../domain/DeloadEngine";
 import type { Workout } from "../lib/model";
+import { DeloadPlan, type DeloadApplication, type DeloadPlanRecord } from "../domain/DeloadPlan";
+import { DecimalInput } from "../domain/DecimalInput";
+import { NumberField } from "./NumberField";
+import { dateLabel } from "../lib/calendar";
 
 export function DeloadModal({
   workouts,
   timeZone,
+  plan,
+  hasDraft = false,
   onApplyDeload,
+  onCancelDeload,
   onClose,
 }: {
   workouts: Workout[];
   timeZone?: string;
-  onApplyDeload: (mode: DeloadMode) => void;
+  /** Действующая разгрузка (если уже применена). */
+  plan: DeloadPlanRecord | null;
+  hasDraft?: boolean;
+  onApplyDeload: (mode: DeloadMode) => DeloadApplication;
+  onCancelDeload: () => void;
   onClose: () => void;
 }) {
   const assessment: FatigueAssessment = useMemo(
@@ -34,11 +45,12 @@ export function DeloadModal({
   );
 
   const [selectedMode, setSelectedMode] = useState<DeloadMode>(
-    assessment.recommendedMode
+    plan?.mode ?? assessment.recommendedMode ?? "volume"
   );
   const [testWeight, setTestWeight] = useState(100);
   const [testSets, setTestSets] = useState(4);
-  const [applied, setApplied] = useState(false);
+  const [attempt, setAttempt] = useState<DeloadApplication | null>(null);
+  const [cancelled, setCancelled] = useState(false);
 
   const config = DELOAD_PRESETS[selectedMode];
 
@@ -52,11 +64,13 @@ export function DeloadModal({
   );
 
   const handleApply = () => {
-    onApplyDeload(selectedMode);
-    setApplied(true);
-    setTimeout(() => {
-      onClose();
-    }, 1800);
+    setCancelled(false);
+    setAttempt(onApplyDeload(selectedMode));
+  };
+  const handleCancel = () => {
+    onCancelDeload();
+    setAttempt(null);
+    setCancelled(true);
   };
 
   return (
@@ -110,17 +124,26 @@ export function DeloadModal({
       <div className="deload-modes-section">
         <h4 className="section-title">Выбери формат разгрузочной недели</h4>
 
-        <div className="deload-cards-grid">
+        <div className="deload-cards-grid" role="radiogroup" aria-label="Формат разгрузочной недели">
           {(["volume", "intensity", "recovery"] as const).map((m) => {
             const item = DELOAD_PRESETS[m];
             const isSelected = selectedMode === m;
-            const isRecommended = assessment.recommendedMode === m;
+            const isRecommended = assessment.recommendedMode !== null && assessment.recommendedMode === m;
 
             return (
               <div
                 key={m}
                 className={`deload-card ${isSelected ? "selected" : ""}`}
+                role="radio"
+                aria-checked={isSelected}
+                tabIndex={0}
                 onClick={() => setSelectedMode(m)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setSelectedMode(m);
+                  }
+                }}
               >
                 <div className="deload-card-header">
                   <div className="deload-card-title-row">
@@ -156,13 +179,11 @@ export function DeloadModal({
           <label>
             Обычный рабочий вес:
             <div className="sim-input-inline">
-              <input
-                type="number"
-                step="2.5"
-                min="20"
-                max="400"
+              <NumberField
+                label="Обычный рабочий вес, кг"
                 value={testWeight}
-                onChange={(e) => setTestWeight(Number(e.target.value) || 20)}
+                onValue={setTestWeight}
+                bounds={{ min: 20, max: 400, unit: "кг" }}
               />
               <span>кг</span>
             </div>
@@ -171,12 +192,12 @@ export function DeloadModal({
           <label>
             Рабочих подходов:
             <div className="sim-input-inline">
-              <input
-                type="number"
-                min="1"
-                max="10"
+              <NumberField
+                label="Рабочих подходов"
                 value={testSets}
-                onChange={(e) => setTestSets(Number(e.target.value) || 1)}
+                onValue={setTestSets}
+                bounds={{ min: 1, max: 10 }}
+                decimals={0}
               />
               <span>подходов</span>
             </div>
@@ -187,7 +208,7 @@ export function DeloadModal({
           <div className="sim-before">
             <span className="sim-res-label">До разгрузки:</span>
             <b>
-              {testWeight} кг × {testSets} подх.
+              {DecimalInput.format(testWeight)} кг × {testSets} подх.
             </b>
             <small>{normalTonnage.toLocaleString()} кг тоннажа</small>
           </div>
@@ -197,7 +218,7 @@ export function DeloadModal({
           <div className="sim-after">
             <span className="sim-res-label">В разгрузочную неделю:</span>
             <b className="text-accent">
-              {simWeight} кг × {simSets} подх.
+              {DecimalInput.format(simWeight)} кг × {simSets} подх.
             </b>
             <small>
               {deloadTonnage.toLocaleString()} кг (экономия {tonnageSavedPercent}%)
@@ -216,21 +237,50 @@ export function DeloadModal({
 
       {/* Action Footer */}
       <div className="deload-footer-actions">
-        {applied ? (
-          <div className="deload-applied-banner">
+        {attempt?.applied ? (
+          <div className="deload-applied-banner" role="status">
             <CheckCircle2 size={18} className="text-accent" />
-            <span>Стратегия разгрузки «{config.name}» активирована!</span>
+            <span>{attempt.message}</span>
           </div>
-        ) : (
+        ) : attempt ? (
+          <div className="deload-applied-banner deload-nothing" role="status">
+            <Info size={18} />
+            <span>{attempt.message}</span>
+          </div>
+        ) : plan && !cancelled ? (
+          <div className="deload-applied-banner" role="status">
+            <CheckCircle2 size={18} className="text-accent" />
+            <span>
+              {DeloadPlan.describe(plan)} Действует до {dateLabel(plan.until)}.
+            </span>
+          </div>
+        ) : cancelled ? (
+          <div className="deload-applied-banner deload-nothing" role="status">
+            <Info size={18} />
+            <span>Разгрузка отменена: программы запускаются как раньше.</span>
+          </div>
+        ) : null}
+        {hasDraft ? (
+          <p className="tiny">Текущая тренировка не меняется: разгрузка применяется при запуске программы.</p>
+        ) : null}
+        <div className="deload-actions-row">
           <button
             type="button"
-            className="button primary full-width apply-deload-btn"
+            className="button primary apply-deload-btn"
             onClick={handleApply}
           >
             <BatteryCharging size={18} />
             <span>Применить разгрузку к тренировкам</span>
           </button>
-        )}
+          {(attempt?.applied || (plan && !cancelled)) && (
+            <button type="button" className="button secondary" onClick={handleCancel}>
+              Отменить
+            </button>
+          )}
+          <button type="button" className="button secondary" onClick={onClose}>
+            Закрыть
+          </button>
+        </div>
       </div>
     </div>
   );

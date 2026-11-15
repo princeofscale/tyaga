@@ -123,7 +123,7 @@ test("volume tool uses a full rolling week and assistance despite the atlas week
   await expect(dialog.getByText(/последние 7 дней/)).toBeVisible();
   const biceps = dialog
     .locator(".rp-muscle-item")
-    .filter({ hasText: "Сгибатели локтя" });
+    .filter({ hasText: "Сгибатели рук" });
   await expect(biceps.locator(".rp-sets-counter b")).toHaveText("2");
   await expect(biceps).toContainText("из них при RIR ≤ 3: 1 экв. подх.");
   await expect(dialog).toContainText("Без RIR: 1 из 4 рабочих подходов");
