@@ -16,7 +16,7 @@ export default function OneRepMaxCalculator({
   const [weight, setWeight] = useState(initialWeight || 80);
   const [reps, setReps] = useState(initialReps || 8);
 
-  // Основная формула приложения — Эпли (как в «Прогрессе» и «Зале рекордов»); остальные — для сравнения.
+  // Основная формула приложения — Эпли (как в «Прогрессе» и «Зале личных рекордов»); остальные — для сравнения.
   const formulas = useMemo(() => {
     if (!weight || !reps) return null;
     return {
@@ -169,7 +169,7 @@ export default function OneRepMaxCalculator({
             <span className="formula-pill">Lombardi: <b>{DecimalInput.format(formulas?.lombardi ?? 0, 1)} кг</b></span>
           </div>
           <p className="orm-formula-note">
-            Основная формула в приложении — Эпли: по ней считаются «Прогресс» и «Зал рекордов». Brzycki и Lombardi — для сравнения.
+            Основная формула в приложении — Эпли: по ней считаются «Прогресс» и «Зал личных рекордов». Brzycki и Lombardi — для сравнения.
           </p>
         </div>
       </div>

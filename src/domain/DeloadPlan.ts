@@ -10,6 +10,8 @@ export type DeloadPlanRecord = {
   until: string;
   /** Названия программ, к которым применена разгрузка. */
   programs: string[];
+  /** Рабочих подходов в этих программах до разгрузки и после: процент в сообщении считается по ним, а не по пресету. */
+  sets?: { before: number; after: number };
 };
 export type DeloadApplication =
   | { applied: true; record: DeloadPlanRecord; message: string }
@@ -59,7 +61,7 @@ export class DeloadPlan {
         applied: false,
         message: "Нечего менять: нет сохранённых программ. Разгрузка меняет запуск программ; пустую тренировку собери с меньшим весом сам.",
       };
-    const record: DeloadPlanRecord = { mode, from: today, until: addCalendarDays(today, 6), programs };
+    const record: DeloadPlanRecord = { mode, from: today, until: addCalendarDays(today, 6), programs, sets: DeloadPlan.setCounts(routines, mode) };
     try {
       const store = this.store();
       if (!store) throw new Error("storage unavailable");
@@ -74,14 +76,33 @@ export class DeloadPlan {
     try { this.store()?.removeItem(DeloadPlan.key(this.accountId)); } catch { /* хранилище недоступно */ }
   }
 
-  /** «85% веса, 50% подходов». */
-  static parameters(mode: DeloadMode) {
+  /** Рабочие подходы программ до и после разгрузки по тому же правилу, что и `DeloadEngine` (округление на каждое упражнение, минимум 1). */
+  static setCounts(routines: Routine[], mode: DeloadMode) {
+    const multiplier = DELOAD_PRESETS[mode].volumeMultiplier;
+    let before = 0;
+    let after = 0;
+    for (const routine of routines)
+      for (const exercise of routine.exercises) {
+        const working = exercise.sets.filter((set) => !set.warmup).length;
+        if (!working) continue;
+        before += working;
+        after += Math.max(1, Math.round(working * multiplier));
+      }
+    return { before, after };
+  }
+
+  /**
+   * «85% веса, 50% подходов». Если известны реальные подходы программ, процент честный:
+   * при трёх подходах пресет 50% даёт два (67%), и так и написано — «67% подходов (9 → 6)».
+   */
+  static parameters(mode: DeloadMode, sets?: { before: number; after: number }) {
     const preset = DELOAD_PRESETS[mode];
-    return `${Math.round(preset.intensityMultiplier * 100)}% веса, ${Math.round(preset.volumeMultiplier * 100)}% подходов`;
+    const volume = sets && sets.before > 0 ? `${Math.round((sets.after / sets.before) * 100)}% подходов (${sets.before} → ${sets.after})` : `${Math.round(preset.volumeMultiplier * 100)}% подходов`;
+    return `${Math.round(preset.intensityMultiplier * 100)}% веса, ${volume}`;
   }
   static describe(record: DeloadPlanRecord) {
     const names = record.programs.slice(0, 4).join(", ") + (record.programs.length > 4 ? ` и ещё ${record.programs.length - 4}` : "");
-    return `Разгрузка на неделю: ${DeloadPlan.parameters(record.mode)} — применена к программам ${names}.`;
+    return `Разгрузка на неделю: ${DeloadPlan.parameters(record.mode, record.sets)} — применена к программам ${names}.`;
   }
 
   /** Тренировка из программы с разгрузкой; своя разгрузочная неделя цикла программы второй раз не уменьшается. */

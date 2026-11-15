@@ -466,6 +466,8 @@ export default function WorkoutView({
             disabled={saving}
             onChange={(e) => setWorkout({ ...w, name: e.target.value })}
           />
+          {/* QA-R04-01: комната — в строке названия (подпись над ним + два значка справа), а не отдельной плашкой: шапка не растёт. */}
+          <RoomBadge onToast={onToast ?? (() => {})} />
         </div>
         <button
           type="button"
@@ -537,7 +539,6 @@ export default function WorkoutView({
             <span className="hud-label">Тоннаж свободных весов</span>
           </span>
         </div>
-        <RoomBadge onToast={onToast ?? (() => {})} />
         <LiveStrip onOpen={onOpenTogether} />
         <div className="workout-session-progress" aria-hidden="true">
           <span style={{ transform: `scaleX(${totalWorking ? doneWorking / totalWorking : 0})` }} />

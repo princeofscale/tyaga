@@ -1,6 +1,6 @@
-import { useId } from "react";
+import { useEffect, useId, useRef } from "react";
 import { TimeZoneChoices } from "../domain/TimeZoneChoices";
-import { browserTimeZone } from "../lib/calendar";
+import { browserTimeZone, validTimeZone } from "../lib/calendar";
 
 /**
  * Часовой пояс без знания IANA: список («Саратов, UTC+4») и «Определить автоматически».
@@ -23,13 +23,22 @@ export function TimeZoneField({
   const listId = useId();
   const choices = TimeZoneChoices.list([value, detected]);
   const known = choices.some((choice) => choice.id === value);
+  // Пустое поле — это «ещё не введено» (его ловит required), несуществующий пояс — ошибка под полем.
+  const invalid = value.trim() !== "" && !validTimeZone(value.trim());
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    input.current?.setCustomValidity(invalid ? "Такого часового пояса нет. Выбери из списка." : "");
+  }, [invalid]);
   return (
     <div className="tz-field">
       <label>
         {label}
         <input
+          ref={input}
           name={name}
           aria-label={label}
+          aria-invalid={invalid || undefined}
+          aria-describedby={invalid ? `${listId}-error` : undefined}
           value={value}
           list={listId}
           onChange={(e) => onChange(e.target.value)}
@@ -38,6 +47,11 @@ export function TimeZoneField({
           required={required}
         />
       </label>
+      {invalid ? (
+        <small className="form-error tz-error" id={`${listId}-error`} role="alert">
+          Такого часового пояса нет: «{value.trim()}». Выбери из списка или нажми «Определить автоматически».
+        </small>
+      ) : null}
       <datalist id={listId}>
         {choices.map((choice) => (
           <option key={choice.id} value={choice.id} label={choice.label} />
@@ -55,7 +69,7 @@ export function TimeZoneField({
         </select>
       </label>
       <div className="tz-actions">
-        <small className="tiny">Сейчас: {TimeZoneChoices.label(value)}.</small>
+        {invalid ? <span /> : <small className="tiny">Сейчас: {TimeZoneChoices.label(value)}.</small>}
         <button type="button" className="text-button" onClick={() => onChange(detected)}>
           Определить автоматически ({TimeZoneChoices.label(detected)})
         </button>

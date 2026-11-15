@@ -13,6 +13,8 @@ export default function Modal({ title, children, onClose, wide = false }: { titl
   useEffect(() => {
     const dialog = ref.current!;
     dialog.showModal();
+    // showModal() ставит фокус на первую кнопку («Закрыть окно»); поле, помеченное data-autofocus, забирает его себе.
+    dialog.querySelector<HTMLElement>('[data-autofocus]')?.focus();
     return () => { window.clearTimeout(timer.current); if (dialog.open) dialog.close(); };
   }, []);
   /** Родитель снимает окно с экрана только после анимации выхода: один раз, как бы ни закрыли (кроме ответа `false`). */

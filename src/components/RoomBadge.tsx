@@ -28,7 +28,7 @@ export default function RoomBadge({ onToast }: { onToast: (text: string) => void
       <div className="room-badge-row">
         <span className="room-badge-title">
           <Users size={16} aria-hidden="true" />
-          <b>
+          <b title="Напарники видят твои подходы и отдых">
             Комната {room.code} · {members}
           </b>
         </span>
@@ -36,6 +36,8 @@ export default function RoomBadge({ onToast }: { onToast: (text: string) => void
           <button
             type="button"
             className="room-badge-btn"
+            aria-label="Поделиться"
+            title="Поделиться ссылкой на комнату"
             onClick={() => {
               void shareLink(
                 { title: "Тренируемся вместе", text: `Заходи в мою комнату в Тяге. Код: ${room.code}`, url: link },
@@ -44,15 +46,21 @@ export default function RoomBadge({ onToast }: { onToast: (text: string) => void
             }}
           >
             <Share2 size={16} aria-hidden="true" />
-            Поделиться
+            <span className="room-badge-label">Поделиться</span>
           </button>
-          <button type="button" className="room-badge-btn" disabled={busy} onClick={() => setAsking(true)}>
+          <button
+            type="button"
+            className="room-badge-btn"
+            aria-label="Выйти из комнаты"
+            title="Выйти из комнаты"
+            disabled={busy}
+            onClick={() => setAsking(true)}
+          >
             <LogOut size={16} aria-hidden="true" />
-            Выйти из комнаты
+            <span className="room-badge-label">Выйти</span>
           </button>
         </span>
       </div>
-      <p className="room-badge-note">Напарники видят твои подходы и отдых. Код: {[...room.code].join(" ")}.</p>
       {asking ? (
         <div className="room-badge-ask" role="alertdialog" aria-label="Выйти из комнаты?">
           <p>Выйти из комнаты {room.code}? Напарники перестанут видеть твою тренировку. Сама тренировка продолжится.</p>

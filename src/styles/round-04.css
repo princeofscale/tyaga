@@ -145,8 +145,13 @@
   .workout-athletic .rir-quick-group {
     grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
   }
-  .workout-athletic .rir-quick-group .steppers-label {
+  .workout-athletic :is(.stepper-weights-group, .rir-quick-group) .steppers-label {
     grid-column: 1 / -1;
+  }
+  /* QA-R04-04: шесть кнопок веса — одной строкой (6 × 44 + 5 × 2 ≤ 280 px на 360), а не 5 + «+5» на второй. */
+  .workout-athletic .stepper-weights-group {
+    grid-template-columns: repeat(6, minmax(44px, 1fr));
+    gap: 2px;
   }
   .workout-athletic :is(.stepper-btn, .rir-quick-btn) {
     min-width: 44px;
@@ -167,35 +172,66 @@
   inset: 0;
 }
 
-/* R04-REQ04: плашка комнаты на экране тренировки. */
-.room-badge {
-  grid-column: 1 / -1;
-  display: grid;
-  gap: 4px;
-  margin-top: 10px;
-  padding: 8px 10px;
-  border: 1px solid var(--accent-line, var(--line));
-  border-radius: 12px;
-  background: var(--accent-soft, transparent);
+/* QA-R04-04: «Подход N: амплитуда, хват и углы» в панели — цель не меньше 44 px по высоте. */
+.workout-athletic .set-context-panel .execution-fields {
+  min-height: 44px;
 }
-.room-badge-row {
+.workout-athletic .set-context-panel .execution-fields > summary {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 4px 8px;
+  min-height: 44px;
+}
+
+/* R04-REQ04: плашка комнаты на экране тренировки. */
+/*
+ * Комната живёт в строке названия тренировки: вместо подписи «Активная тренировка» — «Комната K7M2Q · 2 участника»,
+ * справа от названия два значка 44×44 («Поделиться», «Выйти из комнаты»). Отдельной плашки нет, шапка не растёт.
+ */
+.room-badge,
+.room-badge-row {
+  display: contents;
+}
+.workout-athletic .workout-bar-title:has(.room-badge) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  grid-template-areas:
+    "label label"
+    "name actions"
+    "ask ask";
+  column-gap: 8px;
+  align-items: center;
+}
+.workout-athletic .workout-bar-title:has(.room-badge) .workout-session-label {
+  display: none;
+}
+.workout-athletic .workout-bar-title:has(.room-badge) > input {
+  grid-area: name;
+  min-width: 0;
 }
 .room-badge-title {
+  grid-area: label;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 0.8125rem;
+  min-width: 0;
+  color: var(--accent, #cafa64);
+  font-size: 0.6875rem;
+  font-weight: 650;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.room-badge-title b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: inherit;
+}
+.room-badge-title svg {
+  flex: none;
 }
 .room-badge-actions {
+  grid-area: actions;
   display: inline-flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  gap: 4px;
 }
 .room-badge-btn {
   display: inline-flex;
@@ -204,20 +240,24 @@
   gap: 6px;
   min-width: 44px;
   min-height: 44px;
-  padding: 0 12px;
+  padding: 0 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
   color: var(--text-soft);
   font-size: 0.75rem;
-  font-weight: 650;
 }
-.room-badge-note {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.6875rem;
+.room-badge-label {
+  display: none;
+}
+@media (min-width: 560px) {
+  .room-badge-label {
+    display: inline;
+  }
 }
 .room-badge-ask {
+  grid-area: ask;
+  margin-top: 6px;
   display: grid;
   gap: 8px;
   padding: 10px;
@@ -281,4 +321,17 @@
 .modal-head .icon-button {
   min-width: 44px;
   min-height: 44px;
+}
+
+/* QA-R04-08: «Мои недельные ориентиры» — поля и «Сбросить к исходным» не меньше 44 px. */
+.goal-settings > label {
+  min-height: 44px;
+}
+.goal-settings input {
+  min-width: 64px;
+  min-height: 44px;
+}
+.modal-actions > .text-button {
+  min-height: 44px;
+  padding-inline: 12px;
 }

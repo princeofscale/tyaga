@@ -233,8 +233,8 @@ export default function ProgramsScreen(props: Props) {
       {props.deload ? (
         <div className="deload-active-banner" role="status">
           <span>
-            <b>Разгрузка активна до {dateLabel(props.deload.until)}.</b>{" "}
-            {DeloadPlan.parameters(props.deload.mode)}: программы запускаются уменьшенными, сами они не изменены.
+            <b>Разгрузка активна до {dateLabel(props.deload.until).replace(/\.$/, "")}.</b>{" "}
+            {DeloadPlan.parameters(props.deload.mode, props.deload.sets)}: программы запускаются уменьшенными, сами они не изменены.
           </span>
           {props.onCancelDeload ? (
             <button type="button" className="button secondary" onClick={props.onCancelDeload}>
@@ -559,7 +559,7 @@ export default function ProgramsScreen(props: Props) {
                   required
                   maxLength={120}
                   placeholder="Например, Мой push"
-                  autoFocus={editor.revision === 0 && editor.name === ""}
+                  data-autofocus={editor.revision === 0 && editor.name === "" ? "" : undefined}
                   value={editor.name}
                   onChange={(e) =>
                     setEditor({ ...editor, name: e.target.value })

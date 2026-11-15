@@ -102,7 +102,16 @@ test("R04-REQ02: разгрузка применяется к программа
   const routines = [routine("Верх тела"), routine("Низ тела")];
   const applied = plan.apply("volume", "2026-11-10", routines);
   assert.ok(applied.applied);
-  assert.equal(applied.message, "Разгрузка на неделю: 85% веса, 50% подходов — применена к программам Верх тела, Низ тела.");
+  const counts = DeloadPlan.setCounts(routines, "volume");
+  const pct = Math.round((counts.after / counts.before) * 100);
+  assert.equal(applied.message, `Разгрузка на неделю: 85% веса, ${pct}% подходов (${counts.before} → ${counts.after}) — применена к программам Верх тела, Низ тела.`);
+  // QA-R04-03: заявленный процент не врёт — 3 подхода при пресете 50% остаются 2, то есть 67%, и так и написано.
+  const three = { ...routines[0], exercises: [{ ...routines[0].exercises[0], sets: routines[0].exercises[0].sets.slice(0, 1).flatMap((x) => [x, { ...x, id: "b" }, { ...x, id: "c" }]) }] };
+  assert.deepEqual(DeloadPlan.setCounts([three], "volume"), { before: 3, after: 2 });
+  assert.equal(DeloadPlan.parameters("volume", { before: 3, after: 2 }), "85% веса, 67% подходов (3 → 2)");
+  const four = { ...three, exercises: [{ ...three.exercises[0], sets: [...three.exercises[0].sets, { ...three.exercises[0].sets[0], id: "d" }] }] };
+  assert.equal(DeloadPlan.parameters("volume", DeloadPlan.setCounts([four], "volume")), "85% веса, 50% подходов (4 → 2)");
+  assert.equal(DeloadPlan.parameters("volume"), "85% веса, 50% подходов", "без данных о программах — номинал пресета");
   assert.equal(plan.read("2026-11-16")?.mode, "volume", "семь дней с момента нажатия включительно");
   assert.equal(plan.read("2026-11-17"), null, "на следующей неделе разгрузки нет");
   assert.equal(map.size, 0, "просроченная разгрузка стёрта");

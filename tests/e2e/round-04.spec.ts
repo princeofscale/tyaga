@@ -100,12 +100,14 @@ test("R04-REQ02: «Применить разгрузку» сообщает ре
   await expect(page.locator(".rec-badge")).toHaveCount(0);
   await page.getByRole("button", { name: "Применить разгрузку к тренировкам", exact: true }).click();
   const result = page.getByRole("dialog").getByRole("status").filter({ hasText: "Разгрузка на неделю" });
-  await expect(result).toContainText("85% веса, 50% подходов — применена к программам Верх тела");
+  await expect(result).toContainText("85% веса, 67% подходов (6 → 4) — применена к программам Верх тела");
   await expect(page.getByRole("dialog").getByRole("button", { name: "Отменить", exact: true })).toBeVisible();
   await page.getByRole("dialog").getByRole("button", { name: "Закрыть", exact: true }).click();
   // В «Программах» видно, что разгрузка активна.
   await nav(page, "Программы").click();
   await expect(page.locator(".deload-active-banner")).toContainText("Разгрузка активна до");
+  // QA-R04-02: после даты ровно одна точка («до 17 нояб.», а не «до 17 нояб..»).
+  expect(await page.locator(".deload-active-banner").innerText()).not.toContain("..");
   // Запуск программы — уменьшенный: 2 + 2 подхода, вес 80 × 85% → 67,5.
   await nav(page, "Сегодня").click();
   await page.getByRole("button", { name: "Начать тренировку", exact: true }).first().click();
@@ -206,10 +208,10 @@ for (const size of SIZES) {
     await expect(page.locator(".workout-dock")).toBeVisible();
     const boxes = await page.evaluate(() => {
       const rect = (s: string) => document.querySelector(s)?.getBoundingClientRect();
-      const b = rect(".room-badge")!, d = rect(".workout-dock")!;
+      const parts = [rect(".room-badge-title")!, rect(".room-badge-actions")!], d = rect(".workout-dock")!;
       const check = [...document.querySelectorAll<HTMLElement>("button")].find((x) => x.getAttribute("aria-label")?.startsWith("Снять отметку"))!.getBoundingClientRect();
       const hit = (a: DOMRect, c: DOMRect) => !(a.right <= c.left || a.left >= c.right || a.bottom <= c.top || a.top >= c.bottom);
-      return { dock: hit(b, d), check: hit(b, check), overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth };
+      return { dock: parts.some((b) => hit(b, d)), check: parts.some((b) => hit(b, check)), overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth };
     });
     expect(boxes.dock, "плашка не перекрывает таймер отдыха").toBe(false);
     expect(boxes.check, "плашка не перекрывает ✓").toBe(false);
@@ -231,6 +233,76 @@ for (const size of SIZES) {
     expect(live.seen).toContain("DELETE /api/friends/live");
     // Сама тренировка продолжается.
     await expect(page.getByRole("button", { name: `Снять отметку: ${BENCH}, подход 1`, exact: true })).toBeVisible();
+  });
+}
+
+for (const size of SIZES) {
+  test(`QA-R04-01: плашка комнаты не растит липкую шапку и не закрывает ✓ подходов 1–3 при прокрутке ${size.width}×${size.height}`, async ({ page }) => {
+    await page.setViewportSize(size);
+    await round01Fixture(page);
+    await mockLive(page, liveMock(roomWithPartner()));
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Сегодня", exact: true })).toBeVisible();
+    await startWith(page, BENCH);
+    const badge = page.locator(".room-badge");
+    await expect(badge).toContainText(`Комната ${ROOM_CODE} · 2 участника`);
+    // Подход 1 выполнен — на экране таймер отдыха (самый строгий случай).
+    await page.getByLabel(`${BENCH}, подход 1, вес`, { exact: true }).fill("60");
+    await page.getByLabel(`${BENCH}, подход 1, повторы`, { exact: true }).fill("8");
+    await page.getByRole("button", { name: `Отметить выполненным: ${BENCH}, подход 1`, exact: true }).click();
+    await expect(page.locator(".workout-dock")).toBeVisible();
+    // Комната — в строке названия: подпись и два значка 44×44 рядом, без отдельного блока.
+    const parts = await page.evaluate(() => {
+      const r = (sel: string) => { const b = document.querySelector(sel)!.getBoundingClientRect(); return { top: Math.round(b.top), bottom: Math.round(b.bottom), left: Math.round(b.left), right: Math.round(b.right), height: Math.round(b.height) }; };
+      return { titleText: Math.ceil(document.querySelector<HTMLElement>(".room-badge-title b")!.scrollWidth) + 22, title: r(".room-badge-title"), actions: r(".room-badge-actions"), name: r(".workout-bar-title > input"), vw: innerWidth };
+    });
+    expect(parts.actions.height, "значки — одна строка 44 px").toBeLessThanOrEqual(46);
+    expect(parts.title.bottom, "подпись комнаты над названием").toBeLessThanOrEqual(parts.name.top + 1);
+    expect(parts.title.right - parts.title.left, "подпись «Комната … участника» не обрезана").toBeGreaterThanOrEqual(parts.titleText);
+    expect(parts.actions.right).toBeLessThanOrEqual(parts.vw);
+    expect(parts.name.right, "название не залезает под значки").toBeLessThanOrEqual(parts.actions.left);
+    for (const button of await badge.getByRole("button").all()) {
+      const b = (await button.boundingBox())!;
+      expect(b.width).toBeGreaterThanOrEqual(43.99);
+      expect(b.height).toBeGreaterThanOrEqual(43.99);
+    }
+    const pinned = () => page.evaluate(() => Math.round(document.querySelector<HTMLElement>(".workout-bar")!.getBoundingClientRect().bottom));
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+    const covered = () => page.evaluate(() => {
+      const out: string[] = [];
+      for (const b of document.querySelectorAll<HTMLButtonElement>("button[aria-label^='Отметить выполненным'], button[aria-label^='Снять отметку']")) {
+        const r = b.getBoundingClientRect();
+        if (r.bottom <= 0 || r.top >= innerHeight) continue; // вне экрана — не перекрыт, его просто не видно
+        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        if (!hit || !(hit === b || b.contains(hit))) { const hb = (hit?.closest("button") ?? hit)?.getBoundingClientRect(); out.push(`${b.getAttribute("aria-label")} [${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)}x${Math.round(r.height)}] закрыт: ${hit?.closest("button")?.getAttribute("aria-label") ?? hit?.className ?? hit?.tagName} [${hb ? `${Math.round(hb.left)},${Math.round(hb.top)},${Math.round(hb.width)}x${Math.round(hb.height)}` : ""}]`); }
+      }
+      return out;
+    });
+    const max = await page.evaluate(() => document.documentElement.scrollHeight - innerHeight);
+    for (const y of [0, Math.round(max / 3), Math.round((2 * max) / 3), max]) {
+      await page.evaluate((top) => window.scrollTo(0, top), y);
+      await page.waitForTimeout(150);
+      expect(await covered(), `прокрутка ${y}/${max}: ✓ подходов перекрыты`).toEqual([]);
+    }
+    // Каждый ✓ подходов 1–3 при подведении к центру экрана доступен для касания.
+    for (const n of [1, 2, 3]) {
+      const tick = page.locator(`button[aria-label$="${BENCH}, подход ${n}"]`).first();
+      await tick.evaluate((el) => el.scrollIntoView({ block: "center" }));
+      await page.waitForTimeout(100);
+      expect(await covered(), `подход ${n}: ✓ перекрыт`).toEqual([]);
+    }
+    // Закреплённая (видимая при прокрутке) часть шапки: низ шапки в конце страницы — как после выхода из комнаты.
+    await page.evaluate((top) => window.scrollTo(0, top), max);
+    await page.waitForTimeout(150);
+    const pinnedWith = await pinned();
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await badge.getByRole("button", { name: "Выйти из комнаты", exact: true }).click();
+    await badge.getByRole("button", { name: "Выйти", exact: true }).click();
+    await expect(page.locator(".room-badge")).toHaveCount(0);
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await page.waitForTimeout(150);
+    const pinnedWithout = await pinned();
+    expect(pinnedWith, `закреплённая часть с комнатой (${pinnedWith}) не выше, чем без неё (${pinnedWithout})`).toBeLessThanOrEqual(pinnedWithout + 1);
   });
 }
 
@@ -274,6 +346,7 @@ test("R04-REQ06: калькуляторы без десятичной точки
   await expect(page.locator(".orm-hero-digits")).toHaveText("98,2");
   await expect(page.locator(".formula-primary")).toContainText("Epley (основная): 98,2 кг");
   await expect(page.locator(".orm-formula-note")).toContainText("Основная формула в приложении — Эпли");
+  await expect(page.locator(".orm-formula-note")).toContainText("«Зал личных рекордов»"); // QA-R04-06: как называется раздел на экране
   await expect(page.getByRole("dialog")).not.toContainText(/\d\.\d/);
   await page.keyboard.press("Escape");
   await openTool(page, "Разминочная лесенка");
@@ -372,6 +445,7 @@ test("R04-REQ09: «Создать программу» — поле назван
   const name = page.getByLabel("Название программы", { exact: true });
   await expect(name).toHaveValue("");
   await expect(name).toHaveAttribute("placeholder", /Мой push/);
+  await expect(name, "QA-R04-05: фокус сразу в названии, а не на «Закрыть окно»").toBeFocused();
   await name.pressSequentially("Мой push", { delay: 40 });
   await expect(name).toHaveValue("Мой push");
 });
@@ -403,4 +477,60 @@ test("R04-REQ09: «База» → «присед» — «Приседания с
   await expect(titles.first()).toHaveAttribute("aria-label", "Добавить Приседания со штангой", { timeout: 10000 });
   const first5 = (await titles.evaluateAll((els) => els.slice(0, 5).map((e) => e.getAttribute("aria-label"))));
   expect(first5).toContain("Добавить Приседания со штангой");
+});
+
+test("QA-R04-07: несуществующий часовой пояс в профиле — ошибка под полем, существующие по-прежнему принимаются", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await round01Fixture(page);
+  await page.locator(".profile-button").click();
+  const dialog = page.getByRole("dialog", { name: "Мой профиль" });
+  const zone = dialog.getByLabel("Часовой пояс", { exact: true });
+  await zone.fill("Not/AZone");
+  await expect(dialog.locator(".tz-error")).toContainText("Такого часового пояса нет");
+  await expect(zone).toHaveAttribute("aria-invalid", "true");
+  await expect(dialog.getByText("Сейчас: Not/AZone.")).toHaveCount(0);
+  // Форма с таким поясом не отправляется.
+  await dialog.getByRole("button", { name: "Сохранить профиль", exact: true }).click();
+  await expect(dialog.getByText("Профиль сохранён", { exact: true })).toHaveCount(0);
+  await zone.fill("UTC");
+  await expect(dialog.locator(".tz-error")).toHaveCount(0);
+  await expect(dialog.getByText("Сейчас: UTC, всемирное время.")).toBeVisible();
+});
+
+for (const size of SIZES) {
+  test(`QA-R04-04: «Быстрая правка» ${size.width}×${size.height} — шесть кнопок веса в одну строку, «амплитуда, хват и углы» ≥44 px`, async ({ page }) => {
+    await page.setViewportSize(size);
+    await round01Fixture(page);
+    await startWith(page, BENCH);
+    const weight = page.getByLabel(`${BENCH}, подход 1, вес`, { exact: true });
+    await weight.fill("60");
+    await weight.focus();
+    await page.getByRole("button", { name: /^Контекст подхода 1/ }).click();
+    const m = await page.evaluate(() => {
+      const tops = [...document.querySelectorAll<HTMLElement>(".stepper-weights-group .stepper-btn")].map((b) => Math.round(b.getBoundingClientRect().top));
+      const sum = document.querySelector<HTMLElement>(".set-context-panel .execution-fields > summary")?.getBoundingClientRect();
+      const det = document.querySelector<HTMLElement>(".set-context-panel .execution-fields")?.getBoundingClientRect();
+      return { rows: new Set(tops).size, buttons: tops.length, sum: sum && [sum.width, sum.height], det: det && [det.width, det.height] };
+    });
+    expect(m.buttons).toBe(6);
+    expect(m.rows, "шесть кнопок веса в одной строке").toBe(1);
+    expect(m.sum![1]).toBeGreaterThanOrEqual(43.99);
+    expect(m.det![1]).toBeGreaterThanOrEqual(43.99);
+  });
+}
+
+test("QA-R04-08: «Мои недельные ориентиры» — поля и «Сбросить к исходным» не меньше 44 px", async ({ page }) => {
+  await round01Fixture(page);
+  await nav(page, "Прогресс").click();
+  await page.getByRole("tab", { name: "Мышцы", exact: true }).click();
+  await page.getByRole("button", { name: /Мои ориентиры|Настройки/ }).first().click().catch(async () => openTool(page, /Мои ориентиры|Настройки/));
+  const dialog = page.getByRole("dialog").last();
+  await expect(dialog.getByLabel("Недельная цель: Грудь", { exact: true })).toBeVisible();
+  const small = await dialog.evaluate((root) =>
+    [...root.querySelectorAll<HTMLElement>("input:not([type=hidden]), button, select")]
+      .map((e) => ({ n: e.getAttribute("aria-label") ?? e.textContent?.trim().slice(0, 24), r: e.getBoundingClientRect() }))
+      .filter(({ r }) => r.width && r.height && (r.width < 43.99 || r.height < 43.99))
+      .map(({ n, r }) => `${n}|${r.width.toFixed(1)}×${r.height.toFixed(1)}`),
+  );
+  expect(small).toEqual([]);
 });
