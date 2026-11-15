@@ -472,6 +472,51 @@ test("QA-R05-03/04: упражнение каталога без мышц раз
   await expect(page.locator(".zones-unmarked")).toHaveCount(0);
 });
 
+/** Одна тренировка раз в неделю назад от 10 нояб. 2026, каждая пятая неделя пропущена: длинная история без пустого графика. */
+function longJournal(weeks: number): Workout[] {
+  const out: Workout[] = [];
+  for (let n = 0; n < weeks; n++) {
+    if (n % 5 === 4) continue;
+    const d = new Date(Date.UTC(2026, 10, 10) - n * 7 * 86_400_000).toISOString().slice(0, 10);
+    const w = makeWorkout(["bench"], [], "Europe/Saratov");
+    out.push({
+      ...w, id: `long-${n}`, name: "Жим", date: d, duration: 45, createdAt: `${d}T10:00:00.000Z`, revision: 1,
+      exercises: w.exercises.map((e) => ({ ...e, sets: [1, 2, 3].map((k) => ({ id: `long-${n}:${k}`, weight: 60, reps: 8, rir: 2, warmup: false, done: true })) })),
+    } as Workout);
+  }
+  return out;
+}
+
+for (const weeks of [141, 270]) {
+  test(`QA-R05-12: «Обзор → Всё» на ${weeks} неделях истории не даёт горизонтального скролла страницы (390 и 360)`, async ({ page }) => {
+    test.setTimeout(120_000);
+    await round01Fixture(page, { workouts: longJournal(weeks) });
+    await nav(page, "Прогресс").click();
+    await page.getByRole("tab", { name: "Обзор", exact: true }).click();
+    await page.getByRole("group", { name: "Период прогресса" }).getByRole("button", { name: "Всё", exact: true }).click();
+    const chart = page.getByRole("figure", { name: "Подходы по неделям" });
+    await expect(chart).toBeVisible();
+    const bars = await chart.locator(".weekly-trend-bars i").count();
+    expect(bars).toBeGreaterThanOrEqual(weeks - 1);
+    // Пустые недели видны насечкой, подписи оси читаемы (не больше 8, не пустые).
+    expect(await chart.locator(".weekly-trend-bars i.empty").count()).toBeGreaterThan(0);
+    const axis = await chart.locator(".weekly-trend-axis span").allInnerTexts();
+    expect(axis.length).toBeGreaterThan(1);
+    expect(axis.length).toBeLessThanOrEqual(8);
+    for (const size of [{ width: 390, height: 844 }, { width: 360, height: 800 }]) {
+      await page.setViewportSize(size);
+      const m = await page.evaluate(() => ({
+        doc: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        body: document.body.scrollWidth - document.body.clientWidth,
+      }));
+      expect(m.doc, `documentElement ${size.width}`).toBeLessThanOrEqual(0);
+      expect(m.body, `body ${size.width}`).toBeLessThanOrEqual(0);
+      const box = await chart.locator(".weekly-trend-bars").boundingBox();
+      expect(box!.x + box!.width).toBeLessThanOrEqual(size.width);
+    }
+  });
+}
+
 test("R05: на 360×800 «История», «Прогресс», «Упражнения» не уезжают вбок на 240 тренировках", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize({ width: 360, height: 800 });

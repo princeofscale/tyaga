@@ -478,7 +478,7 @@ export function BodyweightModal({
                   <b>
                     {fmt(entry.weightKg)} <small>кг</small>
                   </b>
-                  <span>{dateLabel(entry.date, true)}</span>
+                  <span>{DateText.day(entry.date)}</span>
                 </div>
                 <p>{entry.note || "Без заметки"}</p>
                 {deleting === entry.id ? (

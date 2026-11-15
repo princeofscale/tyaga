@@ -14,8 +14,9 @@ export default function WeeklyTrendChart({ buckets }: { buckets: WeekBucket[] })
   const empty = buckets.filter((b) => !b.workouts).length;
   const axis = useMemo(() => {
     const all = ProgressOverview.axis(buckets);
-    // Подписи месяцев не должны налезать друг на друга: на длинном периоде оставляем каждую вторую (первая — всегда).
-    return all.length > 8 ? all.filter((_, i) => i % 2 === 0) : all;
+    // Подписи месяцев не должны налезать друг на друга: не больше 8 подписей, первая — всегда.
+    const step = Math.max(1, Math.ceil(all.length / 8));
+    return all.filter((_, i) => i % step === 0);
   }, [buckets]);
   const years = useMemo(() => {
     const out: { index: number; text: string }[] = [];
@@ -35,7 +36,7 @@ export default function WeeklyTrendChart({ buckets }: { buckets: WeekBucket[] })
           Пустых недель: {empty}. Высота столбца — рабочие подходы за неделю.
         </span>
       </figcaption>
-      <div className="weekly-trend-bars" role="img" aria-label={`Рабочие подходы по ${total} неделям, пустых недель ${empty}`}>
+      <div className="weekly-trend-bars" style={total > 100 ? ({ "--trend-gap": "0px" } as React.CSSProperties) : undefined} role="img" aria-label={`Рабочие подходы по ${total} неделям, пустых недель ${empty}`}>
         {buckets.map((b) => (
           <i
             key={b.start}

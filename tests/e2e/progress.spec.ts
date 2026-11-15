@@ -193,6 +193,8 @@ test("weighing CRUD accepts commas, keeps notes and history across reload, confi
   await expect(page.locator(".weight-history-row")).toContainText(
     "Без заметки",
   );
+  // QA-R05-15: дата в списке замеров — в общем формате, с годом.
+  await expect(page.locator(".weight-history-row")).toContainText(DateText.day(date));
   await page
     .getByRole("button", { name: `Удалить замер ${DateText.day(date)}`, exact: true })
     .click();

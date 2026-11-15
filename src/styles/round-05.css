@@ -99,6 +99,8 @@
   font-size: 0.8125rem;
 }
 .weekly-trend {
+  min-width: 0;
+  max-width: 100%;
   margin: 0 0 14px;
   padding: 14px;
   border: 1px solid var(--line);
@@ -119,14 +121,17 @@
 .weekly-trend-bars {
   display: flex;
   align-items: flex-end;
-  gap: 1px;
+  gap: var(--trend-gap, 1px);
+  min-width: 0;
+  overflow: hidden;
   height: 96px;
   border-bottom: 1px solid var(--line);
 }
 .weekly-trend-bars i {
+  /* Столбцы сжимаются под ширину экрана: длинный ряд (годы истории) не растягивает страницу вбок. */
   flex: 1 1 0;
-  min-width: 2px;
-  border-radius: 2px 2px 0 0;
+  min-width: 0;
+  border-radius: 1px 1px 0 0;
   background: var(--accent, #cafa64);
 }
 .weekly-trend-bars i.empty {
