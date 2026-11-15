@@ -665,7 +665,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
       setModal(null);
       return;
     }
-    const workout = template ?? makeWorkout(ids, workouts, settings.timeZone, true);
+    const workout = template ?? makeWorkout(ids, DeloadEngine.regular(workouts), settings.timeZone, true);
     workout.exercises = BodyMass.workout(workout, weights.massAt(workout.date,account.bodyMassKg)).exercises;
     if (name) workout.name = name;
     setDraft(newDraft(workout));
@@ -690,7 +690,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
         ? {
             ...d,
             workout: new WorkoutSession(d.workout).add(
-              BodyMass.entry(makeExerciseEntry(id, workouts, d.workout.date, settings.timeZone, true), weights.massAt(d.workout.date, account.bodyMassKg)),
+              BodyMass.entry(makeExerciseEntry(id, DeloadEngine.isDeloadName(d.workout.name) ? workouts : DeloadEngine.regular(workouts), d.workout.date, settings.timeZone, true), weights.massAt(d.workout.date, account.bodyMassKg)),
             ),
           }
         : null,

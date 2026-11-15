@@ -1,3 +1,4 @@
+import { DeloadEngine } from "./DeloadEngine";
 import { WorkoutReference } from "./WorkoutReference";
 import {
   makeWorkout,
@@ -137,7 +138,8 @@ export class TrainingProgram {
     timeZone: string,
   ) {
     return WorkoutReference.latest(
-      history.filter((w) => !skipDeload || !this.isDeload(history, w.date)),
+      // QA-R06-13: разгрузочные тренировки («[Разгрузка]» в названии) не бывают базой веса — ни при цикле, ни после «Применить разгрузку».
+      history.filter((w) => !DeloadEngine.isDeloadName(w.name) && (!skipDeload || !this.isDeload(history, w.date))),
       plan,
       undefined,
       today,

@@ -159,3 +159,16 @@
     font-size: 0.8125rem;
   }
 }
+
+/* QA-R06-14: подтверждение отмены импорта переносится на узком экране — «Не надо» не уходит за край. */
+.import-undo > div,
+.import-undo-actions {
+  flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
+}
+.import-undo > div .button,
+.import-undo-actions .button,
+.import-undo-actions .text-button {
+  min-height: 44px;
+}

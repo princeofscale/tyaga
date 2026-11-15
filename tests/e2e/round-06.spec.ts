@@ -24,11 +24,11 @@ const openTool = async (page: Page, name: RegExp | string) => {
 };
 
 /** Тренировка со жимом: 3 подхода по 95 × 11. */
-function benchSession(id: string, date: string, name: string): Workout {
+function benchSession(id: string, date: string, name: string, kg = 95, execution?: { rom: "full" }): Workout {
   const w = makeWorkout(["bench"], [], "Europe/Saratov");
   return {
     ...w, id, name, date, duration: 45, createdAt: `${date}T10:00:00.000Z`, revision: 1,
-    exercises: w.exercises.map((e) => ({ ...e, sets: [1, 2, 3].map((k) => ({ id: `${id}:${k}`, weight: 95, reps: 11, rir: 2, warmup: false, done: true })) })),
+    exercises: w.exercises.map((e) => ({ ...e, sets: [1, 2, 3].map((k) => ({ id: `${id}:${k}`, weight: kg, reps: 11, rir: 2, warmup: false, done: true, ...(execution ? { execution } : {}) })) })),
   } as Workout;
 }
 /** 240 тренировок за ~13 месяцев, раз в 1,6 дня. */
@@ -138,6 +138,41 @@ test("QA-R06-02: вторая разгрузочная тренировка не
     await page.getByRole("button", { name: "Завершить тренировку", exact: true }).click();
     await expect(page.locator(".session-insights")).toBeVisible();
   }
+});
+
+test("QA-R06-12: контекст выполнения на подходе (ROM) — «Подставить прошлый» в разгрузке тоже ставит 80, подпись не врёт", async ({ page }) => {
+  test.setTimeout(120_000);
+  const base = makeWorkout(["bench"], [], "Europe/Saratov", true);
+  base.exercises.forEach((e) => (e.sets = e.sets.slice(0, 3).map((s) => ({ ...s, weight: 95, reps: 11, execution: { rom: "full" as const } }))));
+  const routine = { ...TrainingProgram.empty(), id: "r-legs", name: "Ноги А", days: [1], revision: 1, exercises: base.exercises };
+  await round01Fixture(page, { routines: [routine], workouts: [benchSession("old-1", "2026-11-03", "Ноги А", 95, { rom: "full" })] });
+  await openTool(page, "Разгрузочная неделя");
+  await page.getByRole("button", { name: "Применить разгрузку к тренировкам", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Закрыть", exact: true }).click();
+  await nav(page, "Сегодня").click();
+  await page.getByRole("button", { name: "Начать тренировку", exact: true }).first().click();
+  const weight = page.getByLabel(`${BENCH}, подход 1, вес`, { exact: true });
+  await expect(weight).toHaveValue("80");
+  const pick = page.getByRole("button", { name: /^Подставить прошлый результат/ }).first();
+  await expect(pick).toHaveAttribute("aria-label", /95 × 11.*в разгрузку — 80 × 11/);
+  await pick.click();
+  await expect(weight).toHaveValue("80");
+  // «Повторить прошлые» при контексте на уровне подхода не показывается (прежнее поведение): подставляется подходом.
+});
+
+test("QA-R06-13: обычная тренировка после разгрузки стартует с 95 (база — последняя неразгрузочная запись)", async ({ page }) => {
+  test.setTimeout(120_000);
+  const base = makeWorkout(["bench"], [], "Europe/Saratov", true);
+  base.exercises.forEach((e) => (e.sets = e.sets.slice(0, 3).map((s) => ({ ...s, weight: 60, reps: 8 }))));
+  const routine = { ...TrainingProgram.empty(), id: "r-legs", name: "Ноги А", days: [1], revision: 1, exercises: base.exercises };
+  await round01Fixture(page, {
+    routines: [routine],
+    workouts: [benchSession("old-1", "2026-11-01", "Ноги А"), benchSession("deload-1", "2026-11-08", "Ноги А [Разгрузка]", 80)],
+  });
+  await page.getByRole("button", { name: "Начать тренировку", exact: true }).first().click();
+  await expect(page.getByRole("textbox", { name: "Название тренировки" })).toHaveValue("Ноги А");
+  await expect(page.getByLabel(`${BENCH}, подход 1, вес`, { exact: true })).toHaveValue("95");
+  await expect(page.getByRole("button", { name: /^Повторить прошлые/ }).first()).toContainText("95 × 11");
 });
 
 test("R06-REQ03: станция добавляется по одному названию, без обязательной «Модели»", async ({ page }) => {
@@ -264,7 +299,7 @@ test("R06-REQ06: предпросмотр импорта — «Будет соз
   expect(app.customs.length).toBe(second);
 });
 
-for (const size of SIZES) {
+for (const size of [...SIZES, { width: 320, height: 640 }]) {
   test(`QA-R06-01: с баннером «Импорт: записано 240 из 240» после «Завершить» первая карточка ≤1 100 px ${size.width}×${size.height}`, async ({ page }) => {
     test.setTimeout(240_000);
     await page.setViewportSize(size);
@@ -296,12 +331,19 @@ for (const size of SIZES) {
       };
     });
     console.log(`MEASURE ${size.width}`, JSON.stringify(m));
-    expect(m.card, `первая карточка на ${m.card} px`).toBeLessThanOrEqual(1100);
+    if (size.width >= 360) expect(m.card, `первая карточка на ${m.card} px`).toBeLessThanOrEqual(1100);
     // Подпись операции (число, момент) и «Отменить импорт» остаются доступны.
     await expect(banner.locator(".import-undo-scope")).toContainText("Отмена удалит 240 тренировок, добавленных");
     await expect(banner.getByRole("button", { name: "Отменить импорт", exact: true })).toBeVisible();
     await banner.getByRole("button", { name: "Отменить импорт", exact: true }).click();
     await expect(banner.locator(".import-undo-confirm")).toContainText("Удалить 240 тренировок, добавленных");
+    // QA-R06-14: подтверждение не даёт горизонтального скролла, обе кнопки внутри экрана и ≥44 px.
+    expect(await overflow(page), "подтверждение отмены: горизонтальный скролл").toBeLessThanOrEqual(0);
+    for (const name of [/^Убрать 240/, "Не надо"]) {
+      const b = (await banner.getByRole("button", { name }).boundingBox())!;
+      expect(b.x + b.width, `${name}`).toBeLessThanOrEqual(size.width);
+      expect(b.height).toBeGreaterThanOrEqual(43.99);
+    }
     await banner.getByRole("button", { name: "Не надо", exact: true }).click();
     expect(await overflow(page)).toBeLessThanOrEqual(0);
   });

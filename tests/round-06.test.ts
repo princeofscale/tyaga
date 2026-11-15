@@ -4,6 +4,8 @@ import { DeloadEngine } from "../src/domain/DeloadEngine";
 import { HistoryFilter } from "../src/domain/HistoryFilter";
 import { MachineRegistry } from "../src/domain/MachineRegistry";
 import { makeWorkout } from "../src/lib/model";
+import { ExecutionIdentity } from "../src/domain/ExecutionIdentity";
+import { TrainingProgram } from "../src/domain/TrainingProgram";
 import type { Workout } from "../src/lib/types";
 
 const named = (id: string, name: string): Workout => ({ ...makeWorkout([], [], "UTC"), id, name, date: "2026-11-03" }) as Workout;
@@ -43,4 +45,25 @@ test("QA-R06-02: база для разгрузки — тренировки б�
   assert.equal(once, 80);
   assert.equal(DeloadEngine.scaleLoad(95, "total_external", "volume"), once);
   assert.equal(DeloadEngine.scaleLoad(once, "total_external", "volume"), 67.5);
+});
+
+test("QA-R06-12: ключ «прошлого» с подходом совпадает с ключом разбитой записи, а без подхода — нет", () => {
+  const w = makeWorkout(["bench"], [], "UTC");
+  const entry = { ...w.exercises[0], sets: w.exercises[0].sets.map((s) => ({ ...s, execution: { rom: "full" as const } })) };
+  const set = entry.sets[0];
+  assert.notEqual(ExecutionIdentity.key(entry), ExecutionIdentity.key(entry, set));
+  assert.equal(ExecutionIdentity.split(entry)[0] && ExecutionIdentity.key(ExecutionIdentity.split(entry)[0]), ExecutionIdentity.key(entry, set));
+});
+
+test("QA-R06-13: разгрузочные записи не бывают базой веса программы", () => {
+  const base = makeWorkout(["bench"], [], "UTC", true);
+  base.exercises.forEach((e) => (e.sets = e.sets.slice(0, 3).map((s) => ({ ...s, weight: 60, reps: 8 }))));
+  const routine = { ...TrainingProgram.empty(), id: "r", name: "Ноги А", days: [1], revision: 1, exercises: base.exercises };
+  const done = (id: string, name: string, date: string, kg: number): Workout => {
+    const x = makeWorkout(["bench"], [], "UTC");
+    return { ...x, id, name, date, exercises: x.exercises.map((e) => ({ ...e, sets: e.sets.map((s) => ({ ...s, weight: kg, reps: 11, done: true, warmup: false })) })) } as Workout;
+  };
+  const history = [done("a", "Ноги А", "2026-11-01", 95), done("b", "Ноги А [Разгрузка]", "2026-11-08", 80)];
+  const started = new TrainingProgram(routine).start(history, "UTC");
+  assert.equal(started.exercises[0].sets[0].weight, 95);
 });

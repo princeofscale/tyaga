@@ -233,9 +233,14 @@ export default function WorkoutView({
       box.style.height = `${box.scrollHeight + (box.offsetHeight - box.clientHeight)}px`;
     };
     fit();
+    // Раскладка может устояться после первого замера (поворот, шрифт): меряем ещё раз в следующем кадре.
+    const frame = requestAnimationFrame(fit);
     // Поворот экрана и смена ширины меняют число строк — высоту пересчитываем.
     window.addEventListener("resize", fit);
-    return () => window.removeEventListener("resize", fit);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("resize", fit);
+    };
   }, [room, draft?.workout.name]);
   const [contextKey, setContextKey] = useState<string | null>(null);
   const barRef = useRef<HTMLElement>(null);
@@ -308,7 +313,10 @@ export default function WorkoutView({
     () =>
       new Map(
         (exercises ?? []).flatMap((e)=>[e,...ExecutionIdentity.split(e)]).map((e) => {
-          const sets = lastEntry(history, e, workoutId, draft?.workout.date, {timeZone:settings.timeZone})?.sets.filter((s) => s.done) ?? [];
+          const find = (pool: Workout[]) => lastEntry(pool, e, workoutId, draft?.workout.date, {timeZone:settings.timeZone});
+          // QA-R06-13: в обычной тренировке «прошлое» — последняя НЕразгрузочная запись; только разгрузочные — берём их.
+          const last = DeloadEngine.isDeloadName(draft?.workout.name ?? "") ? find(history) : (find(DeloadEngine.regular(history)) ?? find(history));
+          const sets = last?.sets.filter((s) => s.done) ?? [];
           return [
             ExecutionIdentity.key(e),
             {
@@ -318,7 +326,7 @@ export default function WorkoutView({
           ];
         }),
       ),
-    [history, exercises, workoutId, draft?.workout.date, settings.timeZone],
+    [history, exercises, workoutId, draft?.workout.date, draft?.workout.name, settings.timeZone],
   );
   // QA-R06-02: в разгрузочной тренировке «прошлое» масштабируется от последнего НЕразгрузочного результата упражнения:
   // иначе вторая разгрузочная тренировка недели берёт уже сниженный вес и снижает его второй раз (95 → 80 → 67,5).
@@ -368,9 +376,10 @@ export default function WorkoutView({
   const w = draft.workout;
   // R06-REQ02: в разгрузочной тренировке «прошлые» числа подставляются с разгрузочным весом, а не с полным.
   const deloadNow: DeloadMode | undefined = DeloadEngine.isDeloadName(w.name) ? (deloadMode ?? "volume") : undefined;
-  const deloaded = (entry: WorkoutExercise, previous: SetEntry | undefined, index: number, warmup = false): SetEntry | undefined => {
+  // `set` — когда «прошлое» искали по ключу подхода (контекст выполнения на уровне подхода): база ищется по тому же ключу (QA-R06-12).
+  const deloaded = (entry: WorkoutExercise, previous: SetEntry | undefined, index: number, warmup = false, set?: SetEntry): SetEntry | undefined => {
     if (!previous || !deloadNow) return previous;
-    const base = deloadBase.get(ExecutionIdentity.key(entry));
+    const base = deloadBase.get(ExecutionIdentity.key(entry, set));
     const source = PreviousSets.pick(warmup ? (base?.warmup ?? []) : (base?.working ?? []), index);
     // Нет неразгрузочной базы: «прошлое» уже из разгрузки — второй раз вес не снижаем.
     if (!source) return previous;
@@ -1276,13 +1285,13 @@ export default function WorkoutView({
                           disabled={!last}
                           aria-label={
                             last
-                              ? `Подставить прошлый результат: ${lastText}${deloadNow ? ` (в разгрузку — ${previousLabel(we, deloaded(we, last, comparableIndex, s.warmup))})` : ""}`
+                              ? `Подставить прошлый результат: ${lastText}${deloadNow ? ` (в разгрузку — ${previousLabel(we, deloaded(we, last, comparableIndex, s.warmup, s))})` : ""}`
                               : "Прошлого результата нет"
                           }
                           onClick={(e) => {
                             e.stopPropagation();
                             last &&
-changeSet(ei, si, PreviousSets.patch(deloaded(we, last, comparableIndex, s.warmup)!, { timed, assistance }), true);
+changeSet(ei, si, PreviousSets.patch(deloaded(we, last, comparableIndex, s.warmup, s)!, { timed, assistance }), true);
                           }}
                         >
                           {wrapSafe(lastText)}
