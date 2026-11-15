@@ -113,6 +113,33 @@ test("R06-REQ02: в разгрузке «Повторить прошлые» с�
   await expect(page.locator(".session-item", { hasText: "[Разгрузка]" })).toHaveCount(1);
 });
 
+test("QA-R06-02: вторая разгрузочная тренировка недели снова даёт 80, а не 67,5 (и «Повторить», и «Подставить»)", async ({ page }) => {
+  test.setTimeout(120_000);
+  const base = makeWorkout(["bench"], [], "Europe/Saratov", true);
+  base.exercises.forEach((e) => (e.sets = e.sets.slice(0, 3).map((s) => ({ ...s, weight: 95, reps: 11 }))));
+  const routine = { ...TrainingProgram.empty(), id: "r-legs", name: "Ноги А", days: [1], revision: 1, exercises: base.exercises };
+  await round01Fixture(page, { routines: [routine], workouts: [benchSession("old-1", "2026-11-03", "Ноги А")] });
+  await openTool(page, "Разгрузочная неделя");
+  await page.getByRole("button", { name: "Применить разгрузку к тренировкам", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Закрыть", exact: true }).click();
+  const weight = page.getByLabel(`${BENCH}, подход 1, вес`, { exact: true });
+  for (const round of [1, 2]) {
+    await nav(page, "Сегодня").click();
+    await page.getByRole("button", { name: "Начать тренировку", exact: true }).first().click();
+    await expect(page.getByRole("textbox", { name: "Название тренировки" }), `тренировка ${round}`).toHaveValue("Ноги А [Разгрузка]");
+    await expect(weight, `тренировка ${round}: старт`).toHaveValue("80");
+    const repeat = page.getByRole("button", { name: /^Повторить прошлые/ }).first();
+    await expect(repeat).toContainText("80 × 11");
+    await repeat.click();
+    await expect(weight, `тренировка ${round}: «Повторить»`).toHaveValue("80");
+    await page.getByRole("button", { name: /^Подставить прошлый результат/ }).first().click();
+    await expect(weight, `тренировка ${round}: «Подставить»`).toHaveValue("80");
+    await mark(page, 1, BENCH, "80", "11");
+    await page.getByRole("button", { name: "Завершить тренировку", exact: true }).click();
+    await expect(page.locator(".session-insights")).toBeVisible();
+  }
+});
+
 test("R06-REQ03: станция добавляется по одному названию, без обязательной «Модели»", async ({ page }) => {
   const puts: any[] = [];
   await round01Fixture(page);
@@ -236,3 +263,46 @@ test("R06-REQ06: предпросмотр импорта — «Будет соз
   await expect(page.locator(".import-undo")).toContainText("Импорт: записано 240 из 240", { timeout: 90_000 });
   expect(app.customs.length).toBe(second);
 });
+
+for (const size of SIZES) {
+  test(`QA-R06-01: с баннером «Импорт: записано 240 из 240» после «Завершить» первая карточка ≤1 100 px ${size.width}×${size.height}`, async ({ page }) => {
+    test.setTimeout(240_000);
+    await page.setViewportSize(size);
+    const dir = mkdtempSync(join(tmpdir(), "tyaga-r06-banner-"));
+    const csvPath = join(dir, "strong-year.csv");
+    execFileSync("node", ["tests/fixtures/gen-year-csv.mjs", csvPath, join(dir, "year.json")], { stdio: "ignore" });
+    const csv = readFileSync(csvPath, "utf8");
+    await round01Fixture(page);
+    await nav(page, "История").click();
+    await page.getByRole("button", { name: "Импорт истории", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Импорт истории", exact: true });
+    await dialog.getByLabel("Файл истории тренировок").setInputFiles({ name: "strong-year.csv", mimeType: "text/csv", buffer: Buffer.from(csv) });
+    await dialog.getByRole("button", { name: "Показать предпросмотр", exact: true }).click();
+    await dialog.getByRole("button", { name: /^Принять близкие движения/ }).click();
+    await dialog.getByRole("button", { name: "Импортировать", exact: true }).click();
+    await expect(page.locator(".import-undo")).toContainText("Импорт: записано 240 из 240", { timeout: 90_000 });
+    await nav(page, "Сегодня").click();
+    await startWith(page, BENCH);
+    await mark(page, 1, BENCH, "62.5", "8");
+    await page.getByRole("button", { name: "Завершить тренировку", exact: true }).click();
+    await expect(page.locator(".session-insights")).toBeVisible();
+    const banner = page.locator(".import-undo");
+    await expect(banner).toBeVisible();
+    const m = await page.evaluate(() => {
+      const top = (sel: string) => (document.querySelector(sel) ? Math.round(document.querySelector(sel)!.getBoundingClientRect().height) : -1);
+      return {
+        card: Math.round(document.querySelector(".history-panel .session-item")!.getBoundingClientRect().top + scrollY),
+        head: top(".screen-head"), insights: top(".session-insights"), banner: top(".import-undo"), toolbar: top(".history-toolbar"), filters: top(".history-filters"), found: top(".history-found"), fold: top(".volume-fold"),
+      };
+    });
+    console.log(`MEASURE ${size.width}`, JSON.stringify(m));
+    expect(m.card, `первая карточка на ${m.card} px`).toBeLessThanOrEqual(1100);
+    // Подпись операции (число, момент) и «Отменить импорт» остаются доступны.
+    await expect(banner.locator(".import-undo-scope")).toContainText("Отмена удалит 240 тренировок, добавленных");
+    await expect(banner.getByRole("button", { name: "Отменить импорт", exact: true })).toBeVisible();
+    await banner.getByRole("button", { name: "Отменить импорт", exact: true }).click();
+    await expect(banner.locator(".import-undo-confirm")).toContainText("Удалить 240 тренировок, добавленных");
+    await banner.getByRole("button", { name: "Не надо", exact: true }).click();
+    expect(await overflow(page)).toBeLessThanOrEqual(0);
+  });
+}

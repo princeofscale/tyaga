@@ -34,3 +34,13 @@ test("R06-REQ03: станция с одним названием проходи�
   assert.equal(parsed.nickname, "Жим ногами у окна");
   assert.equal(parsed.model.model, "Жим ногами у окна");
 });
+
+test("QA-R06-02: база для разгрузки — тренировки без пометки; вес из разгрузочной не масштабируется второй раз", () => {
+  const journal = [named("a", "Ноги А"), named("b", "Ноги А [Разгрузка]")];
+  assert.deepEqual(DeloadEngine.regular(journal).map((w) => w.id), ["a"]);
+  // Первая разгрузка: 95 → 80; вторая берёт базу 95 (а не 80) и снова даёт 80, а не 67,5.
+  const once = DeloadEngine.scaleLoad(95, "total_external", "volume");
+  assert.equal(once, 80);
+  assert.equal(DeloadEngine.scaleLoad(95, "total_external", "volume"), once);
+  assert.equal(DeloadEngine.scaleLoad(once, "total_external", "volume"), 67.5);
+});

@@ -228,8 +228,14 @@ export default function WorkoutView({
   useLayoutEffect(() => {
     const box = nameBox.current;
     if (!box) return;
-    box.style.height = "auto";
-    box.style.height = `${box.scrollHeight + (box.offsetHeight - box.clientHeight)}px`;
+    const fit = () => {
+      box.style.height = "auto";
+      box.style.height = `${box.scrollHeight + (box.offsetHeight - box.clientHeight)}px`;
+    };
+    fit();
+    // Поворот экрана и смена ширины меняют число строк — высоту пересчитываем.
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
   }, [room, draft?.workout.name]);
   const [contextKey, setContextKey] = useState<string | null>(null);
   const barRef = useRef<HTMLElement>(null);
@@ -314,6 +320,19 @@ export default function WorkoutView({
       ),
     [history, exercises, workoutId, draft?.workout.date, settings.timeZone],
   );
+  // QA-R06-02: в разгрузочной тренировке «прошлое» масштабируется от последнего НЕразгрузочного результата упражнения:
+  // иначе вторая разгрузочная тренировка недели берёт уже сниженный вес и снижает его второй раз (95 → 80 → 67,5).
+  const inDeload = !!draft && DeloadEngine.isDeloadName(draft.workout.name);
+  const deloadBase = useMemo(() => {
+    if (!inDeload) return new Map<string, { working: SetEntry[]; warmup: SetEntry[] }>();
+    const regular = DeloadEngine.regular(history);
+    return new Map(
+      (exercises ?? []).flatMap((e) => [e, ...ExecutionIdentity.split(e)]).map((e) => {
+        const sets = lastEntry(regular, e, workoutId, draft?.workout.date, { timeZone: settings.timeZone })?.sets.filter((x) => x.done) ?? [];
+        return [ExecutionIdentity.key(e), { working: sets.filter((x) => !x.warmup), warmup: sets.filter((x) => x.warmup) }] as const;
+      }),
+    );
+  }, [inDeload, history, exercises, workoutId, draft?.workout.date, settings.timeZone]);
   // На телефоне шапка при прокрутке уходит вверх, пока не останется строка таймера и «Завершить».
   // Сколько уйти — меряем здесь, а не пишем числом: в шапке бывает полоса напарников.
   const hasDraft = !!draft;
@@ -349,10 +368,14 @@ export default function WorkoutView({
   const w = draft.workout;
   // R06-REQ02: в разгрузочной тренировке «прошлые» числа подставляются с разгрузочным весом, а не с полным.
   const deloadNow: DeloadMode | undefined = DeloadEngine.isDeloadName(w.name) ? (deloadMode ?? "volume") : undefined;
-  const deloaded = (entry: WorkoutExercise, previous?: SetEntry): SetEntry | undefined =>
-    previous && deloadNow
-      ? { ...previous, weight: DeloadEngine.scaleLoad(previous.weight, exerciseForEntry(entry)?.recording.loadMode, deloadNow) }
-      : previous;
+  const deloaded = (entry: WorkoutExercise, previous: SetEntry | undefined, index: number, warmup = false): SetEntry | undefined => {
+    if (!previous || !deloadNow) return previous;
+    const base = deloadBase.get(ExecutionIdentity.key(entry));
+    const source = PreviousSets.pick(warmup ? (base?.warmup ?? []) : (base?.working ?? []), index);
+    // Нет неразгрузочной базы: «прошлое» уже из разгрузки — второй раз вес не снижаем.
+    if (!source) return previous;
+    return { ...source, weight: DeloadEngine.scaleLoad(source.weight, exerciseForEntry(entry)?.recording.loadMode, deloadNow) };
+  };
   const setWorkout = (workout: Workout) => update({ ...draft, workout });
   const patchExercise = (ei: number, patch: Partial<WorkoutExercise>) =>
     setWorkout({
@@ -1015,7 +1038,7 @@ export default function WorkoutView({
               ) : null}
               {["machine_stack", "assisted_bodyweight"].includes(spec.loadMode) && <div className="machine-picker">
                 <label>Сохранённый тренажёр<Select aria-label="Сохранённый тренажёр" value={we.machineInstanceId ?? ""}
-                  options={[{value:"",label:"Текстовая пометка / не выбран"}, ...machines.map((m)=>({value:m.id,label:`${m.nickname} · ${m.gym || m.model.model}`})),
+                  options={[{value:"",label:"Текстовая пометка / не выбран"}, ...machines.map((m)=>({value:m.id,label:[m.nickname, m.gym || (m.model.model !== m.nickname ? m.model.model : "")].filter(Boolean).join(" · ")})),
                     ...(we.machineSnapshot && !machines.some((m)=>m.id===we.machineInstanceId) ? [{value:we.machineSnapshot.id,label:we.machineSnapshot.nickname+" · из истории"}] : [])]}
                   onChange={(id) => patchExercise(ei, { machineInstanceId: id || undefined,
                     machineSnapshot: machines.find((m)=>m.id===id) ?? (we.machineSnapshot?.id===id ? we.machineSnapshot : undefined) })} /></label>
@@ -1095,20 +1118,21 @@ export default function WorkoutView({
                     className="autofill-pill-btn repeat"
                     title={
                       deloadNow
-                        ? `Заполнить рабочие подходы повторениями с прошлой тренировки. Вес разгрузочный: прошлый ${previousLabel(we, before.working[0])} → ${previousLabel(we, deloaded(we, before.working[0]))}`
+                        ? `Заполнить рабочие подходы повторениями с прошлой тренировки. Вес разгрузочный: прошлый ${previousLabel(we, before.working[0])} → ${previousLabel(we, deloaded(we, before.working[0], 0))}`
                         : "Заполнить рабочие подходы весами и повторениями с прошлой тренировки"
                     }
                     onClick={() => {
                       const newSets = we.sets.map((s) => {
                         if (s.warmup) return s;
-                        const prevW = deloaded(we, PreviousSets.pick(before.working, ExecutionIdentity.setIndex(we, s)));
+                        const setIndex = ExecutionIdentity.setIndex(we, s);
+                        const prevW = deloaded(we, PreviousSets.pick(before.working, setIndex), setIndex);
                         return prevW ? { ...s, ...PreviousSets.patch(prevW, { timed, assistance }) } : s;
                       });
                       patchExercise(ei, { sets: newSets });
                     }}
                   >
                     <RotateCcw size={13} />
-                    <span>Повторить прошлые: {previousLabel(we, deloaded(we, before.working[0]))}{deloadNow ? " · разгрузка" : ""}</span>
+                    <span>Повторить прошлые: {previousLabel(we, deloaded(we, before.working[0], 0))}{deloadNow ? " · разгрузка" : ""}</span>
                   </button>
 
                   {!noLoad && !assistance && !timed && !deloadNow && (
@@ -1252,13 +1276,13 @@ export default function WorkoutView({
                           disabled={!last}
                           aria-label={
                             last
-                              ? `Подставить прошлый результат: ${lastText}${deloadNow ? ` (в разгрузку — ${previousLabel(we, deloaded(we, last))})` : ""}`
+                              ? `Подставить прошлый результат: ${lastText}${deloadNow ? ` (в разгрузку — ${previousLabel(we, deloaded(we, last, comparableIndex, s.warmup))})` : ""}`
                               : "Прошлого результата нет"
                           }
                           onClick={(e) => {
                             e.stopPropagation();
                             last &&
-changeSet(ei, si, PreviousSets.patch(deloaded(we, last)!, { timed, assistance }), true);
+changeSet(ei, si, PreviousSets.patch(deloaded(we, last, comparableIndex, s.warmup)!, { timed, assistance }), true);
                           }}
                         >
                           {wrapSafe(lastText)}

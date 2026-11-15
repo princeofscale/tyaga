@@ -168,6 +168,10 @@ export class DeloadEngine {
   static isDeloadName(name: string) {
     return name.includes("[Разгрузка]");
   }
+  /** Тренировки без разгрузочных: база для веса следующей разгрузки (иначе вес снижается второй раз). */
+  static regular<T extends { name: string }>(workouts: T[]) {
+    return workouts.filter((w) => !DeloadEngine.isDeloadName(w.name));
+  }
   /** Тип тренировки без пометки разгрузки: «Ноги А [Разгрузка]» → «Ноги А». */
   static baseName(name: string) {
     return name.replace(/\s*\[Разгрузка\]\s*$/, "").trim() || name;

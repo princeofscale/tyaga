@@ -146,6 +146,7 @@ import { api, ApiError } from "./services/ApiClient";
 import { PendingWorkouts } from "./domain/PendingWorkouts";
 import { TimeZoneField } from "./components/TimeZoneField";
 import { DeloadPlan, type DeloadPlanRecord } from "./domain/DeloadPlan";
+import { DeloadEngine } from "./domain/DeloadEngine";
 import { usePendingWorkouts } from "./hooks/usePendingWorkouts";
 import { productService } from "./services/ProductService";
 import { TrainingProgram, nextScheduled } from "./domain/TrainingProgram";
@@ -538,7 +539,9 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
   const programWorkout = (r: Routine) => {
     const program = new TrainingProgram(r);
     const tz = settings.timeZone ?? browserTimeZone();
-    return DeloadPlan.workout(program.start(workouts, tz), deload, program.isDeload(workouts, today));
+    // QA-R06-02: при разгрузке вес программы берётся из неразгрузочных тренировок, а не из прошлой разгрузочной.
+    const base = deload ? DeloadEngine.regular(workouts) : workouts;
+    return DeloadPlan.workout(program.start(base, tz), deload, program.isDeload(workouts, today));
   };
   const nextProgramDay = useMemo(() => nextScheduled(product.routines, today), [product.routines, today]);
   const todayRoutine = product.routines.find((r) =>
@@ -549,7 +552,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
     () =>
       todayRoutine
         ? DeloadPlan.workout(
-            new TrainingProgram(todayRoutine).start(workouts, settings.timeZone ?? browserTimeZone()),
+            new TrainingProgram(todayRoutine).start(deload ? DeloadEngine.regular(workouts) : workouts, settings.timeZone ?? browserTimeZone()),
             deload,
             new TrainingProgram(todayRoutine).isDeload(workouts, today),
           )
@@ -1405,7 +1408,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                     const noun = restored ? "Восстановление" : "Импорт";
                     const scope = `${quantity(lastImportRun.activeCount, "тренировку", "тренировки", "тренировок")}, добавленных ${when}`;
                     return (
-                    <section className="import-undo panel" role="status" aria-label="Последний импорт">
+                    <section className={`import-undo panel${undoAsk ? "" : " import-undo-compact"}`} role="status" aria-label="Последний импорт">
                       <div className="import-undo-text">
                         <b>{noun}: записано {lastImportRun.activeCount} из {lastImportRun.total}</b>
                         <small className="import-undo-scope">
@@ -1430,7 +1433,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                           <button className="button secondary" onClick={() => setUndoAsk(false)}>Не надо</button>
                         </div>
                       ) : (
-                        <div>
+                        <div className="import-undo-actions">
                           <button className="button secondary" onClick={() => setUndoAsk(true)}>{restored ? "Отменить восстановление" : "Отменить импорт"}</button>
                           <button className="text-button" onClick={() => setLastImportRun(null)}>Скрыть</button>
                         </div>
