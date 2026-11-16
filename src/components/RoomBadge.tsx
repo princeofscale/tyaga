@@ -62,7 +62,7 @@ export default function RoomBadge({ onToast }: { onToast: (text: string) => void
         </span>
       </div>
       {linkLost ? (
-        <p className="room-badge-lost" role="status">
+        <p className="room-badge-lost" role="status" title={LiveLink.DETAIL}>
           <WifiOff size={13} aria-hidden="true" />
           <span>{LiveLink.MESSAGE}</span>
         </p>

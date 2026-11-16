@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { LiveLink, LivePushPolicy, LIVE_RETRY_MS, type LiveLinkIssue, type LivePush } from "../domain/LiveSession";
+import { LiveLink, LivePushPolicy, LIVE_RETRY_MS, LIVE_REQUEST_TIMEOUT_MS, type LiveLinkIssue, type LivePush } from "../domain/LiveSession";
 import { ApiError } from "../services/ApiClient";
 import { CLOUD_URL, cloudState } from "../device/cloudSync";
 import type { LiveRoom, LiveState } from "../lib/liveRoom";
@@ -83,19 +83,44 @@ export function LiveRoomProvider({ children }: { children: ReactNode }) {
   /** Что не дошло до комнаты и ждёт повтора, пока нет более свежего состояния. */
   const unsent = useRef<LiveState | null>(null);
   const retry = useRef<number | undefined>(undefined);
+  /** Когда в последний раз запрос к комнате удался (монотонные часы). */
+  const lastOk = useRef(performance.now());
   const [issue, setIssue] = useState<LiveLinkIssue | null>(null);
   // Для «Нет связи» считаем по монотонным часам: перевод стрелок и подмена даты не должны ни прятать, ни выдумывать потерю связи.
   const [clock, setClock] = useState(() => performance.now());
 
+  /** Связь есть: любой удавшийся запрос к комнате снимает «Нет связи». */
+  const linkOk = useCallback(() => {
+    lastOk.current = performance.now();
+    setIssue(null);
+  }, []);
+  /** Запрос к комнате не дошёл (сеть, обрыв, воркер 5xx): считаем неудачу и повторяем через LIVE_RETRY_MS, а не ждём опрос и heartbeat. */
+  const linkFailed = useCallback(() => {
+    if (!roomRef.current) return;
+    setIssue((was) => LiveLink.failed(was, performance.now(), lastOk.current));
+    window.clearTimeout(retry.current);
+    retry.current = window.setTimeout(() => {
+      if (!roomRef.current) return;
+      const next = latest.current ?? unsent.current;
+      if (next) void sendRef.current(next);
+      else void refreshRef.current();
+    }, LIVE_RETRY_MS);
+  }, []);
+
   const refresh = useCallback(async () => {
     const mine = epoch.current;
     try {
-      const reply = await liveRoomApi.current();
-      if (epoch.current === mine) setRoom(reply.room);
-    } catch {
+      const reply = await liveRoomApi.current(AbortSignal.timeout(LIVE_REQUEST_TIMEOUT_MS));
+      if (epoch.current !== mine) return;
+      setRoom(reply.room);
+      linkOk();
+    } catch (error) {
       // Связи нет: оставляем то, что было, и спросим снова на следующем опросе.
+      if (epoch.current === mine && (!(error instanceof ApiError) || error.status >= 500)) linkFailed();
     }
-  }, []);
+  }, [linkOk, linkFailed]);
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
 
   useEffect(() => {
     if (!reachable) {
@@ -127,28 +152,25 @@ export function LiveRoomProvider({ children }: { children: ReactNode }) {
       const mine = epoch.current;
       lastPush.current = LivePushPolicy.mark(state, Date.now());
       try {
-        const reply = await liveRoomApi.push(state);
+        const reply = await liveRoomApi.push(state, AbortSignal.timeout(LIVE_REQUEST_TIMEOUT_MS));
         if (epoch.current === mine) setRoom(reply.room);
         unsent.current = null;
-        setIssue(null);
+        linkOk();
       } catch (error) {
         // Не дошло: следующий heartbeat отправит снова, а если комната закрылась — refresh это покажет.
         lastPush.current = null;
-        // Отказ «комнаты нет» — не потеря связи; сеть и ответы воркера 5xx — да, и тогда повторяем чаще, чем heartbeat.
+        // Отказ «комнаты нет» — не потеря связи; сеть, обрыв и ответы воркера 5xx — да.
         if (epoch.current === mine && (!(error instanceof ApiError) || error.status >= 500)) {
           unsent.current = state;
-          setIssue((was) => LiveLink.failed(was, performance.now()));
-          window.clearTimeout(retry.current);
-          retry.current = window.setTimeout(() => {
-            const next = latest.current ?? unsent.current;
-            if (next && roomRef.current) void send(next);
-          }, LIVE_RETRY_MS);
+          linkFailed();
         }
         void refresh();
       }
     },
-    [refresh],
+    [refresh, linkOk, linkFailed],
   );
+  const sendRef = useRef(send);
+  sendRef.current = send;
 
   const flush = useCallback(() => {
     const state = latest.current;
@@ -171,6 +193,22 @@ export function LiveRoomProvider({ children }: { children: ReactNode }) {
     const timer = window.setInterval(() => setClock(performance.now()), 1000);
     return () => window.clearInterval(timer);
   }, [issue]);
+  // Быстрый путь: браузер сам сообщает, что сети нет или она вернулась, — не ждём очередного опроса.
+  useEffect(() => {
+    if (!inRoom) return;
+    const gone = () => linkFailed();
+    const back = () => {
+      const next = latest.current ?? unsent.current;
+      if (next) void sendRef.current(next);
+      else void refreshRef.current();
+    };
+    window.addEventListener("offline", gone);
+    window.addEventListener("online", back);
+    return () => {
+      window.removeEventListener("offline", gone);
+      window.removeEventListener("online", back);
+    };
+  }, [inRoom, linkFailed]);
   useEffect(() => {
     if (inRoom) return;
     unsent.current = null;

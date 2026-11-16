@@ -21,8 +21,8 @@ export class LiveRoomApi {
     return friendsApi.request<Reply>("/api/friends/live/join", "POST", { code });
   }
 
-  push(state: LiveState) {
-    return friendsApi.request<Reply>("/api/friends/live/state", "PUT", state);
+  push(state: LiveState, signal?: AbortSignal) {
+    return friendsApi.request<Reply>("/api/friends/live/state", "PUT", state, signal);
   }
 
   leave() {

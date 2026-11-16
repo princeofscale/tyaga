@@ -62,9 +62,11 @@ export class LiveBroadcastPolicy {
   /**
    * Состояние для комнаты по черновику. Пока человек правит уже сохранённую тренировку (или черновика нет),
    * комнате нечего слать: строка «Закончил · N т» остаётся, как была, а «Готовится · 0 т» не появляется.
+   * `releasedId` — тренировка, черновик которой уже закончен или убран в другой вкладке: эта вкладка устарела
+   * и больше не говорит комнате, где человек (иначе её heartbeat затирал бы «Закончил»).
    */
-  static stateFor(draft: LiveDraft | null, now: number, nameOf: (entry: WorkoutExercise) => string): LiveState | null {
-    if (!draft || draft.editing) return null;
+  static stateFor(draft: LiveDraft | null, now: number, nameOf: (entry: WorkoutExercise) => string, releasedId: string | null = null): LiveState | null {
+    if (!draft || draft.editing || draft.workout.id === releasedId) return null;
     return LiveStateBuilder.fromWorkout(draft.workout, {
       now,
       nameOf,
@@ -74,33 +76,43 @@ export class LiveBroadcastPolicy {
   }
 
   /**
-   * После «Сохранить» правки: новый итог для строки «Закончил», если эта строка сейчас у человека есть
-   * и правилась его самая свежая тренировка. Иначе комнату не трогаем.
+   * После «Сохранить» правки: новый итог для строки «Закончил» — только если правилась та самая тренировка,
+   * которая была завершена в комнате (`finishedId`), и строка у человека сейчас «Закончил».
+   * Правка любой другой записи, даже за тот же день, комнату не меняет.
    */
-  static afterEdit(mine: Pick<LiveMember, "state"> | undefined, edited: Workout, all: readonly Workout[], now: number, nameOf: (entry: WorkoutExercise) => string): LiveState | null {
-    if (mine?.state?.phase !== "done") return null;
-    if (all.some((w) => w.id !== edited.id && w.date > edited.date)) return null;
+  static afterEdit(mine: Pick<LiveMember, "state"> | undefined, edited: Workout, finishedId: string | null, now: number, nameOf: (entry: WorkoutExercise) => string): LiveState | null {
+    if (mine?.state?.phase !== "done" || finishedId !== edited.id) return null;
     return LiveStateBuilder.fromWorkout(edited, { now, nameOf, finished: true });
   }
 }
 
-/** Через сколько неудачных отправок подряд, растянутых на это время, человеку говорим «Нет связи». */
+/** Через сколько неудачных запросов подряд, растянутых на это время, человеку говорим «Нет связи». */
 export const LIVE_LINK_LOST_MS = 10_000;
-/** Через сколько повторять отправку, которая не дошла. */
+/** Через сколько повторять запрос к комнате, который не дошёл. */
 export const LIVE_RETRY_MS = 4_000;
+/** Сколько ждать ответа комнаты: молчащий воркер за это время считается неудачей, а не ждёт общий тайм-аут клиента. */
+export const LIVE_REQUEST_TIMEOUT_MS = 5_000;
+/** Насколько вглубь прошлого отсчитывается «нет связи»: от последнего удавшегося запроса, но не дальше (опрос идёт раз в 5 с). */
+const LIVE_LINK_GRACE_MS = 6_000;
 
 export type LiveLinkIssue = { since: number; count: number };
 
 /** Когда человеку в комнате показывать «Нет связи»: его подходы не доходят до напарников. Одиночный сбой не в счёт. */
 export class LiveLink {
-  static readonly MESSAGE = "Нет связи — напарник видит последние данные";
+  /** Одной строкой на 320 px; полная фраза — в подсказке. */
+  static readonly MESSAGE = "Нет связи — напарник видит старое";
+  static readonly DETAIL = "Нет связи — напарник видит последние данные";
 
-  /** Отправка не дошла: начинаем счёт или добавляем ещё одну неудачу. */
-  static failed(issue: LiveLinkIssue | null, now: number): LiveLinkIssue {
-    return issue ? { since: issue.since, count: issue.count + 1 } : { since: now, count: 1 };
+  /**
+   * Запрос не дошёл: начинаем счёт или добавляем ещё одну неудачу. Отсчёт идёт от последнего удавшегося запроса
+   * (связь пропала где-то после него), но не больше чем на LIVE_LINK_GRACE_MS назад: давняя тишина — не повод ронять связь с первой же неудачи.
+   */
+  static failed(issue: LiveLinkIssue | null, now: number, lastOk?: number): LiveLinkIssue {
+    if (issue) return { since: issue.since, count: issue.count + 1 };
+    return { since: lastOk === undefined ? now : Math.max(lastOk, now - LIVE_LINK_GRACE_MS), count: 1 };
   }
 
-  /** Строка нужна, если неудач было не меньше двух и первая была не позже LIVE_LINK_LOST_MS назад. */
+  /** Строка нужна, если неудач было не меньше двух и с начала отсчёта прошло не меньше LIVE_LINK_LOST_MS. */
   static lost(issue: LiveLinkIssue | null, now: number): boolean {
     return !!issue && issue.count >= 2 && now - issue.since >= LIVE_LINK_LOST_MS;
   }
