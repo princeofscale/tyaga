@@ -88,7 +88,7 @@ test("R05-REQ01: годовой файл Strong — названия узнаю�
 });
 
 test("R05-REQ01: спорное не сливается молча — предлагаются ближайшие варианты, счётчик «нужно решить»", () => {
-  const verdicts = ImportNameMatcher.classifyAll(["Hack Squat (Machine)", "Dip", "Close Grip Bench Press (Barbell)", "Deadlift", "Overhead Press"]);
+  const verdicts = ImportNameMatcher.classifyAll(["Hack Squat (Machine)", "Zercher Carry", "Close Grip Bench Press (Barbell)", "Deadlift", "Overhead Press"]);
   assert.equal(verdicts["Hack Squat (Machine)"].kind, "ask");
   assert.ok(verdicts["Hack Squat (Machine)"].candidates.length > 0);
   assert.equal(verdicts["Hack Squat (Machine)"].exercise, null);
@@ -96,7 +96,7 @@ test("R05-REQ01: спорное не сливается молча — пред�
   assert.equal(verdicts.Deadlift.kind, "ask");
   assert.equal(verdicts["Overhead Press"].kind, "ask");
   // В каталоге и базе ничего похожего — отдельная запись.
-  assert.equal(verdicts.Dip.kind, "own");
+  assert.equal(verdicts["Zercher Carry"].kind, "own");
   const base = ImportNameMatcher.summary(verdicts);
   assert.equal(base.toDecide, 4);
   assert.equal(base.own, 1);

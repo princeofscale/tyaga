@@ -135,7 +135,8 @@ test("R09-REQ02: поиск «жим» с чипом «Гантели» и «Ш�
   assert.ok(found("dumbbell").length > 0);
   assert.ok(found("dumbbell").every((e) => /гантел/i.test(e.name) || ExerciseLabels.equipment(e) === "Гантели"));
   assert.ok(found("barbell").length > 0);
-  assert.equal(found("all").length, 10);
+  // каталог пополнился (раунд 10): совпадений «жим» теперь больше потолка списка — 12
+  assert.equal(found("all").length, 12);
   // чип, под которым честно ничего нет, даёт пустой список
   const none = EXERCISES.filter((e) => ExerciseLabels.matches(e, "cable") && matchesSearch(e.name, "жим гантелей лёжа"));
   assert.equal(none.length, 0);
