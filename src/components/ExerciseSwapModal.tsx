@@ -81,6 +81,7 @@ export default function ExerciseSwapModal({
               key={f.id}
               type="button"
               className={`swap-filter-pill ${selectedEquip === f.id ? "active" : ""}`}
+              aria-pressed={selectedEquip === f.id}
               onClick={() => setSelectedEquip(f.id)}
             >
               {f.label}

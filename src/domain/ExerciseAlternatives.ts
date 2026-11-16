@@ -16,8 +16,9 @@ export function detectExerciseEquipment(e: Exercise): DetectedEquipment {
   const id = e.id.toLowerCase();
   if (e.recording.loadMode === "bodyweight" || e.equipment === "bodyweight") return "bodyweight";
   if (e.recording.loadMode === "per_implement" || e.equipment === "dumbbells" || name.includes("гантел") || id.includes("db")) return "dumbbell";
-  if (e.recording.loadMode === "machine_stack" || name.includes("тренаж") || id.includes("machine")) return "machine";
+  // R09-QA-03: блоки и кроссоверы тоже идут «на стеке» (machine_stack), но это отдельный снаряд — проверяем их раньше тренажёра.
   if (name.includes("блок") || name.includes("канат") || name.includes("кроссовер") || id.includes("cable") || id.includes("pulldown")) return "cable";
+  if (e.recording.loadMode === "machine_stack" || name.includes("тренаж") || id.includes("machine")) return "machine";
   return "barbell";
 }
 

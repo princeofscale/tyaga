@@ -113,3 +113,7 @@
 .room-badge-lost svg {
   flex: none;
 }
+.room-badge-lost span {
+  min-width: 0;
+  white-space: nowrap;
+}

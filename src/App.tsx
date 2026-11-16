@@ -19,6 +19,7 @@ import type { TrainingMeetup } from "./domain/TrainingMeetups";
 import { friendsApi } from "./services/FriendsApi";
 import { LiveBroadcastPolicy, LiveStateBuilder } from "./domain/LiveSession";
 import { WorkoutConflict } from "./domain/WorkoutConflict";
+import { LiveFinished } from "./lib/liveFinished";
 import { takeRoomInvite } from "./lib/invite";
 import { useLiveBroadcast } from "./lib/useLiveBroadcast";
 import { useLiveRoom } from "./components/LiveRoomProvider";
@@ -213,7 +214,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
   /** Открыто без связи: на экране копия последнего ответа сервера. */
   const [offlineData, setOfflineData] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(() => readDraft(draftKey));
-  useLiveBroadcast(draft);
+  useLiveBroadcast(draft, draftKey);
   const [persistence, setPersistence] = useState<PersistenceStatus>("pending");
   const [legacyDraft, setLegacyDraft] = useState(() => readDraft(DRAFT_KEY));
   const [conflict, setConflict] = useState<{ current: Workout | null } | null>(
@@ -827,11 +828,12 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
       setDemo(false);
       setJustSaved(result.workout);
       // Напарники по комнате видят итог сразу. Правка старой тренировки в комнату не попадает.
-      if (!draft.editing)
+      if (!draft.editing) {
+        LiveFinished.write(account.id, result.workout.id);
         live.finish(LiveStateBuilder.fromWorkout(result.workout, { now: Date.now(), nameOf: entryName, finished: true }));
-      else {
-        // R09-REQ01: правка последней тренировки пересчитывает «Закончил · N т»; во время правки комната не менялась.
-        const next = LiveBroadcastPolicy.afterEdit(live.room?.members.find((m) => m.isMe), result.workout, workouts, Date.now(), entryName);
+      } else {
+        // R09-REQ01: правка той самой тренировки, что завершена в комнате, пересчитывает «Закончил · N т»; во время правки и при правке любой другой записи комната не меняется.
+        const next = LiveBroadcastPolicy.afterEdit(live.room?.members.find((m) => m.isMe), result.workout, LiveFinished.read(account.id), Date.now(), entryName);
         if (next) live.finish(next);
       }
       if(draft.meetupId && !draft.editing) {
@@ -2624,6 +2626,13 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                         }
                       : null,
                   );
+                  // R09-QA-06: список «Истории» сразу показывает правду: сохранённая в другом окне запись вместо своей старой, удалённой — нет.
+                  const stale = draft.workout.id;
+                  setWorkouts((ws) =>
+                    conflict.current
+                      ? [conflict.current, ...ws.filter((w) => w.id !== conflict.current!.id)].sort((a, b) => b.date.localeCompare(a.date))
+                      : ws.filter((w) => w.id !== stale),
+                  );
                   setConflict(null);
                   setSaveError("");
                   setToast(WorkoutConflict.COPY_READY);
@@ -2631,7 +2640,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
               >
                 {WorkoutConflict.SAVE_COPY.label}
               </button>
-              <small>{WorkoutConflict.SAVE_COPY.effect}</small>
+              <small>{(conflict.current ? WorkoutConflict.SAVE_COPY : WorkoutConflict.SAVE_COPY_DELETED).effect}</small>
             </div>
             {conflict.current ? (
               <div className="conflict-choice">

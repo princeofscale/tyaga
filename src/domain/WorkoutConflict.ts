@@ -6,10 +6,15 @@ export class WorkoutDigest {
     return { sets: workingSets([workout]), tonnageKg: Math.round(volumeSummary([workout], "working").total) };
   }
 
-  /** «2 подх. · 1 358 кг»; без тоннажа (вес без правила, свой вес) — «2 подх. · тоннаж не считается». */
+  /**
+   * «2 подх. · 1 358 кг»; без тоннажа (вес без правила, свой вес) — «2 подх. · тоннаж не считается».
+   * Если в записи есть отмеченная разминка, добавляется «без разминки»: карточка «Истории» считает тоннаж вместе с ней,
+   * шапка тренировки — без неё, и цифры в окне иначе выглядели бы ошибкой (R09-QA-05).
+   */
   static line(workout: Workout): string {
     const { sets, tonnageKg } = WorkoutDigest.of(workout);
-    return `${sets} подх. · ${tonnageKg > 0 ? `${fmt(tonnageKg)} кг` : "тоннаж не считается"}`;
+    const warm = workout.exercises.some((e) => e.sets.some((s) => s.warmup && s.done));
+    return `${sets} подх. · ${tonnageKg > 0 ? `${fmt(tonnageKg)} кг${warm ? " без разминки" : ""}` : "тоннаж не считается"}`;
   }
 }
 
@@ -40,6 +45,11 @@ export class WorkoutConflict {
   static readonly SAVE_COPY: ConflictAction = {
     label: "Сохранить мою отдельной тренировкой",
     effect: "Откроется копия: проверь её и сохрани, в истории будет две записи.",
+  };
+  /** Когда исходной записи уже нет, копия остаётся единственной. */
+  static readonly SAVE_COPY_DELETED: ConflictAction = {
+    label: WorkoutConflict.SAVE_COPY.label,
+    effect: "Откроется копия: проверь её и сохрани — в истории останется только она.",
   };
   static readonly DOWNLOAD: ConflictAction = {
     label: "Скачать мою в файл",
