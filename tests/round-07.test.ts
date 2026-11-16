@@ -4,7 +4,7 @@ import { BackdatedWorkout } from "../src/domain/BackdatedWorkout";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { PlanLine } from "../src/domain/PlanLine";
-import { setsWord, workingSets, workingSetsWord } from "../src/lib/quantity";
+import { setsSummaryLine, setsWord, workingSets, workingSetsWord } from "../src/lib/quantity";
 import type { SetEntry } from "../src/lib/types";
 
 const set = (reps: number, warmup = false) => ({ id: `${Math.random()}`, weight: 60, reps, rir: null, warmup, done: false }) as SetEntry;
@@ -132,4 +132,17 @@ test("QA-R07-06: «Подставить 85 %» не трогает тренаж�
   assert.equal(DeloadHint.isFree("bodyweight"), false);
   assert.equal(DeloadHint.isFree("assisted_bodyweight"), false);
   assert.equal(DeloadHint.isFree("per_implement"), true);
+});
+
+test("QA-R07-08/09: итоги тренировки — «Подходы: N рабочий/рабочих» и «Помощь: N рабочий подход/…»", () => {
+  assert.equal(setsSummaryLine(1, 0), "Подходы: 1 рабочий · 0 разминка");
+  assert.equal(setsSummaryLine(2, 1), "Подходы: 2 рабочих · 1 разминка");
+  assert.equal(setsSummaryLine(5, 2), "Подходы: 5 рабочих · 2 разминка");
+  assert.equal(setsSummaryLine(21, 3), "Подходы: 21 рабочий · 3 разминка");
+  assert.equal(setsSummaryLine(11, 0), "Подходы: 11 рабочих · 0 разминка");
+  // «Помощь: …» в таблице зон — тот же помощник, что и везде
+  assert.equal(`Помощь: ${workingSets(1)}`, "Помощь: 1 рабочий подход");
+  assert.equal(`Помощь: ${workingSets(2)}`, "Помощь: 2 рабочих подхода");
+  assert.equal(`Помощь: ${workingSets(5)}`, "Помощь: 5 рабочих подходов");
+  assert.equal(`Помощь: ${workingSets(21)}`, "Помощь: 21 рабочий подход");
 });

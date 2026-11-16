@@ -33,6 +33,11 @@ export function setsWord(value: number) {
   return quantityWord(value, "подход", "подхода", "подходов");
 }
 
+/** Строка «Подходы» в тексте для «Поделиться»: «21 рабочий · 3 разминка», «2 рабочих · 0 разминка». */
+export function setsSummaryLine(working: number, warmup: number) {
+  return `Подходы: ${working} ${quantityWord(working, "рабочий", "рабочих", "рабочих")} · ${warmup} разминка`;
+}
+
 /** То же без числа: для разметки вида `<strong>N</strong> рабочих подходов`. */
 export function workingSetsWord(value: number) {
   return quantityWord(value, "рабочий подход", "рабочих подхода", "рабочих подходов");

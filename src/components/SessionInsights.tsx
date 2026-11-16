@@ -4,6 +4,7 @@ import { SessionReport } from "../domain/SessionReport";
 import { fmt, type Workout, type Settings } from "../lib/model";
 import type { AccountProfile } from "../lib/account";
 import Modal from "./Modal";
+import { setsSummaryLine, workingSets } from "../lib/quantity";
 import { ShareStoryCardModal } from "./ShareStoryCardModal";
 
 export default function SessionInsights({
@@ -24,7 +25,7 @@ export default function SessionInsights({
       `🏋️‍♂️ Тренировка «${workout.name}» в Тяге:`,
       `⏱️ Время: ${workout.duration} мин`,
       `⚡ Внешний тоннаж: ${fmt(volume.all.total)} кг (рабочий: ${fmt(volume.working.total)} кг)`,
-      `📊 Подходы: ${sets.working} рабочих · ${sets.warmup} разминка`,
+      `📊 ${setsSummaryLine(sets.working, sets.warmup)}`,
       report.muscles.length ? `💪 Зоны: ${report.muscles.map((m) => m.short).join(" · ")}` : "",
     ]
       .filter(Boolean)
@@ -161,7 +162,7 @@ export default function SessionInsights({
             <div key={m.id}>
               <span>
                 {m.short}
-                {m.indirect > 0 && <small>Помощь: {m.indirect} рабочих подх.</small>}
+                {m.indirect > 0 && <small>Помощь: {workingSets(m.indirect)}</small>}
               </span>
               <b>{m.direct || "—"}</b>
               <b className="warmup-value">{m.warmup || "—"}</b>
