@@ -457,3 +457,84 @@ for (const [sets, word] of [[1, "подход"], [3, "подхода"]] as const
     expect(texts.filter((t) => /^подход/.test(t)), `лишние подписи: ${JSON.stringify(texts)}`).toEqual([word]);
   });
 }
+
+/** Кнопки, ссылки, summary и плашки, чей текст шире собственной рамки, и пары соседей, чьи рамки пересекаются. */
+function clipped(page: Page, scope = "main") {
+  return page.evaluate((root) => {
+    const rootEl = document.querySelector(root) ?? document.body;
+    const items = [...rootEl.querySelectorAll<HTMLElement>("button, a, summary, .filter-chip")].filter((el) => {
+      const style = getComputedStyle(el);
+      const r = el.getBoundingClientRect();
+      return style.visibility !== "hidden" && style.display !== "none" && r.width > 0 && r.height > 0;
+    });
+    const label = (el: HTMLElement) => (el.innerText || el.getAttribute("aria-label") || "").trim().slice(0, 30);
+    const wide = items
+      .filter((el) => el.scrollWidth > el.clientWidth + 1)
+      .map((el) => ({ text: label(el), scroll: el.scrollWidth, client: el.clientWidth }));
+    const overlaps: string[] = [];
+    for (const el of items) {
+      const parent = el.parentElement;
+      if (!parent) continue;
+      const siblings = [...parent.children].filter((c): c is HTMLElement => c !== el && items.includes(c as HTMLElement));
+      const a = el.getBoundingClientRect();
+      for (const other of siblings) {
+        if (items.indexOf(other) < items.indexOf(el)) continue;
+        const b = other.getBoundingClientRect();
+        const x = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+        const y = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+        if (x > 0.5 && y > 0.5) overlaps.push(`${label(el)} × ${label(other)}`);
+      }
+    }
+    return { wide, overlaps };
+  }, scope);
+}
+
+for (const size of SIZES) {
+  test(`R07-REQ03: текст не шире плашки, соседние плашки не пересекаются; фильтры «Зала личных рекордов» целы ${size.width}×${size.height}`, async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize(size);
+    await round01Fixture(page, { workouts: journal() });
+    await mockFriends(page);
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Сегодня", exact: true })).toBeVisible();
+    const problems: string[] = [];
+    for (const tab of TABS) {
+      await nav(page, tab).click();
+      await expect(nav(page, tab)).toHaveAttribute("aria-current", "page");
+      await page.waitForTimeout(500);
+      const r = await clipped(page);
+      if (r.wide.length || r.overlaps.length) problems.push(`${tab}: ${JSON.stringify(r)}`);
+    }
+    const bottomNav = await clipped(page, "nav[aria-label='Основная навигация']");
+    if (bottomNav.wide.length || bottomNav.overlaps.length) problems.push(`Нижняя навигация: ${JSON.stringify(bottomNav)}`);
+    // «Прогресс» → «Зал личных рекордов»: плашки не сжаты, высота 44, зазор ≥ 8, ряд прокручивается
+    await nav(page, "Прогресс").click();
+    const row = page.locator(".pr-filter-chips").first();
+    await row.scrollIntoViewIfNeeded();
+    const chips = await row.locator(".filter-chip").evaluateAll((els) =>
+      els.map((el) => { const r = el.getBoundingClientRect(); return { text: (el as HTMLElement).innerText.trim(), l: r.left, r: r.right, h: r.height, w: r.width, sw: el.scrollWidth, cw: el.clientWidth }; }));
+    expect(chips.length).toBeGreaterThanOrEqual(6);
+    for (const c of chips) {
+      expect(c.sw, `«${c.text}»: текст шире плашки`).toBeLessThanOrEqual(c.cw + 1);
+      expect(c.h, `«${c.text}»: высота`).toBeGreaterThanOrEqual(43.99);
+    }
+    for (let i = 1; i < chips.length; i++) expect(chips[i].l - chips[i - 1].r, `зазор «${chips[i - 1].text}» → «${chips[i].text}»`).toBeGreaterThanOrEqual(7.99);
+    const base = chips.find((c) => c.text === "Базовые");
+    if (base) expect(base.w, "«Базовые» не уже естественной ширины").toBeGreaterThanOrEqual(80);
+    expect(await overflow(page)).toBeLessThanOrEqual(1);
+    if (SHOTS) {
+      await page.waitForTimeout(400);
+      await page.screenshot({ path: `${SHOTS}/Зал-рекордов-фильтры-${size.width}.png` });
+    }
+    // в тренировке и в окне «Инструменты»
+    await nav(page, "Сегодня").click();
+    await openTool(page, "Разгрузочная неделя");
+    const tools = await clipped(page, "dialog[open], [role=dialog]");
+    if (tools.wide.length || tools.overlaps.length) problems.push(`Инструменты: ${JSON.stringify(tools)}`);
+    await page.getByRole("dialog").getByRole("button", { name: "Закрыть", exact: true }).click();
+    await startWith(page, BENCH);
+    const workout = await clipped(page, ".workout-screen");
+    if (workout.wide.length || workout.overlaps.length) problems.push(`Тренировка: ${JSON.stringify(workout)}`);
+    expect(problems, problems.join("\n")).toEqual([]);
+  });
+}

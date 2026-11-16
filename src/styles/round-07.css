@@ -243,3 +243,22 @@ main .warmup-science a {
   align-items: center;
   min-height: 44px;
 }
+
+/* Доработка №3: min-width 44 не должен давать flex-элементам сжиматься уже текста (ряд фильтров «Прогресса» прокручивается). */
+main .filter-chip,
+main .pr-nav-btn,
+main .avatar-button,
+main .week-controls button,
+main .text-button,
+main .challenge-actions button,
+main .story-card-trigger-btn,
+main .share-summary-btn,
+main .catalog-tabs button {
+  flex: none;
+}
+/* Нижняя навигация на узком телефоне: «Упражнения» на 360 (56 px при кнопке 52) не должно быть шире своей кнопки. */
+@media (max-width: 380px) {
+  .sidebar .nav-item span {
+    font-size: clamp(0.5rem, 2.3vw, 0.68rem);
+  }
+}
