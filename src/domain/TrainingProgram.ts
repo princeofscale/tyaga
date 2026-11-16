@@ -1,5 +1,6 @@
 import { DeloadEngine } from "./DeloadEngine";
 import { WorkoutReference } from "./WorkoutReference";
+import { LaidDupPlan, type LaidDayPlan } from "./LaidDupPlan";
 import {
   makeWorkout,
   makeExerciseEntry,
@@ -189,9 +190,11 @@ export class TrainingProgram {
   ): Workout {
     const r = this.routine;
     const workout = makeWorkout([], [], timeZone);
-    const cycle = r.cycle;
-    const deload = this.isDeload(history, today);
-    return {
+    // R10: у программы с периодизацией свой счёт недель; разгрузочный цикл обычных программ к ней не применяется.
+    const laid = LaidDupPlan.planFor(r, today);
+    const cycle = laid ? undefined : r.cycle;
+    const deload = !laid && this.isDeload(history, today);
+    const built: Workout = {
       ...workout,
       date: today,
       name: r.name,
@@ -282,6 +285,29 @@ export class TrainingProgram {
                 : {}),
             };
           }),
+        };
+      }),
+    };
+    return laid ? this.withLaid(built, laid) : built;
+  }
+  /**
+   * Тренировка программы с периодизацией: у базового упражнения дня тяжёлый подход и четыре рабочих с весами плана
+   * (вес из «Прошлого» его не подменяет), у вспомогательных — повторения недели и пометка «добавлено»; в заметке — неделя.
+   */
+  private withLaid(workout: Workout, plan: LaidDayPlan): Workout {
+    const day = this.routine.periodization!.day;
+    const week = LaidDupPlan.weekLabel(plan.position);
+    return {
+      ...workout,
+      notes: [workout.notes, week].filter(Boolean).join("\n\n"),
+      exercises: workout.exercises.map((entry) => {
+        if (entry.exerciseId === plan.liftExerciseId)
+          return { ...entry, sets: LaidDupPlan.liftSets(plan), repMin: undefined, repMax: undefined, progressionNote: LaidDupPlan.describe(plan) };
+        const reps = LaidDupPlan.auxReps(day, entry.exerciseId, plan.position.inWave);
+        return {
+          ...entry,
+          ...(reps === null ? {} : { repMin: reps, repMax: reps }),
+          progressionNote: LaidDupPlan.isAdded(day, entry.exerciseId) ? "Добавлено к оригиналу Лейда: в его таблице этого нет." : undefined,
         };
       }),
     };

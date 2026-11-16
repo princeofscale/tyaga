@@ -136,6 +136,29 @@ export type RoutineCycle = {
   weightFactor: number;
   deloadRir: number;
 };
+/** Один из шести дней программы Лейда: «Ноги 1», «Жим 1», «Тяга 1», «Ноги 2», «Жим 2», «Тяга 2». */
+export type LaidDay = "legs1" | "push1" | "pull1" | "legs2" | "push2" | "pull2";
+/** Четыре максимума (1ПМ, кг), от которых считаются веса. */
+export type LaidMaxes = { squat: number; bench: number; deadlift: number; ohp: number };
+/**
+ * Волнообразная периодизация: общая настройка шести программ одного цикла. Недели считаются по календарю от `startMonday`
+ * (понедельник первой недели), а не от первой тренировки. `maxes` действуют с недели `maxesFromWeek` (0-based),
+ * прежние — в `earlier` по возрастанию `fromWeek`: пересчёт максимумов не переписывает уже пройденные недели.
+ */
+export type RoutinePeriodization = {
+  kind: "laid-dup";
+  /** Общий для шести программ цикла: по нему находятся остальные дни и обновляются максимумы. */
+  cycleId: string;
+  day: LaidDay;
+  startMonday: string;
+  maxes: LaidMaxes;
+  maxesFromWeek: number;
+  earlier?: { fromWeek: number; maxes: LaidMaxes }[];
+  /** Блок «добавлено к оригиналу»: задняя и средняя дельта, пресс. */
+  extras: boolean;
+  /** «Облегчённо»: вместо одного повторения — три (не по оригиналу). */
+  light: boolean;
+};
 export type Routine = {
   id: string;
   name: string;
@@ -143,6 +166,7 @@ export type Routine = {
   days: number[];
   exercises: WorkoutExercise[];
   cycle?: RoutineCycle;
+  periodization?: RoutinePeriodization;
   restSeconds: number;
   progression: "repeat" | "double";
   repMin: number;
