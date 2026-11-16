@@ -16,7 +16,7 @@
 .laid-week {
   font-weight: 650;
   font-variant-numeric: tabular-nums;
-  color: var(--accent);
+  color: var(--accent-hover, var(--accent));
   overflow-wrap: anywhere;
 }
 .laid-days,
@@ -61,7 +61,7 @@
   color: var(--muted);
 }
 .laid-status.done {
-  color: var(--accent);
+  color: var(--accent-hover, var(--accent));
   border-color: color-mix(in srgb, var(--accent) 55%, transparent);
 }
 .laid-status.missed {
@@ -166,7 +166,7 @@
   padding: 6px 0;
   text-align: left;
   font-size: 0.8125rem;
-  color: var(--accent);
+  color: var(--accent-hover, var(--accent));
   text-decoration: underline;
   text-underline-offset: 3px;
   overflow-wrap: anywhere;
@@ -245,7 +245,7 @@
   color: var(--muted);
 }
 .laid-switch[aria-checked="true"] .laid-switch-state {
-  color: var(--accent);
+  color: var(--accent-hover, var(--accent));
   border-color: color-mix(in srgb, var(--accent) 55%, transparent);
 }
 .laid-taken {
@@ -421,6 +421,32 @@
   color: var(--muted);
 }
 .laid-origin.added {
-  color: var(--accent);
+  color: var(--accent-hover, var(--accent));
   border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+/* QA-R10-05: подпись «ПРОГРАММА ЛЕЙДА» на фиолетовой теме — тот же светлый тон акцента, что у остального текста Лейда. */
+.laid-card .eyebrow {
+  color: var(--accent-hover, var(--accent));
+}
+
+/* QA-R10-08: основной лифт Лейда в редакторе — вместо плоских полей пояснение. */
+.routine-editor-exercise .routine-fields[hidden],
+.routine-editor-exercise .routine-more[hidden] {
+  display: none !important;
+}
+.laid-editor-note {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.laid-editor-note span {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }

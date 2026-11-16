@@ -693,3 +693,19 @@ test("QA-R10-02: клиент не принимает максимум мень�
   // сервер принимает ровно то, что принимает клиент
   assert.doesNotThrow(() => validRoutine(six({ maxes: { ...MAXES, squat: 1 } })[0], new Map()));
 });
+
+test("QA-R10-06: шесть программ цикла показываются в порядке Пн → Сб, остальные на своих местах", () => {
+  const cycle = six();
+  const other = (name: string) => ({ ...six()[0], name, id: name, periodization: undefined }) as Routine;
+  const stored = [cycle[5], other("A"), cycle[4], cycle[3], other("B"), cycle[2], cycle[1], cycle[0]];
+  const shown = LaidDupPlan.ordered(stored);
+  assert.deepEqual(shown.map((r) => r.name), [cycle[0].name, "A", cycle[1].name, cycle[2].name, "B", cycle[3].name, cycle[4].name, cycle[5].name]);
+  assert.equal(stored[0], cycle[5], "исходный массив не меняется");
+  assert.deepEqual(LaidDupPlan.ordered([]), []);
+  // две разные программы-цикла не смешиваются
+  const second = six();
+  const mixed = [...second].reverse().concat([...cycle].reverse());
+  const out = LaidDupPlan.ordered(mixed);
+  assert.deepEqual(out.slice(0, 6).map((r) => r.id), second.map((r) => r.id));
+  assert.deepEqual(out.slice(6).map((r) => r.id), cycle.map((r) => r.id));
+});

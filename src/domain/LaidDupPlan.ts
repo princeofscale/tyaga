@@ -391,6 +391,26 @@ export class LaidDupPlan {
     );
   }
 
+  /**
+   * Список программ для показа: шесть программ цикла идут в порядке Пн → Сб (Ноги 1 … Тяга 2) на тех же местах списка,
+   * остальные программы не двигаются.
+   */
+  static ordered(routines: Routine[]): Routine[] {
+    const out = [...routines];
+    const slots = new Map<string, number[]>();
+    routines.forEach((r, i) => {
+      const id = LaidDupPlan.periodizationOf(r)?.cycleId;
+      if (id) slots.set(id, [...(slots.get(id) ?? []), i]);
+    });
+    for (const at of slots.values()) {
+      const sorted = at
+        .map((i) => routines[i])
+        .sort((x, y) => LaidDupPlan.DAYS.indexOf(LaidDupPlan.periodizationOf(x)!.day) - LaidDupPlan.DAYS.indexOf(LaidDupPlan.periodizationOf(y)!.day));
+      at.forEach((index, k) => (out[index] = sorted[k]));
+    }
+    return out;
+  }
+
   /** План дня этой программы на дату: null, если у программы нет периодизации. */
   static planFor(routine: Routine, date: string): LaidDayPlan | null {
     const p = LaidDupPlan.periodizationOf(routine);
