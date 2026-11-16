@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { ArrowLeftRight, Search, X, Check, Dumbbell, Sparkles, Filter, ChevronRight } from "lucide-react";
 import type { Exercise } from "../lib/types";
 import { EXERCISES } from "../lib/catalog";
-import { ExerciseAlternativesFinder, type ExerciseAlternative } from "../domain/ExerciseAlternatives";
+import { ExerciseAlternativesFinder, type DetectedEquipment, type ExerciseAlternative } from "../domain/ExerciseAlternatives";
 import { ExerciseLabels } from "../domain/ExerciseLabels";
 import Modal from "./Modal";
 import { matchesSearch } from "../lib/search";
@@ -17,14 +17,14 @@ export default function ExerciseSwapModal({
   onClose: () => void;
 }) {
   const [search, setSearch] = useState("");
-  const [selectedEquip, setSelectedEquip] = useState<string>("all");
+  const [selectedEquip, setSelectedEquip] = useState<"all" | DetectedEquipment>("all");
 
   const suggested = useMemo(
     () => ExerciseAlternativesFinder.findAlternatives(currentExercise, EXERCISES, 10),
     [currentExercise],
   );
 
-  const equipFilters = [
+  const equipFilters: { id: "all" | DetectedEquipment; label: string }[] = [
     { id: "all", label: "Все снаряды" },
     { id: "dumbbell", label: "Гантели" },
     { id: "barbell", label: "Штанга" },
@@ -35,7 +35,8 @@ export default function ExerciseSwapModal({
 
   const filteredSuggested = useMemo(() => {
     if (selectedEquip === "all") return suggested;
-    return suggested.filter((a) => a.exercise.equipment === selectedEquip);
+    // R09-REQ02: чип сравнивается с тем же снарядом, что стоит в подписи строки, а не с идентификатором каталога.
+    return suggested.filter((a) => ExerciseLabels.matches(a.exercise, selectedEquip));
   }, [suggested, selectedEquip]);
 
   const searchResults = useMemo(() => {
@@ -43,7 +44,7 @@ export default function ExerciseSwapModal({
     return EXERCISES.filter(
       (e) =>
         e.id !== currentExercise.id &&
-        (selectedEquip === "all" || e.equipment === selectedEquip) &&
+        ExerciseLabels.matches(e, selectedEquip) &&
         matchesSearch(`${e.name} ${e.nameEn} ${(e.aliases ?? []).join(" ")}`, search),
     ).slice(0, 12);
   }, [search, currentExercise.id, selectedEquip]);

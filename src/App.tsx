@@ -17,7 +17,8 @@ import { BodyweightProvider, useBodyweight } from "./state/BodyweightContext";
 import { BodyMass } from "./domain/BodyMass";
 import type { TrainingMeetup } from "./domain/TrainingMeetups";
 import { friendsApi } from "./services/FriendsApi";
-import { LiveStateBuilder } from "./domain/LiveSession";
+import { LiveBroadcastPolicy, LiveStateBuilder } from "./domain/LiveSession";
+import { WorkoutConflict } from "./domain/WorkoutConflict";
 import { takeRoomInvite } from "./lib/invite";
 import { useLiveBroadcast } from "./lib/useLiveBroadcast";
 import { useLiveRoom } from "./components/LiveRoomProvider";
@@ -828,6 +829,11 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
       // Напарники по комнате видят итог сразу. Правка старой тренировки в комнату не попадает.
       if (!draft.editing)
         live.finish(LiveStateBuilder.fromWorkout(result.workout, { now: Date.now(), nameOf: entryName, finished: true }));
+      else {
+        // R09-REQ01: правка последней тренировки пересчитывает «Закончил · N т»; во время правки комната не менялась.
+        const next = LiveBroadcastPolicy.afterEdit(live.room?.members.find((m) => m.isMe), result.workout, workouts, Date.now(), entryName);
+        if (next) live.finish(next);
+      }
       if(draft.meetupId && !draft.editing) {
         const meetupId=draft.meetupId,gym=draft.meetupGym??"";
         void (async()=>{
@@ -2591,58 +2597,69 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
       ) : null}
       {conflict && draft ? (
         <Modal
-          title="Версии тренировки разошлись"
+          title={WorkoutConflict.title(conflict.current)}
           onClose={() => setConflict(null)}
         >
-          <p className="modal-intro">
-            {conflict.current
-              ? `На другом устройстве сохранена версия ${conflict.current.revision}. Твои изменения остаются в черновике; сервер их не записал поверх новой версии.`
-              : "Исходная тренировка удалена. Твой черновик остаётся в форме."}
-          </p>
-          <button className="text-button" onClick={exportDraft}>
-            <Download size={16} />
-            Скачать мой черновик
-          </button>
-          <div className="conflict-actions">
-            <button
-              className="button primary"
-              onClick={() => {
-                setDraft((d) =>
-                  d
-                    ? {
-                        ...d,
-                        workout: new WorkoutSession(d.workout).separateCopy(),
-                        editing: false,
-                        manualDuration: true,
-                      }
-                    : null,
-                );
-                setConflict(null);
-                setSaveError("");
-                setToast(
-                  "Отдельный черновик готов. Сохрани его, когда проверишь.",
-                );
-              }}
-            >
-              Создать отдельную копию
-            </button>
-            {conflict.current ? (
+          {/* R09-REQ03: человеческим языком, с числами обеих записей и последствием у каждой кнопки; поведение кнопок прежнее. */}
+          <dl className="conflict-compare">
+            {WorkoutConflict.summary(draft.workout, conflict.current).map((row) => (
+              <div key={row.label}>
+                <dt>{row.label}</dt>
+                <dd>{row.value}</dd>
+              </div>
+            ))}
+          </dl>
+          <div className="conflict-choices">
+            <div className="conflict-choice">
               <button
-                className="button secondary"
+                className="button primary"
                 onClick={() => {
-                  const current = conflict.current!;
-                  setWorkouts((ws) => [
-                    current,
-                    ...ws.filter((w) => w.id !== current.id),
-                  ]);
-                  setDraft(newDraft(structuredClone(current), true));
+                  setDraft((d) =>
+                    d
+                      ? {
+                          ...d,
+                          workout: new WorkoutSession(d.workout).separateCopy(),
+                          editing: false,
+                          manualDuration: true,
+                        }
+                      : null,
+                  );
                   setConflict(null);
                   setSaveError("");
+                  setToast(WorkoutConflict.COPY_READY);
                 }}
               >
-                Заменить мой черновик актуальной версией
+                {WorkoutConflict.SAVE_COPY.label}
               </button>
+              <small>{WorkoutConflict.SAVE_COPY.effect}</small>
+            </div>
+            {conflict.current ? (
+              <div className="conflict-choice">
+                <button
+                  className="button secondary"
+                  onClick={() => {
+                    const current = conflict.current!;
+                    setWorkouts((ws) => [
+                      current,
+                      ...ws.filter((w) => w.id !== current.id),
+                    ]);
+                    setDraft(newDraft(structuredClone(current), true));
+                    setConflict(null);
+                    setSaveError("");
+                  }}
+                >
+                  {WorkoutConflict.KEEP_SAVED.label}
+                </button>
+                <small>{WorkoutConflict.KEEP_SAVED.effect}</small>
+              </div>
             ) : null}
+            <div className="conflict-choice">
+              <button className="text-button" onClick={exportDraft}>
+                <Download size={16} />
+                {WorkoutConflict.DOWNLOAD.label}
+              </button>
+              <small>{WorkoutConflict.DOWNLOAD.effect}</small>
+            </div>
           </div>
         </Modal>
       ) : null}

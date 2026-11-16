@@ -1,6 +1,6 @@
 import { MUSCLES } from "../data/muscles";
 import type { Exercise } from "../lib/types";
-import { detectExerciseEquipment } from "./ExerciseAlternatives";
+import { detectExerciseEquipment, type DetectedEquipment } from "./ExerciseAlternatives";
 
 const NAMES = {
   barbell: "Штанга",
@@ -20,6 +20,20 @@ export class ExerciseLabels {
     const detected = detectExerciseEquipment(exercise as Exercise);
     if (detected === "barbell" && exercise.equipment === "gym" && !/штанг|гриф|становая/i.test(exercise.name)) return "Штанга / тренажёр";
     return NAMES[detected];
+  }
+
+  /**
+   * Под какими чипами снаряда в окне «Заменить» упражнение показывается: ровно под теми, чьё слово стоит в его подписи.
+   * У «Штанга / тренажёр» два слова — значит, два чипа.
+   */
+  static chips(exercise: Pick<Exercise, "id" | "name" | "equipment" | "recording">): DetectedEquipment[] {
+    const detected = detectExerciseEquipment(exercise as Exercise);
+    return ExerciseLabels.equipment(exercise) === "Штанга / тренажёр" ? ["barbell", "machine"] : [detected];
+  }
+
+  /** Подходит ли упражнение чипу снаряда («all» — любое). */
+  static matches(exercise: Pick<Exercise, "id" | "name" | "equipment" | "recording">, filter: "all" | DetectedEquipment): boolean {
+    return filter === "all" || ExerciseLabels.chips(exercise).includes(filter);
   }
 
   /** «Квадрицепс, Ягодицы» — названия групп мышц, не внутренние идентификаторы. */
