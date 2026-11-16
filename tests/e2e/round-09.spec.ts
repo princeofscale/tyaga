@@ -175,7 +175,7 @@ for (const size of SIZES) {
     await dialog.getByRole("searchbox").fill("жим");
     await expect(dialog.locator(".swap-section-headline")).toContainText("Результаты поиска");
     const search = await shown(dialog);
-    expect(search.n).toBe(10);
+    expect(search.n).toBe(12); // каталог пополнен в раунде 10: совпадений «жим» больше потолка списка (12)
     for (const word of ["Гантели", "Штанга"]) {
       await dialog.getByRole("button", { name: word, exact: true }).click();
       const s = await shown(dialog);
@@ -184,7 +184,7 @@ for (const size of SIZES) {
       for (const label of s.labels) expect(label === word || label === "Штанга / тренажёр").toBe(true);
     }
     await dialog.getByRole("button", { name: "Все снаряды", exact: true }).click();
-    expect((await shown(dialog)).n).toBe(10);
+    expect((await shown(dialog)).n).toBe(12);
     await dialog.getByRole("button", { name: "Очистить", exact: true }).click();
     expect((await shown(dialog)).n).toBe(10);
     // цели касания и текст внутри плашек
