@@ -35,6 +35,9 @@ import Select from "./Select";
 import { ExerciseLibrary } from "./chunks";
 import { DeloadPlan, type DeloadPlanRecord } from "../domain/DeloadPlan";
 import { dateLabel } from "../lib/calendar";
+import { LaidDupPlan } from "../domain/LaidDupPlan";
+import LaidDupModal from "./LaidDupModal";
+import { LaidDupCard, LaidDupSchedule, LaidRoutineLine } from "./LaidDupPanel";
 
 type Props = {
   routines: Routine[];
@@ -59,6 +62,10 @@ export default function ProgramsScreen(props: Props) {
     [error, setError] = useState("");
   const [deleting, setDeleting] = useState<Routine | null>(null);
   const [picker, setPicker] = useState(false);
+  /** R10: окно Лейда (создать / обновить максимумы / новый цикл) и расписание на 9 недель; цикл — по общему cycleId. */
+  const [laid, setLaid] = useState<{ mode: "create" | "update" | "restart"; cycleId?: string } | null>(null);
+  const [schedule, setSchedule] = useState<string | null>(null);
+  const [notice, setNotice] = useState("");
   const [removed, setRemoved] = useState<{
     entry: Routine["exercises"][number];
     index: number;
@@ -97,6 +104,8 @@ export default function ProgramsScreen(props: Props) {
     ),
     today = localDate(new Date(), props.timeZone),
     hasCycle = props.routines.some((r) => !!r.cycle);
+  const laidCycles = useMemo(() => LaidDupPlan.cycles(props.routines), [props.routines]);
+  const cycleById = (id?: string) => laidCycles.find((c) => c[0].periodization!.cycleId === id) ?? laidCycles[0];
   /** isDeload walks the whole history per routine, so it stays off the keystroke path. */
   const deloadRoutineIds = useMemo(
     () =>
@@ -123,6 +132,7 @@ export default function ProgramsScreen(props: Props) {
         asCopy
           ? {
               ...editor,
+              periodization: undefined,
               id: crypto.randomUUID(),
               revision: 0,
               name: (editor.name + " (копия)").slice(0, 120),
@@ -135,6 +145,27 @@ export default function ProgramsScreen(props: Props) {
       if (e instanceof ApiError && e.status === 409)
         setConflict({ current: e.data.currentRoutine ?? null });
       setError(e instanceof Error ? e.message : "Ошибка сохранения");
+    } finally {
+      setBusy(false);
+    }
+  }
+  /** «Можно обновить максимум»: новые максимумы по свежим подходам, пересчёт плана с текущей недели. */
+  async function recalc(cycle: Routine[]) {
+    const first = cycle[0].periodization!;
+    const suggestion = LaidDupPlan.suggestion(first, props.workouts, today);
+    if (!suggestion.length) return;
+    const maxes = { ...first.maxes };
+    for (const s of suggestion) maxes[s.lift] = s.to;
+    const position = LaidDupPlan.position(LaidDupPlan.weekOf(first.startMonday, today));
+    const from = position.beforeStart ? 0 : position.week;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      for (const r of cycle) await props.onSave({ ...r, periodization: LaidDupPlan.withMaxes(r.periodization!, maxes, from) });
+      setNotice(`Максимумы обновлены: новые веса — с недели ${from + 1}, прошлые недели не меняются.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось пересчитать план");
     } finally {
       setBusy(false);
     }
@@ -344,6 +375,28 @@ export default function ProgramsScreen(props: Props) {
           {error}
         </p>
       ) : null}
+      {notice && !editor ? (
+        <p className="progression-note laid-notice" role="status">
+          {notice}
+        </p>
+      ) : null}
+      {laidCycles.map((cycle) => (
+        <LaidDupCard
+          key={cycle[0].periodization!.cycleId}
+          cycle={cycle}
+          workouts={props.workouts}
+          today={today}
+          busy={busy}
+          onSchedule={() => setSchedule(cycle[0].periodization!.cycleId)}
+          onUpdate={() =>
+            setLaid({
+              mode: LaidDupPlan.position(LaidDupPlan.weekOf(cycle[0].periodization!.startMonday, today)).finished ? "restart" : "update",
+              cycleId: cycle[0].periodization!.cycleId,
+            })
+          }
+          onRecalc={() => void recalc(cycle)}
+        />
+      ))}
       <div className="routine-grid">
         {props.routines.map((r) => (
           <article className="routine-card panel" key={r.id}>
@@ -362,6 +415,7 @@ export default function ProgramsScreen(props: Props) {
               </button>
             </div>
             <h3>{r.name}</h3>
+            {r.periodization ? <LaidRoutineLine routine={r} workouts={props.workouts} today={today} /> : null}
             {deloadRoutineIds.has(r.id) ? (
               <p
                 className="progression-note"
@@ -400,7 +454,7 @@ export default function ProgramsScreen(props: Props) {
                   <span key={e.exerciseId}>
                     {entryName(e)}
                     {planned
-                      ? ` · ${e.sets.filter((s) => !s.warmup).length} × ${planned.min}–${planned.max}`
+                      ? ` · ${e.sets.filter((s) => !s.warmup).length} × ${planned.min === planned.max ? planned.min : `${planned.min}–${planned.max}`}`
                       : ""}
                   </span>
                 );
@@ -436,6 +490,8 @@ export default function ProgramsScreen(props: Props) {
                 onClick={() =>
                   open({
                     ...r,
+                    // Копия — обычная программа: в цикле Лейда у каждого дня одна запись.
+                    periodization: undefined,
                     id: crypto.randomUUID(),
                     revision: 0,
                     name: (r.name + " (копия)").slice(0, 120),
@@ -503,6 +559,14 @@ export default function ProgramsScreen(props: Props) {
                 symbol: "04",
               },
               {
+                id: "laid",
+                name: "Дэвид Лейд · DUP · 9 недель · 6 дней",
+                note: laidCycles.length
+                  ? "Шесть программ · уже есть: обновить максимумы или создать ещё раз"
+                  : "Шесть программ · веса от твоих максимумов, схема меняется по неделям",
+                symbol: "06",
+              },
+              {
                 id: "v2",
                 name: "Программа v2 · 5 дней",
                 note: hasCycle
@@ -516,7 +580,7 @@ export default function ProgramsScreen(props: Props) {
               className="starter-card panel"
               key={p.id}
               disabled={busy}
-              onClick={() => void starter(p.id)}
+              onClick={() => (p.id === "laid" ? (setNotice(""), setLaid({ mode: "create" })) : void starter(p.id))}
             >
               <span>{p.symbol}</span>
               <b>{p.name}</b>
@@ -530,6 +594,39 @@ export default function ProgramsScreen(props: Props) {
           подходящие движения и начальные веса.
         </p>
       </section>
+      {laid ? (
+        <LaidDupModal
+          key={laid.mode}
+          mode={laid.mode}
+          routines={props.routines}
+          cycle={laid.mode === "create" ? undefined : cycleById(laid.cycleId)}
+          existing={laid.mode === "create" && laidCycles.length > 0}
+          workouts={props.workouts}
+          today={today}
+          onSave={props.onSave}
+          onClose={() => setLaid(null)}
+          onDone={setNotice}
+          onSwitch={(mode) => setLaid({ mode, cycleId: laidCycles[0]?.[0].periodization!.cycleId })}
+        />
+      ) : null}
+      {schedule && cycleById(schedule) ? (
+        <LaidDupSchedule
+          cycle={cycleById(schedule)}
+          workouts={props.workouts}
+          today={today}
+          busy={busy}
+          onClose={() => setSchedule(null)}
+          onUpdate={() => {
+            const cycle = cycleById(schedule);
+            setSchedule(null);
+            setLaid({
+              mode: LaidDupPlan.position(LaidDupPlan.weekOf(cycle[0].periodization!.startMonday, today)).finished ? "restart" : "update",
+              cycleId: cycle[0].periodization!.cycleId,
+            });
+          }}
+          onRecalc={() => void recalc(cycleById(schedule))}
+        />
+      ) : null}
       {editor ? (
         <Modal
           title={

@@ -1,0 +1,426 @@
+/* R10: программа Дэвида Лейда (DUP, 9 недель) — карточка, окно создания, расписание на 9 недель.
+   Телефон 390/360/320: без горизонтальной прокрутки, подписи переносятся, цели касания ≥ 44 px, плашки не сжимаются (flex: none). */
+.laid-card {
+  padding: 20px;
+  margin-bottom: 18px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.laid-card h3 {
+  margin-top: 6px;
+  font-size: 1.15rem;
+  overflow-wrap: anywhere;
+}
+.laid-week {
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  overflow-wrap: anywhere;
+}
+.laid-days,
+.laid-maxes,
+.laid-preview ul,
+.laid-week-card ul,
+.laid-comp-day ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.laid-days {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr));
+  gap: 8px;
+}
+.laid-days li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--line-soft);
+}
+.laid-day-name {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.laid-status {
+  flex: none;
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--line-strong, var(--line));
+  font-size: 0.75rem;
+  font-weight: 650;
+  line-height: 1.5;
+  white-space: nowrap;
+  color: var(--muted);
+}
+.laid-status.done {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.laid-status.missed {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 55%, transparent);
+}
+.laid-suggest {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg));
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+.laid-suggest p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.laid-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.laid-actions .button,
+.laid-suggest .button {
+  flex: 1 1 11rem;
+  min-height: 46px;
+  white-space: normal;
+  text-align: center;
+}
+.laid-notice {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  font-size: 0.85rem;
+  color: var(--text-soft);
+}
+.laid-routine-line {
+  margin: 10px 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--text-soft);
+}
+.laid-routine-line p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.laid-plan-line {
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+/* Окно создания */
+.laid-lead {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--text-soft);
+}
+.laid-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+}
+@media (min-width: 520px) {
+  .laid-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.laid-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.laid-input {
+  position: relative;
+  display: block;
+}
+.laid-input input {
+  min-height: 46px;
+  font-variant-numeric: tabular-nums;
+}
+.laid-field-note {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+.laid-error {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--danger);
+}
+.laid-estimate {
+  min-height: 44px;
+  padding: 6px 0;
+  text-align: left;
+  font-size: 0.8125rem;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+.laid-group {
+  min-width: 0;
+}
+.laid-choice {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+@media (min-width: 520px) {
+  .laid-choice {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.laid-choice button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 52px;
+  padding: 10px 14px;
+  text-align: left;
+  border: 1px solid var(--line-strong, var(--line));
+  border-radius: 8px;
+  background: var(--line-soft);
+  font-size: 0.875rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.laid-choice button small {
+  color: var(--muted);
+}
+.laid-choice button.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg));
+}
+.laid-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 52px;
+  padding: 10px 14px;
+  text-align: left;
+  border: 1px solid var(--line-strong, var(--line));
+  border-radius: 8px;
+  background: var(--line-soft);
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+.laid-switch[aria-checked="true"] {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg));
+}
+.laid-switch-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.laid-switch-text small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.laid-switch-state {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--line-strong, var(--line));
+  font-size: 0.75rem;
+  font-weight: 650;
+  color: var(--muted);
+}
+.laid-switch[aria-checked="true"] .laid-switch-state {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.laid-taken {
+  margin: 0;
+  padding: 10px 12px 10px 28px;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--text-soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.laid-preview ul {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.laid-preview li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+.laid-preview li b {
+  flex: none;
+  min-width: 4.2rem;
+}
+.laid-preview li span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Расписание на 9 недель */
+.laid-schedule {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.laid-maxes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.laid-maxes li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--line-soft);
+  font-variant-numeric: tabular-nums;
+}
+.laid-maxes li b {
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+.laid-maxes li small {
+  color: var(--muted);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+.laid-explain {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--text-soft);
+}
+.laid-weeks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+@media (min-width: 700px) {
+  .laid-weeks {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.laid-week-card {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  scroll-margin-top: 8px;
+}
+.laid-week-card.current {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg));
+}
+.laid-week-card h4 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin: 0 0 8px;
+  font-size: 0.9rem;
+}
+.laid-now {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: var(--accent-soft);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+.laid-week-card ul {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.laid-week-card li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 8px;
+  min-width: 0;
+  font-size: 0.8125rem;
+}
+.laid-week-card li b {
+  flex: none;
+  min-width: 3.6rem;
+}
+.laid-week-card li .laid-plan-line {
+  flex: 1 1 100%;
+  min-width: 0;
+  color: var(--text-soft);
+}
+.laid-composition summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-size: 0.875rem;
+}
+.laid-comp-day h4 {
+  margin: 10px 0 6px;
+  font-size: 0.875rem;
+}
+.laid-comp-day h4 small {
+  color: var(--muted);
+  font-weight: 400;
+}
+.laid-comp-day ul {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.laid-comp-day li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 8px;
+  font-size: 0.8125rem;
+}
+.laid-comp-day li > span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.laid-origin {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 6px;
+  border: 1px solid var(--line-strong, var(--line));
+  font-size: 0.72rem;
+  white-space: nowrap;
+  color: var(--muted);
+}
+.laid-origin.added {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
