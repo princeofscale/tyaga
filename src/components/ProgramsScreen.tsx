@@ -116,6 +116,10 @@ export default function ProgramsScreen(props: Props) {
       ),
     [props.routines, props.workouts, today],
   );
+  const laidEdited = editor ? LaidDupPlan.periodizationOf(editor) : undefined;
+  /** Основной лифт программы Лейда: его подходы и веса считаются по неделе, плоской схемой не редактируются. */
+  const laidLift = laidEdited ? LaidDupPlan.LIFT_EXERCISE[LaidDupPlan.LIFT_OF[laidEdited.day]] : null;
+  const laidPlan = editor && laidEdited ? LaidDupPlan.planFor(editor, today) : null;
   const open = (routine: Routine) => {
     setEditor(structuredClone(routine));
     setError("");
@@ -398,7 +402,7 @@ export default function ProgramsScreen(props: Props) {
         />
       ))}
       <div className="routine-grid">
-        {props.routines.map((r) => (
+        {LaidDupPlan.ordered(props.routines).map((r) => (
           <article className="routine-card panel" key={r.id}>
             <div className="routine-card-top">
               <span className="feature-tag">
@@ -826,7 +830,13 @@ export default function ProgramsScreen(props: Props) {
                           </button>
                         </div>
                       </div>
-                      <div className="routine-fields">
+                      {laidLift === entry.exerciseId ? (
+                        <p className="laid-editor-note" data-testid="laid-editor-note">
+                          Схема Лейда: веса и подходы считаются по неделе цикла; меняются максимумы и дни.
+                          {laidPlan ? <span> Сейчас: {LaidDupPlan.line(laidPlan)}.</span> : null}
+                        </p>
+                      ) : null}
+                      <div className="routine-fields" hidden={laidLift === entry.exerciseId} aria-hidden={laidLift === entry.exerciseId ? true : undefined}>
                         <label>
                           Подходы
                           <input
@@ -924,7 +934,7 @@ export default function ProgramsScreen(props: Props) {
                           />
                         </label>
                       </div>
-                      <details className="routine-more">
+                      <details className="routine-more" hidden={laidLift === entry.exerciseId}>
                         <summary>
                           <span>Ещё</span>
                             {spec.loadMode !== "bodyweight" && weightHints[index] ? (

@@ -516,3 +516,86 @@ test("QA-R10-07: сбой одной вкладки не гасит прилож
   await expect(page.getByRole("alert").filter({ hasText: "Не удалось открыть вкладку" })).toHaveCount(0);
   await expect(page.locator("main")).not.toBeEmpty();
 });
+
+test("QA-R10-08: редактор Лейда — у основного лифта пояснение вместо плоской схемы, схема не затирается; вспомогательные правятся как обычно", async ({ page }) => {
+  test.setTimeout(90_000);
+  const { puts } = await laidApp(page, { routines: sixRoutines() });
+  await openPrograms(page);
+  await page.getByRole("button", { name: "Редактировать программу Лейд · Ноги 1", exact: true }).click();
+  const editor = dialog(page);
+  const lift = editor.locator("article.routine-editor-exercise").first();
+  await expect(lift.getByRole("heading", { name: "Приседания со штангой" })).toBeVisible();
+  await expect(lift.getByTestId("laid-editor-note")).toContainText("Схема Лейда: веса и подходы считаются по неделе цикла; меняются максимумы и дни.");
+  await expect(lift.getByTestId("laid-editor-note")).toContainText("Сейчас: 1 × 5 × 85 кг · 4 × 12 × 65 кг");
+  await expect(lift.getByLabel("Начальный вес, кг")).toBeHidden();
+  await expect(lift.getByLabel("Подходы", { exact: true })).toBeHidden();
+  await expect(lift.getByLabel("Повторы", { exact: true })).toBeHidden();
+  // вспомогательное — обычные поля
+  const aux = editor.locator("article.routine-editor-exercise").nth(1);
+  await expect(aux.getByLabel("Начальный вес, кг")).toBeEnabled();
+  await expect(aux.getByTestId("laid-editor-note")).toHaveCount(0);
+  await aux.getByLabel("Начальный вес, кг").fill("60");
+  expect(await overflow(page)).toBeLessThanOrEqual(1);
+  await editor.getByRole("button", { name: "Сохранить программу", exact: true }).click();
+  await expect(dialog(page)).toHaveCount(0);
+  expect(puts).toHaveLength(1);
+  const saved = puts[0];
+  // периодизация цела, лифт — тот же набор подходов (1 + 4), не плоская схема
+  expect(saved.periodization).toMatchObject({ kind: "laid-dup", day: "legs1", maxes: MAXES });
+  expect(saved.exercises[0].sets.map((s) => [s.weight, s.reps])).toEqual([[85, 5], [65, 12], [65, 12], [65, 12], [65, 12]]);
+  expect(saved.exercises[1].sets.every((s) => s.weight === 60)).toBe(true);
+  // тренировка стартует по плану
+  expect(await startAndRead(page, "Лейд · Ноги 1", "Приседания со штангой")).toEqual(["85×5", "65×12", "65×12", "65×12", "65×12"]);
+});
+
+test("QA-R10-06: шесть программ Лейда в «Программах» идут Пн → Сб, даже если пришли в обратном порядке", async ({ page }) => {
+  test.setTimeout(60_000);
+  await laidApp(page, { routines: [...sixRoutines()].reverse() });
+  await openPrograms(page);
+  const names = await page.locator("article.routine-card h3").allTextContents();
+  expect(names.filter((n) => n.startsWith("Лейд"))).toEqual(LaidDupPlan.DAYS.map((d) => LaidDupPlan.NAMES[d]));
+});
+
+test("QA-R10-05: фиолетовая тема — акцентный текст Лейда не ниже 4,5:1", async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.addInitScript(() => localStorage.setItem("tyaga_theme_accent", "violet"));
+  await laidApp(page, { routines: sixRoutines() });
+  await openPrograms(page);
+  const worst = async () =>
+    page.evaluate(() => {
+      const parse = (c: string) => (c.match(/[\d.]+/g) ?? []).slice(0, 4).map(Number);
+      const lum = ([r, g, b]: number[]) => {
+        const f = (v: number) => ((v /= 255) <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+        return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+      };
+      const bgOf = (el: Element) => {
+        for (let n: Element | null = el; n; n = n.parentElement) {
+          const [r, g, b, a = 1] = parse(getComputedStyle(n).backgroundColor);
+          if (a > 0.5) return [r, g, b];
+        }
+        return [0, 0, 0];
+      };
+      const out: string[] = [];
+      let seen = 0;
+      for (const el of document.querySelectorAll(".laid-week, .laid-origin.added, .laid-switch-state, .laid-card .eyebrow, .laid-status.done, .laid-estimate")) {
+        const rect = el.getBoundingClientRect();
+        if (!rect.width) continue;
+        const fg = parse(getComputedStyle(el).color).slice(0, 3);
+        const [l1, l2] = [lum(fg), lum(bgOf(el))].sort((a, b) => b - a);
+        const ratio = (l1 + 0.05) / (l2 + 0.05);
+        seen++;
+        if (ratio < 4.5) out.push(`${(el as HTMLElement).className} ${ratio.toFixed(2)}`);
+      }
+      return { seen, out };
+    });
+  expect(await page.evaluate(() => document.documentElement.getAttribute("data-theme-accent"))).toBe("violet");
+  const card = await worst();
+  expect(card.seen, "проверены .laid-week, eyebrow и статусы карточки").toBeGreaterThanOrEqual(2);
+  expect(card.out).toEqual([]);
+  await page.getByRole("button", { name: "Расписание на 9 недель" }).click();
+  await expect(dialog(page)).toBeVisible();
+  await dialog(page).getByText("Состав дней: оригинал и добавленное").click();
+  const schedule = await worst();
+  expect(schedule.seen).toBeGreaterThan(card.seen);
+  expect(schedule.out).toEqual([]);
+});
