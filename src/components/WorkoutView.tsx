@@ -76,6 +76,7 @@ export type { Draft } from "../lib/draft";
 import { WarmupPlanner } from "../domain/WarmupPlanner";
 import { BackdatedWorkout } from "../domain/BackdatedWorkout";
 import { DeloadHint } from "../domain/DeloadHint";
+import { ExerciseSwap } from "../domain/ExerciseSwap";
 import { setsWord } from "../lib/quantity";
 import type { DeloadPlanRecord } from "../domain/DeloadPlan";
 import Select from "./Select";
@@ -1835,22 +1836,29 @@ changeSet(ei, si, PreviousSets.patch(deloaded(we, last, comparableIndex, s.warmu
           onClose={() => setSwapTarget(null)}
           onSwap={(newEx) => {
             const targetEi = swapTarget.ei;
+            const target = w.exercises[targetEi];
+            const oldSpec = exerciseForEntry(target)?.recording;
+            const renamed: WorkoutExercise = {
+              ...target,
+              exerciseId: newEx.id,
+              displayNameSnapshot: newEx.name,
+              catalogRevision: newEx.catalogRevision,
+              recordingSpecRevision: newEx.catalogRevision,
+              muscleMappingRevision: newEx.catalogRevision,
+              ...(newEx.source || newEx.custom ? { externalDefinition: newEx } : {}),
+            };
+            // R08-REQ01: при другом правиле веса числа и ✓ старого упражнения не переходят; берём «Прошлое» нового.
+            const find = (pool: Workout[]) => lastEntry(pool, { ...renamed, sets: [] }, workoutId, w.date, { timeZone: settings.timeZone });
+            const last = DeloadEngine.isDeloadName(w.name) ? find(history) : (find(DeloadEngine.regular(history)) ?? find(history));
+            const previousWorking = last?.sets.filter((s) => s.done && !s.warmup) ?? [];
+            const swapped = ExerciseSwap.sets(target.sets, oldSpec?.loadMode, oldSpec?.type, newEx, previousWorking);
             setWorkout({
               ...w,
               exercises: w.exercises.map((e, i) =>
-                i === targetEi
-                  ? {
-                      ...e,
-                      exerciseId: newEx.id,
-                      displayNameSnapshot: newEx.name,
-                      catalogRevision: newEx.catalogRevision,
-                      recordingSpecRevision: newEx.catalogRevision,
-                      muscleMappingRevision: newEx.catalogRevision,
-                      ...(newEx.source || newEx.custom ? { externalDefinition: newEx } : {}),
-                    }
-                  : e,
+                i === targetEi ? { ...ExerciseSwap.entry(renamed, swapped.carried), sets: swapped.sets } : e,
               ),
             });
+            if (!swapped.carried) onToast?.("Заменено: вес и отметки не перенесены — другое упражнение");
             setSwapTarget(null);
           }}
         />
