@@ -302,3 +302,17 @@ test("QA-R03-08: истёкшая сессия стирает кэши журн�
   assert.equal(map.has("tyaga-pending-workouts:a1"), false, "выход стирает очередь");
   assert.equal(map.has("tyaga-draft-account:a1"), false);
 });
+
+test("QA-R09-10: вход другого аккаунта стирает и отметку «закончил в комнате» прежнего, свою оставляет", () => {
+  const { map, storage } = memoryStore();
+  map.set("tyaga-live-finished:a1", "w-1");
+  map.set("tyaga-live-finished:b2", "w-2");
+  map.set("tyaga_theme_accent", "x");
+  const data = new DeviceAccountData(() => storage);
+  data.purgeOthers("b2");
+  assert.equal(map.has("tyaga-live-finished:a1"), false, "чужая отметка стёрта");
+  assert.equal(map.get("tyaga-live-finished:b2"), "w-2", "своя остаётся");
+  assert.equal(map.has("tyaga_theme_accent"), true, "оформление остаётся");
+  data.wipe();
+  assert.equal(map.has("tyaga-live-finished:b2"), false, "при выходе стирается и своя");
+});
