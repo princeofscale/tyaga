@@ -3,6 +3,7 @@ import { ArrowLeftRight, Search, X, Check, Dumbbell, Sparkles, Filter, ChevronRi
 import type { Exercise } from "../lib/types";
 import { EXERCISES } from "../lib/catalog";
 import { ExerciseAlternativesFinder, type ExerciseAlternative } from "../domain/ExerciseAlternatives";
+import { ExerciseLabels } from "../domain/ExerciseLabels";
 import Modal from "./Modal";
 import { matchesSearch } from "../lib/search";
 
@@ -56,7 +57,7 @@ export default function ExerciseSwapModal({
             <span className="swap-banner-tag">Текущее упражнение</span>
             <strong className="swap-ex-name">{currentExercise.name}</strong>
             <span className="swap-ex-meta">
-              {currentExercise.equipment} · {currentExercise.primary.join(", ")}
+              {ExerciseLabels.meta(currentExercise)}
             </span>
           </div>
 
@@ -130,10 +131,10 @@ export default function ExerciseSwapModal({
                     <div className="swap-card-body">
                       <div className="swap-card-top">
                         <b className="swap-card-title">{e.name}</b>
-                        <span className="swap-equip-badge">{e.equipment}</span>
+                        <span className="swap-equip-badge">{ExerciseLabels.equipment(e)}</span>
                       </div>
                       <span className="swap-card-sub">
-                        {e.primary.join(", ")}
+                        {ExerciseLabels.muscles(e.primary)}
                       </span>
                     </div>
                     <div className="swap-card-action">
@@ -167,7 +168,7 @@ export default function ExerciseSwapModal({
                     <div className="swap-card-body">
                       <div className="swap-card-top">
                         <b className="swap-card-title">{alt.exercise.name}</b>
-                        <span className="swap-equip-badge">{alt.equipmentLabel}</span>
+                        <span className="swap-equip-badge">{ExerciseLabels.equipment(alt.exercise)}</span>
                       </div>
                       <div className="swap-reason-pill">
                         <span className="reason-text">{alt.reason}</span>
