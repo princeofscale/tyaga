@@ -124,6 +124,7 @@ import {
   PoseAnalysisPanel,
 } from "./components/chunks";
 import PlateCalculator from "./components/PlateCalculator";
+import TabErrorBoundary from "./components/TabErrorBoundary";
 import OneRepMaxCalculator from "./components/OneRepMaxCalculator";
 import { BodyweightModal } from "./components/BodyweightModal";
 import { DeloadModal } from "./components/DeloadModal";
@@ -1126,6 +1127,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
         </div>
       </aside>
       <main className="main-content">
+        <TabErrorBoundary resetKey={view}>
         <m.div
           className="page-content"
           key={view}
@@ -1965,6 +1967,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
             </>
           )}
         </m.div>
+        </TabErrorBoundary>
       </main>
       <AnimatePresence>
         {draft && view !== "workout" && view !== "overview" ? (

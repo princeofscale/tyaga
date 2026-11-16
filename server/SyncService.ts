@@ -1,4 +1,4 @@
-import { InputError, object, str, num } from "./validation";
+import { InputError, object, str, num, validPeriodization } from "./validation";
 
 // Device ↔ cloud replication. Triggers (drizzle/0006_sync.sql) record every
 // write in sync_versions; a document's version time travels with it, so the
@@ -162,8 +162,11 @@ function parseDoc(value: unknown): SyncDoc {
     row[name] = type === "int" ? num(source[name], 0, 2147483646, true) : str(source[name], 400000);
   if (table.key && row[table.key] !== id) throw new InputError("Документ не совпадает с ключом");
   if ("payload" in row) {
-    try { object(JSON.parse(String(row.payload))); }
+    let payload: Record<string, unknown>;
+    try { payload = object(JSON.parse(String(row.payload))); }
     catch { throw new InputError("Повреждённые данные документа"); }
+    // Периодизация программы проверяется той же функцией, что и при PUT /api/routines: битое поле не записывается.
+    if (kind === "routine" && payload.periodization !== undefined) validPeriodization(payload.periodization);
   }
   return { kind, id, versionAt, deleted: false, row };
 }

@@ -415,7 +415,7 @@ export default function ProgramsScreen(props: Props) {
               </button>
             </div>
             <h3>{r.name}</h3>
-            {r.periodization ? <LaidRoutineLine routine={r} workouts={props.workouts} today={today} /> : null}
+            {LaidDupPlan.periodizationOf(r) ? <LaidRoutineLine routine={r} workouts={props.workouts} today={today} /> : null}
             {deloadRoutineIds.has(r.id) ? (
               <p
                 className="progression-note"

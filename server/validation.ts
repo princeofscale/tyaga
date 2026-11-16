@@ -337,7 +337,7 @@ function validLaidMaxes(value: unknown): LaidMaxes {
   return { squat: kg(m.squat), bench: kg(m.bench), deadlift: kg(m.deadlift), ohp: kg(m.ohp) };
 }
 /** Периодизация программы: только известные поля, максимумы 1–500 кг, старт — понедельник, номера недель 0–9. */
-function validPeriodization(value: unknown): RoutinePeriodization {
+export function validPeriodization(value: unknown): RoutinePeriodization {
   const p = object(value);
   if (Object.keys(p).some((key) => !PERIODIZATION_KEYS.includes(key))) throw new InputError("Проверь периодизацию программы");
   if (p.kind !== "laid-dup") throw new InputError("Проверь вид периодизации");

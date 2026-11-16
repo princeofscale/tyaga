@@ -1,4 +1,4 @@
-import { addCalendarDays } from "../lib/calendar";
+import { addCalendarDays, isCalendarDate } from "../lib/calendar";
 import { estimatedOneRepMax, makeExerciseEntry, makeSets } from "../lib/model";
 import type {
   LaidDay,
@@ -339,24 +339,54 @@ export class LaidDupPlan {
     return { value, error: null };
   }
 
+  private static maxesOk(value: unknown): value is LaidMaxes {
+    if (typeof value !== "object" || value === null) return false;
+    const m = value as Record<string, unknown>;
+    return (["squat", "bench", "deadlift", "ohp"] as const).every((k) => typeof m[k] === "number" && Number.isFinite(m[k]) && (m[k] as number) > 0 && (m[k] as number) <= MAX_KG);
+  }
+  /**
+   * Периодизация программы, если её структура пригодна для расчёта; иначе undefined — программа считается обычной.
+   * Защита от данных, записанных не нашим клиентом (другая версия, прямой вызов API): битое поле не должно ронять экран.
+   */
+  static periodizationOf(routine: Routine | null | undefined): RoutinePeriodization | undefined {
+    const p = routine?.periodization as unknown;
+    if (typeof p !== "object" || p === null) return undefined;
+    const v = p as Record<string, unknown>;
+    if (v.kind !== "laid-dup" || typeof v.cycleId !== "string" || !v.cycleId) return undefined;
+    if (!LaidDupPlan.DAYS.includes(v.day as LaidDay)) return undefined;
+    if (typeof v.startMonday !== "string" || !isCalendarDate(v.startMonday)) return undefined;
+    if (!LaidDupPlan.maxesOk(v.maxes)) return undefined;
+    if (typeof v.maxesFromWeek !== "number" || !Number.isInteger(v.maxesFromWeek) || v.maxesFromWeek < 0 || v.maxesFromWeek > 9) return undefined;
+    if (v.earlier !== undefined) {
+      if (!Array.isArray(v.earlier)) return undefined;
+      for (const e of v.earlier) {
+        if (typeof e !== "object" || e === null) return undefined;
+        const item = e as Record<string, unknown>;
+        if (typeof item.fromWeek !== "number" || !Number.isInteger(item.fromWeek) || !LaidDupPlan.maxesOk(item.maxes)) return undefined;
+      }
+    }
+    return p as RoutinePeriodization;
+  }
+
   /** Те же программы цикла, что и `routine` (по общему `cycleId`). */
   static cycleOf(routines: Routine[], routine: Routine): Routine[] {
-    const id = routine.periodization?.cycleId;
-    return id ? routines.filter((r) => r.periodization?.cycleId === id) : [];
+    const id = LaidDupPlan.periodizationOf(routine)?.cycleId;
+    return id ? routines.filter((r) => LaidDupPlan.periodizationOf(r)?.cycleId === id) : [];
   }
   /** Цикл программы: по одному представителю каждого дня, дни — в порядке таблицы. */
   static cycles(routines: Routine[]): Routine[][] {
-    const ids = [...new Set(routines.flatMap((r) => (r.periodization ? [r.periodization.cycleId] : [])))];
+    const valid = routines.filter((r) => LaidDupPlan.periodizationOf(r));
+    const ids = [...new Set(valid.map((r) => LaidDupPlan.periodizationOf(r)!.cycleId))];
     return ids.map((id) =>
-      routines
-        .filter((r) => r.periodization?.cycleId === id)
-        .sort((x, y) => LaidDupPlan.DAYS.indexOf(x.periodization!.day) - LaidDupPlan.DAYS.indexOf(y.periodization!.day)),
+      valid
+        .filter((r) => LaidDupPlan.periodizationOf(r)!.cycleId === id)
+        .sort((x, y) => LaidDupPlan.DAYS.indexOf(LaidDupPlan.periodizationOf(x)!.day) - LaidDupPlan.DAYS.indexOf(LaidDupPlan.periodizationOf(y)!.day)),
     );
   }
 
   /** План дня этой программы на дату: null, если у программы нет периодизации. */
   static planFor(routine: Routine, date: string): LaidDayPlan | null {
-    const p = routine.periodization;
+    const p = LaidDupPlan.periodizationOf(routine);
     if (!p) return null;
     const raw = LaidDupPlan.weekOf(p.startMonday, date);
     const position = LaidDupPlan.position(raw);
@@ -373,7 +403,7 @@ export class LaidDupPlan {
     week: number,
     today: string,
   ): { state: "done" | "missed" | "ahead"; date?: string } {
-    const p = routine.periodization;
+    const p = LaidDupPlan.periodizationOf(routine);
     if (!p) return { state: "ahead" };
     const monday = addCalendarDays(p.startMonday, week * 7);
     const sunday = addCalendarDays(monday, 6);

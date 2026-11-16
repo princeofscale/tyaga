@@ -465,3 +465,54 @@ test("QA-R10-03: «Блины» на Лейде применяют вес тол
     await expect(page.getByLabel(`Приседания со штангой, подход ${n}, вес`, { exact: true })).toHaveValue(want);
   await expect(page.getByText("Затем 4 × 12 · 65 % = 65 кг.")).toBeVisible();
 });
+
+test("QA-R10-07: программа с битой периодизацией, назначенная на сегодня, не гасит приложение — открывается как обычная", async ({ page }) => {
+  test.setTimeout(90_000);
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const good = sixRoutines()[0];
+  const variants: unknown[] = [
+    { kind: "laid-dup" },
+    { ...good.periodization, startMonday: "garbage", day: "xyz" },
+    { ...good.periodization, maxes: "100" },
+    { ...good.periodization, maxes: { ...MAXES, squat: -5 } },
+  ];
+  for (const bad of variants) {
+    const routine = { ...good, id: "broken-laid", name: "Битая программа", days: [0, 1, 2, 3, 4, 5, 6], periodization: bad } as unknown as Routine;
+    await laidApp(page, { routines: [routine] });
+    await expect(page.getByRole("heading", { name: "Сегодня", exact: true })).toBeVisible();
+    for (const tab of ["История", "Прогресс", "Программы", "Сегодня"]) {
+      await nav(page, tab).click();
+      await expect(page.locator("main")).not.toBeEmpty();
+    }
+    await nav(page, "Программы").click();
+    await expect(page.getByRole("heading", { name: "Сохранённые программы" })).toBeVisible();
+    await expect(card(page, "Битая программа")).toBeVisible();
+    // как обычная: без строки «Неделя N из 9»
+    await expect(card(page, "Битая программа").getByText(/Неделя \d из 9/)).toHaveCount(0);
+    await expect(page.getByLabel("Программа Дэвида Лейда")).toHaveCount(0);
+    await card(page, "Битая программа").getByRole("button", { name: "Начать", exact: true }).click();
+    await expect(page.getByLabel(`${good.exercises[0].name ?? "Приседания со штангой"}, подход 1, вес`).first()).toBeVisible();
+    await discard(page);
+  }
+  expect(errors).toEqual([]);
+});
+
+test("QA-R10-07: сбой одной вкладки не гасит приложение — меню и другие вкладки остаются", async ({ page }) => {
+  test.setTimeout(60_000);
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await round01Fixture(page);
+  // «Программы» получают данные, на которых вкладка падает (exercises не массив)
+  const bad = { ...sixRoutines()[0], id: "bad-shape", periodization: undefined, days: [], exercises: "нет" } as unknown as Routine;
+  await page.route("**/api/product", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ routines: [bad], favorites: [], customExercises: [] }) }),
+  );
+  await page.reload();
+  await nav(page, "Программы").click();
+  await expect(page.getByRole("alert").filter({ hasText: "Не удалось открыть вкладку" })).toBeVisible();
+  await expect(nav(page, "История")).toBeVisible();
+  await nav(page, "История").click();
+  await expect(page.getByRole("alert").filter({ hasText: "Не удалось открыть вкладку" })).toHaveCount(0);
+  await expect(page.locator("main")).not.toBeEmpty();
+});

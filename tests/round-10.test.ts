@@ -586,3 +586,88 @@ test("QA-R10-03: обычная программа — все подходы о�
   assert.equal(PlateApplication.scope([setOf(40, { warmup: true }), setOf(80)], 40), "к разминочному подходу 1");
   assert.equal(PlateApplication.scope([setOf(40, { warmup: true }), setOf(80)], 80), "к подходу 1");
 });
+
+const syncDoc = (routine: unknown, id: string, versionAt = "2999-01-01T00:00:00.000Z") => ({
+  kind: "routine",
+  id,
+  versionAt,
+  deleted: false,
+  row: { id, payload: JSON.stringify(routine), revision: 1, updated_at: "2026-11-17T00:00:00.000Z" },
+});
+
+test("QA-R10-07: sync/apply не пишет битую периодизацию — читаемый 400, остальное работает", async () => {
+  const { mf, request } = await sandbox();
+  try {
+    const good = { ...six()[0], id: "sync-good" };
+    const ok = await request("/api/sync/apply", "POST", { docs: [syncDoc(good, good.id)] });
+    assert.equal(ok.status, 200);
+    assert.deepEqual(await ok.json(), { applied: 1, skipped: 0 });
+    // обычная программа без поля — как раньше
+    const plain = { ...six()[1], id: "sync-plain" };
+    delete (plain as Partial<Routine>).periodization;
+    assert.equal((await request("/api/sync/apply", "POST", { docs: [syncDoc(plain, plain.id)] })).status, 200);
+
+    const variants: [string, (p: any) => unknown][] = [
+      ["без day и maxes", () => ({ kind: "laid-dup" })],
+      ["startMonday garbage", (p) => ({ ...p, startMonday: "garbage" })],
+      ["не понедельник", (p) => ({ ...p, startMonday: "2026-11-10" })],
+      ["maxes — строка", (p) => ({ ...p, maxes: "100" })],
+      ["maxes — null", (p) => ({ ...p, maxes: null })],
+      ["максимум −5", (p) => ({ ...p, maxes: { ...p.maxes, squat: -5 } })],
+      ["максимум 1e9", (p) => ({ ...p, maxes: { ...p.maxes, bench: 1e9 } })],
+      ["максимум строкой", (p) => ({ ...p, maxes: { ...p.maxes, ohp: "60" } })],
+      ["неизвестный вид", (p) => ({ ...p, kind: "laid-dup-v2" })],
+      ["лишнее поле", (p) => ({ ...p, secret: 1 })],
+      ["не объект", () => "laid-dup"],
+    ];
+    for (const [name, make] of variants) {
+      const id = "sync-bad-" + name.length;
+      const broken = { ...six()[0], id, periodization: make(structuredClone(six()[0].periodization)) };
+      const response = await request("/api/sync/apply", "POST", { docs: [syncDoc(broken, id)] });
+      assert.equal(response.status, 400, name);
+      assert.match(String(((await response.json()) as any).error ?? ""), /\S/, name);
+    }
+    // ничего из битого не записано: в списке только две программы
+    const routines = ((await (await request("/api/product")).json()) as any).routines as Routine[];
+    assert.deepEqual(routines.map((r) => r.id).sort(), ["sync-good", "sync-plain"]);
+  } finally {
+    await mf.dispose();
+  }
+});
+
+test("QA-R10-07: клиентская защита — битая периодизация трактуется как обычная программа, без исключений", () => {
+  const good = six()[0];
+  assert.equal(LaidDupPlan.periodizationOf(good), good.periodization);
+  const broken: unknown[] = [
+    { kind: "laid-dup" },
+    { ...good.periodization, startMonday: "garbage" },
+    { ...good.periodization, day: "xyz" },
+    { ...good.periodization, maxes: "100" },
+    { ...good.periodization, maxes: null },
+    { ...good.periodization, maxes: { ...MAXES, squat: -5 } },
+    { ...good.periodization, maxes: { ...MAXES, bench: 1e9 } },
+    { ...good.periodization, maxes: { ...MAXES, ohp: "60" } },
+    { ...good.periodization, earlier: [{ fromWeek: 1 }] },
+    { ...good.periodization, earlier: "x" },
+    { ...good.periodization, maxesFromWeek: "0" },
+    { ...good.periodization, kind: "laid-dup-v2" },
+    "laid-dup",
+    42,
+    null,
+  ];
+  for (const p of broken) {
+    const r = { ...good, periodization: p } as unknown as Routine;
+    assert.equal(LaidDupPlan.periodizationOf(r), undefined, JSON.stringify(p));
+    assert.equal(LaidDupPlan.planFor(r, "2026-11-18"), null);
+    assert.deepEqual(LaidDupPlan.status(r, [], 0, "2026-11-18"), { state: "ahead" });
+    assert.deepEqual(LaidDupPlan.cycles([r]), []);
+    assert.deepEqual(LaidDupPlan.cycleOf([r], r), []);
+    // запуск — как обычная программа, без заметки недели и без падения
+    const workout = new TrainingProgram(r).start([], "UTC", "2026-11-18");
+    assert.equal(workout.exercises.length, r.exercises.length);
+    assert.doesNotMatch(workout.notes, /Неделя \d из 9/);
+  }
+  // цикл из шести с одной битой программой: остальные пять — цикл, битая — обычная
+  const all = six().map((r, i) => (i === 2 ? { ...r, periodization: { kind: "laid-dup" } as any } : r));
+  assert.equal(LaidDupPlan.cycles(all)[0].length, 5);
+});
