@@ -705,4 +705,134 @@ export const CATALOG_V3: Exercise[] = [
     limitations:
       "Подключение ног и прогиб поясницы делают вес несравнимым между подходами. Вес сидя с гантелями (запись «ohp» выпуска 2) — другой вариант, переносить его вес нельзя.",
   }),
+  // Release 3 additions for the Laid DUP programme (round 10): movements that its published table names and
+  // that release 2/3 did not cover. Each is its own record: none is mapped onto a similar movement.
+  entry({
+    id: "push-press",
+    name: "Жим штанги с ног (push press)",
+    nameEn: "Barbell push press",
+    familyId: "overhead-press",
+    equipment: "gym",
+    recording: { ...bar, e1rmEligible: false },
+    variant:
+      "Стоя, штанга от верха груди; короткий подсед и разгибание ног толкают штангу вверх, дальше работают плечи и руки; общий вес грифа и блинов.",
+    jointActions: [
+      "Разгибание колена и бедра",
+      "Подъём плеча",
+      "Разгибание локтя",
+    ],
+    primary: ["deltoid-anterior", "deltoid-middle", "triceps-brachii"],
+    assistant: ["quadriceps-vasti", "gluteus-maximus", "serratus-anterior", "trapezius-upper"],
+    stabilizer: ["rectus-abdominis", "obliques", "erector-spinae"],
+    moderate: ["quadriceps-vasti", "gluteus-maximus"],
+    tip: "Подсед короткий, толчок ногами и жим идут одним движением; штанга не уходит вперёд от лица.",
+    limitations:
+      "Вклад ног зависит от глубины подседа и от подхода к подходу меняется, поэтому вес жима с ног нельзя сравнивать с жимом стоя без помощи ног («ohp-bar»). Расчётный 1ПМ для него не считается.",
+  }),
+  entry({
+    id: "dip-weighted",
+    name: "Отжимания на брусьях с дополнительным весом",
+    nameEn: "Weighted parallel-bar dip",
+    familyId: "dip",
+    equipment: "gym",
+    recording: added,
+    variant:
+      "Упор на параллельных брусьях, корпус слегка наклонён вперёд; ввод — только дополнительный груз (пояс или гантель между ног), масса тела записывается отдельно.",
+    jointActions: ["Горизонтальное приведение плеча", "Разгибание плеча", "Разгибание локтя"],
+    primary: ["pectoralis-major", "triceps-brachii"],
+    assistant: ["deltoid-anterior"],
+    stabilizer: ["serratus-anterior", "rectus-abdominis"],
+    moderate: ["serratus-anterior"],
+    tip: "Опускайся до комфортной глубины плеча, не провисая в нижней точке. Груз закрепи так, чтобы он не раскачивался.",
+    limitations:
+      "Наклон корпуса смещает работу между грудью и трицепсом, а записью не измеряется. Дополнительный груз — не вся нагрузка системы «тело + груз», тренажёр-гравитрон и отжимания от скамьи — другие варианты.",
+  }),
+  entry({
+    id: "fly-db-flat",
+    name: "Разведения гантелей лёжа",
+    nameEn: "Flat dumbbell fly",
+    familyId: "chest-fly",
+    equipment: "dumbbells",
+    recording: { ...pair, e1rmEligible: false },
+    variant:
+      "Горизонтальная скамья, локти слегка согнуты и неподвижны, гантели идут дугой в стороны и обратно; вес одной гантели.",
+    jointActions: ["Горизонтальное приведение плеча"],
+    primary: ["pectoralis-major"],
+    assistant: ["deltoid-anterior"],
+    stabilizer: ["infraspinatus"],
+    tip: "Опускай гантели до растяжения груди без боли в плече; угол в локтях не меняй.",
+    limitations:
+      "В нижней точке нагрузка на плечевой сустав максимальна, а у крайней амплитуды нет единого стандарта, поэтому вес сравнивай только при одинаковой глубине. Сведение в кроссовере и в пек-деке — другие движения.",
+  }),
+  entry({
+    id: "row-yates",
+    name: "Тяга Йейтса",
+    nameEn: "Yates row",
+    familyId: "horizontal-row",
+    equipment: "gym",
+    recording: bar,
+    variant:
+      "Корпус наклонён примерно на 45°, штанга обратным хватом тянется к низу живота; общий вес грифа и блинов.",
+    jointActions: ["Разгибание плеча", "Ретракция лопатки", "Сгибание локтя"],
+    primary: ["latissimus-dorsi", ...retractors],
+    assistant: [...flexors, "teres-major", "deltoid-posterior"],
+    stabilizer: ["erector-spinae", ...hamstrings],
+    moderate: ["trapezius-middle", "rhomboids"],
+    tip: "Корпус почти не меняет угол, штанга идёт к низу живота; локти вдоль тела.",
+    limitations:
+      "Обратный хват сильнее включает сгибатели локтя, чем тяга штанги в наклоне («row-bent-bar»), а угол корпуса в 45° выше, чем в тяге до горизонтали, — веса этих двух записей не сравнивай. Рывок корпусом делает повтор другим.",
+  }),
+  entry({
+    id: "deadlift-stiff",
+    name: "Становая тяга на прямых ногах",
+    nameEn: "Stiff-leg deadlift",
+    familyId: "hip-hinge",
+    equipment: "gym",
+    recording: bar,
+    variant:
+      "Штанга, колени почти прямые, движение в тазобедренных суставах; в оригинальной таблице — со стоп на возвышении 2–3 дюйма (5–7 см); общий вес грифа и блинов.",
+    jointActions: ["Разгибание бедра"],
+    primary: [...hamstrings, "gluteus-maximus"],
+    assistant: ["adductor-magnus"],
+    stabilizer: ["erector-spinae", "rectus-abdominis", "obliques"],
+    moderate: ["adductor-magnus"],
+    evidence: ["deadlift-review"],
+    tip: "Колени почти не сгибаются, штанга скользит вдоль ног; опускайся до растяжения задней поверхности бедра при ровной спине.",
+    limitations:
+      "От румынской тяги («rdl») отличается почти прямыми коленями и часто амплитудой с возвышения, поэтому вес не переносится. Выпрямители спины работают как стабилизаторы и в прямой объём спины не входят.",
+  }),
+  entry({
+    id: "hammer-seated",
+    name: "Молотковые сгибания сидя",
+    nameEn: "Seated dumbbell hammer curl",
+    familyId: "elbow-flexion",
+    equipment: "dumbbells",
+    recording: pair,
+    variant:
+      "Сидя на скамье со спинкой, нейтральный хват, две руки одновременно; вес одной гантели.",
+    jointActions: ["Сгибание локтя"],
+    primary: flexors,
+    stabilizer: ["rectus-abdominis"],
+    tip: "Сидя нельзя помочь корпусом: локти у боков, опускание под контролем.",
+    limitations:
+      "Опора спиной убирает раскачку, поэтому вес обычно ниже, чем в молотковых сгибаниях стоя («hammer»): записи не смешивай. Доли работы трёх сгибателей не задаются процентами.",
+  }),
+  entry({
+    id: "lunge-bar",
+    name: "Выпады со штангой",
+    nameEn: "Barbell lunge",
+    familyId: "lunge",
+    equipment: "gym",
+    recording: { ...bar, laterality: "unilateral", repsMode: "per_side", e1rmEligible: false },
+    variant:
+      "Штанга на спине, шаг вперёд или назад, корпус близок к вертикали; общий вес грифа и блинов, повторы на ногу.",
+    jointActions: ["Разгибание колена", "Разгибание бедра"],
+    primary: ["quadriceps-vasti", "gluteus-maximus"],
+    assistant: ["adductor-magnus"],
+    stabilizer: ["gluteus-medius", ...hamstrings, ...trunk],
+    moderate: ["adductor-magnus", ...hamstrings],
+    tip: "Записывай повторы на ногу. Длина шага и положение штанги постоянны; сохраняй устойчивую опору.",
+    limitations:
+      "Длина шага, направление (вперёд или назад) и положение штанги меняют механику и нагрузку на колено. Выпады с гантелями («lunge-reverse») — другой вариант: их вес не переносится.",
+  }),
 ];
