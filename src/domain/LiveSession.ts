@@ -50,6 +50,62 @@ export class LiveStateBuilder {
   }
 }
 
+/** Что из черновика уходит в комнату «Вместе». Правка сохранённой тренировки — не тренировка в комнате. */
+export type LiveDraft = {
+  workout: Workout;
+  editing: boolean;
+  restUntil: number | null;
+  pausedRest: number | null;
+};
+
+export class LiveBroadcastPolicy {
+  /**
+   * Состояние для комнаты по черновику. Пока человек правит уже сохранённую тренировку (или черновика нет),
+   * комнате нечего слать: строка «Закончил · N т» остаётся, как была, а «Готовится · 0 т» не появляется.
+   */
+  static stateFor(draft: LiveDraft | null, now: number, nameOf: (entry: WorkoutExercise) => string): LiveState | null {
+    if (!draft || draft.editing) return null;
+    return LiveStateBuilder.fromWorkout(draft.workout, {
+      now,
+      nameOf,
+      // Отдых на паузе для напарников выглядит как обычный подход: таймер у них не тикает.
+      restEndsAt: draft.pausedRest === null ? draft.restUntil : null,
+    });
+  }
+
+  /**
+   * После «Сохранить» правки: новый итог для строки «Закончил», если эта строка сейчас у человека есть
+   * и правилась его самая свежая тренировка. Иначе комнату не трогаем.
+   */
+  static afterEdit(mine: Pick<LiveMember, "state"> | undefined, edited: Workout, all: readonly Workout[], now: number, nameOf: (entry: WorkoutExercise) => string): LiveState | null {
+    if (mine?.state?.phase !== "done") return null;
+    if (all.some((w) => w.id !== edited.id && w.date > edited.date)) return null;
+    return LiveStateBuilder.fromWorkout(edited, { now, nameOf, finished: true });
+  }
+}
+
+/** Через сколько неудачных отправок подряд, растянутых на это время, человеку говорим «Нет связи». */
+export const LIVE_LINK_LOST_MS = 10_000;
+/** Через сколько повторять отправку, которая не дошла. */
+export const LIVE_RETRY_MS = 4_000;
+
+export type LiveLinkIssue = { since: number; count: number };
+
+/** Когда человеку в комнате показывать «Нет связи»: его подходы не доходят до напарников. Одиночный сбой не в счёт. */
+export class LiveLink {
+  static readonly MESSAGE = "Нет связи — напарник видит последние данные";
+
+  /** Отправка не дошла: начинаем счёт или добавляем ещё одну неудачу. */
+  static failed(issue: LiveLinkIssue | null, now: number): LiveLinkIssue {
+    return issue ? { since: issue.since, count: issue.count + 1 } : { since: now, count: 1 };
+  }
+
+  /** Строка нужна, если неудач было не меньше двух и первая была не позже LIVE_LINK_LOST_MS назад. */
+  static lost(issue: LiveLinkIssue | null, now: number): boolean {
+    return !!issue && issue.count >= 2 && now - issue.since >= LIVE_LINK_LOST_MS;
+  }
+}
+
 export type LivePush = { signature: string; at: number };
 
 /** Когда состояние стоит отправлять комнате: при любом изменении и раз в LIVE_HEARTBEAT_MS без изменений. */

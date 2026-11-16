@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { LogOut, Share2, Users } from "lucide-react";
-import { RoomLink } from "../domain/LiveSession";
+import { LogOut, Share2, Users, WifiOff } from "lucide-react";
+import { LiveLink, RoomLink } from "../domain/LiveSession";
 import { CLOUD_URL } from "../device/cloudSync";
 import { quantity } from "../lib/quantity";
 import { shareLink } from "../lib/shareLink";
@@ -13,7 +13,7 @@ const linkOrigin = () => (import.meta.env.MODE === "device" ? CLOUD_URL : window
  * код, число участников, «Поделиться» и «Выйти из комнаты» (с вопросом).
  */
 export default function RoomBadge({ onToast }: { onToast: (text: string) => void }) {
-  const { room, leave, watch, busy } = useLiveRoom();
+  const { room, leave, watch, busy, linkLost } = useLiveRoom();
   const [asking, setAsking] = useState(false);
   useEffect(() => watch(), [watch]);
   // Комната закрылась или человек вышел с другого экрана: вопрос не должен «залипнуть» до следующей комнаты.
@@ -61,6 +61,12 @@ export default function RoomBadge({ onToast }: { onToast: (text: string) => void
           </button>
         </span>
       </div>
+      {linkLost ? (
+        <p className="room-badge-lost" role="status">
+          <WifiOff size={13} aria-hidden="true" />
+          <span>{LiveLink.MESSAGE}</span>
+        </p>
+      ) : null}
       {asking ? (
         <div className="room-badge-ask" role="alertdialog" aria-label="Выйти из комнаты?">
           <p>Выйти из комнаты {room.code}? Напарники перестанут видеть твою тренировку. Сама тренировка продолжится.</p>

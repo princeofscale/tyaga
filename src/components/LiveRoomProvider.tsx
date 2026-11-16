@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { LivePushPolicy, type LivePush } from "../domain/LiveSession";
+import { LiveLink, LivePushPolicy, LIVE_RETRY_MS, type LiveLinkIssue, type LivePush } from "../domain/LiveSession";
+import { ApiError } from "../services/ApiClient";
 import { CLOUD_URL, cloudState } from "../device/cloudSync";
 import type { LiveRoom, LiveState } from "../lib/liveRoom";
 import { liveRoomApi } from "../services/LiveRoomApi";
@@ -28,6 +29,8 @@ export type LiveRoomApiState = {
   broadcast: (state: LiveState | null) => void;
   /** Тренировка закончена: итог уходит без задержки. */
   finish: (state: LiveState) => void;
+  /** Состояние комнаты дольше ~10 с не доходит до напарников (нет сети, воркер не отвечает). */
+  linkLost: boolean;
 };
 
 const idle: LiveRoomApiState = {
@@ -42,6 +45,7 @@ const idle: LiveRoomApiState = {
   watch: () => () => {},
   broadcast: () => {},
   finish: () => {},
+  linkLost: false,
 };
 const LiveRoomContext = createContext<LiveRoomApiState>(idle);
 export const useLiveRoom = () => useContext(LiveRoomContext);
@@ -76,6 +80,12 @@ export function LiveRoomProvider({ children }: { children: ReactNode }) {
   const latest = useRef<LiveState | null>(null);
   const lastPush = useRef<LivePush | null>(null);
   const delay = useRef<number | undefined>(undefined);
+  /** Что не дошло до комнаты и ждёт повтора, пока нет более свежего состояния. */
+  const unsent = useRef<LiveState | null>(null);
+  const retry = useRef<number | undefined>(undefined);
+  const [issue, setIssue] = useState<LiveLinkIssue | null>(null);
+  // Для «Нет связи» считаем по монотонным часам: перевод стрелок и подмена даты не должны ни прятать, ни выдумывать потерю связи.
+  const [clock, setClock] = useState(() => performance.now());
 
   const refresh = useCallback(async () => {
     const mine = epoch.current;
@@ -119,9 +129,21 @@ export function LiveRoomProvider({ children }: { children: ReactNode }) {
       try {
         const reply = await liveRoomApi.push(state);
         if (epoch.current === mine) setRoom(reply.room);
-      } catch {
+        unsent.current = null;
+        setIssue(null);
+      } catch (error) {
         // Не дошло: следующий heartbeat отправит снова, а если комната закрылась — refresh это покажет.
         lastPush.current = null;
+        // Отказ «комнаты нет» — не потеря связи; сеть и ответы воркера 5xx — да, и тогда повторяем чаще, чем heartbeat.
+        if (epoch.current === mine && (!(error instanceof ApiError) || error.status >= 500)) {
+          unsent.current = state;
+          setIssue((was) => LiveLink.failed(was, performance.now()));
+          window.clearTimeout(retry.current);
+          retry.current = window.setTimeout(() => {
+            const next = latest.current ?? unsent.current;
+            if (next && roomRef.current) void send(next);
+          }, LIVE_RETRY_MS);
+        }
         void refresh();
       }
     },
@@ -141,7 +163,20 @@ export function LiveRoomProvider({ children }: { children: ReactNode }) {
     return () => window.clearInterval(timer);
   }, [inRoom, flush]);
 
-  useEffect(() => () => window.clearTimeout(delay.current), []);
+  useEffect(() => () => { window.clearTimeout(delay.current); window.clearTimeout(retry.current); }, []);
+
+  // Пока есть неудачи, раз в секунду проверяем, не пора ли сказать «Нет связи»; без комнаты счёт сбрасывается.
+  useEffect(() => {
+    if (!issue) return;
+    const timer = window.setInterval(() => setClock(performance.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [issue]);
+  useEffect(() => {
+    if (inRoom) return;
+    unsent.current = null;
+    window.clearTimeout(retry.current);
+    setIssue(null);
+  }, [inRoom]);
 
   const broadcast = useCallback(
     (state: LiveState | null) => {
@@ -184,7 +219,10 @@ export function LiveRoomProvider({ children }: { children: ReactNode }) {
   const leave = useCallback(async () => {
     const mine = ++epoch.current;
     window.clearTimeout(delay.current);
+    window.clearTimeout(retry.current);
     lastPush.current = null;
+    unsent.current = null;
+    setIssue(null);
     setRoom(null);
     setError("");
     try {
@@ -204,9 +242,10 @@ export function LiveRoomProvider({ children }: { children: ReactNode }) {
     return () => setWatchers((n) => n - 1);
   }, []);
 
+  const linkLost = inRoom && LiveLink.lost(issue, clock);
   const value = useMemo<LiveRoomApiState>(
-    () => ({ room, ready, busy, error, create, join, leave, clearError, watch, broadcast, finish }),
-    [room, ready, busy, error, create, join, leave, clearError, watch, broadcast, finish],
+    () => ({ room, ready, busy, error, create, join, leave, clearError, watch, broadcast, finish, linkLost }),
+    [room, ready, busy, error, create, join, leave, clearError, watch, broadcast, finish, linkLost],
   );
   return <LiveRoomContext.Provider value={value}>{children}</LiveRoomContext.Provider>;
 }

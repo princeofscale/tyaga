@@ -233,7 +233,9 @@ export default function WorkoutView({
   const [activeSetKey, setActiveSetKey] = useState<string | null>(null);
   const [focusMode, setFocusMode] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
-  const { room } = useLiveRoom();
+  // R09-REQ01: правка сохранённой тренировки — не тренировка в комнате: ни шапки комнаты, ни строк напарников.
+  const { room: liveRoom } = useLiveRoom();
+  const room = draft?.editing ? null : liveRoom;
   const nameBox = useRef<HTMLTextAreaElement>(null);
   useLayoutEffect(() => {
     const box = nameBox.current;
@@ -603,7 +605,7 @@ export default function WorkoutView({
             />
           )}
           {/* QA-R04-01: комната — в строке названия (подпись над ним + два значка справа), а не отдельной плашкой: шапка не растёт. */}
-          <RoomBadge onToast={onToast ?? (() => {})} />
+          {room ? <RoomBadge onToast={onToast ?? (() => {})} /> : null}
         </div>
         <button
           type="button"
@@ -703,7 +705,7 @@ export default function WorkoutView({
             <span className="hud-label">Тоннаж свободных весов</span>
           </span>
         </div>
-        <LiveStrip onOpen={onOpenTogether} />
+        {draft.editing ? null : <LiveStrip onOpen={onOpenTogether} />}
         <div className="workout-session-progress" aria-hidden="true">
           <span style={{ transform: `scaleX(${totalWorking ? doneWorking / totalWorking : 0})` }} />
         </div>

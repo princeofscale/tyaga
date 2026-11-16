@@ -5,6 +5,7 @@ import { LivePresenter, RoomCode, RoomLink } from "../domain/LiveSession";
 import { CLOUD_URL } from "../device/cloudSync";
 import type { LiveMember } from "../lib/liveRoom";
 import { copyText, shareLink } from "../lib/shareLink";
+import { fmt } from "../lib/model";
 import { useNow } from "../lib/useNow";
 import LiveAvatar from "./LiveAvatar";
 import { useLiveRoom } from "./LiveRoomProvider";
@@ -51,7 +52,7 @@ function MemberRow({ member, now }: { member: LiveMember; now: number }) {
         ) : null}
         {phase === "away" ? <WifiOff size={16} /> : null}
         {state && phase !== "done" && phase !== "away" && phase !== "resting" ? (
-          <span className="live-tonnage">{Math.round((state.tonnageKg / 1000) * 10) / 10} т</span>
+          <span className="live-tonnage">{fmt(Math.round(state.tonnageKg / 100) / 10)} т</span>
         ) : null}
       </span>
     </m.li>
