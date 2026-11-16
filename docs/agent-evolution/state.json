@@ -6,7 +6,7 @@
   "fetchedMainSha": "b766eec0588a5bd688742dac26b45411d85e82e3",
   "integrationSha": "555a9b3f7a8bfa3de19f5c92a17bf3299293dea7",
   "goalId": "goal-1588dc6a-45a6-4c72-8239-7d62bba32138",
-  "stage": "round-8-engineering",
+  "stage": "round-8-closed",
   "checkpoint": {
     "sampledAt": "2026-11-14T09:25:00+04:00",
     "timezone": "Europe/Saratov",
@@ -17,8 +17,8 @@
     "priorSampledCheckpoint": "2026-11-14T09:05:00+04:00"
   },
   "roundsStarted": 8,
-  "roundsAccepted": 7,
-  "currentRound": 8,
+  "roundsAccepted": 8,
+  "currentRound": null,
   "nextRound": 9,
   "requirements": [],
   "rounds": [],
@@ -463,7 +463,7 @@
     },
     "baselineAcceptance": "not-accepted"
   },
-  "nextAction": "Round 8: engineer-r02-rework2 implements R08-REQ01..05 (client only, no migrations), lead tsc/test/build, QA via mcp__dsh__subagent, PO acceptance; then Round 9. Next intermediate report after round 10. DO NOT push/deploy/merge unless the user asks again (prod deployed 2026-11-16 at d88464c, Worker cb61a1a2; R7 not on prod).",
+  "nextAction": "Round 8 closed (ACCEPTED 5/5, code 49c8588). Round 9: PO writes requirements (backlog in decisions.md R8; also never-reopened areas: Together room, Friends, video analysis); engineer-r02-rework2 implements; lead tsc/test/build; QA via mcp__dsh__subagent; PO acceptance. Next intermediate report after round 10. DO NOT push/deploy/merge unless the user asks again (prod deployed 2026-11-16 at d88464c, Worker cb61a1a2; R7 and R8 not on prod).",
   "precommitReviewAndGitVerification": {
     "phaseARunsRetained": 2,
     "firstRunSummaryJson": "artifacts/agent-evolution/setup/precommit-review/phase-a-run-20261114_034209/summary.json",
