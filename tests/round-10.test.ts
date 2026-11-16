@@ -238,7 +238,7 @@ test("R10-REQ03: старт Ноги 1 недели 1 — тяжёлый под�
   assert.equal(squat.exerciseId, "squat");
   assert.deepEqual(squat.sets.map((s) => [s.weight, s.reps, s.warmup, s.done]), [[85, 5, false, false], ...Array.from({ length: 4 }, () => [65, 12, false, false])]);
   assert.match(squat.progressionNote!, /1 × 5 повторений · 85 % от 1ПМ \(100 кг\) = 85 кг/);
-  assert.match(squat.progressionNote!, /Затем 4 × 12 · 65 % = 65 кг/);
+  assert.match(squat.progressionNote!, /Затем 4 × 12 повторений · 65 % = 65 кг/);
   assert.doesNotMatch(squat.progressionNote!, /5ПМ/);
   const rdl = workout.exercises[1];
   assert.deepEqual(rdl.sets.map((s) => [s.weight, s.reps]), [[0, 0], [0, 0], [0, 0]], "без истории вес и повторы пусты");
@@ -670,4 +670,26 @@ test("QA-R10-07: клиентская защита — битая периоди
   // цикл из шести с одной битой программой: остальные пять — цикл, битая — обычная
   const all = six().map((r, i) => (i === 2 ? { ...r, periodization: { kind: "laid-dup" } as any } : r));
   assert.equal(LaidDupPlan.cycles(all)[0].length, 5);
+});
+
+test("QA-R10-01: склонение «повторение / повторения / повторений» в подписи дня", () => {
+  const words: [number, string][] = [[1, "повторение"], [2, "повторения"], [3, "повторения"], [4, "повторения"], [5, "повторений"], [10, "повторений"], [11, "повторений"], [12, "повторений"], [14, "повторений"], [21, "повторение"], [22, "повторения"]];
+  for (const [n, word] of words) assert.equal(LaidDupPlan.repsWord(n), word, String(n));
+  const note = (day: LaidDay, week: number) => LaidDupPlan.describe(LaidDupPlan.day(day, week, MAXES));
+  assert.match(note("push1", 0), /Тяжёлый подход: 1 × 1 повторение · 95 %/);
+  assert.match(note("push1", 0), /Затем 4 × 4 повторения ·/);
+  assert.match(note("legs2", 0), /1 × 3 повторения ·/);
+  assert.match(note("legs1", 0), /1 × 5 повторений ·/);
+  assert.match(note("legs1", 0), /Затем 4 × 12 повторений ·/);
+  assert.match(note("pull2", 0), /Затем 4 × 2 повторения ·/);
+  for (const day of LaidDupPlan.DAYS) for (let w = 0; w < 9; w++) assert.doesNotMatch(note(day, w), /1 × [1-4] повторений|× (1|2|3|4) повторений|× 1 повторения/);
+});
+
+test("QA-R10-02: клиент не принимает максимум меньше 1 кг — то же, что сервер", () => {
+  assert.equal(LaidDupPlan.checkMax("0,5").value, null);
+  assert.match(LaidDupPlan.checkMax("0,5").error!, /не меньше 1 кг/);
+  assert.match(LaidDupPlan.checkMax("0.99").error!, /не меньше 1 кг/);
+  assert.deepEqual(LaidDupPlan.checkMax("1"), { value: 1, error: null });
+  // сервер принимает ровно то, что принимает клиент
+  assert.doesNotThrow(() => validRoutine(six({ maxes: { ...MAXES, squat: 1 } })[0], new Map()));
 });

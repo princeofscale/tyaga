@@ -242,7 +242,7 @@ test("R10-REQ03: критерий 3 — Ноги 1, Жим 1, Тяга 2 нед�
   await laidApp(page, { routines: sixRoutines() });
   expect(await startAndRead(page, "Лейд · Ноги 1", "Приседания со штангой")).toEqual(["85×5", "65×12", "65×12", "65×12", "65×12"]);
   await expect(page.getByText("Тяжёлый подход: 1 × 5 повторений · 85 % от 1ПМ (100 кг) = 85 кг.")).toBeVisible();
-  await expect(page.getByText("Затем 4 × 12 · 65 % = 65 кг.")).toBeVisible();
+  await expect(page.getByText("Затем 4 × 12 повторений · 65 % = 65 кг.")).toBeVisible();
   await expect(page.getByLabel("Заметка").or(page.locator("textarea")).first()).toHaveValue(/Неделя 1 из 9 · волна 1/);
   await expect(page.getByText("Добавлено к оригиналу Лейда: в его таблице этого нет.")).toBeVisible();
   // вспомогательное: без выдуманных чисел — вес пуст
@@ -463,7 +463,7 @@ test("QA-R10-03: «Блины» на Лейде применяют вес тол
   await expect(dialog(page)).toHaveCount(0);
   for (const [n, want] of [[1, "87.5"], [2, "65"], [3, "65"], [4, "65"], [5, "65"]] as const)
     await expect(page.getByLabel(`Приседания со штангой, подход ${n}, вес`, { exact: true })).toHaveValue(want);
-  await expect(page.getByText("Затем 4 × 12 · 65 % = 65 кг.")).toBeVisible();
+  await expect(page.getByText("Затем 4 × 12 повторений · 65 % = 65 кг.")).toBeVisible();
 });
 
 test("QA-R10-07: программа с битой периодизацией, назначенная на сегодня, не гасит приложение — открывается как обычная", async ({ page }) => {

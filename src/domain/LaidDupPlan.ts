@@ -258,13 +258,19 @@ export class LaidDupPlan {
     if (position.finished) return `Неделя ${position.raw + 1} · схема недели 9 · цикл закончен — обнови максимумы`;
     return `Неделя ${position.week + 1} из ${LAID_WEEKS} · волна ${position.wave}`;
   }
+  /** «повторение / повторения / повторений» по числу (11–14 — «повторений»). */
+  static repsWord(n: number): string {
+    const last = n % 10;
+    const teen = n % 100 >= 11 && n % 100 <= 14;
+    return !teen && last === 1 ? "повторение" : !teen && last >= 2 && last <= 4 ? "повторения" : "повторений";
+  }
   /** Что делает день: для заметки тяжёлого упражнения. */
   static describe(plan: LaidDayPlan): string {
     const { heavy, work } = plan;
     return [
       `${LaidDupPlan.weekLabel(plan.position)}.`,
-      `Тяжёлый подход: 1 × ${heavy.reps} повторений · ${LaidDupPlan.pct(heavy.percent)} % от 1ПМ (${LaidDupPlan.kg(plan.maxKg)} кг) = ${LaidDupPlan.kg(heavy.weightKg)} кг${heavy.light ? " (облегчённо, не по оригиналу)" : ""}.`,
-      `Затем ${work.sets} × ${work.reps} · ${LaidDupPlan.pct(work.percent)} % = ${LaidDupPlan.kg(work.weightKg)} кг.`,
+      `Тяжёлый подход: 1 × ${heavy.reps} ${LaidDupPlan.repsWord(heavy.reps)} · ${LaidDupPlan.pct(heavy.percent)} % от 1ПМ (${LaidDupPlan.kg(plan.maxKg)} кг) = ${LaidDupPlan.kg(heavy.weightKg)} кг${heavy.light ? " (облегчённо, не по оригиналу)" : ""}.`,
+      `Затем ${work.sets} × ${work.reps} ${LaidDupPlan.repsWord(work.reps)} · ${LaidDupPlan.pct(work.percent)} % = ${LaidDupPlan.kg(work.weightKg)} кг.`,
     ].join(" ");
   }
   static pct(value: number): string {
@@ -335,6 +341,7 @@ export class LaidDupPlan {
     if (!/^\d+(\.\d+)?$/.test(text)) return { value: null, error: "Максимум — число в килограммах." };
     const value = Number(text);
     if (!(value > 0)) return { value: null, error: "Максимум должен быть больше нуля." };
+    if (value < 1) return { value: null, error: "Введи максимум не меньше 1 кг." };
     if (value > MAX_KG) return { value: null, error: `Максимум не больше ${MAX_KG} кг: проверь число.` };
     return { value, error: null };
   }
