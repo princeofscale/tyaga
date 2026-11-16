@@ -103,21 +103,27 @@ export function LiveRoomProvider({ children }: { children: ReactNode }) {
     setPollIssue(null);
     setSendIssue(null);
   }, []);
-  /** Запрос к комнате не дошёл (сеть, обрыв, воркер 5xx): считаем неудачу и повторяем через LIVE_RETRY_MS, а не ждём опрос и heartbeat. */
-  const linkFailed = useCallback((kind: "poll" | "send") => {
+  /**
+   * Запрос к комнате не дошёл (сеть, обрыв, воркер 5xx): считаем неудачу и повторяем, а не ждём опрос и heartbeat.
+   * Повтор — через LIVE_RETRY_MS после начала неудавшегося запроса: если он провисел до тайм-аута, повторяем почти сразу (не реже чем через секунду), иначе счёт до «Нет связи» растянулся бы.
+   */
+  const linkFailed = useCallback((kind: "poll" | "send", startedAt = performance.now()) => {
     if (!roomRef.current) return;
-    (kind === "send" ? setSendIssue : setPollIssue)((was) => LiveLink.failed(was, performance.now(), lastOk.current));
+    const now = performance.now();
+    (kind === "send" ? setSendIssue : setPollIssue)((was) => LiveLink.failed(was, now, lastOk.current));
+    setClock(now);
     window.clearTimeout(retry.current);
     retry.current = window.setTimeout(() => {
       if (!roomRef.current) return;
       const next = latest.current ?? unsent.current;
       if (next) void sendRef.current(next);
       else void refreshRef.current();
-    }, LIVE_RETRY_MS);
+    }, Math.max(1_000, LIVE_RETRY_MS - (now - startedAt)));
   }, []);
 
   const refresh = useCallback(async () => {
     const mine = epoch.current;
+    const startedAt = performance.now();
     try {
       const reply = await liveRoomApi.current(AbortSignal.timeout(LIVE_REQUEST_TIMEOUT_MS));
       if (epoch.current !== mine) return;
@@ -125,7 +131,7 @@ export function LiveRoomProvider({ children }: { children: ReactNode }) {
       pollOk();
     } catch (error) {
       // Связи нет: оставляем то, что было, и спросим снова на следующем опросе.
-      if (epoch.current === mine && (!(error instanceof ApiError) || error.status >= 500)) linkFailed("poll");
+      if (epoch.current === mine && (!(error instanceof ApiError) || error.status >= 500)) linkFailed("poll", startedAt);
     }
   }, [pollOk, linkFailed]);
   const refreshRef = useRef(refresh);
@@ -159,6 +165,7 @@ export function LiveRoomProvider({ children }: { children: ReactNode }) {
   const send = useCallback(
     async (state: LiveState) => {
       const mine = epoch.current;
+      const startedAt = performance.now();
       lastPush.current = LivePushPolicy.mark(state, Date.now());
       try {
         const reply = await liveRoomApi.push(state, AbortSignal.timeout(LIVE_REQUEST_TIMEOUT_MS));
@@ -171,7 +178,7 @@ export function LiveRoomProvider({ children }: { children: ReactNode }) {
         // Отказ «комнаты нет» — не потеря связи; сеть, обрыв и ответы воркера 5xx — да.
         if (epoch.current === mine && (!(error instanceof ApiError) || error.status >= 500)) {
           unsent.current = state;
-          linkFailed("send");
+          linkFailed("send", startedAt);
         }
         void refresh();
       }
