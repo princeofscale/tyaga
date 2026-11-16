@@ -448,3 +448,20 @@ test("R10-REQ05: резервная копия содержит периодиз
   await expect(page.getByLabel("Программа Дэвида Лейда")).toContainText("Неделя 1 из 9 · волна 1");
   await expect(page.getByRole("heading", { name: "Старая программа" })).toBeVisible();
 });
+
+// ───────────── Доработка 1 ─────────────
+test("QA-R10-03: «Блины» на Лейде применяют вес только к тяжёлому подходу — откатные 4 × 65 и заметка остаются", async ({ page }) => {
+  test.setTimeout(90_000);
+  await laidApp(page, { routines: sixRoutines() });
+  expect(await startAndRead(page, "Лейд · Ноги 1", "Приседания со штангой")).toEqual(["85×5", "65×12", "65×12", "65×12", "65×12"]);
+  await page.getByText("Ещё для упражнения", { exact: true }).first().click();
+  await page.getByRole("button", { name: "Блины", exact: true }).first().click();
+  const calc = dialog(page);
+  await expect(calc.getByRole("button", { name: "Применить 85 кг к подходу 1", exact: true })).toBeVisible();
+  await calc.getByRole("button", { name: "Плюс 2,5 кг", exact: true }).click();
+  await calc.getByRole("button", { name: "Применить 87,5 кг к подходу 1", exact: true }).click();
+  await expect(dialog(page)).toHaveCount(0);
+  for (const [n, want] of [[1, "87.5"], [2, "65"], [3, "65"], [4, "65"], [5, "65"]] as const)
+    await expect(page.getByLabel(`Приседания со штангой, подход ${n}, вес`, { exact: true })).toHaveValue(want);
+  await expect(page.getByText("Затем 4 × 12 · 65 % = 65 кг.")).toBeVisible();
+});

@@ -39,10 +39,13 @@ export default function PlateCalculator({
   initialWeight = 80,
   onClose,
   onApplyWeight,
+  applyScope,
 }: {
   initialWeight?: number;
   onClose: () => void;
   onApplyWeight?: (w: number) => void;
+  /** Что именно изменится: «к подходу 1», «к 4 подходам»; null — менять нечего (кнопка выключена); не задано — «к подходу». */
+  applyScope?: string | null;
 }) {
   const [targetWeight, setTargetWeight] = useState(() => PlateLoadingCalculator.clampWeight(
     initialWeight || 60, 0, PlateLoadingCalculator.MAX_TOTAL_WEIGHT_KG, 60,
@@ -310,13 +313,14 @@ export default function PlateCalculator({
           <button
             type="button"
             className="button primary full-width"
+            disabled={applyScope === null}
             onClick={() => {
               onApplyWeight(targetWeight);
               onClose();
             }}
           >
             <Check size={16} />
-            Применить {DecimalInput.format(targetWeight)} кг к подходу
+            {applyScope === null ? "Нет невыполненных подходов с этим весом" : `Применить ${DecimalInput.format(targetWeight)} кг ${applyScope ?? "к подходу"}`}
           </button>
         )}
       </div>

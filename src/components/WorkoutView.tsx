@@ -40,6 +40,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import PlateCalculator from "./PlateCalculator";
+import { PlateApplication } from "../domain/PlateApplication";
 import OneRepMaxCalculator from "./OneRepMaxCalculator";
 import ExerciseSwapModal from "./ExerciseSwapModal";
 import BodyMap from "./BodyMap";
@@ -1019,8 +1020,7 @@ export default function WorkoutView({
                     className="quick-calc-btn"
                     title="Калькулятор блинов на штангу"
                     onClick={() => {
-                      const firstSetWeight = we.sets.find((s) => s.weight > 0)?.weight ?? 60;
-                      setPlateCalcTarget({ weight: firstSetWeight, ei });
+                      setPlateCalcTarget({ weight: PlateApplication.openWeight(we.sets), ei });
                     }}
                   >
                     <Dumbbell size={13} />
@@ -1804,17 +1804,13 @@ changeSet(ei, si, PreviousSets.patch(deloaded(we, last, comparableIndex, s.warmu
           <PlateCalculator
             initialWeight={plateCalcTarget.weight}
             onClose={() => setPlateCalcTarget(null)}
+            applyScope={PlateApplication.scope(w.exercises[plateCalcTarget.ei]?.sets ?? [], plateCalcTarget.weight)}
             onApplyWeight={(appliedWeight) => {
               const targetEi = plateCalcTarget.ei;
               setWorkout({
                 ...w,
                 exercises: w.exercises.map((e, i) =>
-                  i === targetEi
-                    ? {
-                        ...e,
-                        sets: e.sets.map((s) => (!s.done ? { ...s, weight: appliedWeight } : s)),
-                      }
-                    : e,
+                  i === targetEi ? { ...e, sets: PlateApplication.apply(e.sets, plateCalcTarget.weight, appliedWeight) } : e,
                 ),
               });
             }}

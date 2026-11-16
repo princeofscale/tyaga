@@ -9,7 +9,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import { InputError, validRoutine } from "../server/validation";
 import { JournalBackup } from "../src/domain/JournalBackup";
-import type { LaidDay, LaidMaxes, Routine, Workout } from "../src/lib/types";
+import type { LaidDay, LaidMaxes, Routine, SetEntry, Workout } from "../src/lib/types";
 
 const MAXES: LaidMaxes = { squat: 100, bench: 80, deadlift: 140, ohp: 60 };
 const TZ = "UTC";
@@ -543,4 +543,46 @@ test("R10-REQ05: сервер сохраняет периодизацию, от�
   } finally {
     await mf.dispose();
   }
+});
+
+// ---- Доработка 1 ----
+import { PlateApplication } from "../src/domain/PlateApplication";
+
+const setOf = (weight: number, extra: Partial<SetEntry> = {}): SetEntry => ({
+  id: crypto.randomUUID(),
+  weight,
+  reps: 5,
+  rir: null,
+  warmup: false,
+  done: false,
+  ...extra,
+});
+
+test("QA-R10-03: блины на Лейде меняют только тяжёлый подход, откатные 4 × 65 остаются", () => {
+  const sets = [setOf(85, { reps: 5 }), ...[0, 1, 2, 3].map(() => setOf(65, { reps: 12 }))];
+  assert.equal(PlateApplication.openWeight(sets), 85);
+  assert.deepEqual(PlateApplication.targets(sets, 85), [0]);
+  assert.equal(PlateApplication.scope(sets, 85), "к подходу 1");
+  assert.deepEqual(PlateApplication.apply(sets, 85, 90).map((s) => s.weight), [90, 65, 65, 65, 65]);
+  // калькулятор, открытый на откатных: меняются только четыре подхода по 65
+  assert.deepEqual(PlateApplication.targets(sets, 65), [1, 2, 3, 4]);
+  assert.equal(PlateApplication.scope(sets, 65), "к 4 подходам");
+  assert.deepEqual(PlateApplication.apply(sets, 65, 60).map((s) => s.weight), [85, 60, 60, 60, 60]);
+});
+
+test("QA-R10-03: обычная программа — все подходы одного веса меняются, выполненные и разминка нет", () => {
+  const sets = [setOf(40, { warmup: true }), setOf(80), setOf(80, { done: true }), setOf(80), setOf(80)];
+  assert.equal(PlateApplication.openWeight(sets), 80);
+  assert.deepEqual(PlateApplication.targets(sets, 80), [1, 3, 4]);
+  assert.equal(PlateApplication.scope(sets, 80), "к 3 подходам");
+  assert.deepEqual(PlateApplication.apply(sets, 80, 82.5).map((s) => s.weight), [40, 82.5, 80, 82.5, 82.5]);
+  // первый подход выполнен — калькулятор открывается на первом невыполненном рабочем
+  assert.equal(PlateApplication.openWeight([setOf(85, { done: true }), setOf(65)]), 65);
+  // менять нечего — подпись null, список не меняется
+  const done = [setOf(80, { done: true })];
+  assert.equal(PlateApplication.scope(done, 80), null);
+  assert.deepEqual(PlateApplication.apply(done, 80, 90), done);
+  // разминочный подход нумеруется отдельно
+  assert.equal(PlateApplication.scope([setOf(40, { warmup: true }), setOf(80)], 40), "к разминочному подходу 1");
+  assert.equal(PlateApplication.scope([setOf(40, { warmup: true }), setOf(80)], 80), "к подходу 1");
 });
