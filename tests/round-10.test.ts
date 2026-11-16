@@ -5,6 +5,10 @@ import { TrainingProgram } from "../src/domain/TrainingProgram";
 import { WarmupPlanner } from "../src/domain/WarmupPlanner";
 import { PlateLoadingCalculator } from "../src/domain/PlateLoadingCalculator";
 import { EXERCISES, exerciseById, makeWorkout } from "../src/lib/model";
+import { readFile, readdir } from "node:fs/promises";
+import { Miniflare, convertV4MiniflareOptions } from "miniflare";
+import { InputError, validRoutine } from "../server/validation";
+import { JournalBackup } from "../src/domain/JournalBackup";
 import type { LaidDay, LaidMaxes, Routine, Workout } from "../src/lib/types";
 
 const MAXES: LaidMaxes = { squat: 100, bench: 80, deadlift: 140, ohp: 60 };
@@ -393,4 +397,150 @@ test("R10-REQ04: пересчёт максимумов с текущей нед�
   const sameWeek = LaidDupPlan.withMaxes(updated.periodization, { ...MAXES, squat: 125 }, 1);
   assert.deepEqual(sameWeek.earlier!.map((e) => e.fromWeek), [0]);
   assert.equal(LaidDupPlan.maxesFor(sameWeek, 1).squat, 125);
+});
+
+// ───────────── R10-REQ05: сервер, резервная копия, повторный вход ─────────────
+const bad = (patch: (p: any) => void, label: string) => {
+  const r: any = structuredClone(byDay(six(), "legs1"));
+  patch(r.periodization);
+  assert.throws(() => validRoutine(r, new Map()), InputError, label);
+};
+
+test("R10-REQ05: validRoutine пропускает периодизацию без потерь, а программу без неё — как раньше", () => {
+  const r = byDay(six(), "pull2");
+  const kept = validRoutine(structuredClone(r), new Map());
+  assert.deepEqual(kept.periodization, r.periodization);
+  const chain = LaidDupPlan.withMaxes(LaidDupPlan.withMaxes(r.periodization!, { ...MAXES, bench: 85 }, 1), { ...MAXES, bench: 90 }, 4);
+  assert.deepEqual(validRoutine({ ...structuredClone(r), periodization: chain }, new Map()).periodization, chain);
+  const plain = { ...structuredClone(TrainingProgram.starter("strength")[0]), revision: 1 } as any;
+  assert.equal(validRoutine(plain, new Map()).periodization, undefined);
+  assert.equal("periodization" in validRoutine(plain, new Map()), false);
+});
+
+test("R10-REQ05: validRoutine отклоняет неверную периодизацию", () => {
+  bad((p) => (p.kind = "other"), "вид");
+  bad((p) => (p.day = "legs3"), "день");
+  bad((p) => (p.day = undefined), "нет дня");
+  bad((p) => (p.cycleId = ""), "пустой cycleId");
+  bad((p) => (p.cycleId = "x".repeat(81)), "длинный cycleId");
+  bad((p) => (p.startMonday = "2026-11-10"), "вторник вместо понедельника");
+  bad((p) => (p.startMonday = "2026-02-30"), "несуществующая дата");
+  bad((p) => (p.startMonday = "09.11.2026"), "формат даты");
+  bad((p) => (p.startMonday = undefined), "нет даты");
+  bad((p) => (p.maxes.squat = 0), "нулевой максимум");
+  bad((p) => (p.maxes.squat = -5), "отрицательный максимум");
+  bad((p) => (p.maxes.bench = 501), "максимум больше 500");
+  bad((p) => (p.maxes.ohp = "60"), "максимум строкой");
+  bad((p) => (p.maxes.ohp = null), "максимум null");
+  bad((p) => delete p.maxes.deadlift, "нет максимума");
+  bad((p) => (p.maxes.curl = 20), "лишний максимум");
+  bad((p) => (p.maxes = [100, 80, 140, 60]), "максимумы массивом");
+  bad((p) => (p.maxesFromWeek = 10), "неделя 10");
+  bad((p) => (p.maxesFromWeek = -1), "отрицательная неделя");
+  bad((p) => (p.maxesFromWeek = 1.5), "дробная неделя");
+  bad((p) => (p.extras = "yes"), "флаг строкой");
+  bad((p) => (p.extras = undefined), "нет флага");
+  bad((p) => (p.light = 1), "флаг числом");
+  bad((p) => (p.extra = true), "неизвестное поле");
+  bad((p) => ((p.maxesFromWeek = 2), (p.earlier = [{ fromWeek: 2, maxes: MAXES }])), "прежняя настройка не раньше действующей");
+  bad((p) => ((p.maxesFromWeek = 4), (p.earlier = [{ fromWeek: 3, maxes: MAXES }, { fromWeek: 1, maxes: MAXES }])), "прежние не по возрастанию");
+  bad((p) => ((p.maxesFromWeek = 4), (p.earlier = [{ fromWeek: 1, maxes: { ...MAXES, squat: 0 } }])), "прежние максимумы неверны");
+  bad((p) => (p.earlier = "all"), "прежние не массив");
+  bad((p) => (p.earlier = Array.from({ length: 9 }, (_, i) => ({ fromWeek: i, maxes: MAXES }))), "слишком много прежних");
+  const r: any = structuredClone(byDay(six(), "legs1"));
+  for (const value of [null, "laid-dup", [], 5]) {
+    r.periodization = value;
+    assert.throws(() => validRoutine(r, new Map()), InputError);
+  }
+});
+
+test("R10-REQ05: резервная копия несёт периодизацию, а копия без поля читается как раньше", () => {
+  const routines = six({ maxes: { squat: 102.5, bench: 80, deadlift: 140, ohp: 60 } });
+  const backup = JournalBackup.create([], {} as never, { routines, customExercises: [], favorites: [] }, {} as never, "dark" as never);
+  const text = JSON.stringify(backup);
+  const parsed = JSON.parse(text);
+  assert.equal(parsed.routines.length, 6);
+  assert.deepEqual(parsed.routines.map((r: Routine) => r.periodization), routines.map((r) => r.periodization));
+  const old = { ...parsed, routines: parsed.routines.map(({ periodization: _p, ...rest }: Routine) => rest) };
+  for (const r of old.routines) assert.equal(validRoutine(r, new Map()).periodization, undefined);
+});
+
+async function sandbox() {
+  const mf = new Miniflare(convertV4MiniflareOptions({
+    workers: [{ modules: true, scriptPath: "dist/server/index.js", compatibilityDate: "2025-09-27", d1Databases: ["DB"] }],
+    cf: false,
+  }));
+  const db = await mf.getD1Database("DB");
+  for (const file of (await readdir("drizzle")).filter((f) => f.endsWith(".sql")).sort())
+    for (const statement of (await readFile("drizzle/" + file, "utf8")).split("--> statement-breakpoint").filter((x) => x.trim()))
+      await db.prepare(statement.trim()).run();
+  const base = "http://localhost";
+  const cookies = new Map<string, Promise<string>>();
+  const cookie = (owner: string) => {
+    if (!cookies.has(owner)) cookies.set(owner, (async () => {
+      const response = await mf.dispatchFetch(base + "/api/auth/register", {
+        method: "POST", headers: { "oai-authenticated-user-id": owner, Origin: base, "Content-Type": "application/json" },
+        body: JSON.stringify({ email: `${owner}@example.test`, password: "test account passphrase", displayName: owner, timeZone: "UTC" }),
+      });
+      assert.equal(response.status, 201);
+      return response.headers.get("Set-Cookie")!.split(";")[0];
+    })());
+    return cookies.get(owner)!;
+  };
+  const request = async (path: string, method = "GET", body?: unknown, owner = "user-a") =>
+    mf.dispatchFetch(base + path, {
+      method,
+      headers: { "oai-authenticated-user-id": owner, Cookie: await cookie(owner), Origin: base, "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  return { mf, request };
+}
+
+test("R10-REQ05: сервер сохраняет периодизацию, отдаёт при повторном входе, принимает из резервной копии; неверная — 400", async () => {
+  const { mf, request } = await sandbox();
+  try {
+    const routines = six({ extras: false, light: true, startMonday: "2026-11-16" });
+    const saved: Routine[] = [];
+    for (const r of routines) {
+      const response = await request("/api/routines", "PUT", r);
+      assert.equal(response.status, 200, r.name);
+      saved.push(((await response.json()) as any).routine);
+    }
+    for (const [i, r] of saved.entries()) assert.deepEqual(r.periodization, routines[i].periodization);
+    // повторный вход: данные читаются из хранилища, поле на месте
+    const data = (await (await request("/api/product")).json()) as any;
+    const back = (data.routines as Routine[]).filter((r) => r.periodization);
+    assert.equal(back.length, 6);
+    for (const r of routines) assert.deepEqual(back.find((x) => x.id === r.id)!.periodization, r.periodization);
+    // правка максимумов: пересохранение тем же id с новой ревизией
+    const edited = { ...saved[0], periodization: LaidDupPlan.withMaxes(saved[0].periodization!, { ...MAXES, squat: 110 }, 2) };
+    const again = await request("/api/routines", "PUT", edited);
+    assert.equal(again.status, 200);
+    assert.equal(((await again.json()) as any).routine.periodization.maxes.squat, 110);
+    // неверная периодизация не сохраняется
+    const broken = { ...structuredClone(routines[1]), id: "broken-laid" };
+    (broken.periodization as any).startMonday = "2026-11-17";
+    assert.equal((await request("/api/routines", "PUT", broken)).status, 400);
+    (broken.periodization as any).startMonday = "2026-11-16";
+    (broken.periodization as any).maxes.bench = 9000;
+    assert.equal((await request("/api/routines", "PUT", broken)).status, 400);
+    // «Восстановить» из копии: другому аккаунту — с периодизацией; без поля — без поля
+    const copy = routines.map((r, i) => (i === 5 ? (({ periodization: _p, ...rest }) => rest)(r) : r));
+    let created = 0;
+    for (let i = 0; i < copy.length; i += 2) {
+      // пакет — не больше двух программ, как отправляет приложение
+      const restored = (await (await request("/api/import/metadata", "POST", { kind: "routines", items: copy.slice(i, i + 2), idMap: {} }, "user-b")).json()) as any;
+      created += restored.created;
+    }
+    assert.equal(created, 6);
+    const other = (await (await request("/api/product", "GET", undefined, "user-b")).json()) as any;
+    const withField = (other.routines as Routine[]).filter((r) => r.periodization);
+    assert.equal(withField.length, 5);
+    for (const r of withField) assert.deepEqual(r.periodization, routines.find((x) => x.id === r.id || x.name === r.name)!.periodization);
+    assert.equal((other.routines as Routine[]).filter((r) => !r.periodization).length, 1);
+    // изоляция: у user-a его программы не пропали
+    assert.equal(((await (await request("/api/product")).json()) as any).routines.length, 6);
+  } finally {
+    await mf.dispose();
+  }
 });
