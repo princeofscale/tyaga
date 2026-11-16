@@ -291,12 +291,12 @@ test("two browser devices do not overwrite each other and can keep a separate co
     .getByRole("button", { name: "Сохранить изменения", exact: true })
     .click();
   await expect(
-    second.getByRole("dialog", { name: "Версии тренировки разошлись" }),
+    second.getByRole("dialog", { name: "Эта тренировка уже сохранена в другом окне" }),
   ).toBeVisible();
   let data = await (await request.get("/api/data")).json();
   expect(data.workouts[0].exercises[0].sets[0].weight).toBe(75);
   await second
-    .getByRole("button", { name: "Создать отдельную копию", exact: true })
+    .getByRole("button", { name: "Сохранить мою отдельной тренировкой", exact: true })
     .click();
   await expect(
     second.getByLabel("Жим штанги лёжа, подход 1, вес", { exact: true }),

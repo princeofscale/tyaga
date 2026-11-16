@@ -52,3 +52,26 @@ export function clipped(page: Page, scope = "main") {
   }, scope);
 }
 
+
+/**
+ * Цели касания внутри окна: кнопки, ссылки, поля и summary короче 44 px по любой стороне
+ * или перекрытые чем-то другим (проба `elementFromPoint` в центре).
+ */
+export function smallInDialog(page: Page, scope = "dialog[open]") {
+  return page.evaluate((root) => {
+    const rootEl = document.querySelector(root);
+    if (!rootEl) return [{ tag: "none", text: "окно не найдено", w: 0, h: 0, covered: false }];
+    const out: { tag: string; text: string; w: number; h: number; covered: boolean }[] = [];
+    rootEl.querySelectorAll<HTMLElement>("button, a, input:not([type=hidden]), select, summary").forEach((el) => {
+      const style = getComputedStyle(el);
+      if (style.visibility === "hidden" || style.display === "none") return;
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) return;
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      const covered = !!hit && hit !== el && !el.contains(hit) && !hit.contains(el);
+      if (r.width + 0.5 >= 44 && r.height + 0.5 >= 44 && !covered) return;
+      out.push({ tag: el.tagName.toLowerCase(), text: (el.innerText || el.getAttribute("aria-label") || el.getAttribute("placeholder") || "").trim().slice(0, 40), w: Math.round(r.width), h: Math.round(r.height), covered });
+    });
+    return out;
+  }, scope);
+}
