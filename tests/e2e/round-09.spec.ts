@@ -23,8 +23,9 @@ async function lift(page: Page, n: number, kg: string, reps: string) {
 }
 
 /** Как воркер: «мой» участник в комнате получает то, что приложение выложило. `fail.left` — сколько отправок оборвать. */
-async function liveWithMyState(page: Page, fail: { left: number; down?: boolean } = { left: 0 }): Promise<LiveMock> {
-  const live = await mockLive(page, liveMock(roomWithPartner()));
+async function liveWithMyState(page: Page, fail: { left: number; down?: boolean; hang?: boolean } = { left: 0 }, shared?: LiveMock): Promise<LiveMock> {
+  const live = shared ?? (await mockLive(page, liveMock(roomWithPartner())));
+  if (shared) await mockLive(page, shared);
   await page.route("**/api/friends/live/state", (route) => {
     if (fail.left > 0) {
       fail.left--;
@@ -36,7 +37,7 @@ async function liveWithMyState(page: Page, fail: { left: number; down?: boolean 
     return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ room: live.room }) });
   });
   // «Без сети»: подставные ответы браузер выдаёт и при setOffline, поэтому обрыв связи с комнатой — здесь.
-  await page.route("**/api/friends/live**", (route) => (fail.down ? route.abort("internetdisconnected") : route.fallback()));
+  await page.route("**/api/friends/live**", (route) => (fail.hang ? new Promise<void>(() => {}) : fail.down ? route.abort("internetdisconnected") : route.fallback()));
   return live;
 }
 
@@ -348,7 +349,7 @@ for (const size of REST_SIZES) {
 }
 
 // ───────────── REQ05: «Нет связи» в шапке комнаты ─────────────
-const LOST = "Нет связи — напарник видит последние данные";
+const LOST = "Нет связи — напарник видит старое";
 
 test("R09-REQ05: в комнате без сети ≤ 15 с появляется «Нет связи …», подходы считаются; со связью строка исчезает ≤ 15 с", async ({ page }) => {
   test.setTimeout(150_000);
@@ -406,4 +407,214 @@ test("R09-REQ05: один пропущенный запрос «Нет связ�
   await expect.poll(() => live.pushed.at(-1)?.setsDone, { timeout: 15_000 }).toBe(1);
   await page.waitForTimeout(12_000);
   await expect(page.locator(".room-badge-lost")).toHaveCount(0);
+});
+
+// ───────────── Доработка 1 ─────────────
+// QA-R09-01: две тренировки за один день
+test("R09-QA-01: правка более ранней тренировки того же дня комнату не трогает; правка завершённой в комнате шлёт ровно один итог; правка другого дня — ничего", async ({ page }) => {
+  test.setTimeout(150_000);
+  await round01Fixture(page, { workouts: [doneWorkout("Утро", "2026-11-10", [["bench", 50, 10, 1]]), doneWorkout("Прошлая", "2026-11-03", [["bench", 60, 8, 3]])] });
+  const live = await liveWithMyState(page);
+  await page.reload();
+  await startWith(page, BENCH);
+  await lift(page, 1, "100", "10");
+  await lift(page, 2, "100", "10");
+  await lift(page, 3, "100", "10");
+  await page.getByRole("button", { name: "Завершить тренировку", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Завершить тренировку", exact: true })).toHaveCount(0);
+  await expect.poll(() => live.pushed.at(-1)?.phase).toBe("done");
+  expect(live.pushed.at(-1)!.tonnageKg).toBe(3000);
+  const edit = async (card: string, kg: string) => {
+    await nav(page, "История").click();
+    await page.locator(".session-item").filter({ hasText: card }).first().click();
+    await page.getByRole("button", { name: "Редактировать", exact: true }).click();
+    await page.getByLabel(`${BENCH}, подход 1, вес`, { exact: true }).fill(kg);
+    await page.getByRole("button", { name: "Сохранить изменения", exact: true }).click();
+    await expect(page.getByText("Изменения сохранены")).toBeVisible();
+  };
+  const before = live.pushed.length;
+  await edit("Утро", "95"); // более ранняя запись того же дня
+  await edit("Прошлая", "65"); // другой день
+  await page.waitForTimeout(2500);
+  expect(live.pushed.length, "правка чужих записей не шлёт в комнату").toBe(before);
+  expect(live.room!.members.find((m) => m.isMe)!.state).toMatchObject({ phase: "done", tonnageKg: 3000 });
+  await edit("Новая тренировка", "110"); // завершённая в комнате
+  await expect.poll(() => live.pushed.length).toBe(before + 1);
+  expect(live.pushed.at(-1)).toMatchObject({ phase: "done", tonnageKg: 3100 });
+  await page.waitForTimeout(2500);
+  expect(live.pushed.length).toBe(before + 1);
+});
+
+// QA-R09-02: вторая вкладка со старым черновиком
+test("R09-QA-02: вкладка со старым черновиком после «Завершить» в другой вкладке молчит — «Закончил» у напарника остаётся", async ({ page, context }) => {
+  test.setTimeout(150_000);
+  await round01Fixture(page);
+  const live = await liveWithMyState(page);
+  await page.reload();
+  await startWith(page, BENCH);
+  await lift(page, 1, "80", "5");
+  await expect.poll(() => live.pushed.at(-1)?.setsDone).toBe(1);
+  // вторая вкладка того же браузера продолжает тот же черновик
+  const tab2 = await context.newPage();
+  await tab2.setViewportSize({ width: 390, height: 844 });
+  await round01Fixture(tab2);
+  await liveWithMyState(tab2, { left: 0 }, live);
+  await tab2.reload();
+  await tab2.getByRole("button", { name: /Продолжить тренировку/ }).first().click();
+  await expect(tab2.getByLabel(`${BENCH}, подход 1, вес`, { exact: true })).toBeVisible();
+  // вкладка 1 заканчивает тренировку
+  await page.bringToFront();
+  await lift(page, 2, "80", "5");
+  await lift(page, 3, "80", "5");
+  await page.getByRole("button", { name: "Завершить тренировку", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Завершить тренировку", exact: true })).toHaveCount(0);
+  await expect.poll(() => live.pushed.at(-1)?.phase).toBe("done");
+  const done = live.pushed.length;
+  // вкладка 2 устарела: что бы человек в ней ни делал, комнате она ничего не шлёт
+  await tab2.bringToFront();
+  await tab2.getByLabel(`${BENCH}, подход 2, вес`, { exact: true }).fill("85");
+  await tab2.getByRole("button", { name: `Отметить выполненным: ${BENCH}, подход 2`, exact: true }).click();
+  await tab2.waitForTimeout(3000);
+  expect(live.pushed.length, "устаревшая вкладка отправила состояние").toBe(done);
+  expect(live.room!.members.find((m) => m.isMe)!.state?.phase).toBe("done");
+});
+
+// QA-R09-03: чип «Блок / Кроссовер»
+test("R09-QA-03: «Блок / Кроссовер» для кроссовера — строки с блоками и кроссоверами, число в скобках = числу строк, чип нажат (aria-pressed)", async ({ page }) => {
+  test.setTimeout(90_000);
+  await round01Fixture(page);
+  await startWith(page, "Сведение рук в кроссовере");
+  const dialog = await openSwap(page);
+  const chip = dialog.getByRole("button", { name: "Блок / Кроссовер", exact: true });
+  await expect(chip).toHaveAttribute("aria-pressed", "false");
+  await chip.click();
+  await expect(chip).toHaveAttribute("aria-pressed", "true");
+  const s = await shown(dialog);
+  expect(s.n).toBeGreaterThan(0);
+  expect(s.rows).toBe(s.n);
+  for (const label of s.labels) expect(label).toBe("Блок / Кроссовер");
+  await dialog.getByRole("searchbox").fill("блок");
+  const found = await shown(dialog);
+  expect(found.n).toBeGreaterThan(0);
+  expect(found.rows).toBe(found.n);
+  for (const label of found.labels) expect(label).toBe("Блок / Кроссовер");
+});
+
+// QA-R09-04: потеря связи в простое и при молчащем воркере; QA-R09-07: одна строка на 390/360/320
+for (const size of SIZES3) {
+  test(`R09-QA-04/07: в простое (без нажатий) «Нет связи» ≤ 15 с и в одну строку; со связью исчезает ${size.width}×${size.height}`, async ({ page }) => {
+    test.setTimeout(150_000);
+    await page.setViewportSize(size);
+    await round01Fixture(page);
+    const net: { left: number; down: boolean } = { left: 0, down: false };
+    const live = await liveWithMyState(page, net);
+    await page.reload();
+    await startWith(page, BENCH);
+    await lift(page, 1, "60", "8");
+    await expect.poll(() => live.pushed.at(-1)?.setsDone).toBe(1);
+    // два опроса комнаты подряд успели пройти: связь «известна», дальше тишина без нажатий
+    await page.waitForTimeout(6000);
+    net.down = true;
+    const off = Date.now();
+    const lost = page.locator(".room-badge-lost");
+    await expect(lost).toBeVisible({ timeout: 16_000 });
+    expect(Date.now() - off, "строка появилась позже 15 с").toBeLessThanOrEqual(15_500);
+    await expect(lost).toHaveText(LOST);
+    const box = await lost.evaluate((el) => ({ h: el.getBoundingClientRect().height, line: parseFloat(getComputedStyle(el).lineHeight), wide: el.scrollWidth > el.clientWidth + 1 }));
+    expect(box.h, "одна строка").toBeLessThan(box.line * 1.6);
+    expect(box.wide).toBe(false);
+    for (const label of ["Поделиться", "Выйти из комнаты"]) {
+      const b = (await page.locator(".room-badge").getByRole("button", { name: label, exact: true }).boundingBox())!;
+      expect(b.width).toBeGreaterThanOrEqual(43.99);
+      expect(b.height).toBeGreaterThanOrEqual(43.99);
+    }
+    expect(await overflow(page)).toBeLessThanOrEqual(1);
+    net.down = false;
+    await expect(lost).toHaveCount(0, { timeout: 15_000 });
+  });
+}
+
+test("R09-QA-04: молчащий воркер (запросы висят) — «Нет связи» ≤ 15 с; без комнаты строки нет", async ({ page }) => {
+  test.setTimeout(150_000);
+  await round01Fixture(page);
+  const net: { left: number; down: boolean; hang: boolean } = { left: 0, down: false, hang: false };
+  const live = await liveWithMyState(page, net);
+  await page.reload();
+  await startWith(page, BENCH);
+  await lift(page, 1, "60", "8");
+  await expect.poll(() => live.pushed.at(-1)?.setsDone).toBe(1);
+  await page.waitForTimeout(6000);
+  net.hang = true;
+  const off = Date.now();
+  await expect(page.locator(".room-badge-lost")).toBeVisible({ timeout: 20_000 });
+  expect(Date.now() - off, "при молчащем воркере строка позже 15 с").toBeLessThanOrEqual(15_500);
+});
+
+test("R09-QA-04: «offline» браузера — строка появляется быстро и без нажатий", async ({ page, context }) => {
+  test.setTimeout(120_000);
+  await round01Fixture(page);
+  const net: { left: number; down: boolean } = { left: 0, down: false };
+  const live = await liveWithMyState(page, net);
+  await page.reload();
+  await startWith(page, BENCH);
+  await lift(page, 1, "60", "8");
+  await expect.poll(() => live.pushed.at(-1)?.setsDone).toBe(1);
+  net.down = true;
+  await context.setOffline(true);
+  const off = Date.now();
+  await expect(page.locator(".room-badge-lost")).toBeVisible({ timeout: 15_000 });
+  expect(Date.now() - off).toBeLessThanOrEqual(15_500);
+  net.down = false;
+  await context.setOffline(false);
+  await expect(page.locator(".room-badge-lost")).toHaveCount(0, { timeout: 15_000 });
+});
+
+// QA-R09-05 / 06: окно расхождения при правке сохранённой записи
+async function editConflict(page: Page, kind: "saved" | "deleted") {
+  const f = await round01Fixture(page, { workouts: [doneWorkout("Конфликт", "2026-11-03", [["bench", 60, 8, 3]])] });
+  const id = f.workouts[0].id;
+  let first = true;
+  await page.route("**/api/workouts", (route) => {
+    if (route.request().method() !== "PUT" || !first) return route.fallback();
+    first = false;
+    f.workouts.splice(0, f.workouts.length, ...(kind === "saved" ? [{ ...f.workouts[0], exercises: f.workouts[0].exercises.map((e) => ({ ...e, sets: e.sets.map((s) => ({ ...s, weight: 70 })) })), revision: 2 }] : []));
+    return route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ error: "Тренировка изменена на другом устройстве", current: kind === "saved" ? f.workouts[0] : null }) });
+  });
+  await nav(page, "История").click();
+  await page.locator(".session-item").first().click();
+  await page.getByRole("button", { name: "Редактировать", exact: true }).click();
+  await page.getByLabel(`${BENCH}, подход 1, вес`, { exact: true }).fill("65");
+  await page.getByRole("button", { name: "Сохранить изменения", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: kind === "saved" ? CONFLICT : "Эта тренировка удалена в другом окне", exact: true });
+  await expect(dialog).toBeVisible();
+  return { f, id, dialog };
+}
+
+test("R09-QA-06: «удалена в другом окне» — подпись без «двух записей», после копии в «Истории» одна запись без призрака", async ({ page }) => {
+  test.setTimeout(120_000);
+  const { dialog } = await editConflict(page, "deleted");
+  const text = await dialog.innerText();
+  expect(text).not.toMatch(/две записи/);
+  expect(text).toMatch(/в истории останется только она/);
+  await dialog.getByRole("button", { name: "Сохранить мою отдельной тренировкой", exact: true }).click();
+  await page.getByRole("button", { name: "Завершить тренировку", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Завершить тренировку", exact: true })).toHaveCount(0);
+  await nav(page, "История").click();
+  await expect(page.locator(".session-item")).toHaveCount(1);
+  await expect(page.locator(".session-item").first()).toContainText("копия");
+});
+
+test("R09-QA-06: «сохранена в другом окне» — после копии в «Истории» сохранённая запись и копия сразу, без перезагрузки", async ({ page }) => {
+  test.setTimeout(120_000);
+  const { dialog } = await editConflict(page, "saved");
+  expect(await dialog.innerText()).toMatch(/две записи/);
+  await dialog.getByRole("button", { name: "Сохранить мою отдельной тренировкой", exact: true }).click();
+  await page.getByRole("button", { name: "Завершить тренировку", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Завершить тренировку", exact: true })).toHaveCount(0);
+  await nav(page, "История").click();
+  await expect(page.locator(".session-item")).toHaveCount(2);
+  const cards = (await page.locator(".session-item").allInnerTexts()).join(" | ");
+  expect(cards).toMatch(/копия/);
+  // сохранённая в другом окне запись — с весом 70 (3 × 70 × 8 = 1 680 кг ≈ 1,7 т), а не со старой моей версией
+  expect(cards).toMatch(/1,7 т/);
 });

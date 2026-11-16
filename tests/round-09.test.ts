@@ -48,23 +48,48 @@ test("R09-REQ01: после «Сохранить» правки итог пер�
   assert.equal(LivePresenter.headline({ state: mine.state, updatedAt: new Date(NOW).toISOString() }, NOW), "Закончил · 1,9 т");
   const edited = structuredClone(before);
   edited.exercises[0].sets[0].weight = 90;
-  const next = LiveBroadcastPolicy.afterEdit(mine, edited, [edited, done("old", "2026-11-09", [60])], NOW, entryName)!;
+  const next = LiveBroadcastPolicy.afterEdit(mine, edited, "a", NOW, entryName)!;
   assert.equal(next.phase, "done");
   assert.equal(next.tonnageKg, 1935);
   assert.equal(LivePresenter.headline({ state: next, updatedAt: new Date(NOW).toISOString() }, NOW), "Закончил · 1,9 т");
 });
 
-test("R09-REQ01: итог комнаты не трогаем, если строки «Закончил» нет или правится не самая свежая тренировка", () => {
+test("R09-REQ01 / QA-R09-01: комнату трогает только правка той самой тренировки, завершённой в комнате; две тренировки за один день различаются по id", () => {
+  const morning = done("morning", "2026-11-16", [50]);
+  const evening = done("evening", "2026-11-16", [100, 100, 100]);
+  const other = done("other", "2026-11-09", [60]);
+  const finished = { state: LiveStateBuilder.fromWorkout(evening, { now: NOW, nameOf: entryName, finished: true }) };
+  // правка более ранней записи того же дня: комната остаётся с «Закончил» вечерней
+  assert.equal(LiveBroadcastPolicy.afterEdit(finished, morning, "evening", NOW, entryName), null);
+  // правка записи другого дня
+  assert.equal(LiveBroadcastPolicy.afterEdit(finished, other, "evening", NOW, entryName), null);
+  // правка завершённой в комнате: ровно один итог с новыми числами
+  const edited = structuredClone(evening);
+  edited.exercises[0].sets[0].weight = 110;
+  const next = LiveBroadcastPolicy.afterEdit(finished, edited, "evening", NOW, entryName)!;
+  assert.equal(next.phase, "done");
+  assert.equal(next.tonnageKg, 110 * 5 + 100 * 5 * 2);
+  // нет сведений о том, что завершено в комнате (другое устройство, чистое хранилище)
+  assert.equal(LiveBroadcastPolicy.afterEdit(finished, evening, null, NOW, entryName), null);
+});
+
+test("R09-REQ01: итог комнаты не трогаем, если строки «Закончил» нет", () => {
   const latest = done("a", "2026-11-16", [80]);
-  const older = done("b", "2026-11-09", [60]);
   const finished = { state: LiveStateBuilder.fromWorkout(latest, { now: NOW, nameOf: entryName, finished: true }) };
-  // правка старой тренировки: итог комнаты относится к более свежей
-  assert.equal(LiveBroadcastPolicy.afterEdit(finished, older, [latest, older], NOW, entryName), null);
-  // у человека нет «Закончил» (ещё не начинал или тренируется): правка комнату не меняет
-  assert.equal(LiveBroadcastPolicy.afterEdit({ state: null }, latest, [latest], NOW, entryName), null);
-  assert.equal(LiveBroadcastPolicy.afterEdit(undefined, latest, [latest], NOW, entryName), null);
+  assert.equal(LiveBroadcastPolicy.afterEdit({ state: null }, latest, "a", NOW, entryName), null);
+  assert.equal(LiveBroadcastPolicy.afterEdit(undefined, latest, "a", NOW, entryName), null);
   const lifting = { state: { ...finished.state!, phase: "lifting" as const } };
-  assert.equal(LiveBroadcastPolicy.afterEdit(lifting, latest, [latest], NOW, entryName), null);
+  assert.equal(LiveBroadcastPolicy.afterEdit(lifting, latest, "a", NOW, entryName), null);
+});
+
+test("R09-QA-02: вкладка, чей черновик закончен или убран в другой вкладке, ничего не шлёт в комнату", () => {
+  const w = done("live", "2026-11-16", [80]);
+  w.exercises[0].sets.push({ id: "x", weight: 80, reps: 5, rir: 2, warmup: false, done: false });
+  const draft = draftOf(w, false);
+  assert.equal(LiveBroadcastPolicy.stateFor(draft, NOW, entryName, null)!.phase, "lifting");
+  assert.equal(LiveBroadcastPolicy.stateFor(draft, NOW, entryName, "live"), null);
+  // другая тренировка (новый черновик с другим id) снова транслируется
+  assert.equal(LiveBroadcastPolicy.stateFor({ ...draft, workout: { ...w, id: "next" } }, NOW, entryName, "live")!.phase, "lifting");
 });
 
 test("R09-REQ01: повтор неизменившегося итога — раз в heartbeat, значит правка не плодит лишних отправок", () => {
@@ -195,7 +220,7 @@ test("R09-REQ05: «Нет связи» — только после повтор�
   assert.equal(LiveLink.lost(two, t0 + 9_999), false);
   // две неудачи и 10 с — строка показывается
   assert.equal(LiveLink.lost(two, t0 + LIVE_LINK_LOST_MS), true);
-  // счёт идёт от первой неудачи, а не от последней
+  // счёт идёт от начала отсчёта, а не от последней неудачи
   const four = LiveLink.failed(LiveLink.failed(two, t0 + 8_000), t0 + 12_000);
   assert.deepEqual(four, { since: t0, count: 4 });
   assert.equal(LiveLink.lost(four, t0 + 12_500), true);
@@ -203,7 +228,59 @@ test("R09-REQ05: «Нет связи» — только после повтор�
   assert.equal(LiveLink.lost(null, t0 + 20_000), false);
 });
 
-test("R09-REQ05: текст строки без «сервер» и «синхронизация», одной строкой", () => {
-  assert.equal(LiveLink.MESSAGE, "Нет связи — напарник видит последние данные");
-  assert.doesNotMatch(LiveLink.MESSAGE, /сервер|синхрон|\n/i);
+test("R09-QA-04: отсчёт идёт от последнего удавшегося запроса (но не глубже 6 с) — простой без нажатий укладывается в 15 с", () => {
+  const t = 1_000_000;
+  // последний ответ 3 с назад: «ушла связь» считается от него
+  assert.deepEqual(LiveLink.failed(null, t, t - 3_000), { since: t - 3_000, count: 1 });
+  // давняя тишина (минуту назад) не засчитывается целиком
+  assert.deepEqual(LiveLink.failed(null, t, t - 60_000), { since: t - 6_000, count: 1 });
+  // опрос раз в 5 с: сеть пропала сразу после ответа, неудачи на 5-й и 9-й секунде, строка на 10-й
+  const lastOk = t;
+  let issue = LiveLink.failed(null, lastOk + 5_000, lastOk);
+  issue = LiveLink.failed(issue, lastOk + 9_000, lastOk);
+  assert.equal(LiveLink.lost(issue, lastOk + 9_500), false);
+  assert.equal(LiveLink.lost(issue, lastOk + 10_000), true);
+  // одиночный сбой при старой тишине всё равно ничего не показывает
+  assert.equal(LiveLink.lost(LiveLink.failed(null, t, t - 60_000), t + 30_000), false);
+});
+
+test("R09-REQ05 / QA-R09-07: текст строки короткий (одна строка на 320), без «сервер» и «синхронизация»", () => {
+  assert.equal(LiveLink.MESSAGE, "Нет связи — напарник видит старое");
+  assert.ok(LiveLink.MESSAGE.length <= 36);
+  assert.doesNotMatch(`${LiveLink.MESSAGE} ${LiveLink.DETAIL}`, /сервер|синхрон|\n/i);
+});
+
+// ───────────── Доработка 1 ─────────────
+test("R09-QA-03: «Блок / Кроссовер» непуст — все блоки и кроссоверы каталога; «Тренажёр» сохранил настоящие тренажёры; подпись у строки и чип совпадают", () => {
+  const cable = EXERCISES.filter((e) => ExerciseLabels.equipment(e) === "Блок / Кроссовер");
+  assert.ok(cable.length >= 10, `блочных: ${cable.length}`);
+  for (const id of ["fly", "lat-pulldown", "row", "facepull-er", "triceps-push", "high-cable-fly", "pullover-cable", "lateral-cable-single"])
+    assert.ok(cable.some((e) => e.id === id), id);
+  for (const e of cable) assert.ok(/блок|канат|кроссовер/i.test(e.name) || /cable|pulldown/i.test(e.id), e.name);
+  const machine = EXERCISES.filter((e) => ExerciseLabels.equipment(e) === "Тренажёр").map((e) => e.id);
+  for (const id of ["legpress", "legcurl-seated", "legcurl-prone", "leg-extension", "shoulder-press-machine", "calf-seated", "calf-standing-machine"]) assert.ok(machine.includes(id), id);
+  // каждая строка каталога живёт ровно под чипом(ами) своей подписи
+  for (const e of EXERCISES) for (const chip of ["dumbbell", "barbell", "cable", "machine", "bodyweight"] as const)
+    assert.equal(ExerciseLabels.matches(e, chip), ExerciseLabels.chips(e).includes(chip));
+  assert.equal(EXERCISES.filter((e) => ExerciseLabels.matches(e, "cable")).length, cable.length);
+  // все пять подписей в каталоге встречаются (чипы не мёртвые)
+  for (const word of ["Штанга", "Гантели", "Блок / Кроссовер", "Тренажёр", "Свой вес"]) assert.ok(EXERCISES.some((e) => ExerciseLabels.equipment(e) === word), word);
+});
+
+test("R09-QA-05: в окне расхождения у записи с отмеченной разминкой тоннаж помечен «без разминки»", () => {
+  const w = session("w", [[60, 8, true], [60, 8, true]]);
+  assert.match(WorkoutDigest.line(w), /^2 подх\. · 960 кг$/);
+  w.exercises[0].sets.unshift({ id: "warm", weight: 40, reps: 10, rir: null, warmup: true, done: true });
+  assert.match(WorkoutDigest.line(w), /^2 подх\. · 960 кг без разминки$/);
+  // неотмеченная разминка в тоннаж не входит и пометки не требует
+  w.exercises[0].sets[0].done = false;
+  assert.match(WorkoutDigest.line(w), /^2 подх\. · 960 кг$/);
+});
+
+test("R09-QA-06: подпись копии верна для обоих вариантов — «две записи» только когда сохранённая запись есть", () => {
+  assert.match(WorkoutConflict.SAVE_COPY.effect, /две записи/);
+  assert.doesNotMatch(WorkoutConflict.SAVE_COPY_DELETED.effect, /две записи/);
+  assert.match(WorkoutConflict.SAVE_COPY_DELETED.effect, /только она/);
+  assert.equal(WorkoutConflict.SAVE_COPY_DELETED.label, WorkoutConflict.SAVE_COPY.label);
+  assert.doesNotMatch(WorkoutConflict.SAVE_COPY_DELETED.effect, FORBIDDEN);
 });
