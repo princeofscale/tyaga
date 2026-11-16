@@ -136,14 +136,27 @@ export function parseDraft(text: string | null): Draft | null {
     return null;
   }
 }
+/** id тренировки в сохранённом черновике; null, если записи нет или она не читается. */
+export function storedDraftId(raw: string | null): string | null {
+  const draft = parseDraft(raw);
+  return draft ? draft.workout.id : null;
+}
+/**
+ * Сохраняет черновик или убирает его ключ. `ownId` — тренировка, которую эта вкладка вела до сих пор:
+ * ключ общий для всех вкладок, и устаревшая вкладка не должна стирать черновик другой тренировки, начатой в соседней (R09-QA-08).
+ */
 export function persistDraft(
-  storage: Pick<Storage, "setItem" | "removeItem">,
+  storage: Pick<Storage, "setItem" | "removeItem"> & Partial<Pick<Storage, "getItem">>,
   draft: Draft | null,
   key = DRAFT_KEY,
+  ownId: string | null = null,
 ): PersistenceStatus {
   try {
     if (draft) storage.setItem(key, JSON.stringify(draft));
-    else storage.removeItem(key);
+    else {
+      const stored = ownId && storage.getItem ? storedDraftId(storage.getItem(key)) : null;
+      if (!stored || stored === ownId) storage.removeItem(key);
+    }
     return "saved";
   } catch {
     return "failed";

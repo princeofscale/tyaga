@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { makeWorkout, entryName } from "../src/lib/model";
 import { LiveBroadcastPolicy, LivePresenter, LivePushPolicy, LiveStateBuilder } from "../src/domain/LiveSession";
+import { newDraft, persistDraft, storedDraftId } from "../src/lib/draft";
 import type { Workout } from "../src/lib/types";
 
 const done = (id: string, date: string, kg: number[]): Workout => {
@@ -283,4 +284,34 @@ test("R09-QA-06: подпись копии верна для обоих вари
   assert.match(WorkoutConflict.SAVE_COPY_DELETED.effect, /только она/);
   assert.equal(WorkoutConflict.SAVE_COPY_DELETED.label, WorkoutConflict.SAVE_COPY.label);
   assert.doesNotMatch(WorkoutConflict.SAVE_COPY_DELETED.effect, FORBIDDEN);
+});
+
+test("R09-QA-08: вкладка отпускает свою тренировку только если из общего ключа убрали именно её", () => {
+  const mine = draftOf(done("y", "2026-11-16", [80]), false);
+  assert.equal(LiveBroadcastPolicy.releasedBy(mine, "y"), "y", "закончили или отменили нашу тренировку — замолкаем");
+  assert.equal(LiveBroadcastPolicy.releasedBy(mine, "x"), null, "убран черновик другой тренировки — мы не при чём");
+  assert.equal(LiveBroadcastPolicy.releasedBy(mine, null), null, "id убранного неизвестен — не глушим живую тренировку");
+  assert.equal(LiveBroadcastPolicy.releasedBy(null, "y"), null);
+  assert.equal(LiveBroadcastPolicy.releasedBy(draftOf(done("y", "2026-11-16", [80]), true), "y"), null, "правка сохранённой тренировки не транслируется и так");
+});
+
+test("R09-QA-08: устаревшая вкладка не стирает общий черновик чужой тренировки, но стирает свой", () => {
+  const map = new Map<string, string>();
+  const store = { getItem: (k: string) => map.get(k) ?? null, setItem: (k: string, v: string) => void map.set(k, v), removeItem: (k: string) => void map.delete(k) };
+  const y = newDraft(done("y", "2026-11-16", [80]));
+  persistDraft(store, y, "k");
+  // вкладка 2 вела X и отменяет его: в ключе уже тренировка Y
+  assert.equal(persistDraft(store, null, "k", "x"), "saved");
+  assert.equal(storedDraftId(map.get("k") ?? null), "y", "черновик Y остался");
+  // своя тренировка стирается
+  persistDraft(store, null, "k", "y");
+  assert.equal(map.has("k"), false);
+  // без известного id поведение прежнее: ключ убирается
+  persistDraft(store, y, "k");
+  persistDraft(store, null, "k");
+  assert.equal(map.has("k"), false);
+  // нечитаемая запись не мешает убрать ключ
+  map.set("k", "{oops");
+  persistDraft(store, null, "k", "x");
+  assert.equal(map.has("k"), false);
 });

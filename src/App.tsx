@@ -214,7 +214,9 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
   /** Открыто без связи: на экране копия последнего ответа сервера. */
   const [offlineData, setOfflineData] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(() => readDraft(draftKey));
-  useLiveBroadcast(draft, draftKey);
+  const releasedDraftId = useLiveBroadcast(draft, draftKey);
+  /** Тренировка, которую эта вкладка записала в черновик последней: убирать из общего ключа можно только её. */
+  const ownDraftId = useRef<string | null>(draft?.workout.id ?? null);
   const [persistence, setPersistence] = useState<PersistenceStatus>("pending");
   const [legacyDraft, setLegacyDraft] = useState(() => readDraft(DRAFT_KEY));
   const [conflict, setConflict] = useState<{ current: Workout | null } | null>(
@@ -423,12 +425,15 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
     return () => window.removeEventListener("tyaga:synced", reload);
   }, [load]);
   useEffect(() => {
+    // Тренировку закончили или отменили в другой вкладке: эта вкладка устарела и не возвращает её черновик в общий ключ (R09-QA-09).
+    if (draft && draft.workout.id === releasedDraftId) return;
     try {
-      setPersistence(persistDraft(localStorage, draft, draftKey));
+      setPersistence(persistDraft(localStorage, draft, draftKey, ownDraftId.current));
     } catch {
       setPersistence("failed");
     }
-  }, [draft, draftKey]);
+    ownDraftId.current = draft ? draft.workout.id : null;
+  }, [draft, draftKey, releasedDraftId]);
   const hasDraft = !!draft;
   useEffect(() => {
     if (!hasDraft) return;
@@ -805,7 +810,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
       } catch (e) {
         if (PendingWorkouts.isRetryable(e) && pending.enqueue(workout)) {
           // Нет связи: тренировка не черновик и не потеряна — лежит в истории и уйдёт сама.
-          persistDraft(localStorage, null, draftKey); // сразу, не дожидаясь эффекта: перезагрузка не вернёт черновик
+          persistDraft(localStorage, null, draftKey, draft.workout.id); // сразу, не дожидаясь эффекта: перезагрузка не вернёт черновик
           setDraft(null);
           setConflict(null);
           setSaveError("");
@@ -817,7 +822,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
       }
       pending.queue.remove(workout.id);
       pending.sync();
-      persistDraft(localStorage, null, draftKey); // сразу: перезагрузка сразу после «Завершить» не вернёт готовую тренировку черновиком
+      persistDraft(localStorage, null, draftKey, draft.workout.id); // сразу: перезагрузка сразу после «Завершить» не вернёт готовую тренировку черновиком
       setWorkouts((ws) =>
         [result.workout, ...ws.filter((w) => w.id !== result.workout.id)].sort(
           (a, b) => b.date.localeCompare(a.date),
