@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type BrowserContext, type Page } from "@playwright/test";
 import { nav, round01Fixture, startWith, doneWorkout } from "./fixtures/round01";
 import { liveMock, mockLive, roomWithPartner, type LiveMock } from "./fixtures/live";
 import { smallTargets, smallInDialog, clipped } from "./fixtures/touch";
@@ -23,7 +23,7 @@ async function lift(page: Page, n: number, kg: string, reps: string) {
 }
 
 /** Как воркер: «мой» участник в комнате получает то, что приложение выложило. `fail.left` — сколько отправок оборвать. */
-async function liveWithMyState(page: Page, fail: { left: number; down?: boolean; hang?: boolean } = { left: 0 }, shared?: LiveMock): Promise<LiveMock> {
+async function liveWithMyState(page: Page, fail: { left: number; down?: boolean; hang?: boolean; putHang?: boolean; put503?: boolean } = { left: 0 }, shared?: LiveMock): Promise<LiveMock> {
   const live = shared ?? (await mockLive(page, liveMock(roomWithPartner())));
   if (shared) await mockLive(page, shared);
   await page.route("**/api/friends/live/state", (route) => {
@@ -31,6 +31,9 @@ async function liveWithMyState(page: Page, fail: { left: number; down?: boolean;
       fail.left--;
       return route.abort("failed");
     }
+    // Частичный отказ: чтение комнаты работает, запись состояния — нет.
+    if (fail.putHang) return new Promise<void>(() => {});
+    if (fail.put503) return route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "unavailable" }) });
     const state = route.request().postDataJSON();
     live.pushed.push(state);
     live.room!.members.find((m) => m.isMe)!.state = state;
@@ -567,6 +570,117 @@ test("R09-QA-04: «offline» браузера — строка появляет�
   net.down = false;
   await context.setOffline(false);
   await expect(page.locator(".room-badge-lost")).toHaveCount(0, { timeout: 15_000 });
+});
+
+// QA-R09-12: отправка состояния не доходит, а опрос комнаты проходит
+for (const mode of ["putHang", "put503"] as const) {
+  test(`R09-QA-12: ${mode === "putHang" ? "PUT состояния молчит" : "PUT состояния отвечает 503"} при живом опросе — «Нет связи» ≤ 15 с, после возврата PUT строка исчезает`, async ({ page }) => {
+    test.setTimeout(150_000);
+    await round01Fixture(page);
+    const net: { left: number; putHang: boolean; put503: boolean } = { left: 0, putHang: false, put503: false };
+    const live = await liveWithMyState(page, net);
+    await page.reload();
+    await startWith(page, BENCH);
+    await lift(page, 1, "60", "8");
+    await expect.poll(() => live.pushed.at(-1)?.setsDone).toBe(1);
+    await page.waitForTimeout(6000);
+    await expect(page.locator(".room-badge-lost")).toHaveCount(0);
+    net[mode] = true;
+    const polls = { n: 0 };
+    await page.route("**/api/friends/live", (route) => { if (route.request().method() === "GET") polls.n++; return route.fallback(); });
+    const tap = Date.now();
+    await lift(page, 2, "60", "8");
+    await expect(page.locator(".room-badge-lost")).toBeVisible({ timeout: 20_000 });
+    expect(Date.now() - tap, "при отказе записи строка позже 15 с").toBeLessThanOrEqual(15_500);
+    expect(polls.n, "опрос комнаты всё это время проходил").toBeGreaterThan(0);
+    // строка не гаснет сама от удавшихся опросов
+    await page.waitForTimeout(6000);
+    await expect(page.locator(".room-badge-lost")).toBeVisible();
+    // запись вернулась: отправка проходит, строка исчезает, у напарника свежее состояние
+    net[mode] = false;
+    await expect(page.locator(".room-badge-lost")).toHaveCount(0, { timeout: 12_000 });
+    await expect.poll(() => live.pushed.at(-1)?.setsDone).toBe(2);
+  });
+}
+
+// QA-R09-08 / 09: вкладки одного браузера делят ключ черновика
+async function staleTab(page: Page, context: BrowserContext, live: LiveMock) {
+  const tab2 = await context.newPage();
+  await tab2.setViewportSize({ width: 390, height: 844 });
+  await round01Fixture(tab2);
+  await liveWithMyState(tab2, { left: 0 }, live);
+  await tab2.reload();
+  await tab2.getByRole("button", { name: /Продолжить тренировку/ }).first().click();
+  await expect(tab2.getByLabel(`${BENCH}, подход 1, вес`, { exact: true })).toBeVisible();
+  await page.bringToFront();
+  return tab2;
+}
+
+test("R09-QA-08: «Отмена» устаревшего черновика во вкладке 2 не глушит новую тренировку во вкладке 1", async ({ page, context }) => {
+  test.setTimeout(150_000);
+  await round01Fixture(page);
+  const live = await liveWithMyState(page);
+  await page.reload();
+  await startWith(page, BENCH);
+  await lift(page, 1, "80", "5");
+  await expect.poll(() => live.pushed.at(-1)?.setsDone).toBe(1);
+  const tab2 = await staleTab(page, context, live);
+  // вкладка 1 заканчивает X и сразу начинает новую тренировку Y
+  await lift(page, 2, "80", "5");
+  await lift(page, 3, "80", "5");
+  await page.getByRole("button", { name: "Завершить тренировку", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Завершить тренировку", exact: true })).toHaveCount(0);
+  await expect.poll(() => live.pushed.at(-1)?.phase).toBe("done");
+  await nav(page, "Сегодня").click();
+  await startWith(page, BENCH);
+  await lift(page, 1, "60", "8");
+  await expect.poll(() => live.pushed.at(-1)?.setsDone).toBe(1);
+  // вкладка 2 (устаревший X): «Отмена» → подтвердить
+  await tab2.bringToFront();
+  await tab2.getByRole("button", { name: "Отмена", exact: true }).click();
+  await tab2.getByRole("button", { name: "Да, отменить тренировку", exact: true }).click();
+  await expect(tab2.getByRole("heading", { name: "Сегодня", exact: true })).toBeVisible();
+  await tab2.waitForTimeout(1500);
+  // вкладка 1 продолжает: ✓ 2 и ✓ 3 доходят до комнаты
+  await page.bringToFront();
+  await lift(page, 2, "60", "8");
+  await expect.poll(() => live.pushed.at(-1)?.setsDone, { timeout: 10_000 }).toBe(2);
+  await lift(page, 3, "60", "8");
+  await expect.poll(() => live.pushed.at(-1)?.setsDone, { timeout: 10_000 }).toBe(3);
+  expect(live.room!.members.find((m) => m.isMe)!.state).toMatchObject({ setsDone: 3 });
+  // черновик Y на месте: перезагрузка предлагает продолжить именно его
+  const stored = await page.evaluate(() => Object.entries(localStorage).filter(([k]) => k.startsWith("tyaga-draft-account:")).map(([, v]) => JSON.parse(v).workout.exercises[0].sets.filter((s: { done: boolean }) => s.done).length));
+  expect(stored).toEqual([3]);
+});
+
+test("R09-QA-09: ✓ в устаревшей вкладке не возвращает закончившийся черновик — после перезагрузки вкладки 1 «Закончил» остаётся", async ({ page, context }) => {
+  test.setTimeout(150_000);
+  await round01Fixture(page);
+  const live = await liveWithMyState(page);
+  await page.reload();
+  await startWith(page, BENCH);
+  await lift(page, 1, "80", "5");
+  await expect.poll(() => live.pushed.at(-1)?.setsDone).toBe(1);
+  const tab2 = await staleTab(page, context, live);
+  await lift(page, 2, "80", "5");
+  await lift(page, 3, "80", "5");
+  await page.getByRole("button", { name: "Завершить тренировку", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Завершить тренировку", exact: true })).toHaveCount(0);
+  await expect.poll(() => live.pushed.at(-1)?.phase).toBe("done");
+  const done = live.pushed.length;
+  await tab2.bringToFront();
+  await tab2.getByLabel(`${BENCH}, подход 2, вес`, { exact: true }).fill("85");
+  await tab2.getByRole("button", { name: `Отметить выполненным: ${BENCH}, подход 2`, exact: true }).click();
+  await tab2.waitForTimeout(2500);
+  const keys = await tab2.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("tyaga-draft-account:")));
+  expect(keys, "устаревшая вкладка записала закончившийся черновик обратно").toEqual([]);
+  // перезагрузка вкладки 1: «Продолжить тренировку» не предлагается, комната по-прежнему «Закончил»
+  await page.bringToFront();
+  await page.reload();
+  await expect(page.getByRole("button", { name: /Продолжить тренировку/ })).toHaveCount(0);
+  await page.waitForTimeout(3000);
+  expect(live.pushed.length, "после перезагрузки в комнату ушло состояние").toBe(done);
+  expect(live.room!.members.find((m) => m.isMe)!.state?.phase).toBe("done");
 });
 
 // QA-R09-05 / 06: окно расхождения при правке сохранённой записи
