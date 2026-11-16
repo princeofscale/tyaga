@@ -85,19 +85,28 @@ export function LiveRoomProvider({ children }: { children: ReactNode }) {
   const retry = useRef<number | undefined>(undefined);
   /** Когда в последний раз запрос к комнате удался (монотонные часы). */
   const lastOk = useRef(performance.now());
-  const [issue, setIssue] = useState<LiveLinkIssue | null>(null);
+  /** Неудачи опроса (GET) и отправки состояния (PUT) считаются отдельно: удавшийся опрос не доказывает, что дошло наше состояние (R09-QA-12). */
+  const [pollIssue, setPollIssue] = useState<LiveLinkIssue | null>(null);
+  const [sendIssue, setSendIssue] = useState<LiveLinkIssue | null>(null);
   // Для «Нет связи» считаем по монотонным часам: перевод стрелок и подмена даты не должны ни прятать, ни выдумывать потерю связи.
   const [clock, setClock] = useState(() => performance.now());
 
-  /** Связь есть: любой удавшийся запрос к комнате снимает «Нет связи». */
-  const linkOk = useCallback(() => {
+  /** Опрос удался: снимает свои неудачи, а «Нет связи» из-за неотправленного состояния остаётся, пока оно не дойдёт. */
+  const pollOk = useCallback(() => {
     lastOk.current = performance.now();
-    setIssue(null);
+    setPollIssue(null);
+    if (!unsent.current) setSendIssue(null);
+  }, []);
+  /** Отправка удалась: состояние дошло, значит связь с комнатой есть — снимаем «Нет связи» целиком. */
+  const sendOk = useCallback(() => {
+    lastOk.current = performance.now();
+    setPollIssue(null);
+    setSendIssue(null);
   }, []);
   /** Запрос к комнате не дошёл (сеть, обрыв, воркер 5xx): считаем неудачу и повторяем через LIVE_RETRY_MS, а не ждём опрос и heartbeat. */
-  const linkFailed = useCallback(() => {
+  const linkFailed = useCallback((kind: "poll" | "send") => {
     if (!roomRef.current) return;
-    setIssue((was) => LiveLink.failed(was, performance.now(), lastOk.current));
+    (kind === "send" ? setSendIssue : setPollIssue)((was) => LiveLink.failed(was, performance.now(), lastOk.current));
     window.clearTimeout(retry.current);
     retry.current = window.setTimeout(() => {
       if (!roomRef.current) return;
@@ -113,12 +122,12 @@ export function LiveRoomProvider({ children }: { children: ReactNode }) {
       const reply = await liveRoomApi.current(AbortSignal.timeout(LIVE_REQUEST_TIMEOUT_MS));
       if (epoch.current !== mine) return;
       setRoom(reply.room);
-      linkOk();
+      pollOk();
     } catch (error) {
       // Связи нет: оставляем то, что было, и спросим снова на следующем опросе.
-      if (epoch.current === mine && (!(error instanceof ApiError) || error.status >= 500)) linkFailed();
+      if (epoch.current === mine && (!(error instanceof ApiError) || error.status >= 500)) linkFailed("poll");
     }
-  }, [linkOk, linkFailed]);
+  }, [pollOk, linkFailed]);
   const refreshRef = useRef(refresh);
   refreshRef.current = refresh;
 
@@ -155,19 +164,19 @@ export function LiveRoomProvider({ children }: { children: ReactNode }) {
         const reply = await liveRoomApi.push(state, AbortSignal.timeout(LIVE_REQUEST_TIMEOUT_MS));
         if (epoch.current === mine) setRoom(reply.room);
         unsent.current = null;
-        linkOk();
+        sendOk();
       } catch (error) {
         // Не дошло: следующий heartbeat отправит снова, а если комната закрылась — refresh это покажет.
         lastPush.current = null;
         // Отказ «комнаты нет» — не потеря связи; сеть, обрыв и ответы воркера 5xx — да.
         if (epoch.current === mine && (!(error instanceof ApiError) || error.status >= 500)) {
           unsent.current = state;
-          linkFailed();
+          linkFailed("send");
         }
         void refresh();
       }
     },
-    [refresh, linkOk, linkFailed],
+    [refresh, sendOk, linkFailed],
   );
   const sendRef = useRef(send);
   sendRef.current = send;
@@ -189,14 +198,14 @@ export function LiveRoomProvider({ children }: { children: ReactNode }) {
 
   // Пока есть неудачи, раз в секунду проверяем, не пора ли сказать «Нет связи»; без комнаты счёт сбрасывается.
   useEffect(() => {
-    if (!issue) return;
+    if (!pollIssue && !sendIssue) return;
     const timer = window.setInterval(() => setClock(performance.now()), 1000);
     return () => window.clearInterval(timer);
-  }, [issue]);
+  }, [pollIssue, sendIssue]);
   // Быстрый путь: браузер сам сообщает, что сети нет или она вернулась, — не ждём очередного опроса.
   useEffect(() => {
     if (!inRoom) return;
-    const gone = () => linkFailed();
+    const gone = () => linkFailed("poll");
     const back = () => {
       const next = latest.current ?? unsent.current;
       if (next) void sendRef.current(next);
@@ -213,7 +222,8 @@ export function LiveRoomProvider({ children }: { children: ReactNode }) {
     if (inRoom) return;
     unsent.current = null;
     window.clearTimeout(retry.current);
-    setIssue(null);
+    setPollIssue(null);
+    setSendIssue(null);
   }, [inRoom]);
 
   const broadcast = useCallback(
@@ -260,7 +270,8 @@ export function LiveRoomProvider({ children }: { children: ReactNode }) {
     window.clearTimeout(retry.current);
     lastPush.current = null;
     unsent.current = null;
-    setIssue(null);
+    setPollIssue(null);
+    setSendIssue(null);
     setRoom(null);
     setError("");
     try {
@@ -280,7 +291,7 @@ export function LiveRoomProvider({ children }: { children: ReactNode }) {
     return () => setWatchers((n) => n - 1);
   }, []);
 
-  const linkLost = inRoom && LiveLink.lost(issue, clock);
+  const linkLost = inRoom && (LiveLink.lost(pollIssue, clock) || LiveLink.lost(sendIssue, clock));
   const value = useMemo<LiveRoomApiState>(
     () => ({ room, ready, busy, error, create, join, leave, clearError, watch, broadcast, finish, linkLost }),
     [room, ready, busy, error, create, join, leave, clearError, watch, broadcast, finish, linkLost],
