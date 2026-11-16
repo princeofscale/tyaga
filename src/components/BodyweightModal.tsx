@@ -228,48 +228,6 @@ export function BodyweightModal({
           </div>
         ))}
       </section>
-      <div className="progress-metrics">
-        <article className="progress-metric accent">
-          <span>Последний замер</span>
-          <strong>
-            {stats ? fmt(stats.currentKg) : "—"}
-            <small> кг</small>
-          </strong>
-          <p>
-            {entries.length
-              ? dateLabel(entries.at(-1)!.date, true)
-              : "Запиши первый вес"}
-          </p>
-        </article>
-        <article className="progress-metric">
-          <span>Изменение за историю</span>
-          <strong>
-            {stats && entries.length > 1
-              ? `${stats.totalChangeKg > 0 ? "+" : ""}${fmt(stats.totalChangeKg)}`
-              : "—"}
-            <small> кг</small>
-          </strong>
-          <p>
-            {entries.length > 1
-              ? `С ${dateLabel(entries[0].date)}`
-              : "Нужны хотя бы два замера"}
-          </p>
-        </article>
-        <article className="progress-metric">
-          <span>Темп за последние 28 дней</span>
-          <strong>
-            {rate.label === "Мало данных"
-              ? "—"
-              : `${rate.rateKgPerWeek > 0 ? "+" : ""}${fmt(rate.rateKgPerWeek)}`}
-            <small> кг/нед</small>
-          </strong>
-          <p>
-            {rate.label === "Мало данных"
-              ? "От 3 замеров за 7 дней и больше"
-              : "По фактическим замерам, без прогноза"}
-          </p>
-        </article>
-      </div>
       <div className="weight-layout">
         <section
           className="progress-card weight-chart-card"
@@ -456,6 +414,49 @@ export function BodyweightModal({
             остаются на устройстве и отправляются при восстановлении связи.
           </p>
         </section>
+      </div>
+      {/* R08-REQ03: форма «Записать вес» идёт первой, обзор — ниже; на широком экране порядок на глаз прежний (round-08.css). */}
+      <div className="progress-metrics">
+        <article className="progress-metric accent">
+          <span>Последний замер</span>
+          <strong>
+            {stats ? fmt(stats.currentKg) : "—"}
+            <small> кг</small>
+          </strong>
+          <p>
+            {entries.length
+              ? dateLabel(entries.at(-1)!.date, true)
+              : "Запиши первый вес"}
+          </p>
+        </article>
+        <article className="progress-metric">
+          <span>Изменение за историю</span>
+          <strong>
+            {stats && entries.length > 1
+              ? `${stats.totalChangeKg > 0 ? "+" : ""}${fmt(stats.totalChangeKg)}`
+              : "—"}
+            <small> кг</small>
+          </strong>
+          <p>
+            {entries.length > 1
+              ? `С ${dateLabel(entries[0].date)}`
+              : "Нужны хотя бы два замера"}
+          </p>
+        </article>
+        <article className="progress-metric">
+          <span>Темп за последние 28 дней</span>
+          <strong>
+            {rate.label === "Мало данных"
+              ? "—"
+              : `${rate.rateKgPerWeek > 0 ? "+" : ""}${fmt(rate.rateKgPerWeek)}`}
+            <small> кг/нед</small>
+          </strong>
+          <p>
+            {rate.label === "Мало данных"
+              ? "От 3 замеров за 7 дней и больше"
+              : "По фактическим замерам, без прогноза"}
+          </p>
+        </article>
       </div>
       <section className="progress-card weight-history">
         <div className="progress-card-head">

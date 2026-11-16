@@ -59,6 +59,7 @@ import {
   Smartphone,
   Zap,
   Users,
+  Plus,
 } from "lucide-react";
 import {
   DEFAULT_SETTINGS,
@@ -1386,7 +1387,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
               ) : null}
               {view === "history" ? (
                 <>
-                  <header className="screen-head">
+                  <header className="screen-head history-head">
                     <h1>История тренировок</h1>
                   </header>
                   {pendingImport ? (
@@ -1470,6 +1471,13 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                     renderItem={(w) => sessionItem(w, true)}
                     actions={
                       <>
+                        {/* R08-REQ04: вход «Записать тренировку» (задним числом) и при непустой истории; на пустой он в самой заглушке. */}
+                        {workouts.length ? (
+                          <button className="button secondary" onClick={() => start([], undefined, undefined, true)}>
+                            <Plus size={17} />
+                            Записать тренировку
+                          </button>
+                        ) : null}
                         <button className="button secondary" onClick={() => void exportHistory()}>
                           <Download size={17} />
                           Экспорт JSON

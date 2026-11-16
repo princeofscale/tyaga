@@ -120,7 +120,7 @@ export default function HistoryList({
             </select>
           </label>
           {groups.length > 1 ? (
-            <label>
+            <label className="history-jump">
               <span>К месяцу</span>
               <select
                 aria-label="Перейти к месяцу"
