@@ -256,3 +256,39 @@ test("R11-REQ02: перезагрузка основной вкладки и з�
   sim.focus("P2");
   assert.equal(sim.notes("P2"), "sets:1");
 });
+
+// ───────────── R11-REQ01: Лейд — «Повторить прошлые» и «+2,5 кг» не трогают вес по плану ─────────────
+import { LaidDupPlan } from "../src/domain/LaidDupPlan";
+import { TrainingProgram } from "../src/domain/TrainingProgram";
+import type { LaidMaxes } from "../src/lib/types";
+
+const MAXES: LaidMaxes = { squat: 100, bench: 80, deadlift: 140, ohp: 60 };
+const cycle = LaidDupPlan.routines({ maxes: MAXES, extras: true, light: false, startMonday: "2026-11-09" });
+
+test("R11-REQ01: у базового упражнения дня вес задан планом, у вспомогательных нет — решает домен", () => {
+  for (const day of LaidDupPlan.DAYS) {
+    const routine = cycle.find((r) => r.periodization!.day === day)!;
+    const workout = new TrainingProgram(routine).start([], "UTC", "2026-11-10");
+    const lift = LaidDupPlan.LIFT_EXERCISE[LaidDupPlan.LIFT_OF[day]];
+    const planned = workout.exercises.filter((e) => LaidDupPlan.hasPlanWeight(e));
+    assert.deepEqual(planned.map((e) => e.exerciseId), [lift], day);
+    assert.ok(workout.exercises.length > 1, "вспомогательные есть и кнопки у них остаются");
+  }
+});
+
+test("R11-REQ01: обычная программа и пустая тренировка — вес не по плану", () => {
+  assert.equal(LaidDupPlan.hasPlanWeight({}), false);
+  assert.equal(LaidDupPlan.hasPlanWeight({ progressionNote: undefined }), false);
+  assert.equal(LaidDupPlan.hasPlanWeight({ progressionNote: "Двойная прогрессия: все рабочие подходы достигли 12" }), false);
+  assert.equal(LaidDupPlan.hasPlanWeight({ progressionNote: "Добавлено к оригиналу Лейда: в его таблице этого нет." }), false);
+  const plain = { ...cycle[1], periodization: undefined };
+  const workout = new TrainingProgram(plain).start([], "UTC", "2026-11-10");
+  assert.equal(workout.exercises.some((e) => LaidDupPlan.hasPlanWeight(e)), false);
+});
+
+test("R11-REQ01: заметка плана остаётся прежним текстом (домен не менялся)", () => {
+  const note = LaidDupPlan.describe(LaidDupPlan.day("push1", 0, MAXES));
+  assert.match(note, /Тяжёлый подход: 1 × 1 повторение · 95 % от 1ПМ \(80 кг\) = 75 кг/);
+  assert.match(note, /Затем 4 × 4 повторения · 85 % = 67,5 кг/);
+  assert.equal(LaidDupPlan.hasPlanWeight({ progressionNote: note }), true);
+});

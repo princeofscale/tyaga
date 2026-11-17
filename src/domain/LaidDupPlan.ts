@@ -265,12 +265,18 @@ export class LaidDupPlan {
     const teen = n % 100 >= 11 && n % 100 <= 14;
     return !teen && last === 1 ? "повторение" : !teen && last >= 2 && last <= 4 ? "повторения" : "повторений";
   }
+  /** Начало строки плана в заметке упражнения: по ней видно, что вес подходов задан планом недели. */
+  static readonly PLAN_MARK = "Тяжёлый подход:";
+  /** Вес упражнения задан планом Лейда (тяжёлый подход и рабочие): «Повторить прошлые» и «+2,5 кг» его не трогают. */
+  static hasPlanWeight(entry: { progressionNote?: string }): boolean {
+    return typeof entry.progressionNote === "string" && entry.progressionNote.includes(LaidDupPlan.PLAN_MARK);
+  }
   /** Что делает день: для заметки тяжёлого упражнения. */
   static describe(plan: LaidDayPlan): string {
     const { heavy, work } = plan;
     return [
       `${LaidDupPlan.weekLabel(plan.position)}.`,
-      `Тяжёлый подход: 1 × ${heavy.reps} ${LaidDupPlan.repsWord(heavy.reps)} · ${LaidDupPlan.pct(heavy.percent)} % от 1ПМ (${LaidDupPlan.kg(plan.maxKg)} кг) = ${LaidDupPlan.kg(heavy.weightKg)} кг${heavy.light ? " (облегчённо, не по оригиналу)" : ""}.`,
+      `${LaidDupPlan.PLAN_MARK} 1 × ${heavy.reps} ${LaidDupPlan.repsWord(heavy.reps)} · ${LaidDupPlan.pct(heavy.percent)} % от 1ПМ (${LaidDupPlan.kg(plan.maxKg)} кг) = ${LaidDupPlan.kg(heavy.weightKg)} кг${heavy.light ? " (облегчённо, не по оригиналу)" : ""}.`,
       `Затем ${work.sets} × ${work.reps} ${LaidDupPlan.repsWord(work.reps)} · ${LaidDupPlan.pct(work.percent)} % = ${LaidDupPlan.kg(work.weightKg)} кг.`,
     ].join(" ");
   }

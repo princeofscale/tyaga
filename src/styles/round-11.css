@@ -20,3 +20,12 @@
   flex: none;
   min-height: 44px;
 }
+
+/* R11-REQ01: на 320 px подпись «Повторить прошлые: 12,5 × 11» не помещается в одну строку рядом с «+2,5 кг» — переносится, а не обрезается. */
+@media (max-width: 360px) {
+  .workout-athletic .autofill-pill-btn.repeat {
+    white-space: normal;
+    text-align: left;
+    line-height: 1.3;
+  }
+}

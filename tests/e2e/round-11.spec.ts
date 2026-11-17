@@ -187,3 +187,111 @@ for (const size of SIZES) {
     expect((await smallTargets(page)).filter((t) => t.cls.includes("draft") || t.text.includes("Открыть здесь"))).toEqual([]);
   });
 }
+
+// ───────────── REQ01: Лейд — «Повторить прошлые» и «+2,5 кг» ─────────────
+import { doneWorkout } from "./fixtures/round01";
+import { LaidDupPlan } from "../../src/domain/LaidDupPlan";
+import type { LaidMaxes, Routine, Workout } from "../../src/lib/types";
+
+const MAXES: LaidMaxes = { squat: 100, bench: 80, deadlift: 140, ohp: 60 };
+const sixRoutines = (startMonday = "2026-11-09") => LaidDupPlan.routines({ maxes: MAXES, extras: true, light: false, startMonday }).map((r) => ({ ...r, revision: 1 }));
+/** Приложение + программы в памяти: GET /api/product отдаёт их, PUT сохраняет. */
+async function appWith(page: Page, routines: Routine[], workouts: Workout[] = []) {
+  await round01Fixture(page, { workouts });
+  const store = [...routines];
+  await page.route("**/api/product", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ routines: store, favorites: [], customExercises: [] }) }),
+  );
+  await page.reload();
+  return store;
+}
+const card = (page: Page, exercise: string) => page.locator("article.exercise-card").filter({ has: page.getByRole("heading", { name: exercise, exact: true }) });
+const weightOf = (page: Page, exercise: string, n: number) => page.getByLabel(`${exercise}, подход ${n}, вес`, { exact: true });
+async function startProgram(page: Page, name: string) {
+  await nav(page, "Программы").click();
+  await page.locator("article.routine-card").filter({ has: page.getByRole("heading", { name, exact: true }) }).getByRole("button", { name: "Начать", exact: true }).click();
+}
+const HISTORY = () => [
+  doneWorkout("Жим раньше", "2026-11-03", [["bench", 90, 3, 2], ["fly-db-flat", 12.5, 11, 2]]),
+  doneWorkout("Верх раньше", "2026-11-04", [["bench", 70, 8, 2]]),
+];
+const PLAN_NOTE = "Вес по плану недели. Поправить — в строке подхода.";
+const PLUS = "+2.5 кг";
+
+for (const size of SIZES) {
+  test(`R11-REQ01: «Лейд · Жим 1» — у жима лёжа нет «Повторить прошлые» и «+2,5 кг», есть строка про вес по плану; план цел; вспомогательные с кнопками ${size.width}×${size.height}`, async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize(size);
+    await appWith(page, sixRoutines(), HISTORY());
+    await startProgram(page, "Лейд · Жим 1");
+    const bench = card(page, BENCH);
+    await expect(weightOf(page, BENCH, 1)).toHaveValue("75");
+    await expect(weightOf(page, BENCH, 2)).toHaveValue("67.5");
+    await expect(bench.getByText(PLAN_NOTE)).toBeVisible();
+    await expect(bench.getByRole("button", { name: /Повторить прошлые/ })).toHaveCount(0);
+    await expect(bench.getByRole("button", { name: PLUS, exact: true })).toHaveCount(0);
+    // вспомогательное с весом из истории: кнопки есть и работают
+    const fly = card(page, "Разведения гантелей лёжа");
+    await expect(fly.getByText(PLAN_NOTE)).toHaveCount(0);
+    await expect(fly.getByRole("button", { name: PLUS, exact: true })).toBeVisible();
+    await fly.getByRole("button", { name: /Повторить прошлые: 12,5 × 11/ }).click();
+    await expect(weightOf(page, "Разведения гантелей лёжа", 1)).toHaveValue("12.5");
+    await expect(page.getByLabel("Разведения гантелей лёжа, подход 1, повторы", { exact: true })).toHaveValue("11");
+    // жим лёжа после любых нажатий остался по плану
+    await expect(weightOf(page, BENCH, 1)).toHaveValue("75");
+    await expect(weightOf(page, BENCH, 4)).toHaveValue("67.5");
+    // ручная правка тяжёлого подхода сохраняется, план и остальные подходы не меняются
+    await weightOf(page, BENCH, 1).fill("77.5");
+    await expect(weightOf(page, BENCH, 1)).toHaveValue("77.5");
+    await expect(bench.getByText(/Тяжёлый подход: 1 × 1 повторение · 95 % от 1ПМ \(80 кг\) = 75 кг/)).toBeVisible();
+    await expect(weightOf(page, BENCH, 2)).toHaveValue("67.5");
+    await page.waitForTimeout(500);
+    await expect(weightOf(page, BENCH, 1)).toHaveValue("77.5");
+    expect(await overflow(page)).toBeLessThanOrEqual(1);
+    expect((await clipped(page, "main")).wide).toEqual([]);
+  });
+}
+
+test("R11-REQ01: базовое упражнение остальных дней Лейда (Ноги 1/2, Тяга 1/2, Жим 2) тоже без «Повторить прошлые» и «+2,5 кг»", async ({ page }) => {
+  test.setTimeout(150_000);
+  const hist = [
+    doneWorkout("Ноги раньше", "2026-11-03", [["squat", 90, 5, 2]]),
+    doneWorkout("Тяга раньше", "2026-11-04", [["deadlift-bar", 120, 3, 2]]),
+    doneWorkout("Жим 2 раньше", "2026-11-05", [["ohp-bar", 50, 5, 2]]),
+  ];
+  await appWith(page, sixRoutines(), hist);
+  for (const [name, exercise] of [["Лейд · Ноги 1", "Приседания со штангой"], ["Лейд · Ноги 2", "Приседания со штангой"], ["Лейд · Тяга 1", "Становая тяга со штангой"], ["Лейд · Тяга 2", "Становая тяга со штангой"], ["Лейд · Жим 2", "Жим штанги стоя"]] as const) {
+    await startProgram(page, name);
+    const lift = card(page, exercise);
+    await expect(lift.getByText(PLAN_NOTE), name).toBeVisible();
+    await expect(lift.getByRole("button", { name: /Повторить прошлые/ }), name).toHaveCount(0);
+    await expect(lift.getByRole("button", { name: PLUS, exact: true }), name).toHaveCount(0);
+    await page.getByRole("button", { name: "Отмена", exact: true }).click();
+    const yes = page.getByRole("button", { name: "Да, отменить тренировку", exact: true });
+    if (await yes.isVisible().catch(() => false)) await yes.click();
+  }
+});
+
+test("R11-REQ01: обычная программа — «Повторить прошлые» и «+2,5 кг» как раньше", async ({ page }) => {
+  test.setTimeout(120_000);
+  const plain = { ...sixRoutines()[1], id: "plain-upper", name: "Верх / низ", periodization: undefined, days: [1] } as Routine;
+  await appWith(page, [plain], HISTORY());
+  await startProgram(page, "Верх / низ");
+  const bench = card(page, BENCH);
+  await expect(bench.getByText(PLAN_NOTE)).toHaveCount(0);
+  await expect(bench.getByRole("button", { name: /Повторить прошлые/ })).toBeVisible();
+  await bench.getByRole("button", { name: /Повторить прошлые/ }).click();
+  await expect(weightOf(page, BENCH, 1)).toHaveValue("70");
+  await bench.getByRole("button", { name: PLUS, exact: true }).click();
+  await expect(weightOf(page, BENCH, 1)).toHaveValue("72.5");
+});
+
+test("R11-REQ01: пустая тренировка — кнопки как раньше", async ({ page }) => {
+  test.setTimeout(90_000);
+  await round01Fixture(page, { workouts: HISTORY() });
+  await startWith(page, BENCH);
+  const bench = card(page, BENCH);
+  await expect(bench.getByText(PLAN_NOTE)).toHaveCount(0);
+  await expect(bench.getByRole("button", { name: /Повторить прошлые/ })).toBeVisible();
+  await expect(bench.getByRole("button", { name: PLUS, exact: true })).toBeVisible();
+});

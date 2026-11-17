@@ -41,6 +41,7 @@ import {
 } from "lucide-react";
 import PlateCalculator from "./PlateCalculator";
 import { PlateApplication } from "../domain/PlateApplication";
+import { LaidDupPlan } from "../domain/LaidDupPlan";
 import OneRepMaxCalculator from "./OneRepMaxCalculator";
 import ExerciseSwapModal from "./ExerciseSwapModal";
 import BodyMap from "./BodyMap";
@@ -1218,7 +1219,9 @@ export default function WorkoutView({
                   </p>
                 </details>
               ) : null}
-              {before?.working && before.working.length > 0 && (
+              {LaidDupPlan.hasPlanWeight(we) ? (
+                <p className="tiny plan-weight-note">Вес по плану недели. Поправить — в строке подхода.</p>
+              ) : before?.working && before.working.length > 0 && (
                 <div className="exercise-autofill-bar">
                   <button
                     type="button"
