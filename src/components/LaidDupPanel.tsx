@@ -229,7 +229,7 @@ export function LaidDupSchedule({ cycle, workouts, today, busy, onClose, onUpdat
 export function LaidRoutineLine({ routine, workouts, today }: { routine: Routine; workouts: Workout[]; today: string }) {
   const plan = LaidDupPlan.planFor(routine, today);
   if (!plan) return null;
-  const status = LaidDupPlan.status(routine, workouts, plan.position.week, today);
+  const status = LaidDupPlan.dayStatus(routine, workouts, plan.position.week, today);
   return (
     <div className="laid-routine-line">
       <p>
