@@ -7,7 +7,7 @@ import { PlateLoadingCalculator } from "../src/domain/PlateLoadingCalculator";
 import { EXERCISES, exerciseById, makeWorkout } from "../src/lib/model";
 import { readFile, readdir } from "node:fs/promises";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
-import { InputError, validRoutine } from "../server/validation";
+import { InputError, validPeriodization, validRoutine } from "../server/validation";
 import { JournalBackup } from "../src/domain/JournalBackup";
 import type { LaidDay, LaidMaxes, Routine, SetEntry, Workout } from "../src/lib/types";
 
@@ -708,4 +708,67 @@ test("QA-R10-06: шесть программ цикла показываются
   const out = LaidDupPlan.ordered(mixed);
   assert.deepEqual(out.slice(0, 6).map((r) => r.id), second.map((r) => r.id));
   assert.deepEqual(out.slice(6).map((r) => r.id), cycle.map((r) => r.id));
+});
+
+test("QA-R10-11: клиент и сервер читают периодизацию одинаково — один набор правил", () => {
+  const good = six()[0].periodization!;
+  const withEarlier = { ...good, maxesFromWeek: 3, earlier: [{ fromWeek: 1, maxes: { ...MAXES, squat: 90 } }] };
+  const variants: [string, unknown][] = [
+    ["верная", good],
+    ["с прежними максимумами", withEarlier],
+    ["понедельник другого года", { ...good, startMonday: "2027-01-04" }],
+    ["вторник", { ...good, startMonday: "2026-11-10" }],
+    ["не календарная дата", { ...good, startMonday: "2026-02-30" }],
+    ["дата строкой garbage", { ...good, startMonday: "garbage" }],
+    ["extras строкой", { ...good, extras: "yes" }],
+    ["extras массивом", { ...good, extras: [] }],
+    ["light числом", { ...good, light: 1 }],
+    ["без extras", (({ extras: _e, ...rest }) => rest)(good)],
+    ["без light", (({ light: _l, ...rest }) => rest)(good)],
+    ["пустой cycleId", { ...good, cycleId: "" }],
+    ["cycleId из пробелов", { ...good, cycleId: "   " }],
+    ["cycleId длиннее 80", { ...good, cycleId: "x".repeat(81) }],
+    ["cycleId числом", { ...good, cycleId: 5 }],
+    ["лишнее поле", { ...good, extra: 1 }],
+    ["неизвестный день", { ...good, day: "legs3" }],
+    ["неизвестный вид", { ...good, kind: "laid-dup-v2" }],
+    ["максимум 0,5", { ...good, maxes: { ...MAXES, squat: 0.5 } }],
+    ["максимум 1", { ...good, maxes: { ...MAXES, squat: 1 } }],
+    ["максимум 500", { ...good, maxes: { ...MAXES, squat: 500 } }],
+    ["максимум 501", { ...good, maxes: { ...MAXES, squat: 501 } }],
+    ["максимум NaN", { ...good, maxes: { ...MAXES, squat: NaN } }],
+    ["максимум строкой", { ...good, maxes: { ...MAXES, bench: "80" } }],
+    ["лишний лифт", { ...good, maxes: { ...MAXES, row: 50 } }],
+    ["нет лифта", { ...good, maxes: { squat: 100, bench: 80, deadlift: 140 } }],
+    ["неделя максимумов 10", { ...good, maxesFromWeek: 10 }],
+    ["неделя максимумов 1,5", { ...good, maxesFromWeek: 1.5 }],
+    ["неделя максимумов строкой", { ...good, maxesFromWeek: "0" }],
+    ["earlier не по возрастанию", { ...good, maxesFromWeek: 5, earlier: [{ fromWeek: 3, maxes: MAXES }, { fromWeek: 2, maxes: MAXES }] }],
+    ["earlier не раньше текущей", { ...good, maxesFromWeek: 2, earlier: [{ fromWeek: 2, maxes: MAXES }] }],
+    ["earlier не массив", { ...good, earlier: {} }],
+    ["earlier без maxes", { ...good, maxesFromWeek: 2, earlier: [{ fromWeek: 1 }] }],
+    ["earlier из девяти", { ...good, maxesFromWeek: 9, earlier: Array.from({ length: 9 }, (_, i) => ({ fromWeek: i, maxes: MAXES })) }],
+    ["массив", []],
+    ["строка", "laid-dup"],
+    ["число", 7],
+  ];
+  for (const [name, value] of variants) {
+    let server = true;
+    try {
+      validPeriodization(value);
+    } catch (e) {
+      assert.ok(e instanceof InputError, name);
+      server = false;
+    }
+    const client = LaidDupPlan.periodizationOf({ ...six()[0], periodization: value } as unknown as Routine) !== undefined;
+    assert.equal(client, server, `${name}: клиент ${client}, сервер ${server}`);
+  }
+  // тексты ошибок остались прежними
+  assert.throws(() => validPeriodization({ ...good, startMonday: "2026-11-10" }), /Старт программы — понедельник/);
+  assert.throws(() => validPeriodization({ ...good, day: "x" }), /Проверь день периодизации/);
+  // поле есть, но битое — isBroken; нет поля или верное — нет
+  assert.equal(LaidDupPlan.isBroken({ ...six()[0], periodization: { kind: "laid-dup" } as any }), true);
+  assert.equal(LaidDupPlan.isBroken({ ...six()[0], periodization: null as any }), true);
+  assert.equal(LaidDupPlan.isBroken(six()[0]), false);
+  assert.equal(LaidDupPlan.isBroken({ ...six()[0], periodization: undefined }), false);
 });

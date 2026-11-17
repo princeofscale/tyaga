@@ -599,3 +599,140 @@ test("QA-R10-05: фиолетовая тема — акцентный текст
   expect(schedule.seen).toBeGreaterThan(card.seen);
   expect(schedule.out).toEqual([]);
 });
+
+// ───────────── Доработка 2 ─────────────
+/** Только для теста: бандл подменяется на лету — подпись вкладки превращается в выражение, бросающее ошибку, пока в странице стоит флаг. */
+const FAULTS: { tab: string; literal: string }[] = [
+  { tab: "Сегодня", literal: 'children:"Сегодня"' },
+  { tab: "История", literal: 'children:"История тренировок"' },
+  { tab: "Прогресс", literal: 'children:"ТВОЯ РАБОТА В ЦИФРАХ"' },
+  { tab: "Упражнения", literal: 'children:"Упражнения"' },
+];
+async function injectFault(page: Page) {
+  await page.route("**/assets/index-*.js", async (route) => {
+    const response = await route.fetch();
+    let body = await response.text();
+    for (const { tab, literal } of FAULTS) {
+      const text = literal.slice(literal.indexOf('"') + 1, -1);
+      body = body.replace(literal, `children:(window.__fault===${JSON.stringify(tab)}?(()=>{throw new Error("fault-${tab}")})():"${text}")`);
+    }
+    await route.fulfill({ response, body });
+  });
+}
+for (const size of [{ width: 390, height: 844 }, { width: 1440, height: 900 }]) {
+  for (const { tab } of FAULTS) {
+    test(`QA-R10-09: сбой в теле «${tab}» — приложение не пустое, есть «Выйти из аккаунта», «Попробовать снова» открывает вкладку ${size.width}×${size.height}`, async ({ page }) => {
+      test.setTimeout(90_000);
+      await page.setViewportSize(size);
+      const consoleErrors: string[] = [];
+      page.on("console", (m) => m.type() === "error" && consoleErrors.push(m.text()));
+      await injectFault(page);
+      await round01Fixture(page);
+      // флаг ставится в уже открытой странице; на «Сегодня» сначала уходим на другую вкладку
+      if (tab === "Сегодня") await nav(page, "История").click();
+      await page.evaluate((name) => ((window as unknown as { __fault: string }).__fault = name), tab);
+      await nav(page, tab).click();
+      const panel = page.getByRole("alert").filter({ hasText: "Не удалось открыть приложение" });
+      await expect(panel).toBeVisible();
+      await expect(page.locator("body")).not.toBeEmpty();
+      // ошибка не проглочена
+      expect(consoleErrors.join("\n")).toContain("Приложение не открылось");
+      // стиль панели: отступы, ничего не вылезает, цели касания ≥ 44 px
+      expect(await overflow(page)).toBeLessThanOrEqual(1);
+      expect(await smallTargets(page)).toEqual([]);
+      const box = await panel.boundingBox();
+      expect(box!.x).toBeGreaterThanOrEqual(8);
+      // «Попробовать снова» при сохраняющемся сбое: «Сегодня» — панель остаётся; остальные вкладки — приложение открывается на «Сегодня», а вкладка со сбоем снова даёт панель
+      await panel.getByRole("button", { name: "Попробовать снова", exact: true }).click();
+      if (tab !== "Сегодня") {
+        await expect(nav(page, "Сегодня")).toBeVisible();
+        await nav(page, tab).click();
+      }
+      await expect(panel).toBeVisible();
+      // сбой устранён — приложение открывается
+      await page.evaluate(() => delete (window as unknown as { __fault?: string }).__fault);
+      await panel.getByRole("button", { name: "Попробовать снова", exact: true }).click();
+      await expect(page.getByRole("alert").filter({ hasText: "Не удалось открыть приложение" })).toHaveCount(0);
+      await expect(nav(page, "Сегодня")).toBeVisible();
+    });
+  }
+}
+test("QA-R10-09: «Выйти из аккаунта» на панели ошибки работает без состояния приложения и возвращает на экран входа (390×844)", async ({ page }) => {
+  test.setTimeout(60_000);
+  await injectFault(page);
+  await round01Fixture(page);
+  await nav(page, "История").click();
+  await page.evaluate(() => ((window as unknown as { __fault: string }).__fault = "Сегодня"));
+  await nav(page, "Сегодня").click();
+  const panel = page.getByRole("alert").filter({ hasText: "Не удалось открыть приложение" });
+  await expect(panel).toBeVisible();
+  await panel.getByRole("button", { name: "Выйти из аккаунта", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Войти в Тягу", exact: true })).toBeVisible();
+  await expect(panel).toHaveCount(0);
+});
+test("QA-R10-09: сбой внутри вкладки-компонента ловит граница вкладки, корневая панель не показывается", async ({ page }) => {
+  test.setTimeout(60_000);
+  await round01Fixture(page);
+  const bad = { ...sixRoutines()[0], id: "bad-shape", periodization: undefined, days: [], exercises: "нет" } as unknown as Routine;
+  await page.route("**/api/product", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ routines: [bad], favorites: [], customExercises: [] }) }),
+  );
+  await page.reload();
+  await nav(page, "Программы").click();
+  await expect(page.getByRole("alert").filter({ hasText: "Не удалось открыть вкладку" })).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "Не удалось открыть приложение" })).toHaveCount(0);
+  expect(await overflow(page)).toBeLessThanOrEqual(1);
+  const box = await page.getByRole("alert").filter({ hasText: "Не удалось открыть вкладку" }).boundingBox();
+  expect(box!.x).toBeGreaterThanOrEqual(8);
+});
+
+test("QA-R10-11: программа с битой периодизацией сохраняется как обычная — поле убрано, уведомление есть, 400 нет", async ({ page }) => {
+  test.setTimeout(90_000);
+  const good = sixRoutines()[0];
+  const broken = { ...good, name: "Битый Лейд", periodization: { ...good.periodization, startMonday: "2026-11-10" } } as unknown as Routine;
+  const { puts } = await laidApp(page, { routines: [broken] });
+  await openPrograms(page);
+  await page.getByRole("button", { name: "Редактировать программу Битый Лейд", exact: true }).click();
+  await dialog(page).getByLabel("Название программы").fill("Битый Лейд (правка)");
+  await dialog(page).getByRole("button", { name: "Сохранить программу", exact: true }).click();
+  await expect(dialog(page)).toHaveCount(0);
+  expect(puts).toHaveLength(1);
+  expect(puts[0].periodization).toBeUndefined();
+  expect(puts[0].name).toBe("Битый Лейд (правка)");
+  await expect(page.getByText("Периодизация программы повреждена и убрана — программа сохранена как обычная.")).toBeVisible();
+});
+
+test("QA-R10-14: копия программы Лейда — веса текущей недели по плану, уведомление про неделю; периодизации у копии нет", async ({ page }) => {
+  test.setTimeout(90_000);
+  // сегодня вторник 10 нояб.; старт 26 окт. → неделя 3: Ноги 1 — 3 повторения и четыре по 8
+  const routines = sixRoutines(true, false, "2026-10-26");
+  const { puts } = await laidApp(page, { routines });
+  const legs1 = routines.find((r) => r.periodization!.day === "legs1")!;
+  const plan = LaidDupPlan.planFor(legs1, "2026-11-10")!;
+  const want = LaidDupPlan.liftSets(plan).map((s) => [s.weight, s.reps]);
+  expect(want[0]).not.toEqual([85, 5]);
+  await openPrograms(page);
+  await page.getByRole("button", { name: "Копировать программу Лейд · Ноги 1", exact: true }).click();
+  await dialog(page).getByRole("button", { name: "Сохранить программу", exact: true }).click();
+  await expect(dialog(page)).toHaveCount(0);
+  const copy = puts.at(-1)!;
+  expect(copy.periodization).toBeUndefined();
+  expect(copy.exercises[0].sets.map((s) => [s.weight, s.reps])).toEqual(want);
+  await expect(page.getByText("Копия сохранена как обычная программа. Веса — по плану на неделю 3; периодизация не копируется.")).toBeVisible();
+});
+
+for (const size of [{ width: 360, height: 800 }, { width: 320, height: 640 }]) {
+  test(`QA-R10-12: панель «Не удалось открыть приложение / вкладку» на ${size.width}×${size.height} — без сдвига и срезов, цели ≥ 44 px`, async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.setViewportSize(size);
+    await injectFault(page);
+    await round01Fixture(page);
+    await nav(page, "История").click();
+    await page.evaluate(() => ((window as unknown as { __fault: string }).__fault = "Сегодня"));
+    await nav(page, "Сегодня").click();
+    await expect(page.getByRole("alert").filter({ hasText: "Не удалось открыть приложение" })).toBeVisible();
+    expect(await overflow(page)).toBeLessThanOrEqual(1);
+    expect(await smallTargets(page)).toEqual([]);
+    expect((await clipped(page, "main")).wide).toEqual([]);
+  });
+}
