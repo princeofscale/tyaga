@@ -600,6 +600,11 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
     claimOnTouch: view === "workout",
   });
   const persistence = tabs.persistence;
+  // Строка «это окно основное» уходит, когда человек ушёл с экрана тренировки: тогда вёрстка под пальцем не меняется.
+  const dismissTabNote = tabs.dismissNote;
+  useEffect(() => {
+    if (view !== "workout") dismissTabNote();
+  }, [view, dismissTabNote]);
   const unmarkedNote = coverage.sets ? (
     <p className="zones-unmarked" role="status">
       <b>
@@ -1384,10 +1389,25 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
               ) : null}
               {view === "workout" ? (
                 <>
-                {draft && tabs.follower ? (
-                  <p className="draft-follower" role="status">
-                    <span>Эта тренировка открыта в другом окне — тут изменения не сохраняются</span>
-                    <button type="button" className="button secondary" onClick={() => tabs.claim()}>
+                {draft && tabs.banner ? (
+                  <p className={`draft-follower ${tabs.banner === "follower" ? "is-follower" : "is-owner"}`} role="status">
+                    <span className="draft-follower-text">
+                      <span>
+                        {tabs.banner === "follower"
+                          ? "Эта тренировка открыта в другом окне — тут изменения не сохраняются"
+                          : tabs.banner === "pressed"
+                            ? "Это окно стало основным. Нажми ещё раз."
+                            : "Это окно основное — изменения сохраняются"}
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      className="button secondary"
+                      onClick={() => tabs.openHere()}
+                      aria-hidden={tabs.banner !== "follower"}
+                      tabIndex={tabs.banner === "follower" ? undefined : -1}
+                      disabled={tabs.banner !== "follower"}
+                    >
                       Открыть здесь
                     </button>
                   </p>

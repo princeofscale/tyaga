@@ -33,7 +33,6 @@ export type TabContext = {
 export class DraftTabs {
   static readonly CLOSED_NOTE = "Тренировка закончена или отменена в другом окне";
   static readonly OTHER_NOTE = "В другом окне уже идёт тренировка — открыта она";
-  static readonly TOUCH_NOTE = "Это окно стало основным — нажми ещё раз";
   static readonly FOLLOWER_NOTE = "Эта тренировка открыта в другом окне — тут изменения не сохраняются";
 
   /** Запись для ключа: черновик с пометкой «пишет эта вкладка». */

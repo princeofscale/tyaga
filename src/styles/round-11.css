@@ -11,10 +11,30 @@
   font-size: 0.9rem;
   line-height: 1.4;
 }
-.draft-follower span {
+.draft-follower > .draft-follower-text {
   flex: 1 1 220px;
   min-width: 0;
   overflow-wrap: anywhere;
+  display: grid;
+}
+/* R11-QA-R11-09: высота строки не зависит от текста и роли — длинный текст ведомого окна всегда занимает место, кнопка тоже.
+   Смена роли меняет текст и вид, а не высоту: содержимое под строкой не сдвигается, и повторное нажатие попадает туда же, куда целилось. */
+.draft-follower-text > span,
+.draft-follower-text::after {
+  grid-area: 1 / 1;
+}
+.draft-follower-text::after {
+  content: "Эта тренировка открыта в другом окне — тут изменения не сохраняются";
+  visibility: hidden;
+  pointer-events: none;
+}
+.draft-follower.is-owner {
+  border-color: var(--line);
+  background: transparent;
+  color: var(--muted);
+}
+.draft-follower.is-owner .button {
+  visibility: hidden;
 }
 .draft-follower .button {
   flex: none;

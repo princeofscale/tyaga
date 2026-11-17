@@ -41,6 +41,17 @@ export function useDraftTabs(options: Options) {
   });
   const probingRef = useRef(probing);
   probingRef.current = probing;
+  /**
+   * Строка над тренировкой после смены роли не исчезает (иначе содержимое съезжает под пальцем, R11-QA-R11-09), а меняет текст:
+   * «pressed» — окно стало основным по первому нажатию, нажатие не выполнено; «open» — окно основное. Убирается в безопасный момент: App
+   * вызывает `dismissNote`, когда человек ушёл с экрана тренировки; тренировку закрыли — убирается сама.
+   */
+  const [note, setNoteState] = useState<"pressed" | "open" | null>(null);
+  const noteRef = useRef(note);
+  const setNote = useCallback((value: "pressed" | "open" | null) => {
+    noteRef.current = value;
+    setNoteState(value);
+  }, []);
   const [persistence, setPersistence] = useState<PersistenceStatus>("pending");
   const roleRef = useRef(role);
   roleRef.current = role;
@@ -168,8 +179,9 @@ export function useDraftTabs(options: Options) {
   }, [draftKey, apply]);
 
   /** Сделать эту вкладку основной: подтянуть актуальный черновик из ключа и писать дальше с него. */
-  const claimHere = useCallback((): "claimed" | "closed" | "none" => {
-    if (probingRef.current) setProbing(false);
+  const claimHere = useCallback((withNote: "pressed" | "open" | null = null): "claimed" | "closed" | "none" => {
+    const silent = probingRef.current; // строки ещё нет: сдвигать нечего, и сообщать не о чем
+    if (silent) setProbing(false);
     if (roleRef.current === "owner") return "none";
     let raw: string | null = null;
     try {
@@ -190,55 +202,106 @@ export function useDraftTabs(options: Options) {
     setRole("owner");
     // Актуальные подходы — из ключа (их писала прежняя основная вкладка); без него — то, что на экране.
     setDraft(stored && stored.workout.id === mine.workout.id ? stored : mine);
+    setNote(withNote && !silent ? withNote : null);
     return "claimed";
-  }, [draftKey, apply, setDraft]);
+  }, [draftKey, apply, setDraft, setNote]);
 
-  // Первое нажатие в «ведомом» окне только делает его основным и не выполняет действие под пальцем (R11-QA-R11-01):
-  // строка «открыта в другом окне» уходит из потока, вёрстка съезжает, и `click` попал бы в соседнюю кнопку («+5» у веса уже отмеченного подхода).
-  // Остаток жеста (touch/mouse/click) глушится в capture-фазе до React; следующее нажатие — обычное. Клавиатура и «Открыть здесь» не глушатся.
-  const swallowUntil = useRef(0);
+  // Нажатие в «ведомом» окне только делает его основным и не выполняет действие под пальцем (R11-QA-R11-01, -09, -10, -12).
+  // Причина прежнего вреда — строка «открыта в другом окне» уходила из потока, вёрстка съезжала, и повторное нажатие попадало в другую кнопку;
+  // теперь строка остаётся на месте (см. `note`), а первый жест глушится как второй рубеж.
+  //  — мышь: по `pointerdown`; касание и перо: по `pointerup` без заметного смещения (смещение > 10 px — прокрутка, `pointercancel` — не касание);
+  //  — глушится только остаток этого указательного жеста (touch/mouse/click с `detail > 0`) до его `click` или до следующего жеста или клавиши:
+  //    клавиатурный Enter и вызов «клика» программно (чтение с экрана) не глушатся, окна по таймеру нет;
+  //  — нажатие внутри диалога тренировки (выбор упражнения) делает окно основным без глушения: строка под диалогом не видна.
+  const swallowing = useRef(false);
+  const gesture = useRef<{ id: number; x: number; y: number; moved: boolean; target: Element | null } | null>(null);
   useEffect(() => {
-    const names = ["pointerup", "touchstart", "touchend", "mousedown", "mouseup", "click", "dblclick"];
+    const eligible = () => roleRef.current === "follower" && !!draftRef.current && opts.current.claimOnTouch;
+    const scope = (target: EventTarget | null) => {
+      const el = target as Element | null;
+      if (!el || !el.closest || el.closest(".draft-follower")) return null;
+      return el.closest("main") ? "main" : el.closest("dialog") ? "dialog" : null;
+    };
+    const claimFrom = (target: EventTarget | null, e: Event) => {
+      const where = scope(target);
+      if (!where) return;
+      const silent = probingRef.current;
+      const result = claimHere(where === "main" ? "pressed" : "open");
+      if (result === "none" || silent || where === "dialog") return;
+      swallowing.current = true;
+      e.stopImmediatePropagation();
+    };
     const stop = (e: Event) => {
-      if (Date.now() > swallowUntil.current) return;
+      if (!swallowing.current) return;
+      if (e.type === "click" || e.type === "dblclick") {
+        swallowing.current = false;
+        if ((e as MouseEvent).detail === 0) return; // не указательный жест
+      }
       if (e.type === "mousedown" || e.type === "click" || e.type === "dblclick") e.preventDefault();
       e.stopImmediatePropagation();
-      if (e.type === "click" || e.type === "dblclick") swallowUntil.current = 0;
     };
     const down = (e: Event) => {
-      swallowUntil.current = 0; // новый жест
-      if (roleRef.current !== "follower" || !draftRef.current || !opts.current.claimOnTouch) return;
-      const target = e.target as Element | null;
-      if (!target || !target.closest || !target.closest("main") || target.closest(".draft-follower")) return;
-      const silent = probingRef.current; // пока строки нет, вёрстка не двигается: нажатие можно не глушить
-      const result = claimHere();
-      if (result === "none" || silent) return;
-      swallowUntil.current = Date.now() + 3000;
-      e.stopImmediatePropagation();
-      if (result === "claimed") opts.current.notify(DraftTabs.TOUCH_NOTE);
+      const pe = e as PointerEvent;
+      swallowing.current = false; // новый жест
+      if (noteRef.current === "pressed") setNote("open"); // нажали ещё раз: «нажми ещё раз» больше не нужно
+      if (!eligible()) return;
+      if (pe.pointerType === "mouse") claimFrom(e.target, e);
+      else gesture.current = { id: pe.pointerId, x: pe.clientX, y: pe.clientY, moved: false, target: e.target as Element | null };
     };
+    const move = (e: Event) => {
+      const pe = e as PointerEvent;
+      const g = gesture.current;
+      if (g && g.id === pe.pointerId && Math.hypot(pe.clientX - g.x, pe.clientY - g.y) > 10) g.moved = true;
+    };
+    const cancel = () => {
+      gesture.current = null;
+    };
+    const up = (e: Event) => {
+      const g = gesture.current;
+      gesture.current = null;
+      if (!g || g.id !== (e as PointerEvent).pointerId || g.moved || !eligible()) return;
+      claimFrom(g.target, e);
+    };
+    const key = () => {
+      swallowing.current = false;
+      if (noteRef.current === "pressed") setNote("open");
+    };
+    const stopNames = ["pointerup", "touchstart", "touchend", "mousedown", "mouseup", "click", "dblclick"];
+    for (const name of stopNames) document.addEventListener(name, stop, { capture: true });
     document.addEventListener("pointerdown", down, true);
-    for (const name of names) document.addEventListener(name, stop, { capture: true });
+    document.addEventListener("pointermove", move, true);
+    document.addEventListener("pointercancel", cancel, true);
+    document.addEventListener("pointerup", up, true);
+    document.addEventListener("keydown", key, true);
     return () => {
+      for (const name of stopNames) document.removeEventListener(name, stop, { capture: true });
       document.removeEventListener("pointerdown", down, true);
-      for (const name of names) document.removeEventListener(name, stop, { capture: true });
+      document.removeEventListener("pointermove", move, true);
+      document.removeEventListener("pointercancel", cancel, true);
+      document.removeEventListener("pointerup", up, true);
+      document.removeEventListener("keydown", key, true);
     };
-  }, [claimHere]);
+  }, [claimHere, setNote]);
 
-  // Нажатие или ввод в вкладке с тренировкой делает её основной: пишет то окно, где человек сейчас работает.
+  // Клавиша, фокус в поле, ввод (вставка, голосовой ввод) и «клик» без указателя (чтение с экрана) тоже делают окно основным: действие не теряется.
   useEffect(() => {
     if (role !== "follower" || !draft || !options.claimOnTouch) return;
     const touch = (e: Event) => {
       const target = e.target as Element | null;
-      if (target && target.closest && target.closest("main")) claimHere();
+      if (!target || !target.closest || target.closest(".draft-follower")) return;
+      if (target.closest("main") || target.closest("dialog")) claimHere("open");
     };
-    // Клавиша, фокус в поле и ввод (в том числе вставка и голосовой ввод, где клавиши нет); касание — в обработчике выше.
-    const events = ["keydown", "focusin", "input"];
+    const events = ["keydown", "focusin", "input", "click"];
     for (const name of events) document.addEventListener(name, touch, true);
     return () => {
       for (const name of events) document.removeEventListener(name, touch, true);
     };
   }, [role, draft, options.claimOnTouch, claimHere]);
+
+  // Тренировку закрыли или окно стало ведомым — сообщение о смене роли больше не нужно.
+  useEffect(() => {
+    if ((!draft || role === "follower") && noteRef.current) setNote(null);
+  }, [draft, role, setNote]);
 
   // Живое окно с черновиком отвечает на вопрос «кто здесь»; вкладка, загрузившаяся с чужим черновиком, спрашивает и,
   // если ответа нет (окно с ним закрыто), продолжает здесь. Без BroadcastChannel вкладка остаётся ведомой: молчаливой потери нет.
@@ -287,7 +350,13 @@ export function useDraftTabs(options: Options) {
 
   /** Строку «открыта в другом окне» показываем, когда окно точно ведомое: пока идёт опрос, её нет (без мигания и сдвига вёрстки). */
   const follower = role === "follower" && !probing;
-  return { role, follower, persistence, claim: claimHere, takeStored, tab };
+  const banner: "follower" | "pressed" | "open" | null = follower ? "follower" : draft && note ? note : null;
+  const claimPlain = useCallback(() => claimHere(null), [claimHere]);
+  const openHere = useCallback(() => claimHere("open"), [claimHere]);
+  const dismissNote = useCallback(() => {
+    if (noteRef.current) setNote(null);
+  }, [setNote]);
+  return { role, follower, banner, persistence, claim: claimPlain, openHere, dismissNote, takeStored, tab };
 }
 
 function readRaw(key: string): string | null {

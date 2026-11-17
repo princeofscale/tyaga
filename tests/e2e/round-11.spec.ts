@@ -753,9 +753,9 @@ for (const size of SIZES) {
       const before = await sets(page);
       expect(before).toEqual(["80×5✓", "80×5", "0×0"].map((x, i) => (i === 2 ? before[2] : x)));
       await page.getByRole("button", { name: SET_DONE(2), exact: true })[how]();
-      // окно стало основным (строки нет), сообщение сказало, что нажать надо ещё раз; ничего не изменилось
+      // окно стало основным; строка осталась на месте и сказала, что нажать надо ещё раз; ничего не изменилось
       await expect(follower(page)).toHaveCount(0);
-      await expect(page.getByText("Это окно стало основным — нажми ещё раз", { exact: true })).toBeVisible();
+      await expect(page.getByText("Это окно стало основным. Нажми ещё раз.", { exact: true })).toBeVisible();
       await page.waitForTimeout(600);
       expect(await sets(page)).toEqual(before);
       await expect(page.getByLabel(`${BENCH}, подход 1, вес`, { exact: true })).toHaveValue("80");
@@ -773,7 +773,8 @@ test("R11-QA-01: «Открыть здесь» не глушится — пер�
   const before = await followerPair(page, context, SIZES[0]).then(() => sets(page));
   await page.getByRole("button", { name: "Открыть здесь", exact: true }).click();
   await expect(follower(page)).toHaveCount(0);
-  await expect(page.getByText("Это окно стало основным — нажми ещё раз")).toHaveCount(0);
+  await expect(page.getByText("Это окно стало основным. Нажми ещё раз.")).toHaveCount(0);
+  await expect(page.getByText("Это окно основное — изменения сохраняются", { exact: true })).toBeVisible();
   expect(await sets(page)).toEqual(before);
 });
 
@@ -890,4 +891,205 @@ test("R11-QA-09/08: «устаревшая» вкладка при потеря�
   expect(await draftKeys(page), "ключ не вернулся").toEqual([]);
   await page.waitForTimeout(10_000);
   expect(await draftKeys(page), "ключ не вернулся через 10 с").toEqual([]);
+});
+
+// ───────────── Доработка 2: QA-R11-09 / 11 — смена роли не двигает вёрстку; сообщение в строке, а не тост ─────────────
+const rowH = (page: Page) => page.locator(".draft-follower").evaluate((el) => Math.round(el.getBoundingClientRect().height * 10) / 10);
+const DONE_ANY = (n: number) => new RegExp(`^(Отметить выполненным|Снять отметку): ${BENCH}, подход ${n}$`);
+const doneTop = (page: Page, n: number) => page.getByRole("button", { name: DONE_ANY(n) }).evaluate((el) => Math.round(el.getBoundingClientRect().top * 10) / 10);
+const centre = async (page: Page, n: number) => {
+  const button = page.getByRole("button", { name: SET_DONE(n), exact: true });
+  await button.scrollIntoViewIfNeeded(); // на 320×640 ✓ подхода 2 может быть ниже экрана
+  const box = (await button.boundingBox())!;
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+};
+const ownerRow = (page: Page) => page.getByText("Это окно основное — изменения сохраняются", { exact: true });
+const pressedRow = (page: Page) => page.getByText("Это окно стало основным. Нажми ещё раз.", { exact: true });
+
+for (const size of SIZES) {
+  for (const how of ["tap", "mouse"] as const) {
+    for (const pause of [900, 2500]) {
+      test(`R11-QA-09: ${how === "tap" ? "касание" : "мышь"}, повтор в ту же точку через ${pause} мс — вес, повторы и ✓ подхода 1 целы; вёрстка при смене роли не сдвигается ${size.width}×${size.height}`, async ({ page, context }) => {
+        test.setTimeout(120_000);
+        await followerPair(page, context, size);
+        const point = await centre(page, 2);
+        const [top0, h0, before] = [await doneTop(page, 2), await rowH(page), await sets(page)];
+        const press = () => (how === "tap" ? page.touchscreen.tap(point.x, point.y) : page.mouse.click(point.x, point.y));
+        await press();
+        await expect(pressedRow(page)).toBeVisible();
+        // смена роли не двигает ни строку, ни ✓ подхода 2
+        expect(await doneTop(page, 2), "✓ подхода 2 до и после смены роли").toBe(top0);
+        expect(await rowH(page), "высота строки до и после смены роли").toBe(h0);
+        expect(await sets(page)).toEqual(before);
+        await page.waitForTimeout(pause);
+        await press(); // «нажми ещё раз» — в ту же точку
+        await expect.poll(() => sets(page)).toEqual([before[0], "80×5✓", before[2]]);
+        await expect(ownerRow(page)).toBeVisible();
+        expect(await doneTop(page, 2)).toBe(top0);
+        await expect(page.getByLabel(`${BENCH}, подход 1, вес`, { exact: true })).toHaveValue("80");
+        await expect(page.getByLabel(`${BENCH}, подход 1, повторы`, { exact: true })).toHaveValue("5");
+        expect(await overflow(page)).toBeLessThanOrEqual(1);
+      });
+    }
+  }
+}
+
+for (const size of [SIZES[0], SIZES[2]]) {
+  for (const gap of [70, 200]) {
+    test(`R11-QA-09: двойной тап (${gap} мс) по ✓ подхода 2 в ведомом окне — подход 1 цел, подход 2 отмечен один раз ${size.width}×${size.height}`, async ({ page, context }) => {
+      test.setTimeout(120_000);
+      await followerPair(page, context, size);
+      const before = await sets(page);
+      const point = await centre(page, 2);
+      await page.touchscreen.tap(point.x, point.y);
+      await page.waitForTimeout(gap);
+      await page.touchscreen.tap(point.x, point.y);
+      await page.waitForTimeout(600);
+      const after = await sets(page);
+      expect(after[0], "подход 1 не изменился").toBe(before[0]);
+      expect(after[2], "подход 3 не изменился").toBe(before[2]);
+      expect(after[1] === "80×5✓" || after[1] === before[1], "подход 2 — отмечен или нетронут, но не испорчен").toBe(true);
+    });
+  }
+  test(`R11-QA-09: двойной клик мышью по ✓ подхода 2 в ведомом окне — подход 1 цел ${size.width}×${size.height}`, async ({ page, context }) => {
+    test.setTimeout(120_000);
+    await followerPair(page, context, size);
+    const before = await sets(page);
+    await page.getByRole("button", { name: SET_DONE(2), exact: true }).dblclick();
+    await page.waitForTimeout(600);
+    const after = await sets(page);
+    expect(after[0], "подход 1 не изменился").toBe(before[0]);
+    expect(after[1] === "80×5✓" || after[1] === before[1], "подход 2 — отмечен или нетронут, но не испорчен").toBe(true);
+  });
+}
+
+test("R11-QA-11: сообщение о смене роли — не тост: ни одна кнопка тренировки не перекрыта, строка уходит, когда человек вышел с экрана тренировки", async ({ page, context }) => {
+  test.setTimeout(120_000);
+  await followerPair(page, context, SIZES[2]);
+  await page.getByRole("button", { name: SET_DONE(2), exact: true }).click();
+  await expect(pressedRow(page)).toBeVisible();
+  await expect(page.locator(".toast, [role=alert]").filter({ hasText: "нажми ещё раз" })).toHaveCount(0);
+  await expect(page.getByText(/нажми ещё раз/i).first()).toBeVisible();
+  const covered = await page.evaluate(() => {
+    const out: string[] = [];
+    for (const el of document.querySelectorAll("button[aria-label^='Снять отметку'], button[aria-label^='Отметить выполненным']")) {
+      (el as HTMLElement).scrollIntoView({ block: "center" });
+      const r = (el as HTMLElement).getBoundingClientRect();
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      if (hit && hit !== el && !el.contains(hit)) out.push(`${el.getAttribute("aria-label")} ← ${hit.className}`);
+    }
+    return out;
+  });
+  expect(covered, "перекрытые элементы").toEqual([]);
+  // ушёл с экрана тренировки — строка свёрнута, вернулся — её нет
+  await page.getByRole("button", { name: "Свернуть тренировку", exact: true }).click();
+  await page.getByRole("button", { name: /Вернуться к тренировке|Продолжить тренировку/ }).first().click();
+  await expect(ownerRow(page)).toHaveCount(0);
+  await expect(pressedRow(page)).toHaveCount(0);
+});
+
+// ───────────── Доработка 2: QA-R11-10 — свайп не делает окно основным; Enter на ✓ не глушится ─────────────
+/** Настоящий свайп пальцем вверх (CDP): Chrome начинает прокрутку и шлёт pointercancel, касанием это не считается. */
+async function swipeUp(page: Page, x: number, from: number, to: number) {
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y: from }] });
+  for (let i = 1; i <= 8; i++) {
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y: from + ((to - from) * i) / 8 }] });
+    await page.waitForTimeout(16);
+  }
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await page.waitForTimeout(400);
+}
+
+for (const size of [SIZES[0], SIZES[2]]) {
+  test(`R11-QA-10: свайп в ведомом окне прокручивает страницу, но роль и сообщение не меняются ${size.width}×${size.height}`, async ({ page, context }) => {
+    test.setTimeout(120_000);
+    await followerPair(page, context, size);
+    const before = await sets(page);
+    const y0 = await page.evaluate(() => scrollY);
+    await swipeUp(page, Math.round(size.width / 2), Math.round(size.height * 0.75), Math.round(size.height * 0.3));
+    expect(await page.evaluate(() => scrollY), "страница прокрутилась").toBeGreaterThan(y0);
+    await expect(follower(page)).toBeVisible();
+    await expect(pressedRow(page)).toHaveCount(0);
+    await expect(ownerRow(page)).toHaveCount(0);
+    expect(await sets(page)).toEqual(before);
+  });
+}
+
+test("R11-QA-10: Enter на сфокусированном ✓ сразу после свайпа срабатывает (клавиатурный клик не глушится)", async ({ page, context }) => {
+  test.setTimeout(120_000);
+  await followerPair(page, context, SIZES[0]);
+  const before = await sets(page);
+  await swipeUp(page, 195, 640, 260);
+  await expect(follower(page)).toBeVisible();
+  await page.getByRole("button", { name: SET_DONE(2), exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect.poll(() => sets(page)).toEqual([before[0], "80×5✓", before[2]]);
+  await expect(ownerRow(page)).toBeVisible();
+});
+
+for (const delay of [500, 1500, 2800, 3300]) {
+  test(`R11-QA-10: касание через ${delay} мс после свайпа работает как обычное первое касание, второе — срабатывает`, async ({ page, context }) => {
+    test.setTimeout(120_000);
+    await followerPair(page, context, SIZES[0]);
+    const before = await sets(page);
+    await swipeUp(page, 195, 640, 260);
+    await page.waitForTimeout(delay);
+    const point = await centre(page, 2);
+    await page.touchscreen.tap(point.x, point.y);
+    await expect(pressedRow(page)).toBeVisible();
+    expect(await sets(page)).toEqual(before);
+    await page.touchscreen.tap(point.x, point.y);
+    await expect.poll(() => sets(page)).toEqual([before[0], "80×5✓", before[2]]);
+  });
+}
+
+// ───────────── Доработка 2: QA-R11-12 — упражнение, добавленное в ведомом окне, не пропадает молча ─────────────
+const exerciseCount = async (page: Page) => (await storedDraft(page))!.workout.exercises.length;
+// Жим уже в тренировке (повтор того же упражнения приложение пропускает), поэтому добавляем приседания
+const addBench = (page: Page) => page.getByRole("button", { name: "Добавить Приседания со штангой", exact: true });
+
+test("R11-QA-12: «Добавить упражнение» программным click (без pointer-событий, как у QA и у чтения с экрана) делает окно основным — упражнение сохраняется", async ({ page, context }) => {
+  test.setTimeout(120_000);
+  await followerPair(page, context, SIZES[0]);
+  await page.getByRole("button", { name: "Добавить упражнение", exact: true }).evaluate((el: HTMLElement) => el.click());
+  await expect(follower(page)).toHaveCount(0);
+  await addBench(page).evaluate((el: HTMLElement) => el.click());
+  await page.getByRole("button", { name: "Готово", exact: true }).click();
+  await expect.poll(() => exerciseCount(page)).toBe(2);
+  // «Открыть здесь» после этого не нужен и упражнение не пропало: ни в ключе, ни на экране
+  await page.reload();
+  await page.getByRole("button", { name: "Продолжить тренировку", exact: true }).first().click();
+  await expect(page.getByLabel("Приседания со штангой, подход 1, вес", { exact: true })).toBeVisible();
+  expect(await exerciseCount(page)).toBe(2);
+});
+
+test("R11-QA-12: диалог открыт до смены роли — нажатие в диалоге делает окно основным, добавленное упражнение сохраняется", async ({ page, context }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(SIZES[0]);
+  await round01Fixture(page);
+  await startWith(page, BENCH);
+  await set(page, 1, "80", "5");
+  await page.getByRole("button", { name: "Добавить упражнение", exact: true }).click();
+  await expect(addBench(page)).toBeVisible();
+  const tab2 = await openSecondTab(context, SIZES[0]);
+  await tab2.getByRole("button", { name: "Продолжить тренировку", exact: true }).click();
+  await page.bringToFront();
+  await expect(addBench(page)).toBeVisible(); // диалог на месте, окно стало ведомым
+  const owner2 = (await storedDraft(page))!.owner;
+  await addBench(page).click();
+  await page.getByRole("button", { name: "Готово", exact: true }).click();
+  await expect.poll(() => exerciseCount(page)).toBe(2);
+  expect((await storedDraft(page))!.owner, "ключ теперь пишет это окно").not.toBe(owner2);
+  await expect(follower(page)).toHaveCount(0);
+});
+
+test("R11-QA-12: то же через «Открыть здесь» — упражнение, добавленное после, остаётся", async ({ page, context }) => {
+  test.setTimeout(120_000);
+  await followerPair(page, context, SIZES[0]);
+  await page.getByRole("button", { name: "Открыть здесь", exact: true }).click();
+  await page.getByRole("button", { name: "Добавить упражнение", exact: true }).click();
+  await addBench(page).click();
+  await page.getByRole("button", { name: "Готово", exact: true }).click();
+  await expect.poll(() => exerciseCount(page)).toBe(2);
 });
