@@ -355,3 +355,29 @@ test("R11-REQ04: окна оценок называются словами — �
   assert.equal(LaidDupPlan.windowText(LaidDupPlan.ESTIMATE_DAYS), "за 26 недель");
   assert.equal(LaidDupPlan.windowText(LaidDupPlan.SUGGEST_DAYS), "за 28 дней");
 });
+
+// ───────────── R11-REQ05: поиск по привычным названиям тренажёра ─────────────
+import { exerciseCatalog } from "../src/lib/catalog";
+const found = (text: string) => exerciseCatalog.search({ text, zone: "all", equipment: "all" }).map((e) => e.name);
+test("R11-REQ05: «пек-дек», «бабочка», «peck», «reverse fly», «rear delt» — в любом написании находят заднюю дельту", () => {
+  for (const q of ["пек-дек", "Пек дек", "пекдек", "ПЕК-ДЕК", "peck", "peck deck", "Pec Deck", "pec-deck", "бабочка", "Обратная бабочка", "reverse fly", "rear delt", "Rear-Delt"])
+    assert.ok(found(q).includes("Обратные разведения на заднюю дельту"), q);
+});
+test("R11-REQ05: «обратная бабочка» и «reverse fly» не уводят на грудь; «бабочка» и «пек-дек» начинают с записи для груди", () => {
+  assert.deepEqual(found("обратная бабочка"), ["Обратные разведения на заднюю дельту"]);
+  assert.deepEqual(found("reverse fly"), ["Обратные разведения на заднюю дельту"]);
+  assert.equal(found("бабочка")[0], "Сведение рук в тренажёре (пек-дек, «бабочка»)");
+  assert.equal(found("пекдек")[0], "Сведение рук в тренажёре (пек-дек, «бабочка»)");
+});
+test("R11-REQ05: «обратн» находит то же; «разведения» — оба разведения; «face» — тягу каната к лицу; видимые названия не менялись", () => {
+  assert.ok(found("обратн").includes("Обратные разведения на заднюю дельту"));
+  assert.ok(["Разведения гантелей лёжа", "Обратные разведения на заднюю дельту"].every((n) => found("разведения").includes(n)));
+  assert.ok(found("face").some((n) => /каната к лицу/.test(n)));
+});
+test("R11-REQ05: запись для груди — честная: мышцы, снаряд, правило веса (стек тренажёра, без 1ПМ)", () => {
+  const chest = exerciseCatalog.search({ text: "пек-дек" }).find((e) => e.id === "pec-deck-fly")!;
+  assert.equal(chest.equipment, "gym");
+  assert.deepEqual(chest.primary, ["chest"]);
+  assert.equal(chest.recording.loadMode, "machine_stack");
+  assert.equal(chest.recording.e1rmEligible, false);
+});

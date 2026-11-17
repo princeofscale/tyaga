@@ -559,3 +559,67 @@ test("R11-REQ04 / 4: «Можно обновить максимум» назыв
   await expect(dlg(page).getByText("«По истории» — лучшая оценка 1ПМ (Эпли) по подходам за 26 недель.")).toBeVisible();
   await expect(dlg(page).getByText("Оценка — по подходам за 28 дней.")).toBeVisible();
 });
+
+// ───────────── REQ05: поиск понимает «пек-дек», «бабочку» ─────────────
+const REAR = "Обратные разведения на заднюю дельту";
+const CHEST = "Сведение рук в тренажёре (пек-дек, «бабочка»)";
+const REAR_QUERIES = ["пек-дек", "Пек дек", "ПЕКДЕК", "peck", "Peck Deck", "pec deck", "бабочка", "обратная бабочка", "Reverse Fly", "rear delt"];
+
+for (const size of SIZES) {
+  test(`R11-REQ05: «Упражнения» — все названия тренажёра находят заднюю дельту ≤ 1 с; «обратн» и «разведения» работают; счётчики сходятся ${size.width}×${size.height}`, async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize(size);
+    await round01Fixture(page);
+    await nav(page, "Упражнения").click();
+    const search = page.getByLabel("Поиск упражнений");
+    const cards = page.locator(".library-card");
+    const tab = (name: string) => page.locator(".catalog-tabs button").filter({ hasText: name });
+    const total = Number((await tab("Основные").locator("span").textContent())!.trim());
+    await expect(cards).toHaveCount(total);
+    for (const query of REAR_QUERIES) {
+      await search.fill(query);
+      await expect(cards.filter({ hasText: REAR }), query).toHaveCount(1, { timeout: 1000 });
+      expect(await cards.count(), query).toBeGreaterThan(0);
+    }
+    // честная запись для груди находит «бабочку» и «пек-дек» первой; обратная «бабочка» — только заднюю дельту
+    await search.fill("бабочка");
+    await expect(cards.first()).toContainText(CHEST);
+    await search.fill("обратная бабочка");
+    await expect(cards).toHaveCount(1);
+    await search.fill("обратн");
+    await expect(cards.filter({ hasText: REAR })).toHaveCount(1);
+    await search.fill("разведения");
+    await expect(cards.filter({ hasText: REAR })).toHaveCount(1);
+    await expect(cards.filter({ hasText: "Разведения гантелей лёжа" })).toHaveCount(1);
+    await search.fill("");
+    await expect(cards).toHaveCount(total);
+    await expect(tab("Основные").locator("span")).toHaveText(String(total));
+    await expect(tab("Мои").locator("span")).toHaveText("0");
+    await expect(page.locator(".library-header")).toContainText(`${total} упражнени`);
+    // «face» по-прежнему находит тягу каната к лицу
+    await search.fill("face");
+    await expect(cards.filter({ hasText: "Тягу каната к лицу" }).or(cards.filter({ hasText: "Тяга каната к лицу" }))).toHaveCount(1);
+    expect(await overflow(page)).toBeLessThanOrEqual(1);
+  });
+}
+
+test("R11-REQ05: «Заменить» и «Добавить упражнение» находят заднюю дельту по «пек-дек» и «бабочка»", async ({ page }) => {
+  test.setTimeout(120_000);
+  await round01Fixture(page);
+  await startWith(page, BENCH);
+  await page.getByText("Ещё для упражнения", { exact: true }).first().click();
+  await page.locator('button[title="Заменить упражнение на аналогичное"]').first().click();
+  const swap = page.getByRole("dialog", { name: "Заменить упражнение", exact: true });
+  for (const query of ["пек-дек", "пекдек", "peck", "бабочка", "reverse fly", "rear delt"]) {
+    await swap.getByRole("searchbox").fill(query);
+    await expect(swap.getByRole("button", { name: new RegExp(`^${REAR}`) }).first(), query).toBeVisible({ timeout: 1500 });
+  }
+  await swap.getByRole("button", { name: "Закрыть окно", exact: true }).click();
+  await expect(swap).toHaveCount(0);
+  await page.getByRole("button", { name: "Добавить упражнение", exact: true }).click();
+  const picker = page.getByRole("searchbox").or(page.getByLabel("Поиск упражнений")).first();
+  for (const query of ["пек дек", "обратная бабочка"]) {
+    await picker.fill(query);
+    await expect(page.getByRole("button", { name: `Добавить ${REAR}`, exact: true }), query).toBeVisible({ timeout: 1500 });
+  }
+});
