@@ -381,3 +381,10 @@ test("R11-REQ05: запись для груди — честная: мышцы, 
   assert.equal(chest.recording.loadMode, "machine_stack");
   assert.equal(chest.recording.e1rmEligible, false);
 });
+
+test("R11-REQ02: своя прежняя тренировка в ключе, а в памяти новая («Сохранить мою отдельной тренировкой») — пишем, а не принимаем за чужую", () => {
+  const old = draftOf("A"), next = draftOf("B");
+  assert.equal(DraftTabs.beforeWrite({ ...ctx(next, { ownId: "A", claim: 5 }), mine: next }, raw(old, "P1", 5)), "write");
+  // чужая запись другой тренировки по-прежнему принимается
+  assert.equal((DraftTabs.beforeWrite({ ...ctx(next, { ownId: "A", claim: 5 }), mine: next }, raw(old, "P2", 5)) as { kind: string }).kind, "adopt");
+});

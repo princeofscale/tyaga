@@ -70,7 +70,11 @@ export class DraftTabs {
     if (raw === null) return ctx.ownId === ctx.mine.workout.id ? { kind: "close", id: ctx.mine.workout.id } : "write";
     const stored = parseDraft(raw);
     if (!stored) return "write";
-    if (stored.workout.id !== ctx.mine.workout.id) return ctx.ownId === ctx.mine.workout.id || stored.owner !== undefined ? { kind: "adopt", draft: stored, note: "other" } : "write";
+    // В ключе прежняя тренировка этой же вкладки, а в памяти уже другая (например, «Сохранить мою отдельной тренировкой»): это не чужая запись.
+    if (stored.workout.id !== ctx.mine.workout.id) {
+      if (stored.owner === ctx.tab) return "write";
+      return ctx.ownId === ctx.mine.workout.id || stored.owner !== undefined ? { kind: "adopt", draft: stored, note: "other" } : "write";
+    }
     if (stored.owner === undefined || stored.owner === ctx.tab || ctx.claim > (stored.claim ?? 0)) return "write";
     return { kind: "adopt", draft: stored, note: null };
   }
