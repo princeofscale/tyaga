@@ -7,8 +7,9 @@ import { entryName } from "../lib/model";
 import type { Routine, Workout } from "../lib/types";
 import Modal from "./Modal";
 
-type StatusState = ReturnType<typeof LaidDupPlan.status>;
-const statusText = (s: StatusState) => (s.state === "done" ? `Сделана ${dateLabel(s.date!)}` : s.state === "missed" ? "Пропущена" : "Впереди");
+type StatusState = ReturnType<typeof LaidDupPlan.dayStatus>;
+const statusText = (s: StatusState) =>
+  s.state === "done" ? `Сделана ${dateLabel(s.date!)}` : s.state === "missed" ? "Пропущена" : s.state === "ended" ? "Цикл закончен" : "Впереди";
 
 /** Отметка дня: цвет и текст вместе, чтобы не полагаться на один цвет. */
 export function LaidStatus({ status }: { status: StatusState }) {
@@ -45,7 +46,7 @@ export function LaidDupCard({ cycle, workouts, today, busy, onSchedule, onUpdate
       <ul className="laid-days">
         {cycle.map((r) => {
           const p = r.periodization!;
-          const status = LaidDupPlan.status(r, workouts, position.week, today);
+          const status = LaidDupPlan.dayStatus(r, workouts, position.week, today);
           return (
             <li key={r.id}>
               <b>{LaidDupPlan.SHORT[p.day]}</b>
@@ -64,6 +65,7 @@ export function LaidDupCard({ cycle, workouts, today, busy, onSchedule, onUpdate
           <button type="button" className="button secondary" disabled={busy} onClick={onRecalc}>
             Пересчитать с недели {position.beforeStart ? 1 : position.week + 1}
           </button>
+          <p className="tiny laid-window">Оценка — по подходам {LaidDupPlan.windowText(LaidDupPlan.SUGGEST_DAYS)}.</p>
         </div>
       ) : null}
       <div className="laid-actions">
@@ -132,6 +134,7 @@ export function LaidDupSchedule({ cycle, workouts, today, busy, onClose, onUpdat
             </li>
           ))}
         </ul>
+        <p className="tiny laid-window">«По истории» — лучшая оценка 1ПМ (Эпли) по подходам {LaidDupPlan.windowText(LaidDupPlan.ESTIMATE_DAYS)}.</p>
         {suggestion.length ? (
           <div className="laid-suggest" role="status">
             <p>
@@ -141,6 +144,7 @@ export function LaidDupSchedule({ cycle, workouts, today, busy, onClose, onUpdat
             <button type="button" className="button secondary" disabled={busy} onClick={onRecalc}>
               Пересчитать с недели {position.beforeStart ? 1 : position.week + 1}
             </button>
+            <p className="tiny laid-window">Оценка — по подходам {LaidDupPlan.windowText(LaidDupPlan.SUGGEST_DAYS)}.</p>
           </div>
         ) : null}
         <p className="laid-explain">{EXPLAIN.join(" ")}</p>
@@ -174,7 +178,7 @@ export function LaidDupSchedule({ cycle, workouts, today, busy, onClose, onUpdat
                     return (
                       <li key={r.id}>
                         <b>{LaidDupPlan.SHORT[p.day]}</b>
-                        <LaidStatus status={LaidDupPlan.status(r, workouts, week, today)} />
+                        <LaidStatus status={LaidDupPlan.dayStatus(r, workouts, week, today)} />
                         <span className="laid-plan-line">{LaidDupPlan.line(plan)}</span>
                       </li>
                     );

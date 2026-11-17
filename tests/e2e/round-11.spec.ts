@@ -461,3 +461,101 @@ test("R11-REQ03: цикла у аккаунта нет или в копии не
   dialog = await restoreDialog(page, backupWith("no-laid.json", [plainProgram]));
   await expect(dialog.getByText(/После импорта будут/)).toHaveCount(0);
 });
+
+// ───────────── REQ04: Лейд — неделя 10 и подписи ─────────────
+const setToday = async (page: Page, iso: string) => {
+  await page.clock.setFixedTime(new Date(`${iso}T12:00:00Z`));
+  await page.reload();
+};
+const dlg = (page: Page) => page.getByRole("dialog");
+const programs = (page: Page) => nav(page, "Программы").click();
+
+for (const size of SIZES) {
+  test(`R11-REQ04 / 1: неделя 10 — у дней без тренировки серая «Цикл закончен», красной «Пропущена» нет; недели 1–8 и сделанные дни как были ${size.width}×${size.height}`, async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize(size);
+    const routines = sixRoutines();
+    const done = { ...doneWorkout("Лейд · Жим 1", "2027-01-05", [["bench", 75, 1, 1]]), routineId: routines[1].id };
+    await appWith(page, routines, [done]);
+    await setToday(page, "2027-01-12");
+    await programs(page);
+    const lead = page.getByLabel("Программа Дэвида Лейда");
+    await expect(lead).toContainText("Неделя 10 · схема недели 9 · цикл закончен — обнови максимумы");
+    await expect(lead.locator(".laid-status.missed")).toHaveCount(0);
+    await expect(lead.locator(".laid-status.ended")).toHaveCount(5);
+    await expect(lead.locator(".laid-status.ended").first()).toHaveText("Цикл закончен");
+    await expect(lead.locator(".laid-status.done")).toHaveText(["Сделана 5 янв."]);
+    expect(await overflow(page)).toBeLessThanOrEqual(1);
+    await lead.getByRole("button", { name: "Расписание на 9 недель", exact: true }).click();
+    const d = dlg(page);
+    const weeks = d.locator(".laid-week-card");
+    await expect(weeks).toHaveCount(9);
+    for (let w = 0; w < 8; w++) await expect(weeks.nth(w).locator(".laid-status.missed"), `неделя ${w + 1}`).toHaveCount(6);
+    await expect(weeks.nth(8).locator(".laid-status.missed")).toHaveCount(0);
+    await expect(weeks.nth(8).locator(".laid-status.ended")).toHaveCount(5);
+    await expect(weeks.nth(8).locator(".laid-status.done")).toHaveText(["Сделана 5 янв."]);
+    const chips = await d.locator(".laid-status").evaluateAll((els) => els.filter((el) => el.scrollWidth > el.clientWidth + 1 || el.getBoundingClientRect().height > 26).map((el) => (el as HTMLElement).innerText));
+    expect(chips).toEqual([]);
+    expect((await clipped(page, "dialog[open]")).wide).toEqual([]);
+  });
+}
+
+test("R11-REQ04 / 1: на неделе 9 пропущенный день — по-прежнему красная «Пропущена»", async ({ page }) => {
+  test.setTimeout(90_000);
+  await appWith(page, sixRoutines(), []);
+  await setToday(page, "2027-01-08");
+  await programs(page);
+  const lead = page.getByLabel("Программа Дэвида Лейда");
+  await expect(lead).toContainText("Неделя 9");
+  await expect(lead.locator(".laid-status.missed").first()).toHaveText("Пропущена");
+  await expect(lead.locator(".laid-status.ended")).toHaveCount(0);
+});
+
+test("R11-REQ04 / 2: копия программы Лейда — у жима с весом плана нет «Начнёшь с веса из истории», у упражнения без веса она есть", async ({ page }) => {
+  test.setTimeout(120_000);
+  await appWith(page, sixRoutines(), HISTORY());
+  await programs(page);
+  await page.getByRole("button", { name: "Копировать программу Лейд · Жим 1", exact: true }).click();
+  const d = dlg(page);
+  await expect(d.getByRole("heading", { name: "Программа" }).first()).toBeVisible();
+  const row = (name: string) => d.locator("li, article, .routine-exercise").filter({ has: page.getByText(name, { exact: true }) }).last();
+  await expect(d.getByText(/Начнёшь с веса из истории: 12,5 кг/)).toHaveCount(1);
+  await expect(d.getByText(/Начнёшь с веса из истории: (70|90) кг/)).toHaveCount(0);
+  await expect(row("Разведения гантелей лёжа")).toContainText("Начнёшь с веса из истории: 12,5 кг");
+});
+
+for (const size of SIZES) {
+  test(`R11-REQ04 / 3–4: «Добавить к оригиналу» — число подходов из плана; «по истории ≈ N кг» называет окно; подписи не обрезаны ${size.width}×${size.height}`, async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize(size);
+    await appWith(page, [], [doneWorkout("Жим", "2026-11-02", [["bench", 100, 8, 3]])]);
+    await programs(page);
+    await page.getByRole("button", { name: /Дэвид Лейд · DUP/ }).click();
+    const d = dlg(page);
+    const extras = d.getByRole("switch", { name: /Добавить к оригиналу/ });
+    await expect(extras).toContainText("+18 подходов в неделю");
+    await extras.click();
+    await expect(extras).toContainText("без добавок: 117 подходов в неделю");
+    await expect(extras).not.toContainText("+18");
+    await extras.click();
+    await expect(extras).toContainText("+18 подходов в неделю");
+    await expect(d.getByRole("button", { name: "по истории ≈ 126,7 кг (Эпли)" })).toBeVisible();
+    await expect(d.getByText("по подходам за 26 недель", { exact: true })).toBeVisible();
+    expect((await clipped(page, "dialog[open]")).wide).toEqual([]);
+    expect(await d.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+    expect(await overflow(page)).toBeLessThanOrEqual(1);
+  });
+}
+
+test("R11-REQ04 / 4: «Можно обновить максимум» называет окно в 28 дней, а «по истории» в расписании — окно в 26 недель", async ({ page }) => {
+  test.setTimeout(120_000);
+  const strong = doneWorkout("Жим", "2026-11-09", [["bench", 90, 1, 1]]);
+  await appWith(page, sixRoutines(), [strong]);
+  await programs(page);
+  const lead = page.getByLabel("Программа Дэвида Лейда");
+  await expect(lead.getByText("Можно обновить максимум:")).toBeVisible();
+  await expect(lead.getByText("Оценка — по подходам за 28 дней.")).toBeVisible();
+  await lead.getByRole("button", { name: "Расписание на 9 недель", exact: true }).click();
+  await expect(dlg(page).getByText("«По истории» — лучшая оценка 1ПМ (Эпли) по подходам за 26 недель.")).toBeVisible();
+  await expect(dlg(page).getByText("Оценка — по подходам за 28 дней.")).toBeVisible();
+});

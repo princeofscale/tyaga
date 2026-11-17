@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { DAY_NAMES } from "../domain/TrainingProgram";
 import { LaidDupPlan, type LaidLift } from "../domain/LaidDupPlan";
 import { addCalendarDays, dateLabel } from "../lib/calendar";
+import { setsWord } from "../lib/quantity";
 import type { LaidMaxes, Routine, Workout } from "../lib/types";
 import Modal from "./Modal";
 
@@ -31,6 +32,7 @@ const LABEL: Record<LaidLift, string> = { squat: "1ПМ: присед", bench: "
 export default function LaidDupModal(props: Props) {
   const { mode, cycle, today } = props;
   const base = cycle?.[0]?.periodization;
+  const sets = useMemo(() => LaidDupPlan.weeklySets(), []);
   const estimates = useMemo(() => LaidDupPlan.estimates(props.workouts, today), [props.workouts, today]);
   const [ask, setAsk] = useState(mode === "create" && !!props.existing);
   const [values, setValues] = useState<Record<LaidLift, string>>(() =>
@@ -171,6 +173,9 @@ export default function LaidDupModal(props: Props) {
                         по истории ≈ {LaidDupPlan.kg(estimate)} кг (Эпли)
                       </button>
                     ) : null}
+                    {estimate !== null ? (
+                      <small className="laid-estimate-window">по подходам {LaidDupPlan.windowText(LaidDupPlan.ESTIMATE_DAYS)}</small>
+                    ) : null}
                   </div>
                 </div>
               );
@@ -210,6 +215,9 @@ export default function LaidDupModal(props: Props) {
                 <span className="laid-switch-text">
                   Добавить к оригиналу: задняя и средняя дельта, пресс
                   <small>В таблице Лейда этого нет: добавленное помечено «добавлено».</small>
+                  <small className="laid-switch-count">
+                    {extras ? `+${sets.added} ${setsWord(sets.added)} в неделю` : `без добавок: ${sets.base} ${setsWord(sets.base)} в неделю`}
+                  </small>
                 </span>
                 <span className="laid-switch-state" aria-hidden="true">
                   {extras ? "Вкл" : "Выкл"}

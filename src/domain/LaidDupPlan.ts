@@ -1,6 +1,7 @@
 import { addCalendarDays } from "../lib/calendar";
 import { PeriodizationRules } from "./PeriodizationRules";
 import { estimatedOneRepMax, makeExerciseEntry, makeSets } from "../lib/model";
+import { quantity } from "../lib/quantity";
 import type {
   LaidDay,
   LaidMaxes,
@@ -114,6 +115,13 @@ export class LaidDupPlan {
     deadlift: "становая",
     ohp: "армейский жим",
   };
+  /** Окно «по истории ≈ N кг» (лучшая оценка 1ПМ по подходам за полгода) и окно подсказки «Можно обновить максимум». */
+  static readonly ESTIMATE_DAYS = 182;
+  static readonly SUGGEST_DAYS = 28;
+  /** «за 26 недель», «за 28 дней»: окно в днях словами. */
+  static windowText(days: number): string {
+    return days % 7 === 0 && days > 28 ? `за ${quantity(days / 7, "неделю", "недели", "недель")}` : `за ${quantity(days, "день", "дня", "дней")}`;
+  }
   static readonly NOTICE = "Веса восстановлены по опубликованной таблице и округлены; официальный калькулятор может дать другие числа.";
   static readonly LOAD_NOTICE = "Шесть тренировок в неделю и тяжёлые подходы — вводи осторожные максимумы.";
   static readonly MAX_KG = MAX_KG;
@@ -438,6 +446,35 @@ export class LaidDupPlan {
   }
 
   /**
+   * Статус дня для показа: как `status`, но на неделе 10 и позже («схема недели 9, цикл закончен») день девятой недели без тренировки
+   * не «пропущен» — цикла уже нет, красное было бы упрёком за то, чего не изменить (R11-REQ04). Остальные недели и дни не меняются.
+   */
+  static dayStatus(
+    routine: Routine,
+    workouts: Workout[],
+    week: number,
+    today: string,
+  ): { state: "done" | "missed" | "ahead" | "ended"; date?: string } {
+    const result = LaidDupPlan.status(routine, workouts, week, today);
+    const p = LaidDupPlan.periodizationOf(routine);
+    if (result.state === "missed" && p && week === LAID_WEEKS - 1 && LaidDupPlan.weekOf(p.startMonday, today) >= LAID_WEEKS)
+      return { state: "ended" };
+    return result;
+  }
+
+  /**
+   * Сколько подходов в неделю даёт цикл (шесть дней: тяжёлый и четыре рабочих подхода базового упражнения плюс вспомогательные):
+   * `base` — по оригиналу, `added` — добавленное (задняя и средняя дельта, пресс). Число считается по плану, а не вписано в текст.
+   */
+  static weeklySets(): { base: number; added: number } {
+    const maxes: LaidMaxes = { squat: 100, bench: 100, deadlift: 100, ohp: 100 };
+    const total = (extras: boolean) =>
+      LaidDupPlan.DAYS.reduce((sum, day) => sum + LaidDupPlan.entries(day, maxes, { extras, light: false }).reduce((n, e) => n + e.sets.length, 0), 0);
+    const base = total(false);
+    return { base, added: total(true) - base };
+  }
+
+  /**
    * Лучший расчётный 1ПМ базового упражнения по Эпли среди выполненных рабочих подходов с даты `since` (включительно):
    * null, если подходящих нет. Тот же расчёт, что в «Прогрессе».
    */
@@ -459,7 +496,7 @@ export class LaidDupPlan {
 
   /** Оценка по истории для окна создания: свежая история за последние полгода. */
   static estimates(workouts: Workout[], today: string): Record<LaidLift, number | null> {
-    const since = addCalendarDays(today, -182);
+    const since = addCalendarDays(today, -LaidDupPlan.ESTIMATE_DAYS);
     return {
       squat: LaidDupPlan.estimate(workouts, "squat", since, today),
       bench: LaidDupPlan.estimate(workouts, "bench", since, today),
@@ -474,7 +511,8 @@ export class LaidDupPlan {
    */
   static suggestion(p: RoutinePeriodization, workouts: Workout[], today: string): { lift: LaidLift; from: number; estimate: number; to: number }[] {
     const settingStart = addCalendarDays(p.startMonday, p.maxesFromWeek * 7);
-    const since = settingStart > addCalendarDays(today, -28) ? settingStart : addCalendarDays(today, -28);
+    const window = addCalendarDays(today, -LaidDupPlan.SUGGEST_DAYS);
+    const since = settingStart > window ? settingStart : window;
     const found: { lift: LaidLift; from: number; estimate: number; to: number }[] = [];
     for (const lift of ["squat", "bench", "deadlift", "ohp"] as const) {
       const estimate = LaidDupPlan.estimate(workouts, lift, since, today);

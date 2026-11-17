@@ -42,3 +42,21 @@
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
+
+/* R11-REQ04: неделя 10 — нейтральная «Цикл закончен»; подписи окон оценки и число подходов у переключателя. */
+.laid-status.ended {
+  color: var(--muted);
+  border-color: var(--line-strong, var(--line));
+}
+.laid-estimate-window,
+.laid-window {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.laid-switch-text .laid-switch-count {
+  color: var(--text-soft, var(--muted));
+  font-weight: 600;
+}

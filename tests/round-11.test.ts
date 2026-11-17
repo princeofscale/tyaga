@@ -333,3 +333,25 @@ test("R11-REQ03: повторное восстановление узнаёт п
   assert.deepEqual(RestorePlan.routines(copy, restored), { total: 6, added: 0, same: 6, differs: 0 });
   assert.equal(RestorePlan.routines(copy, []).added, 6);
 });
+
+// ───────────── R11-REQ04: неделя 10, подписи ─────────────
+test("R11-REQ04: на неделе 10 день девятой недели без тренировки — «ended», а не «missed»; недели 1–9 не меняются", () => {
+  const routines = cycleAt("2026-11-09"); // неделя 9 — 4–10 янв. 2027, неделя 10 — с 11 янв.
+  const legs1 = routines.find((r) => r.periodization!.day === "legs1")!;
+  assert.deepEqual(LaidDupPlan.dayStatus(legs1, [], 8, "2027-01-12"), { state: "ended" });
+  assert.deepEqual(LaidDupPlan.dayStatus(legs1, [], 8, "2027-03-01"), { state: "ended" }, "и позже, пока цикл не начат заново");
+  // девятая неделя ещё идёт: пропущенный день — как раньше
+  assert.equal(LaidDupPlan.dayStatus(legs1, [], 8, "2027-01-09").state, "missed", "день девятой недели позади, а неделя идёт");
+  // недели 1–8 — «Пропущена» и на неделе 10
+  for (let week = 0; week < 8; week++) assert.equal(LaidDupPlan.dayStatus(legs1, [], week, "2027-01-12").state, "missed", `неделя ${week + 1}`);
+  // сделанный день остаётся «Сделана»
+  const done = { ...makeWorkout(["squat"], [], "UTC"), routineId: legs1.id, date: "2027-01-05" };
+  assert.deepEqual(LaidDupPlan.dayStatus(legs1, [done], 8, "2027-01-12"), { state: "done", date: "2027-01-05" });
+});
+test("R11-REQ04: число подходов в неделю считает домен: 117 по оригиналу, +18 добавлено; не зависит от максимумов", () => {
+  assert.deepEqual(LaidDupPlan.weeklySets(), { base: 117, added: 18 });
+});
+test("R11-REQ04: окна оценок называются словами — «за 26 недель» и «за 28 дней»", () => {
+  assert.equal(LaidDupPlan.windowText(LaidDupPlan.ESTIMATE_DAYS), "за 26 недель");
+  assert.equal(LaidDupPlan.windowText(LaidDupPlan.SUGGEST_DAYS), "за 28 дней");
+});

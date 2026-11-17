@@ -119,6 +119,8 @@ export default function ProgramsScreen(props: Props) {
     [props.routines, props.workouts, today],
   );
   const laidEdited = editor ? LaidDupPlan.periodizationOf(editor) : undefined;
+  /** R11-REQ04: копия программы Лейда — упражнение с весом плана не подписывается «Начнёшь с веса из истории» (вес задан в поле). */
+  const laidCopy = pendingNote !== "";
   /** Основной лифт программы Лейда: его подходы и веса считаются по неделе, плоской схемой не редактируются. */
   const laidLift = laidEdited ? LaidDupPlan.LIFT_EXERCISE[LaidDupPlan.LIFT_OF[laidEdited.day]] : null;
   const laidPlan = editor && laidEdited ? LaidDupPlan.planFor(editor, today) : null;
@@ -965,7 +967,7 @@ export default function ProgramsScreen(props: Props) {
                       <details className="routine-more" hidden={laidLift === entry.exerciseId}>
                         <summary>
                           <span>Ещё</span>
-                            {spec.loadMode !== "bodyweight" && weightHints[index] ? (
+                            {spec.loadMode !== "bodyweight" && weightHints[index] && !(laidCopy && weightHints[index].source === "history" && (entry.sets.find((s) => !s.warmup)?.weight ?? 0) > 0) ? (
                               <span className={`weight-source ${weightHints[index].source}`} data-source={weightHints[index].source}>
                                 {weightHints[index].source === "history"
                                   ? `Начнёшь с веса из истории: ${fmt(weightHints[index].weightKg!)} кг`
