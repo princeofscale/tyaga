@@ -1384,7 +1384,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
               ) : null}
               {view === "workout" ? (
                 <>
-                {draft && tabs.role === "follower" ? (
+                {draft && tabs.follower ? (
                   <p className="draft-follower" role="status">
                     <span>Эта тренировка открыта в другом окне — тут изменения не сохраняются</span>
                     <button type="button" className="button secondary" onClick={() => tabs.claim()}>

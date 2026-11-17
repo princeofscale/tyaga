@@ -511,7 +511,7 @@ test("R11-REQ04 / 1: на неделе 9 пропущенный день — п�
   await expect(lead.locator(".laid-status.ended")).toHaveCount(0);
 });
 
-test("R11-REQ04 / 2: копия программы Лейда — у жима с весом плана нет «Начнёшь с веса из истории», у упражнения без веса она есть", async ({ page }) => {
+test("R11-REQ04 / 2 + QA-05: копия программы Лейда — у жима подпись «из истории» есть, когда вес истории не совпадает с полем; пропадает, когда совпадает", async ({ page }) => {
   test.setTimeout(120_000);
   await appWith(page, sixRoutines(), HISTORY());
   await programs(page);
@@ -519,8 +519,9 @@ test("R11-REQ04 / 2: копия программы Лейда — у жима с
   const d = dlg(page);
   await expect(d.getByRole("heading", { name: "Программа" }).first()).toBeVisible();
   const row = (name: string) => d.locator("li, article, .routine-exercise").filter({ has: page.getByText(name, { exact: true }) }).last();
+  // История жима — 70 × 8, в поле веса плана 75: старт будет с 70, и подпись это говорит (QA-R11-05); 12,5 — у упражнения без веса
   await expect(d.getByText(/Начнёшь с веса из истории: 12,5 кг/)).toHaveCount(1);
-  await expect(d.getByText(/Начнёшь с веса из истории: (70|90) кг/)).toHaveCount(0);
+  await expect(d.getByText(/Начнёшь с веса из истории: 70 кг/)).toHaveCount(1);
   await expect(row("Разведения гантелей лёжа")).toContainText("Начнёшь с веса из истории: 12,5 кг");
 });
 
@@ -715,4 +716,178 @@ test("R11-QA-07: два видимых окна не перебрасывают 
   await page.waitForTimeout(6000);
   const writes = (await count(page)) + (await count(tab2)) - before;
   expect(writes, "записей журнала за 6 с в двух окнах").toBeLessThan(12);
+});
+
+test("R11-QA-05: копия Лейда — если вес из истории совпадает с весом в поле, подписи нет", async ({ page }) => {
+  test.setTimeout(120_000);
+  // жим 75 × 1 в истории: тот же вес, что у плана недели 1 (75)
+  await appWith(page, sixRoutines(), [doneWorkout("Жим раньше", "2026-11-03", [["bench", 75, 1, 1]])]);
+  await programs(page);
+  await page.getByRole("button", { name: "Копировать программу Лейд · Жим 1", exact: true }).click();
+  const d = dlg(page);
+  await expect(d.getByText(/Начнёшь с веса из истории: 75 кг/)).toHaveCount(0);
+});
+
+// ───────────── Доработка 1: QA-R11-01 / 02 / 04 / 06 — ведомое окно ─────────────
+const SET_DONE = (n: number) => `Отметить выполненным: ${BENCH}, подход ${n}`;
+const sets = async (page: Page) => (await storedDraft(page))!.workout.exercises[0].sets.map((s) => `${s.weight}×${s.reps}${s.done ? "✓" : ""}`);
+/** Две вкладки: в первой — жим, подход 1 = 80×5 ✓, подход 2 заполнен; вторая нажала «Продолжить» и стала основной, первая — ведомая. */
+async function followerPair(page: Page, context: BrowserContext, size: { width: number; height: number }) {
+  await page.setViewportSize(size);
+  await round01Fixture(page);
+  await startWith(page, BENCH);
+  await set(page, 1, "80", "5");
+  await set(page, 2, "80", "5", false);
+  const tab2 = await openSecondTab(context, size);
+  await tab2.getByRole("button", { name: "Продолжить тренировку", exact: true }).click();
+  await page.bringToFront();
+  await expect(follower(page)).toBeVisible({ timeout: 5000 });
+  return tab2;
+}
+
+for (const size of SIZES) {
+  for (const how of ["tap", "click"] as const) {
+    test(`R11-QA-01: первое ${how === "tap" ? "касание" : "нажатие мышью"} в ведомом окне только делает его основным — вес, повторы, ✓ не меняются; второе срабатывает ${size.width}×${size.height}`, async ({ page, context }) => {
+      test.setTimeout(120_000);
+      await followerPair(page, context, size);
+      const before = await sets(page);
+      expect(before).toEqual(["80×5✓", "80×5", "0×0"].map((x, i) => (i === 2 ? before[2] : x)));
+      await page.getByRole("button", { name: SET_DONE(2), exact: true })[how]();
+      // окно стало основным (строки нет), сообщение сказало, что нажать надо ещё раз; ничего не изменилось
+      await expect(follower(page)).toHaveCount(0);
+      await expect(page.getByText("Это окно стало основным — нажми ещё раз", { exact: true })).toBeVisible();
+      await page.waitForTimeout(600);
+      expect(await sets(page)).toEqual(before);
+      await expect(page.getByLabel(`${BENCH}, подход 1, вес`, { exact: true })).toHaveValue("80");
+      await expect(page.getByLabel(`${BENCH}, подход 2, вес`, { exact: true })).toHaveValue("80");
+      // второе нажатие — обычное
+      await page.getByRole("button", { name: SET_DONE(2), exact: true })[how]();
+      await expect.poll(() => sets(page)).toEqual([before[0], "80×5✓", before[2]]);
+      expect(await overflow(page)).toBeLessThanOrEqual(1);
+    });
+  }
+}
+
+test("R11-QA-01: «Открыть здесь» не глушится — первое же нажатие делает окно основным, без сообщения про второе нажатие", async ({ page, context }) => {
+  test.setTimeout(120_000);
+  const before = await followerPair(page, context, SIZES[0]).then(() => sets(page));
+  await page.getByRole("button", { name: "Открыть здесь", exact: true }).click();
+  await expect(follower(page)).toHaveCount(0);
+  await expect(page.getByText("Это окно стало основным — нажми ещё раз")).toHaveCount(0);
+  expect(await sets(page)).toEqual(before);
+});
+
+test("R11-QA-01: ввод с клавиатуры (Tab, символы) в ведомом окне не теряется: окно становится основным, цифры попадают в поле", async ({ page, context }) => {
+  test.setTimeout(120_000);
+  await followerPair(page, context, SIZES[0]);
+  const field = page.getByLabel(`${BENCH}, подход 2, вес`, { exact: true });
+  await field.focus();
+  await page.keyboard.press("ControlOrMeta+a");
+  await page.keyboard.type("87.5");
+  await expect(field).toHaveValue("87.5");
+  await expect(follower(page)).toHaveCount(0);
+  await expect.poll(() => sets(page)).toEqual(["80×5✓", "87.5×5", (await sets(page))[2]]);
+});
+
+test("R11-QA-02: окно с копией sessionStorage (дублированная вкладка) не считает себя тем же владельцем — подходы не затираются, основное окно не больше одного", async ({ page, context }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(SIZES[0]);
+  await round01Fixture(page);
+  await startWith(page, BENCH);
+  await set(page, 1, "80", "5");
+  const copy = await page.evaluate(() => JSON.stringify({ ...sessionStorage }));
+  const tab2 = await context.newPage();
+  await tab2.setViewportSize(SIZES[0]);
+  await tab2.addInitScript((dump) => {
+    for (const [k, v] of Object.entries(JSON.parse(dump) as Record<string, string>)) sessionStorage.setItem(k, v);
+  }, copy);
+  await round01Fixture(tab2);
+  await tab2.getByRole("button", { name: "Продолжить тренировку", exact: true }).click();
+  await page.bringToFront();
+  await expect(follower(page)).toBeVisible({ timeout: 5000 });
+  // подход 2 — в первой вкладке (второе нажатие: первое делает окно основным), подход 3 — во второй
+  const act = async (p: Page, n: number) => {
+    const button = p.getByRole("button", { name: SET_DONE(n), exact: true });
+    if (await follower(p).isVisible().catch(() => false)) await button.click();
+    await button.click();
+  };
+  await set(page, 2, "82.5", "5", false);
+  await act(page, 2);
+  await tab2.bringToFront();
+  await expect(follower(tab2)).toBeVisible({ timeout: 5000 });
+  await tab2.getByLabel(`${BENCH}, подход 3, вес`, { exact: true }).fill("85");
+  await tab2.getByLabel(`${BENCH}, подход 3, повторы`, { exact: true }).fill("5");
+  await act(tab2, 3);
+  await expect.poll(() => sets(tab2)).toEqual(["80×5✓", "82.5×5✓", "85×5✓"]);
+  await expect.poll(() => sets(page)).toEqual(["80×5✓", "82.5×5✓", "85×5✓"]);
+  const banners = (await follower(page).count()) + (await follower(tab2).count());
+  expect(banners, "ровно одно окно основное, второе ведомое").toBe(1);
+  await page.reload();
+  await page.getByRole("button", { name: "Продолжить тренировку", exact: true }).click();
+  await expect(page.getByLabel(`${BENCH}, подход 2, вес`, { exact: true })).toHaveValue("82.5");
+});
+
+test("R11-QA-02: перезагрузка единственного окна — оно само остаётся основным, строка «открыта в другом окне» не мигает, ввод принимается", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.addInitScript(() => {
+    (window as unknown as { __banner: boolean }).__banner = false;
+    new MutationObserver(() => {
+      if (document.body && document.body.innerText.includes("открыта в другом окне")) (window as unknown as { __banner: boolean }).__banner = true;
+    }).observe(document, { subtree: true, childList: true, characterData: true });
+  });
+  await round01Fixture(page);
+  await startWith(page, BENCH);
+  await set(page, 1, "80", "5");
+  await page.reload();
+  await page.getByRole("button", { name: "Продолжить тренировку", exact: true }).click();
+  await set(page, 2, "82.5", "5");
+  await page.waitForTimeout(800);
+  expect(await page.evaluate(() => (window as unknown as { __banner: boolean }).__banner), "строка не показывалась").toBe(false);
+  await expect.poll(() => sets(page)).toEqual(["80×5✓", "82.5×5✓", (await sets(page))[2]]);
+  await expect(follower(page)).toHaveCount(0);
+});
+
+test("R11-QA-06: одновременное «Начать» в двух вкладках — 20 гонок подряд, каждый раз ровно одно основное окно и одна тренировка", async ({ page, context }) => {
+  test.setTimeout(280_000);
+  await page.setViewportSize(SIZES[0]);
+  await round01Fixture(page);
+  const tab2 = await openSecondTab(context);
+  const start = (p: Page) => p.getByRole("button", { name: "Начать тренировку", exact: true }).first();
+  const bad: string[] = [];
+  for (let round = 1; round <= 20; round++) {
+    await expect(start(page)).toBeVisible();
+    await expect(start(tab2)).toBeVisible();
+    await Promise.all([start(page).click(), start(tab2).click()]);
+    await page.waitForTimeout(1200);
+    const [a, b] = [await follower(page).count(), await follower(tab2).count()];
+    const keys = (await draftKeys(page)).length;
+    if (a + b !== 1 || keys !== 1) bad.push(`#${round}: ведомых ${a + b}, ключей ${keys}`);
+    // сброс: ключ убран, обе вкладки перезагружены
+    for (const p of [page, tab2]) await p.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("tyaga-draft-account:")).forEach((k) => localStorage.removeItem(k)));
+    await Promise.all([page.reload(), tab2.reload()]);
+  }
+  expect(bad, "гонки с исходом, отличным от «одно основное, одно ведомое»").toEqual([]);
+});
+
+test("R11-QA-09/08: «устаревшая» вкладка при потерянных событиях storage — отмена в другой убирает черновик, ✓ в устаревшей его не воскрешает", async ({ page, context }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(SIZES[0]);
+  await page.addInitScript(() => window.addEventListener("storage", (e) => e.stopImmediatePropagation(), true)); // события storage не доходят
+  await round01Fixture(page);
+  await startWith(page, BENCH);
+  await set(page, 1, "80", "5");
+  await set(page, 2, "80", "5", false);
+  const tab2 = await openSecondTab(context);
+  await tab2.getByRole("button", { name: "Продолжить тренировку", exact: true }).click();
+  await tab2.getByRole("button", { name: "Отмена", exact: true }).click();
+  const yes = tab2.getByRole("button", { name: /Да, отменить|Отменить тренировку/ });
+  if (await yes.first().isVisible().catch(() => false)) await yes.first().click();
+  await expect.poll(() => draftKeys(tab2)).toEqual([]);
+  // вкладка 1 ничего не знает; нажимает ✓ — черновик не воскресает
+  await page.bringToFront();
+  await page.getByRole("button", { name: SET_DONE(2), exact: true }).click();
+  await page.waitForTimeout(1500);
+  expect(await draftKeys(page), "ключ не вернулся").toEqual([]);
+  await page.waitForTimeout(10_000);
+  expect(await draftKeys(page), "ключ не вернулся через 10 с").toEqual([]);
 });
