@@ -22,6 +22,7 @@ import { WorkoutConflict } from "./domain/WorkoutConflict";
 import { LiveFinished } from "./lib/liveFinished";
 import { takeRoomInvite } from "./lib/invite";
 import { useLiveBroadcast } from "./lib/useLiveBroadcast";
+import { useDraftTabs } from "./lib/useDraftTabs";
 import { useLiveRoom } from "./components/LiveRoomProvider";
 import ProgressOverview from "./components/ProgressOverview";
 import MovementBalance from "./components/MovementBalance";
@@ -215,10 +216,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
   /** Открыто без связи: на экране копия последнего ответа сервера. */
   const [offlineData, setOfflineData] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(() => readDraft(draftKey));
-  const releasedDraftId = useLiveBroadcast(draft, draftKey);
-  /** Тренировка, которую эта вкладка записала в черновик последней: убирать из общего ключа можно только её. */
-  const ownDraftId = useRef<string | null>(draft?.workout.id ?? null);
-  const [persistence, setPersistence] = useState<PersistenceStatus>("pending");
+  useLiveBroadcast(draft, draftKey);
   const [legacyDraft, setLegacyDraft] = useState(() => readDraft(DRAFT_KEY));
   const [conflict, setConflict] = useState<{ current: Workout | null } | null>(
     null,
@@ -425,16 +423,6 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
     window.addEventListener("tyaga:synced", reload);
     return () => window.removeEventListener("tyaga:synced", reload);
   }, [load]);
-  useEffect(() => {
-    // Тренировку закончили или отменили в другой вкладке: эта вкладка устарела и не возвращает её черновик в общий ключ (R09-QA-09).
-    if (draft && draft.workout.id === releasedDraftId) return;
-    try {
-      setPersistence(persistDraft(localStorage, draft, draftKey, ownDraftId.current));
-    } catch {
-      setPersistence("failed");
-    }
-    ownDraftId.current = draft ? draft.workout.id : null;
-  }, [draft, draftKey, releasedDraftId]);
   const hasDraft = !!draft;
   useEffect(() => {
     if (!hasDraft) return;
@@ -601,6 +589,17 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
     setView(v);
     window.scrollTo({ top: 0, behavior: "instant" });
   };
+  // R11-REQ02: черновик общий для вкладок браузера; пишет вкладка, где человек сейчас работает.
+  const tabs = useDraftTabs({
+    draft,
+    setDraft,
+    draftKey,
+    accountId: account.id,
+    notify: warn,
+    onClosed: () => setView((v) => (v === "workout" ? "overview" : v)),
+    claimOnTouch: view === "workout",
+  });
+  const persistence = tabs.persistence;
   const unmarkedNote = coverage.sets ? (
     <p className="zones-unmarked" role="status">
       <b>
@@ -674,6 +673,12 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
     if (draft) {
       go("workout");
       warn("У тебя уже есть черновик. Продолжи или отмени его.");
+      setModal(null);
+      return;
+    }
+    // Тренировку уже начали в другом окне, а событие сюда ещё не дошло: открыть её, а не создавать вторую.
+    if (tabs.takeStored()) {
+      go("workout");
       setModal(null);
       return;
     }
@@ -769,6 +774,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
   };
   const startMeetup = (meetup:TrainingMeetup) => {
     if(draft){go("workout");warn("Сначала заверши или отмени текущую тренировку.");return;}
+    if(tabs.takeStored()){go("workout");return;}
     const workout=makeWorkout([],workouts,settings.timeZone,true);workout.name=meetup.name;
     const gym=meetup.participants.find(p=>p.id===account.id)?.gym ?? (meetup.hostId===account.id?meetup.gym:"");
     setDraft({...newDraft(workout),meetupId:meetup.id,meetupGym:gym});go("workout");
@@ -1307,7 +1313,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                       className="button primary plan-start"
                       onClick={() =>
                         draft
-                          ? go("workout")
+                          ? (tabs.claim(), go("workout"))
                           : todayRoutine
                             ? start(
                                 [],
@@ -1377,6 +1383,15 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                 </>
               ) : null}
               {view === "workout" ? (
+                <>
+                {draft && tabs.role === "follower" ? (
+                  <p className="draft-follower" role="status">
+                    <span>Эта тренировка открыта в другом окне — тут изменения не сохраняются</span>
+                    <button type="button" className="button secondary" onClick={() => tabs.claim()}>
+                      Открыть здесь
+                    </button>
+                  </p>
+                ) : null}
                 <WorkoutView
                   deloadMode={deload?.mode}
                   deloadPlan={deload}
@@ -1399,6 +1414,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                   onOpenTogether={() => go("friends")}
                   onToast={setToast}
                 />
+                </>
               ) : null}
               {view === "history" ? (
                 <>
@@ -1932,7 +1948,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                 onRoomInviteHandled={() => setRoomInvite(null)}
                 onToast={setToast}
                 workoutActive={!!draft}
-                onWorkout={() => (draft ? go("workout") : start())}
+                onWorkout={() => (draft ? (tabs.claim(), go("workout")) : start())}
               /></Suspense>}
               {view === "programs" ? (
                 <>
@@ -1980,7 +1996,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
             exit={{ opacity: 0, y: 24, transition: { duration: 0.18 } }}
             whileTap={{ scale: 0.97 }}
             transition={{ type: "spring", stiffness: 380, damping: 30 }}
-            onClick={() => go("workout")}
+            onClick={() => { tabs.claim(); go("workout"); }}
           >
             <span className="resume-dot" aria-hidden="true" />
             Вернуться к тренировке

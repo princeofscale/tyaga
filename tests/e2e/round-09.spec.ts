@@ -473,10 +473,10 @@ test("R09-QA-02: вкладка со старым черновиком посл�
   await expect(page.getByRole("button", { name: "Завершить тренировку", exact: true })).toHaveCount(0);
   await expect.poll(() => live.pushed.at(-1)?.phase).toBe("done");
   const done = live.pushed.length;
-  // вкладка 2 устарела: что бы человек в ней ни делал, комнате она ничего не шлёт
+  // вкладка 2 устарела: с R11-REQ02 она сама убирает закончившийся черновик (подходов в ней больше нет) и комнате ничего не шлёт
   await tab2.bringToFront();
-  await tab2.getByLabel(`${BENCH}, подход 2, вес`, { exact: true }).fill("85");
-  await tab2.getByRole("button", { name: `Отметить выполненным: ${BENCH}, подход 2`, exact: true }).click();
+  await expect(tab2.getByLabel(`${BENCH}, подход 2, вес`, { exact: true })).toHaveCount(0);
+  await expect(tab2.getByRole("button", { name: /Продолжить тренировку/ })).toHaveCount(0);
   await tab2.waitForTimeout(3000);
   expect(live.pushed.length, "устаревшая вкладка отправила состояние").toBe(done);
   expect(live.room!.members.find((m) => m.isMe)!.state?.phase).toBe("done");
@@ -635,11 +635,10 @@ test("R09-QA-08: «Отмена» устаревшего черновика во
   await startWith(page, BENCH);
   await lift(page, 1, "60", "8");
   await expect.poll(() => live.pushed.at(-1)?.setsDone).toBe(1);
-  // вкладка 2 (устаревший X): «Отмена» → подтвердить
+  // вкладка 2 (устаревший X): с R11-REQ02 она убрала X сама и видит новую тренировку Y как идущую — отменять в ней нечего чужое
   await tab2.bringToFront();
-  await tab2.getByRole("button", { name: "Отмена", exact: true }).click();
-  await tab2.getByRole("button", { name: "Да, отменить тренировку", exact: true }).click();
   await expect(tab2.getByRole("heading", { name: "Сегодня", exact: true })).toBeVisible();
+  await expect(tab2.getByRole("button", { name: /Продолжить тренировку/ }).first()).toBeVisible();
   await tab2.waitForTimeout(1500);
   // вкладка 1 продолжает: ✓ 2 и ✓ 3 доходят до комнаты
   await page.bringToFront();
@@ -669,8 +668,8 @@ test("R09-QA-09: ✓ в устаревшей вкладке не возвращ�
   await expect.poll(() => live.pushed.at(-1)?.phase).toBe("done");
   const done = live.pushed.length;
   await tab2.bringToFront();
-  await tab2.getByLabel(`${BENCH}, подход 2, вес`, { exact: true }).fill("85");
-  await tab2.getByRole("button", { name: `Отметить выполненным: ${BENCH}, подход 2`, exact: true }).click();
+  // с R11-REQ02 устаревшая вкладка убирает закончившийся черновик сама: отмечать в ней нечего, ключ не возвращается
+  await expect(tab2.getByLabel(`${BENCH}, подход 2, вес`, { exact: true })).toHaveCount(0);
   await tab2.waitForTimeout(2500);
   const keys = await tab2.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("tyaga-draft-account:")));
   expect(keys, "устаревшая вкладка записала закончившийся черновик обратно").toEqual([]);

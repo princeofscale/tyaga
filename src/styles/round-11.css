@@ -1,0 +1,22 @@
+/* R11-REQ02: строка «Эта тренировка открыта в другом окне». */
+.draft-follower {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line-strong, var(--line));
+  border-radius: 12px;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+.draft-follower span {
+  flex: 1 1 220px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.draft-follower .button {
+  flex: none;
+  min-height: 44px;
+}

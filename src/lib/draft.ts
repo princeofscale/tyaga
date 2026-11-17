@@ -20,6 +20,9 @@ export type Draft = {
   /** Начата через «Записать тренировку»: в шапке видна дата записи (R07-REQ04). */
   retro?: boolean;
   restored?: boolean;
+  /** R11-REQ02: окно (вкладка), которое сейчас пишет этот черновик, и момент, когда оно стало основным. Ставятся только при записи. */
+  owner?: string;
+  claim?: number;
 };
 export type PersistenceStatus = "saved" | "failed" | "pending";
 export const DRAFT_KEY = "tyaga-draft-v1";
@@ -130,6 +133,8 @@ export function parseDraft(text: string | null): Draft | null {
       pausedRest: Number.isFinite(d.pausedRest) ? d.pausedRest : null,
       manualDuration: d.editing || !!d.manualDuration,
       retro: d.retro === true ? true : undefined,
+      owner: typeof d.owner === "string" && d.owner.length <= 80 ? d.owner : undefined,
+      claim: Number.isFinite(d.claim) ? d.claim : undefined,
       restored: true,
     };
   } catch {
