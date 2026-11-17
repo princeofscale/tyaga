@@ -295,3 +295,60 @@ test("R11-REQ01: пустая тренировка — кнопки как ра�
   await expect(bench.getByRole("button", { name: /Повторить прошлые/ })).toBeVisible();
   await expect(bench.getByRole("button", { name: PLUS, exact: true })).toBeVisible();
 });
+
+// ───────────── REQ06: «Выйти из аккаунта» при просроченной сессии ─────────────
+const EXPIRED = "Войди в Тягу. Черновик тренировки остаётся на этом устройстве.";
+const openProfile = async (page: Page) => {
+  const swallow = page.getByRole("button", { name: "Свернуть тренировку", exact: true });
+  if (await swallow.isVisible().catch(() => false)) await swallow.click();
+  await page.getByRole("button", { name: "Мой профиль", exact: true }).click();
+};
+const personalKeys = (page: Page) => page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("tyaga-") && !k.startsWith("tyaga_")));
+for (const size of SIZES) {
+  test(`R11-REQ06: сессия просрочена (401 на выход) — выход состоялся: экран входа, окно профиля закрыто, данные стёрты, «Черновик остаётся» не показано ${size.width}×${size.height}`, async ({ page }) => {
+    test.setTimeout(90_000);
+    await page.setViewportSize(size);
+    await round01Fixture(page);
+    await startWith(page, BENCH);
+    await set(page, 1, "60", "8");
+    await expect.poll(() => personalKeys(page)).toContain("tyaga-draft-account:round01-user");
+    await page.route("**/api/auth/logout", (route) => route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ error: EXPIRED }) }));
+    await openProfile(page);
+    await page.getByRole("dialog").getByRole("button", { name: "Выйти из аккаунта", exact: true }).click();
+    await page.getByRole("button", { name: "Выйти", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Снова в зале" })).toBeVisible();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(page.getByText(EXPIRED)).toHaveCount(0);
+    await expect(page.getByText(/Черновик тренировки остаётся/)).toHaveCount(0);
+    await expect.poll(() => personalKeys(page)).toEqual([]);
+    expect(await overflow(page)).toBeLessThanOrEqual(1);
+  });
+}
+
+test("R11-REQ06: 401 на выход без черновика — тоже выход; 5xx и обрыв связи — ошибка в окне, окно и данные остаются", async ({ page }) => {
+  test.setTimeout(120_000);
+  await round01Fixture(page);
+  await page.route("**/api/auth/logout", (route) => route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ error: EXPIRED }) }));
+  await openProfile(page);
+  await page.getByRole("dialog").getByRole("button", { name: "Выйти из аккаунта", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Снова в зале" })).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+
+  const down = await page.context().newPage();
+  await round01Fixture(down);
+  await down.route("**/api/auth/logout", (route) => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Сервис временно недоступен" }) }));
+  await openProfile(down);
+  const dialog = down.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Выйти из аккаунта", exact: true }).click();
+  await expect(dialog.getByText("Сервис временно недоступен")).toBeVisible();
+  await expect(down.getByRole("heading", { name: "Снова в зале" })).toHaveCount(0);
+  await expect(dialog).toBeVisible();
+  expect(await personalKeys(down)).toContain("tyaga-offline:session");
+
+  await down.unroute("**/api/auth/logout");
+  await down.route("**/api/auth/logout", (route) => route.abort("failed"));
+  await dialog.getByRole("button", { name: "Выйти из аккаунта", exact: true }).click();
+  await expect(dialog.getByText(/Запрос не завершился/)).toBeVisible();
+  await expect(down.getByRole("heading", { name: "Снова в зале" })).toHaveCount(0);
+  expect(await personalKeys(down)).toContain("tyaga-offline:session");
+});
