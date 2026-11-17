@@ -292,3 +292,44 @@ test("R11-REQ01: заметка плана остаётся прежним те�
   assert.match(note, /Затем 4 × 4 повторения · 85 % = 67,5 кг/);
   assert.equal(LaidDupPlan.hasPlanWeight({ progressionNote: note }), true);
 });
+
+// ───────────── R11-REQ03: два цикла Лейда при восстановлении ─────────────
+import { RestorePlan } from "../src/domain/RestorePlan";
+const cycleAt = (startMonday: string) => LaidDupPlan.routines({ maxes: MAXES, extras: true, light: false, startMonday });
+const plain = { ...cycleAt("2026-11-09")[0], id: "plain-1", periodization: undefined } as never;
+
+test("R11-REQ03: есть свой цикл и в копии другой — строка со стартами обоих и «будут два цикла»", () => {
+  const mine = cycleAt("2027-11-15"), copy = cycleAt("2027-01-18");
+  assert.equal(
+    RestorePlan.laidNotice(copy, mine, "2027"),
+    "В копии есть цикл Лейда (старт 18 янв.), а у тебя уже есть свой (старт 15 нояб.). После импорта будут два цикла.",
+  );
+});
+test("R11-REQ03: год не текущий — дата с годом", () => {
+  const text = RestorePlan.laidNotice(cycleAt("2026-01-19"), cycleAt("2027-11-15"), "2027");
+  assert.match(text, /старт 19 янв\. 2026\)/);
+});
+test("R11-REQ03: у аккаунта нет цикла — строки нет", () => {
+  assert.equal(RestorePlan.laidNotice(cycleAt("2027-01-18"), [plain], "2027"), "");
+  assert.equal(RestorePlan.laidNotice(cycleAt("2027-01-18"), [], "2027"), "");
+});
+test("R11-REQ03: в копии нет программ с периодизацией — строки нет", () => {
+  assert.equal(RestorePlan.laidNotice([plain], cycleAt("2027-11-15"), "2027"), "");
+  assert.equal(RestorePlan.laidNotice([], cycleAt("2027-11-15"), "2027"), "");
+});
+test("R11-REQ03: цикл копии уже в аккаунте (тот же cycleId или те же id) — строки нет", () => {
+  const mine = cycleAt("2027-11-15");
+  assert.equal(RestorePlan.laidNotice(mine, mine, "2027"), "");
+  const restored = mine.map((r) => ({ ...r, id: `restore:x:${r.id}` }));
+  assert.equal(RestorePlan.laidNotice(mine, [...mine, ...restored], "2027"), "", "тот же cycleId — второго цикла не будет");
+});
+test("R11-REQ03: два цикла в копии и один у аккаунта — множественное число", () => {
+  const text = RestorePlan.laidNotice([...cycleAt("2027-01-18"), ...cycleAt("2027-03-01")], cycleAt("2027-11-15"), "2027");
+  assert.equal(text, "В копии есть циклы Лейда (старт 18 янв., 1 мар.), а у тебя уже есть свой (старт 15 нояб.). После импорта будут три цикла.");
+});
+test("R11-REQ03: повторное восстановление узнаёт перенесённый цикл по cycleId и дню — «Новых 0», а не 6", () => {
+  const copy = cycleAt("2027-01-18");
+  const restored = copy.map((r) => ({ ...r, id: `restore:owner:${r.id}` }));
+  assert.deepEqual(RestorePlan.routines(copy, restored), { total: 6, added: 0, same: 6, differs: 0 });
+  assert.equal(RestorePlan.routines(copy, []).added, 6);
+});

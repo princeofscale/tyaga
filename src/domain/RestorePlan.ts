@@ -1,6 +1,8 @@
 import type { Exercise, Routine, Workout } from "../lib/types";
 import type { ImportedWorkout } from "./WorkoutImport";
 import { quantity } from "../lib/quantity";
+import { DateText } from "./DateText";
+import { LaidDupPlan } from "./LaidDupPlan";
 
 export type ExistingData = { workouts: Workout[]; routines: Routine[]; customExercises: Exercise[]; favorites: string[] };
 export type Tally = { total: number; added: number; same: number; differs: number };
@@ -39,8 +41,40 @@ export class RestorePlan {
     return tally;
   }
 
+  /**
+   * Программа цикла Лейда при восстановлении получает новый id (`restore:…`), но сохраняет `cycleId` и день:
+   * по ним повторное восстановление узнаёт уже перенесённую программу, а не считает её новой (R11-REQ03).
+   */
+  private static laidKey(r: Routine) {
+    const p = LaidDupPlan.periodizationOf(r);
+    return p ? `laid:${p.cycleId}:${p.day}` : r.id;
+  }
   static routines(incoming: Routine[], existing: Routine[]) {
-    return this.byKey(incoming, existing, (r) => r.id, (a, b) => a.name === b.name && JSON.stringify(a.days) === JSON.stringify(b.days));
+    return this.byKey(incoming, existing, (r) => this.laidKey(r), (a, b) => a.name === b.name && JSON.stringify(a.days) === JSON.stringify(b.days));
+  }
+
+  /**
+   * Предупреждение над «Импортировать»: у аккаунта уже есть цикл Лейда, а копия принесёт ещё один (с другим `cycleId`).
+   * Пусто, если у аккаунта циклов нет, в копии нет программ с периодизацией или все её циклы уже на месте.
+   * Даты — старты циклов («18 янв.»; с годом, если он не текущий).
+   */
+  static laidNotice(incoming: Routine[], existing: Routine[], currentYear: string): string {
+    const mine = LaidDupPlan.cycles(existing);
+    if (!mine.length) return "";
+    const have = new Set(mine.map((c) => LaidDupPlan.periodizationOf(c[0])!.cycleId));
+    const fresh = LaidDupPlan.cycles(incoming.filter((r) => !existing.some((e) => e.id === r.id))).filter(
+      (c) => !have.has(LaidDupPlan.periodizationOf(c[0])!.cycleId),
+    );
+    if (!fresh.length) return "";
+    const starts = (cycles: Routine[][]) =>
+      cycles.map((c) => DateText.dayInYear(LaidDupPlan.periodizationOf(c[0])!.startMonday, currentYear)).join(", ");
+    const total = mine.length + fresh.length;
+    const words = ["", "", "два", "три", "четыре"];
+    const after = words[total] ? `будут ${words[total]} цикла` : `будет ${quantity(total, "цикл", "цикла", "циклов")}`;
+    return (
+      `В копии есть ${fresh.length === 1 ? "цикл" : "циклы"} Лейда (старт ${starts(fresh)}), ` +
+      `а у тебя уже есть ${mine.length === 1 ? "свой" : "свои"} (старт ${starts(mine)}). После импорта ${after}.`
+    );
   }
   static customExercises(incoming: Exercise[], existing: Exercise[]) {
     return this.byKey(incoming, existing, (e) => e.custom?.familyId ?? e.id, (a, b) => a.id === b.id);

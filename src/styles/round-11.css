@@ -29,3 +29,16 @@
     line-height: 1.3;
   }
 }
+
+/* R11-REQ03: строка над «Импортировать» — два цикла Лейда после восстановления. */
+.restore-laid-notice {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-2, var(--bg));
+  color: var(--text-soft);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}

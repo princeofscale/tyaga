@@ -191,6 +191,11 @@ export default function HistoryImporter({
     const favorites = RestorePlan.favorites(preview.extras?.favorites ?? [], existing.favorites);
     return { workouts, routines, customs, favorites, nothing: RestorePlan.nothingNew(workouts, [routines, customs, favorites]) };
   }, [preview, existing]);
+  // R11-REQ03: два цикла Лейда после восстановления — предупреждаем заранее; со снятым «Перенести программы» циклов не прибавится.
+  const laidNotice =
+    preview?.format === "tyaga" && existing && restoreExtras
+      ? RestorePlan.laidNotice(preview.extras?.routines ?? [], existing.routines, String(new Date().getFullYear()))
+      : "";
   // Счётчик считает ровно то, что случится при импорте: применённое упражнение — «сопоставлено», остальное — «Моё».
   const summary = ImportNameMatcher.summary(
     verdicts,
@@ -907,6 +912,11 @@ export default function HistoryImporter({
           ) : null}
           {preview.format !== "tyaga" ? (
             <p className="import-own-footer tiny">Будет создано своих упражнений: {summary.toDecide + summary.own}</p>
+          ) : null}
+          {laidNotice ? (
+            <p className="restore-laid-notice" role="status">
+              {laidNotice}
+            </p>
           ) : null}
           <button
             className="button primary full-width"

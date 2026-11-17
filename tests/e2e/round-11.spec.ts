@@ -1,4 +1,7 @@
 import { test, expect, type BrowserContext, type Page } from "@playwright/test";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { nav, round01Fixture, startWith } from "./fixtures/round01";
 import { smallTargets, clipped } from "./fixtures/touch";
 
@@ -351,4 +354,110 @@ test("R11-REQ06: 401 на выход без черновика — тоже вы
   await expect(dialog.getByText(/Запрос не завершился/)).toBeVisible();
   await expect(down.getByRole("heading", { name: "Снова в зале" })).toHaveCount(0);
   expect(await personalKeys(down)).toContain("tyaga-offline:session");
+});
+
+// ───────────── REQ03: «Восстановление из копии» и второй цикл Лейда ─────────────
+const backupDir = mkdtempSync(join(tmpdir(), "tyaga-r11-e2e-"));
+const cycleAt = (startMonday: string) => LaidDupPlan.routines({ maxes: MAXES, extras: true, light: false, startMonday }).map((r) => ({ ...r, revision: 1 }));
+const NOTICE = "В копии есть цикл Лейда (старт 19 янв.), а у тебя уже есть свой (старт 16 нояб.). После импорта будут два цикла.";
+function backupWith(name: string, routines: Routine[]) {
+  const path = join(backupDir, name);
+  writeFileSync(path, JSON.stringify({ format: "tyaga-backup", version: 5, workouts: [], routines, customExercises: [], favorites: [] }));
+  return path;
+}
+async function restoreDialog(page: Page, file: string) {
+  await nav(page, "Сегодня").click();
+  await page.getByRole("button", { name: /^Инструменты/ }).last().click();
+  await page.getByRole("button", { name: /Резервная копия/ }).click();
+  await page.getByRole("button", { name: "Восстановить из файла", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Восстановление из копии", exact: true });
+  await dialog.getByLabel("Файл истории тренировок").setInputFiles(file);
+  await dialog.getByRole("button", { name: "Показать предпросмотр", exact: true }).click();
+  await expect(dialog.getByRole("region", { name: "Что в копии" })).toBeVisible();
+  return dialog;
+}
+async function routineRestores(page: Page) {
+  const sent: string[] = [];
+  await page.route("**/api/import/metadata", async (route) => {
+    const body = route.request().postDataJSON();
+    if (body.kind === "routines") sent.push(...body.items.map((r: Routine) => r.id));
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ idMap: {}, exercises: [] }) });
+  });
+  return sent;
+}
+
+for (const size of SIZES) {
+  test(`R11-REQ03: у аккаунта уже есть цикл Лейда, в копии другой — строка над «Импортировать»; со снятым чекбоксом строки нет и программы не добавляются ${size.width}×${size.height}`, async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize(size);
+    const copy = cycleAt("2026-01-19");
+    await round01Fixture(page, { routines: cycleAt("2026-11-16") });
+    const sent = await routineRestores(page);
+    const dialog = await restoreDialog(page, backupWith("two-cycles.json", copy));
+    const notice = dialog.getByText(NOTICE, { exact: true });
+    await expect(notice).toBeVisible();
+    const go = dialog.getByRole("button", { name: "Импортировать", exact: true });
+    const [n, g] = [await notice.boundingBox(), await go.boundingBox()];
+    expect(n!.y + n!.height, "строка стоит над «Импортировать»").toBeLessThanOrEqual(g!.y);
+    expect((await clipped(page, "[role=dialog]")).wide).toEqual([]);
+    expect(await overflow(page)).toBeLessThanOrEqual(1);
+    // со снятым «Перенести программы» циклов не прибавится: строки нет, программы не уходят
+    const programs = dialog.getByLabel(/^Перенести программы/);
+    await programs.uncheck();
+    await expect(notice).toHaveCount(0);
+    await go.click();
+    await expect(dialog.getByRole("status", { name: "Итог восстановления" })).toBeVisible();
+    expect(sent).toEqual([]);
+  });
+}
+
+test("R11-REQ03: с галочкой — все шесть программ уходят на восстановление; итог «Восстановление завершено»; повторное восстановление циклов не плодит", async ({ page }) => {
+  test.setTimeout(120_000);
+  const copy = cycleAt("2026-01-19");
+  const store: Routine[] = cycleAt("2026-11-16");
+  await round01Fixture(page, { routines: store });
+  // сервер восстанавливает программу под новым id, но с тем же cycleId и днём; повтор пропускает уже перенесённое
+  const sent: string[] = [];
+  await page.route("**/api/import/metadata", async (route) => {
+    const body = route.request().postDataJSON();
+    if (body.kind === "routines")
+      for (const r of body.items as Routine[]) {
+        sent.push(r.id);
+        if (!store.some((e) => e.id === `restore:${r.id}` || e.id === r.id)) store.push({ ...r, id: `restore:${r.id}` });
+      }
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ idMap: {}, exercises: [] }) });
+  });
+  await page.route("**/api/product", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ routines: store, favorites: [], customExercises: [] }) }));
+  await page.reload();
+  const file = backupWith("again.json", copy);
+  const dialog = await restoreDialog(page, file);
+  await expect(dialog.getByText(NOTICE, { exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "Импортировать", exact: true }).click();
+  const result = dialog.getByRole("status", { name: "Итог восстановления" });
+  await expect(result).toContainText("Восстановление завершено.");
+  expect(sent).toHaveLength(6);
+  await result.getByRole("button", { name: "Закрыть", exact: true }).click();
+  expect(new Set(store.map((r) => r.periodization!.cycleId)).size, "ровно два цикла: свой и подтверждённый").toBe(2);
+  // повторное восстановление: цикл уже на месте — строки нет, «Новых 0», новых циклов нет
+  await page.reload();
+  const again = await restoreDialog(page, file);
+  await expect(again.getByText(/После импорта будут/)).toHaveCount(0);
+  await expect(again.getByRole("region", { name: "Что в копии" })).toContainText("Программы: 6");
+  await expect(again.getByRole("region", { name: "Что в копии" })).toContainText("Новых 0 · Уже есть 6 · Отличаются 0");
+  await again.getByRole("button", { name: "Импортировать", exact: true }).click();
+  await expect(again.getByRole("status", { name: "Итог восстановления" })).toBeVisible();
+  expect(new Set(store.map((r) => r.periodization!.cycleId)).size).toBe(2);
+  expect(store).toHaveLength(12);
+});
+
+test("R11-REQ03: цикла у аккаунта нет или в копии нет периодизации — строки нет", async ({ page }) => {
+  test.setTimeout(120_000);
+  const plainProgram = { ...cycleAt("2026-01-19")[0], id: "plain-copy", periodization: undefined } as Routine;
+  await round01Fixture(page, { routines: [{ ...plainProgram, id: "plain-mine" }] });
+  let dialog = await restoreDialog(page, backupWith("no-mine.json", cycleAt("2026-01-19")));
+  await expect(dialog.getByText(/После импорта будут/)).toHaveCount(0);
+  await page.route("**/api/product", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ routines: cycleAt("2026-11-16"), favorites: [], customExercises: [] }) }));
+  await page.reload();
+  dialog = await restoreDialog(page, backupWith("no-laid.json", [plainProgram]));
+  await expect(dialog.getByText(/После импорта будут/)).toHaveCount(0);
 });
