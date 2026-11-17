@@ -44,9 +44,12 @@ export function BodyweightProvider({
       )
         void journal.sync();
     };
-    const storage = () => {
+    // Только запись самого журнала. Отправка — только если в нём есть неотправленное: иначе две вкладки, обновляя
+    // «последняя синхронизация», бесконечно перебрасывают друг другу один и тот же ключ.
+    const storage = (e: StorageEvent) => {
+      if (!journal.watches(e.key)) return;
       journal.reload();
-      sync();
+      if (journal.pendingCount > 0) sync();
     };
     window.addEventListener("storage", storage);
     window.addEventListener("online", sync);

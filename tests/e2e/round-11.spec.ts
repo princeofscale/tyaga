@@ -659,3 +659,60 @@ test("R11-REQ07: история началась в текущем году — 
   await expect(card).toContainText("С 2 мар.");
   await expect(card).not.toContainText("2026");
 });
+
+// ───────────── Доработка 1: QA-R11-03 (строки в списке программ на неделе 10) ─────────────
+for (const size of [SIZES[0], SIZES[2]]) {
+  test(`R11-QA-03: неделя 10 — в списке программ нет красной «Пропущена», у пяти программ «Цикл закончен», сделанная — «Сделана» ${size.width}×${size.height}`, async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize(size);
+    const routines = sixRoutines();
+    const done = { ...doneWorkout("Лейд · Жим 1", "2027-01-05", [["bench", 75, 1, 1]]), routineId: routines[1].id };
+    await appWith(page, routines, [done]);
+    await setToday(page, "2027-01-12");
+    await programs(page);
+    const rows = page.locator("article.routine-card .laid-routine-line");
+    await expect(rows).toHaveCount(6);
+    await expect(rows.locator(".laid-status.missed")).toHaveCount(0);
+    await expect(rows.locator(".laid-status.ended")).toHaveCount(5);
+    await expect(rows.locator(".laid-status.ended").first()).toHaveText("Цикл закончен");
+    await expect(rows.locator(".laid-status.done")).toHaveText(["Сделана 5 янв."]);
+    await expect(page.locator(".laid-status.missed")).toHaveCount(0);
+    expect(await overflow(page)).toBeLessThanOrEqual(1);
+    expect((await clipped(page, "main")).wide).toEqual([]);
+  });
+}
+
+// ───────────── Доработка 1: QA-R11-07 (запись веса не гоняется между окнами) ─────────────
+test("R11-QA-07: два видимых окна не перебрасывают друг другу запись журнала веса; новый замер из одного окна доходит до другого", async ({ page, context }) => {
+  test.setTimeout(120_000);
+  const count = async (p: Page) => p.evaluate(() => (window as unknown as { __syncWrites: number }).__syncWrites);
+  const hook = () => {
+    // Оба окна видимы (рядом на экране): у фоновой вкладки Chromium в Playwright visibilityState — hidden, и обмена бы не было.
+    Object.defineProperty(Document.prototype, "visibilityState", { configurable: true, get: () => "visible" });
+    (window as unknown as { __syncWrites: number }).__syncWrites = 0;
+    const set = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key: string, value: string) {
+      if (String(key).startsWith("tyaga-bodyweight-sync")) (window as unknown as { __syncWrites: number }).__syncWrites++;
+      return set.call(this, key, value);
+    };
+  };
+  await context.addInitScript(hook);
+  await round01Fixture(page);
+  const tab2 = await openSecondTab(context);
+  await page.bringToFront();
+  const open = async (p: Page) => {
+    await p.getByRole("button", { name: /^Инструменты/ }).last().click();
+    await p.getByRole("button", { name: /Вес тела и тренд.*синхронизация/ }).click();
+    return p.getByRole("dialog").last();
+  };
+  const first = await open(page);
+  await first.getByLabel("Вес, кг", { exact: true }).fill("82,4");
+  await first.getByRole("button", { name: /Сохранить замер|Обновить замер/ }).click();
+  await expect(first.locator(".progress-metric.accent")).toContainText("82,4");
+  const second = await open(tab2);
+  await expect(second.locator(".progress-metric.accent")).toContainText("82,4", { timeout: 8000 });
+  const before = (await count(page)) + (await count(tab2));
+  await page.waitForTimeout(6000);
+  const writes = (await count(page)) + (await count(tab2)) - before;
+  expect(writes, "записей журнала за 6 с в двух окнах").toBeLessThan(12);
+});

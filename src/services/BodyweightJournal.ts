@@ -182,6 +182,10 @@ export class BodyweightJournal {
       hasHistory || !legacyAllowed ? null : legacy,
     );
   }
+  /** Событие `storage` с этим ключом — запись журнала другой вкладкой (R11-QA-R11-07); чужие ключи журнал не перечитывает. */
+  watches(key: string | null) {
+    return key === null || key === this.cacheKey;
+  }
   get pendingCount() {
     return Object.keys(this.state.pending).length;
   }
