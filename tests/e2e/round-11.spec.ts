@@ -623,3 +623,39 @@ test("R11-REQ05: «Заменить» и «Добавить упражнение
     await expect(page.getByRole("button", { name: `Добавить ${REAR}`, exact: true }), query).toBeVisible({ timeout: 1500 });
   }
 });
+
+// ───────────── REQ07: «Вес тела» — год в подписи «С … нояб.» ─────────────
+type WeightFixture = { weights: { documents: Map<string, unknown> } };
+function putWeights(f: WeightFixture, dates: string[]) {
+  dates.forEach((date, k) => {
+    const value = { id: `w${k}`, date, weightKg: 84 - k * 0.4, createdAt: Date.parse(`${date}T06:00:00.000Z`) };
+    f.weights.documents.set(`weight:${date}`, { key: `weight:${date}`, value, revision: 1, mutationId: `m${k}`, updatedAt: `${date}T06:00:00.000Z` });
+  });
+}
+for (const size of SIZES) {
+  test(`R11-REQ07: «Изменение за историю» — «С 29 нояб. 2025», если история началась не в этом году ${size.width}×${size.height}`, async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize(size);
+    const f = await round01Fixture(page);
+    putWeights(f, ["2025-11-29", "2026-02-10", "2026-11-09"]);
+    await page.reload();
+    await nav(page, "Прогресс").click();
+    await page.getByRole("tab", { name: "Вес тела", exact: true }).click();
+    const card = page.locator(".progress-metric").filter({ hasText: "Изменение за историю" });
+    await expect(card).toContainText("С 29 нояб. 2025");
+    expect(await overflow(page)).toBeLessThanOrEqual(1);
+    expect((await clipped(page, "main")).wide).toEqual([]);
+  });
+}
+
+test("R11-REQ07: история началась в текущем году — «С 2 мар.» без года, как раньше", async ({ page }) => {
+  test.setTimeout(90_000);
+  const f = await round01Fixture(page);
+  putWeights(f, ["2026-03-02", "2026-11-09"]);
+  await page.reload();
+  await nav(page, "Прогресс").click();
+  await page.getByRole("tab", { name: "Вес тела", exact: true }).click();
+  const card = page.locator(".progress-metric").filter({ hasText: "Изменение за историю" });
+  await expect(card).toContainText("С 2 мар.");
+  await expect(card).not.toContainText("2026");
+});

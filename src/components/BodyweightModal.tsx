@@ -439,7 +439,7 @@ export function BodyweightModal({
           </strong>
           <p>
             {entries.length > 1
-              ? `С ${dateLabel(entries[0].date)}`
+              ? `С ${DateText.dayInYear(entries[0].date, today.slice(0, 4))}`
               : "Нужны хотя бы два замера"}
           </p>
         </article>
