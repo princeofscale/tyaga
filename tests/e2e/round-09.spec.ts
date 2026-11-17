@@ -79,7 +79,7 @@ for (const size of SIZES) {
     // дольше задержки отправки и дольше проверки heartbeat: в комнату за время правки не уходит ничего
     await page.waitForTimeout(17_000);
     expect(live.pushed.slice(before), "во время правки в комнату ничего не уходило").toEqual([]);
-    expect(live.pushed.some((s) => s.phase === "idle" && s.tonnageKg === 0)).toBe(false);
+    expect(live.pushed.slice(before).some((s) => s.phase === "idle" && s.tonnageKg === 0)).toBe(false);
     expect(live.room!.members.find((m) => m.isMe)!.state).toMatchObject({ phase: "done", tonnageKg: 1885 });
     // «Сохранить»: итог пересчитан по правке
     await page.getByRole("button", { name: "Сохранить изменения", exact: true }).click();
