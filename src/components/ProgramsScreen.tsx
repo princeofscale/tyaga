@@ -66,6 +66,8 @@ export default function ProgramsScreen(props: Props) {
   const [laid, setLaid] = useState<{ mode: "create" | "update" | "restart"; cycleId?: string } | null>(null);
   const [schedule, setSchedule] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
+  /** Уведомление, которое покажется после сохранения копии программы Лейда. */
+  const [pendingNote, setPendingNote] = useState("");
   const [removed, setRemoved] = useState<{
     entry: Routine["exercises"][number];
     index: number;
@@ -121,6 +123,7 @@ export default function ProgramsScreen(props: Props) {
   const laidLift = laidEdited ? LaidDupPlan.LIFT_EXERCISE[LaidDupPlan.LIFT_OF[laidEdited.day]] : null;
   const laidPlan = editor && laidEdited ? LaidDupPlan.planFor(editor, today) : null;
   const open = (routine: Routine) => {
+    setPendingNote("");
     setEditor(structuredClone(routine));
     setError("");
     setConflict(null);
@@ -132,17 +135,35 @@ export default function ProgramsScreen(props: Props) {
     setError("");
     try {
       TrainingProgram.validateRanges(editor);
+      // Копия Лейда — обычная программа с весами плана на текущую неделю, а не недельным шаблоном при создании цикла.
+      const plan = asCopy ? LaidDupPlan.planFor(editor, today) : null;
+      const copied = plan
+        ? editor.exercises.map((e) => (e.exerciseId === plan.liftExerciseId ? { ...e, sets: LaidDupPlan.liftSets(plan) } : e))
+        : editor.exercises;
+      // Периодизация с битой структурой: сервер её не примет, поэтому при сохранении поле убирается — программа становится обычной.
+      const broken = !asCopy && LaidDupPlan.isBroken(editor);
       await props.onSave(
         asCopy
           ? {
               ...editor,
+              exercises: copied,
               periodization: undefined,
               id: crypto.randomUUID(),
               revision: 0,
               name: (editor.name + " (копия)").slice(0, 120),
             }
-          : editor,
+          : broken
+            ? { ...editor, periodization: undefined }
+            : editor,
       );
+      setNotice(
+        broken
+          ? "Периодизация программы повреждена и убрана — программа сохранена как обычная."
+          : plan
+            ? `Копия сохранена как обычная программа. Веса — по плану на неделю ${plan.position.week + 1}; периодизация не копируется.`
+            : pendingNote,
+      );
+      setPendingNote("");
       setEditor(null);
       setConflict(null);
     } catch (e) {
@@ -491,16 +512,23 @@ export default function ProgramsScreen(props: Props) {
               <button
                 className="icon-button"
                 aria-label={`Копировать программу ${r.name}`}
-                onClick={() =>
+                onClick={() => {
+                  // Копия — обычная программа: в цикле Лейда у каждого дня одна запись; веса лифта — по плану на текущую неделю.
+                  const plan = LaidDupPlan.planFor(r, today);
                   open({
                     ...r,
-                    // Копия — обычная программа: в цикле Лейда у каждого дня одна запись.
+                    exercises: plan
+                      ? r.exercises.map((e) => (e.exerciseId === plan.liftExerciseId ? { ...e, sets: LaidDupPlan.liftSets(plan) } : e))
+                      : r.exercises,
                     periodization: undefined,
                     id: crypto.randomUUID(),
                     revision: 0,
                     name: (r.name + " (копия)").slice(0, 120),
-                  })
-                }
+                  });
+                  setPendingNote(
+                    plan ? `Копия сохранена как обычная программа. Веса — по плану на неделю ${plan.position.week + 1}; периодизация не копируется.` : "",
+                  );
+                }}
               >
                 <Copy size={16} />
               </button>

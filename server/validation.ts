@@ -1,7 +1,7 @@
 import { ExecutionProfile } from "../src/domain/ExecutionProfile";
 import { MachineRegistry } from "../src/domain/MachineRegistry";
 import type { LaidMaxes, MachineInstance, RoutinePeriodization, SetEntry } from "../src/lib/types";
-import { LaidDupPlan } from "../src/domain/LaidDupPlan";
+import { PeriodizationRules } from "../src/domain/PeriodizationRules";
 import { isCalendarDate } from "../src/lib/calendar";
 import {
   exerciseById,
@@ -329,47 +329,11 @@ function validCycle(value: unknown): RoutineCycle {
     deloadRir: num(c.deloadRir, 0, 10, true),
   };
 }
-const PERIODIZATION_KEYS = ["kind", "cycleId", "day", "startMonday", "maxes", "maxesFromWeek", "earlier", "extras", "light"];
-function validLaidMaxes(value: unknown): LaidMaxes {
-  const m = object(value);
-  if (Object.keys(m).sort().join() !== "bench,deadlift,ohp,squat") throw new InputError("Проверь максимумы программы");
-  const kg = (v: unknown) => num(v, 1, LaidDupPlan.MAX_KG);
-  return { squat: kg(m.squat), bench: kg(m.bench), deadlift: kg(m.deadlift), ohp: kg(m.ohp) };
-}
-/** Периодизация программы: только известные поля, максимумы 1–500 кг, старт — понедельник, номера недель 0–9. */
+/** Периодизация программы: те же правила, что у клиента (`PeriodizationRules`); текст ошибки — для человека. */
 export function validPeriodization(value: unknown): RoutinePeriodization {
-  const p = object(value);
-  if (Object.keys(p).some((key) => !PERIODIZATION_KEYS.includes(key))) throw new InputError("Проверь периодизацию программы");
-  if (p.kind !== "laid-dup") throw new InputError("Проверь вид периодизации");
-  const day = LaidDupPlan.DAYS.find((d) => d === p.day);
-  if (!day) throw new InputError("Проверь день периодизации");
-  const startMonday = str(p.startMonday, 10, 10);
-  if (!isCalendarDate(startMonday) || new Date(startMonday + "T12:00:00Z").getUTCDay() !== 1)
-    throw new InputError("Старт программы — понедельник");
-  const maxesFromWeek = num(p.maxesFromWeek, 0, 9, true);
-  const earlier: { fromWeek: number; maxes: LaidMaxes }[] = [];
-  if (p.earlier !== undefined) {
-    if (!Array.isArray(p.earlier) || p.earlier.length > 8) throw new InputError("Проверь прежние максимумы");
-    for (const item of p.earlier) {
-      const e = object(item);
-      if (Object.keys(e).sort().join() !== "fromWeek,maxes") throw new InputError("Проверь прежние максимумы");
-      const fromWeek = num(e.fromWeek, 0, 9, true);
-      if (fromWeek >= maxesFromWeek || (earlier.length && fromWeek <= earlier[earlier.length - 1].fromWeek))
-        throw new InputError("Проверь недели прежних максимумов");
-      earlier.push({ fromWeek, maxes: validLaidMaxes(e.maxes) });
-    }
-  }
-  return {
-    kind: "laid-dup",
-    cycleId: str(p.cycleId, 80, 1),
-    day,
-    startMonday,
-    maxes: validLaidMaxes(p.maxes),
-    maxesFromWeek,
-    ...(earlier.length ? { earlier } : {}),
-    extras: bool(p.extras),
-    light: bool(p.light),
-  };
+  const checked = PeriodizationRules.check(value);
+  if (!checked.ok) throw new InputError(checked.message);
+  return checked.value;
 }
 export function validRoutine(
   value: unknown,

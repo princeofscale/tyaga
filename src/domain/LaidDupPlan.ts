@@ -1,4 +1,5 @@
-import { addCalendarDays, isCalendarDate } from "../lib/calendar";
+import { addCalendarDays } from "../lib/calendar";
+import { PeriodizationRules } from "./PeriodizationRules";
 import { estimatedOneRepMax, makeExerciseEntry, makeSets } from "../lib/model";
 import type {
   LaidDay,
@@ -14,7 +15,7 @@ export type LaidLift = keyof LaidMaxes;
 export const LAID_WEEKS = 9;
 /** Недель в одной волне: три волны по три недели. */
 const WAVE_WEEKS = 3;
-const MAX_KG = 500;
+const MAX_KG = PeriodizationRules.MAX_KG;
 
 /** Позиция недели в цикле: `raw` — номер недели от старта (0 — первая; < 0 до старта, ≥ 9 после цикла). */
 export type LaidPosition = {
@@ -65,7 +66,7 @@ const PUSH_TAIL = [a("lateral"), a("skullcrusher-ez"), a("triceps-db")];
  * поэтому официальный калькулятор может дать другие числа. Чистая логика: ни хранилища, ни React.
  */
 export class LaidDupPlan {
-  static readonly DAYS: LaidDay[] = ["legs1", "push1", "pull1", "legs2", "push2", "pull2"];
+  static readonly DAYS: LaidDay[] = PeriodizationRules.DAYS;
   static readonly NAMES: Record<LaidDay, string> = {
     legs1: "Лейд · Ноги 1",
     push1: "Лейд · Жим 1",
@@ -346,33 +347,18 @@ export class LaidDupPlan {
     return { value, error: null };
   }
 
-  private static maxesOk(value: unknown): value is LaidMaxes {
-    if (typeof value !== "object" || value === null) return false;
-    const m = value as Record<string, unknown>;
-    return (["squat", "bench", "deadlift", "ohp"] as const).every((k) => typeof m[k] === "number" && Number.isFinite(m[k]) && (m[k] as number) > 0 && (m[k] as number) <= MAX_KG);
-  }
   /**
-   * Периодизация программы, если её структура пригодна для расчёта; иначе undefined — программа считается обычной.
-   * Защита от данных, записанных не нашим клиентом (другая версия, прямой вызов API): битое поле не должно ронять экран.
+   * Периодизация программы, если её структура проходит те же правила, что на сервере (`PeriodizationRules`); иначе undefined —
+   * программа считается обычной. Защита от данных, записанных не нашим клиентом: битое поле не должно ронять экран.
    */
   static periodizationOf(routine: Routine | null | undefined): RoutinePeriodization | undefined {
     const p = routine?.periodization as unknown;
-    if (typeof p !== "object" || p === null) return undefined;
-    const v = p as Record<string, unknown>;
-    if (v.kind !== "laid-dup" || typeof v.cycleId !== "string" || !v.cycleId) return undefined;
-    if (!LaidDupPlan.DAYS.includes(v.day as LaidDay)) return undefined;
-    if (typeof v.startMonday !== "string" || !isCalendarDate(v.startMonday)) return undefined;
-    if (!LaidDupPlan.maxesOk(v.maxes)) return undefined;
-    if (typeof v.maxesFromWeek !== "number" || !Number.isInteger(v.maxesFromWeek) || v.maxesFromWeek < 0 || v.maxesFromWeek > 9) return undefined;
-    if (v.earlier !== undefined) {
-      if (!Array.isArray(v.earlier)) return undefined;
-      for (const e of v.earlier) {
-        if (typeof e !== "object" || e === null) return undefined;
-        const item = e as Record<string, unknown>;
-        if (typeof item.fromWeek !== "number" || !Number.isInteger(item.fromWeek) || !LaidDupPlan.maxesOk(item.maxes)) return undefined;
-      }
-    }
-    return p as RoutinePeriodization;
+    return p === undefined || p === null ? undefined : PeriodizationRules.check(p).ok ? (p as RoutinePeriodization) : undefined;
+  }
+  /** Поле есть, но структура битая (после правки программы его нужно убрать). */
+  static isBroken(routine: Routine | null | undefined): boolean {
+    const p = routine?.periodization as unknown;
+    return p !== undefined && !PeriodizationRules.check(p).ok;
   }
 
   /** Те же программы цикла, что и `routine` (по общему `cycleId`). */
