@@ -26,9 +26,11 @@ export default class TabErrorBoundary extends Component<Props, State> {
       <section className="panel tab-error" role="alert">
         <h2>Не удалось открыть вкладку</h2>
         <p>Остальные вкладки работают, данные не потеряны. Попробуй ещё раз или открой другую вкладку.</p>
-        <button type="button" className="button secondary" onClick={() => this.setState({ failed: false })}>
-          Попробовать снова
-        </button>
+        <div className="tab-error-actions">
+          <button type="button" className="button secondary" onClick={() => this.setState({ failed: false })}>
+            Попробовать снова
+          </button>
+        </div>
       </section>
     );
   }

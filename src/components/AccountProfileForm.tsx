@@ -8,7 +8,7 @@ import RecoveryCodeModal from "./RecoveryCodeModal";
 import { TimeZoneField } from "./TimeZoneField";
 import { Smartphone, UserRound, Sparkles } from "lucide-react";
 import { api } from "../services/ApiClient";
-import type { AccountProfile } from "../lib/account";
+import { signOutAccount } from "../services/signOut";import type { AccountProfile } from "../lib/account";
 import { cloudState } from "../device/cloudSync";
 import {
   THEMES,
@@ -61,8 +61,7 @@ export function AccountProfileForm({
     setBusy(true);
     setError("");
     try {
-      await api("/api/auth/logout", "POST", {});
-      onLogout();
+      await signOutAccount(onLogout);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось выйти");
       setBusy(false);

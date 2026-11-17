@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Dumbbell, LockKeyhole, LoaderCircle, ShieldCheck, Smartphone, Eye, EyeOff, ArrowRight, ArrowUpRight, AlertCircle } from "lucide-react";
 import { m, useReducedMotion } from "motion/react";
 import App from "../App";
+import AppErrorBoundary from "./AppErrorBoundary";
 import RecoveryCodeModal from "./RecoveryCodeModal";
 import { LiveRoomProvider } from "./LiveRoomProvider";
 import { api, ApiError } from "../services/ApiClient";
@@ -29,17 +30,18 @@ export default function AccountGate() {
       else setError(e instanceof Error ? e.message : "Не удалось открыть аккаунт");
     }
   }, []);
+  // Выход: на устройстве не остаётся ничего личного (черновик, журнал веса, офлайн-копия). Повтор — после размонтирования приложения.
+  const logout = useCallback(() => {
+    deviceAccountData.wipe();
+    setState({ registered: true, profile: null });
+    setTimeout(() => deviceAccountData.wipe(), 0);
+  }, []);
   useEffect(() => { void refresh(); window.addEventListener("tyaga:auth-expired", refresh); return () => window.removeEventListener("tyaga:auth-expired", refresh); }, [refresh]);
   if (!state) return <main className="account-loading auth-loading"><div className="auth-loading-mark"><Dumbbell size={32} aria-hidden="true" /></div><h1>Тяга</h1>{error ? <><p role="alert">{error}</p><button className="button primary" onClick={() => void refresh()}>Повторить</button></> : <p role="status">Открываем твой журнал…</p>}</main>;
   return <>
-    {state.profile ? <LiveRoomProvider key={state.profile.id}><App account={state.profile}
+    {state.profile ? <AppErrorBoundary key={state.profile.id} onLogout={logout}><LiveRoomProvider key={state.profile.id}><App account={state.profile}
       onAccountChange={profile => { offlineSnapshot.saveSession(profile); setState({ registered: true, profile }); }}
-      onLogout={() => {
-        // Выход: на устройстве не остаётся ничего личного (черновик, журнал веса, офлайн-копия). Повтор — после размонтирования приложения.
-        deviceAccountData.wipe();
-        setState({ registered: true, profile: null });
-        setTimeout(() => deviceAccountData.wipe(), 0);
-      }} /></LiveRoomProvider>
+      onLogout={logout} /></LiveRoomProvider></AppErrorBoundary>
       : <SignIn registered={state.registered} onSignedIn={(profile, recoveryCode, fresh) => {
         // Офлайн-запуск должен работать сразу после первого входа, а не после второй онлайн-загрузки.
         deviceAccountData.purgeOthers(profile.id);
