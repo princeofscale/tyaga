@@ -97,11 +97,31 @@ export class AccountService {
     ]);
     return token;
   }
-  private async limit() {
+  /** Неудачные попытки за последние 15 минут; удачная попытка счётчик сбрасывает. */
+  private async attempts() {
+    const row = await this.db.prepare("SELECT attempts, window_start FROM auth_limits WHERE platform_id = ?")
+      .bind(this.platformId).first<{ attempts: number; window_start: number }>();
+    if (!row) return 0;
+    return row.window_start < Date.now() - 900000 ? 0 : row.attempts;
+  }
+  private async noteFailure() {
     const now = Date.now();
-    const result = await this.db.prepare("INSERT INTO auth_limits (platform_id,attempts,window_start) VALUES (?,1,?) ON CONFLICT(platform_id) DO UPDATE SET attempts = CASE WHEN auth_limits.window_start < ? THEN 1 ELSE auth_limits.attempts + 1 END, window_start = CASE WHEN auth_limits.window_start < ? THEN excluded.window_start ELSE auth_limits.window_start END RETURNING attempts")
-      .bind(this.platformId, now, now - 900000, now - 900000).first<{ attempts: number }>();
-    if ((result?.attempts ?? 99) > 15) throw new AuthError("Слишком много попыток. Попробуй через 15 минут.", 429);
+    await this.db.prepare("INSERT INTO auth_limits (platform_id,attempts,window_start) VALUES (?,1,?) ON CONFLICT(platform_id) DO UPDATE SET attempts = CASE WHEN auth_limits.window_start < ? THEN 1 ELSE auth_limits.attempts + 1 END, window_start = CASE WHEN auth_limits.window_start < ? THEN excluded.window_start ELSE auth_limits.window_start END")
+      .bind(this.platformId, now, now - 900000, now - 900000).run();
+  }
+  private async clearFailures() {
+    await this.db.prepare("DELETE FROM auth_limits WHERE platform_id = ?").bind(this.platformId).run();
+  }
+  /**
+   * Проверка перед сверкой пароля. Считаются только отказы: успешный вход
+   * обнуляет счётчик, иначе 15 удачных входов за 15 минут запирали аккаунт.
+   */
+  private async guard() {
+    if ((await this.attempts()) >= 15)
+      throw new AuthError("Слишком много попыток. Попробуй через 15 минут.", 429);
+  }
+  private async emailTaken(address: string) {
+    return !!(await this.db.prepare("SELECT 1 AS taken FROM accounts WHERE email = ?").bind(address).first());
   }
   async handle(request: Request): Promise<Response | null> {
     const path = new URL(request.url).pathname;
@@ -112,32 +132,51 @@ export class AccountService {
     if (raw.length > 12000) throw new InputError("Слишком большой запрос");
     const v = object(JSON.parse(raw || "{}"));
     if (["/api/auth/register", "/api/auth/login", "/api/auth/recover"].includes(path) && request.method === "POST") {
-      await this.limit();
+      await this.guard();
       const address = email(v.email), secret = password(v.password), row = await this.account();
       if (path === "/api/auth/register") {
         if (row) throw new AuthError("Для этого аккаунта уже есть профиль Тяги. Перейди ко входу.", 409);
+        // Одна почта — один профиль. UNIQUE(email) в схеме страхует от гонки, но
+        // честнее ответить 409, чем упасть в 503 на нарушении ограничения.
+        if (await this.emailTaken(address))
+          throw new AuthError("Эта почта уже зарегистрирована. Войди с ней.", 409);
         const salt = random(16), recoveryCode = random(16), id = crypto.randomUUID();
         const timeZone = zone(v.timeZone), name = str(v.displayName, 80, 1);
-        const inserted = await this.db.prepare("INSERT INTO accounts (id,platform_id,email,display_name,password_hash,salt,recovery_hash,time_zone,body_mass_kg,revision,created_at) VALUES (?,?,?,?,?,?,?,?,NULL,1,?) ON CONFLICT(platform_id) DO NOTHING RETURNING *")
-          .bind(id, this.platformId, address, name, await passwordHash(secret, salt), salt, await hash(recoveryCode), timeZone, new Date().toISOString()).first<AccountRow>();
+        let inserted: AccountRow | null = null;
+        try {
+          inserted = await this.db.prepare("INSERT INTO accounts (id,platform_id,email,display_name,password_hash,salt,recovery_hash,time_zone,body_mass_kg,revision,created_at) VALUES (?,?,?,?,?,?,?,?,NULL,1,?) ON CONFLICT(platform_id) DO NOTHING RETURNING *")
+            .bind(id, this.platformId, address, name, await passwordHash(secret, salt), salt, await hash(recoveryCode), timeZone, new Date().toISOString()).first<AccountRow>();
+        } catch (error) {
+          if (/UNIQUE/i.test(error instanceof Error ? error.message : String(error)))
+            throw new AuthError("Эта почта уже зарегистрирована. Войди с ней.", 409);
+          throw error;
+        }
         if (!inserted) throw new AuthError("Профиль уже создан. Перейди ко входу.", 409);
+        await this.clearFailures();
         // Existing workouts keep their original owner. New timezone applies only
         // to new records; historical date-only entries are never shifted.
         return this.reply({ profile: profile(inserted), recoveryCode }, request, await this.newSession(id), 201);
       }
       if (path === "/api/auth/recover") {
         const code = str(v.recoveryCode, 64, 1).replace(/\s/g, "").toLowerCase();
-        if (!row || row.email !== address || !equal(await hash(code), row.recovery_hash))
+        if (!row || row.email !== address || !equal(await hash(code), row.recovery_hash)) {
+          await this.noteFailure();
           throw new AuthError("Почта или код восстановления не подошли.");
+        }
         const salt = random(16), recoveryCode = random(16);
         const updated = await this.db.prepare("UPDATE accounts SET password_hash = ?, salt = ?, recovery_hash = ?, revision = revision + 1 WHERE id = ? AND recovery_hash = ? AND revision = ? RETURNING *")
           .bind(await passwordHash(secret, salt), salt, await hash(recoveryCode), row.id, row.recovery_hash, row.revision).first<AccountRow>();
         if (!updated) throw new AuthError("Код уже использован или профиль изменился. Войди с новым паролем.", 409);
         await this.db.prepare("DELETE FROM sessions WHERE account_id = ?").bind(row.id).run();
+        await this.clearFailures();
         return this.reply({ profile: profile(updated), recoveryCode }, request, await this.newSession(row.id));
       }
       const actual = await passwordHash(secret, row?.salt ?? "unregistered-account-placeholder");
-      if (!row || row.email !== address || !equal(actual, row.password_hash)) throw new AuthError("Почта или пароль не подошли.");
+      if (!row || row.email !== address || !equal(actual, row.password_hash)) {
+        await this.noteFailure();
+        throw new AuthError("Почта или пароль не подошли.");
+      }
+      await this.clearFailures();
       return this.reply({ profile: profile(row) }, request, await this.newSession(row.id));
     }
     const current = await this.require(request);
@@ -157,26 +196,34 @@ export class AccountService {
       return this.reply({ profile: profile(updated) }, request);
     }
     if (path === "/api/auth/password" && request.method === "POST") {
-      await this.limit();
+      await this.guard();
       const row = (await this.account())!;
-      if (!equal(await passwordHash(password(v.currentPassword), row.salt), row.password_hash)) throw new AuthError("Текущий пароль не подошёл.");
+      if (!equal(await passwordHash(password(v.currentPassword), row.salt), row.password_hash)) {
+        await this.noteFailure();
+        throw new AuthError("Текущий пароль не подошёл.");
+      }
       const salt = random(16);
       const updated = await this.db.prepare("UPDATE accounts SET password_hash = ?, salt = ?, revision = revision + 1 WHERE id = ? AND revision = ? RETURNING *")
         .bind(await passwordHash(password(v.password), salt), salt, row.id, row.revision).first<AccountRow>();
       if (!updated) throw new AuthError("Профиль изменился. Обнови страницу перед сменой пароля.", 409);
       await this.db.prepare("DELETE FROM sessions WHERE account_id = ?").bind(row.id).run();
+      await this.clearFailures();
       return this.reply({ profile: profile(updated) }, request, await this.newSession(row.id));
     }
     if (path === "/api/auth/recovery-code" && request.method === "POST") {
       // Старый код нигде не хранится (только хэш), поэтому показать его нельзя: выпускается новый, старый перестаёт подходить.
       // Нужен вход и текущий пароль; попытки считаются так же, как у входа и смены пароля.
-      await this.limit();
+      await this.guard();
       const row = (await this.account())!;
-      if (!equal(await passwordHash(password(v.currentPassword), row.salt), row.password_hash)) throw new AuthError("Текущий пароль не подошёл.");
+      if (!equal(await passwordHash(password(v.currentPassword), row.salt), row.password_hash)) {
+        await this.noteFailure();
+        throw new AuthError("Текущий пароль не подошёл.");
+      }
       const recoveryCode = random(16);
       const updated = await this.db.prepare("UPDATE accounts SET recovery_hash = ? WHERE id = ? AND recovery_hash = ? RETURNING id")
         .bind(await hash(recoveryCode), row.id, row.recovery_hash).first<{ id: string }>();
       if (!updated) throw new AuthError("Код только что выпустили на другом устройстве. Повтори.", 409);
+      await this.clearFailures();
       return this.reply({ recoveryCode }, request);
     }
     return this.reply({ error: "Не найдено" }, request, undefined, 404);

@@ -137,16 +137,22 @@ test("dashboard stays readable at phone, tablet and desktop widths", async ({
     await page.goto("/");
     await ready(page);
     await noOverflow(page);
-    await expect(
-      page.getByRole("button", { name: "Начать тренировку", exact: true }),
-    ).toBeVisible();
+    const primary = page.getByRole("button", { name: "Начать тренировку", exact: true });
+    await expect(primary).toBeInViewport();
+    const current = page.getByRole("navigation", { name: "Основная навигация" }).locator('[aria-current="page"]');
+    await expect(current).toHaveText("Сегодня");
+    await expect(page.locator('.week-days-strip [aria-current="date"]')).toHaveCount(1);
+    if (width < 700) {
+      const preview = page.getByRole("heading", { name: "План тренировки" });
+      expect((await primary.boundingBox())!.y).toBeLessThan((await preview.boundingBox())!.y);
+    }
     await expect(
       page.getByRole("button", { name: "Мой профиль", exact: true }),
     ).toBeVisible();
     const fonts = await page
       .locator("#plan-title")
       .evaluate((el) => getComputedStyle(el).fontFamily);
-    expect(fonts).toContain("Tyaga Display");
+    expect(fonts).toContain("Golos Text");
     // Не запасной системный шрифт: файлы гарнитур из fonts.css действительно загрузились (CSP пускает только свои).
     const loaded = await page.evaluate(() =>
       [...document.fonts]
@@ -156,10 +162,10 @@ test("dashboard stays readable at phone, tablet and desktop widths", async ({
     expect(
       loaded,
       "кириллические начертания заголовка и интерфейса",
-    ).toEqual(expect.arrayContaining(["Tyaga Display", "Onest Variable"]));
+    ).toEqual(expect.arrayContaining(["Sofia Sans Condensed", "Golos Text"]));
     await expect(page.locator("html")).toHaveAttribute(
       "data-theme-accent",
-      "lime",
+      "ember",
     );
     if (width === 390 || width === 1440) await shot(page, `dashboard-${width}`);
     if (width === 390) await shot(page, "dashboard-390-viewport", false);
@@ -216,7 +222,10 @@ test("profile contract, saved colors and all desktop navigation remain functiona
     await expect(page.locator(".page-content")).toHaveCSS("opacity", "1");
     await noOverflow(page);
     if (name === "Прогресс") await shot(page, "progress-1440");
-    if (name === "Упражнения") await shot(page, "library-1440");
+    if (name === "Упражнения") {
+      await expect(page.locator(".library-card").first()).toBeVisible();
+      await shot(page, "library-1440");
+    }
   }
   await nav.getByRole("button", { name: "Сегодня", exact: true }).click();
   await ready(page);
@@ -236,7 +245,7 @@ test("mobile tool dialogs and workout inputs retain their exact set targets", as
     ["Разминочная лесенка", "Разминочная лесенка (OpenGym)"],
   ]) {
     await page
-      .getByRole("button", { name: /^Инструменты/ })
+      .getByRole("button", { name: "Ещё", exact: true })
       .last()
       .click();
     await page.getByRole("button", { name: new RegExp(button) }).click();
@@ -333,6 +342,7 @@ test("actual authentication screen has safe controls and working error/success t
   ).toBeVisible();
   await page.evaluate(() => document.fonts.ready.then(() => undefined));
   await noOverflow(page);
+  await expect(page.locator(".auth-editorial, .auth-plate-art")).toHaveCount(0);
   await shot(page, "auth-1440");
   await page.setViewportSize({ width: 390, height: 844 });
   await noOverflow(page);
@@ -348,6 +358,50 @@ test("actual authentication screen has safe controls and working error/success t
   await page.getByLabel("Почта", { exact: true }).fill(PROFILE.email);
   await page.getByRole("button", { name: "Войти в Тягу", exact: true }).click();
   await ready(page);
+  clean();
+});
+
+test("local font fallbacks still show the day and the start action on a phone", async ({ page }) => {
+  const clean = await preview(page);
+  await page.setViewportSize({ width: 360, height: 780 });
+  await page.route("**/assets/*.woff2", (route) => route.abort());
+  await page.goto("/");
+  await ready(page);
+  await noOverflow(page);
+  await expect(page.getByRole("button", { name: "Начать тренировку", exact: true })).toBeInViewport();
+  clean();
+});
+
+test("workout draws a check on completion and keeps it when motion is reduced", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  const clean = await preview(page);
+  await page.goto("/");
+  await ready(page);
+  await page.getByRole("button", { name: "Начать тренировку", exact: true }).click();
+  const row = page.locator(".set-row").first();
+  await row.locator('input[aria-label$=", вес"]').fill("60");
+  await row.locator('input[aria-label$=", повторы"]').fill("8");
+  const check = row.locator(".set-check");
+  const samples = await check.evaluate(async (el) => {
+    const path = el.querySelector(".set-check-feedback path")!;
+    const samples: number[] = [];
+    (el as HTMLButtonElement).click();
+    for (let i = 0; i < 18; i++) {
+      await new Promise(requestAnimationFrame);
+      samples.push(Number.parseFloat(path.getAttribute("stroke-dasharray") ?? ""));
+    }
+    return samples;
+  });
+  expect(samples.some((value) => value > 0 && value < 1)).toBe(true);
+  await expect(check).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(() => check.locator("path").evaluate((path) => parseFloat(path.getAttribute("stroke-dasharray") ?? ""))).toBe(1);
+  const track = page.locator(".workout-session-progress-fill");
+  await expect.poll(() => track.evaluate((fill) => new DOMMatrixReadOnly(getComputedStyle(fill).transform).a)).toBeCloseTo(1 / 12, 3);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.reload();
+  await page.getByRole("button", { name: "Продолжить тренировку", exact: true }).click();
+  await expect(check).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(() => check.locator("path").evaluate((path) => parseFloat(path.getAttribute("stroke-dasharray") ?? ""))).toBe(1);
   clean();
 });
 

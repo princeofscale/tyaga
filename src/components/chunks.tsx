@@ -10,3 +10,4 @@ export const HistoryImporter = lazyChunk(() => import("./HistoryImporter"), "И�
 export const AppleHealthPanel = lazyChunk(() => import("./AppleHealthPanel"), "Показатели часов не загрузились");
 export const CloudSyncPanel = lazyChunk(() => import("./CloudSyncPanel"), "Облако не загрузилось");
 export const PoseAnalysisPanel = lazyChunk(() => import("./PoseAnalysisPanel"), "Анализ видео не загрузился");
+export const WorkoutDetailModal = lazyChunk(() => import("./WorkoutDetailModal"), "Окно тренировки не загрузилось");

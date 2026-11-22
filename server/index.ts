@@ -22,6 +22,7 @@ import { BackupImportService } from "./BackupImportService";
 import { exerciseById } from "../src/lib/model";
 import { AccountService, AuthError } from "./AccountService";
 import { FriendsRepository } from "./FriendsRepository";
+import { SharedProgramRepository } from "./SharedProgramRepository";
 import { MeetupRepository } from "./MeetupRepository";
 import { LiveRoomService } from "./LiveRoomService";
 import { BodyweightRepository } from "./BodyweightRepository";
@@ -107,7 +108,22 @@ export async function handleApi(request: Request, env: Env) {
       const friends = new FriendsRepository(env.DB, activeAccount);
       const path = url.pathname;
       const meetups=new MeetupRepository(env.DB,activeAccount);
-      if(path === "/api/friends" && request.method === "GET") return json({...await friends.read(),meetups:await meetups.read()});
+      const sharedPrograms = new SharedProgramRepository(env.DB, activeAccount);
+      if(path === "/api/friends" && request.method === "GET") return json({...await friends.read(),meetups:await meetups.read(),sharedPrograms:await sharedPrograms.read()});
+      if(path === "/api/friends/programs" && request.method === "POST") return json(await sharedPrograms.create(object(await readBody(request))));
+      if(path.startsWith("/api/friends/programs/")) {
+        const rest = path.slice("/api/friends/programs/".length);
+        if (rest.endsWith("/adopt") && request.method === "POST") {
+          const id = str(decodeURIComponent(rest.slice(0, -"/adopt".length)), 80, 1);
+          await sharedPrograms.adopt(id);
+          return json({ ok: true });
+        }
+        if (request.method === "DELETE") {
+          await sharedPrograms.remove(str(decodeURIComponent(rest), 80, 1));
+          return json({ ok: true });
+        }
+        return json({ error: "Не найдено" }, 404);
+      }
       if(path === "/api/friends/meetups" && request.method === "POST") return json(await meetups.create(await readBody(request)));
       if(path.startsWith("/api/friends/meetups/") && request.method === "PUT") { await meetups.act(str(decodeURIComponent(path.slice("/api/friends/meetups/".length)),80,1),await readBody(request));return json({ok:true}); }
       if(path === "/api/friends/goal" && request.method === "PUT") {await friends.goal(object(await readBody(request)).target);return json({ok:true});}
@@ -458,7 +474,10 @@ export default {
     headers.set("Referrer-Policy", "same-origin");
     headers.set(
       "Content-Security-Policy",
-      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'",
+      // connect-src: MediaPipe-модель анализа техники лежит на storage.googleapis.com
+      // (src/services/PoseVideoAnalysis.ts). Без явного хоста фича падает в проде,
+      // хотя в e2e на vite preview (без этого заголовка) проходит.
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://storage.googleapis.com; font-src 'self'; object-src 'none'; base-uri 'self'",
     );
     return new Response(response.body, { status: response.status, headers });
   },

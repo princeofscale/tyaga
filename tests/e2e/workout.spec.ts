@@ -401,7 +401,7 @@ test("dumbbells, explicit sides and assistance keep distinct input rules", async
       })
       .click();
   }
-  await page.getByLabel("Тренажёр / блок", { exact: true }).fill("Ассист A");
+  await expect(page.getByLabel("Тренажёр / блок", { exact: true })).toHaveCount(0);
   await expect(page.getByLabel("Выполненные стороны")).toHaveAttribute("data-value", "both");
   await expect(page.locator(".session-summary-stats")).toContainText("800");
   await page
@@ -416,6 +416,8 @@ test("dumbbells, explicit sides and assistance keep distinct input rules", async
   expect(exercises[1].performedSides).toBe("both");
   expect(exercises[2].sets[0].assistanceKg).toBe(40);
   expect(exercises[2].sets[0].weight).toBe(0);
+  expect(exercises[2].equipmentNote).toBeUndefined();
+  expect(exercises[2].machineInstanceId).toBeUndefined();
 });
 
 test("a rejected save scrolls its reason into view instead of failing silently", async ({
@@ -423,7 +425,10 @@ test("a rejected save scrolls its reason into view instead of failing silently",
 }) => {
   // Невысокий экран телефона: сообщение живёт над подходами и без прокрутки осталось бы за краем.
   await page.setViewportSize({ width: 390, height: 700 });
-  await startBench(page, "[E2E] Тренажёр без названия");
+  await startBench(page, "[E2E] Отклонённая запись");
+  await page.route("**/api/workouts", (route) => route.request().method() === "PUT"
+    ? route.fulfill({ status: 422, json: { error: "Не удалось записать эту тренировку" } })
+    : route.fallback());
   const machine = "Подтягивания с помощью тренажёра";
   await addExercise(page, machine);
   await page.getByLabel(`${machine}, подход 1, помощь`, { exact: true }).fill("40");
@@ -441,8 +446,8 @@ test("a rejected save scrolls its reason into view instead of failing silently",
     .getByRole("button", { name: "Завершить тренировку", exact: true })
     .click();
 
-  // Сервер не принимает тренажёр без названия: причина должна оказаться на экране, а не над ним и не под липкой шапкой.
-  const reason = page.getByRole("alert").filter({ hasText: "Укажи тренажёр" });
+  // Ошибка сохранения должна быть видна, даже если пользователь внизу списка.
+  const reason = page.getByRole("alert").filter({ hasText: "Не удалось записать эту тренировку" });
   await expect(reason).toBeVisible();
   await expect(reason).toBeInViewport({ ratio: 1 });
   const hidden = await reason.evaluate((node) => {
@@ -566,7 +571,7 @@ test("anatomy atlas supports mouse, keyboard, mobile and enlarged text", async (
     await page.evaluate(() =>
       [...document.fonts].some(
         (face) =>
-          face.family.replaceAll('"', "") === "Onest Variable" &&
+          face.family.replaceAll('"', "") === "Golos Text" &&
           face.status === "loaded",
       ),
     ),

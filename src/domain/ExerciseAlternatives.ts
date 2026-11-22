@@ -1,6 +1,7 @@
-import type { Exercise } from "../lib/types";
+import type { AnatomicalMuscle, Exercise } from "../lib/types";
 import { EXERCISES } from "../lib/catalog";
 import { MUSCLES } from "../data/muscles";
+import { MuscleParticipation } from "./MuscleParticipation";
 
 export interface ExerciseAlternative {
   exercise: Exercise;
@@ -14,7 +15,13 @@ export type DetectedEquipment = "barbell" | "dumbbell" | "cable" | "machine" | "
 export function detectExerciseEquipment(e: Exercise): DetectedEquipment {
   const name = e.name.toLowerCase();
   const id = e.id.toLowerCase();
-  if (e.recording.loadMode === "bodyweight" || e.equipment === "bodyweight") return "bodyweight";
+  if (
+    e.recording.loadMode === "bodyweight" ||
+    e.recording.loadMode === "added_bodyweight" ||
+    e.equipment === "bodyweight"
+  )
+    return "bodyweight";
+  if (e.recording.loadMode === "assisted_bodyweight") return "machine";
   if (e.recording.loadMode === "per_implement" || e.equipment === "dumbbells" || name.includes("гантел") || id.includes("db")) return "dumbbell";
   // R09-QA-03: блоки и кроссоверы тоже идут «на стеке» (machine_stack), но это отдельный снаряд — проверяем их раньше тренажёра.
   if (name.includes("блок") || name.includes("канат") || name.includes("кроссовер") || id.includes("cable") || id.includes("pulldown")) return "cable";
@@ -30,9 +37,22 @@ const EQUIPMENT_NAMES: Record<DetectedEquipment, string> = {
   bodyweight: "Свой вес",
 };
 
+const SUBHEAD_MUSCLES: ReadonlySet<AnatomicalMuscle> = new Set([
+  "pectoralis-clavicular",
+  "pectoralis-sternal",
+  "pectoralis-abdominal",
+  "deltoid-anterior",
+  "deltoid-middle",
+  "deltoid-posterior",
+  "gastrocnemius",
+  "soleus",
+]);
+
 export class ExerciseAlternativesFinder {
   /**
-   * Finds the best alternative exercises targeting the same primary muscle groups.
+   * Finds the best alternative exercises targeting the same primary muscles,
+   * anatomical subheads (via MuscleParticipation, never substring guessing),
+   * and movement family.
    */
   public static findAlternatives(
     currentExercise: Exercise,
@@ -43,12 +63,13 @@ export class ExerciseAlternativesFinder {
     const curPrimary = new Set(currentExercise.primary);
     const curSecondary = new Set(currentExercise.secondary);
     const curEquip = detectExerciseEquipment(currentExercise);
-    const curName = currentExercise.name.toLowerCase();
-
-    const isUpperChest = curName.includes("наклон") || curName.includes("верх") || curId.includes("incline");
-    const isLowerChest = curName.includes("сверху") || curName.includes("низ") || curId.includes("decline") || curId.includes("dip");
-    const isRearDelt = curName.includes("задн") || curId.includes("rear");
-    const isSideDelt = curName.includes("средн") || curName.includes("махи") || curId.includes("lateral");
+    const curRoles = MuscleParticipation.roles(currentExercise);
+    const curAnatPrimary = new Set(
+      curRoles.filter((r) => r.role === "primary").map((r) => r.muscleId),
+    );
+    const curAnatAssist = new Set(
+      curRoles.filter((r) => r.role === "assistant").map((r) => r.muscleId),
+    );
 
     const scored: ExerciseAlternative[] = [];
 
@@ -59,33 +80,39 @@ export class ExerciseAlternativesFinder {
       if (!hasPrimaryOverlap) continue;
 
       let score = 0;
-      const candName = cand.name.toLowerCase();
-      const candId = cand.id.toLowerCase();
       const candEquip = detectExerciseEquipment(cand);
+      const candRoles = MuscleParticipation.roles(cand);
 
-      // Primary muscle match: 40 points per matching primary muscle
+      // Same movement family (e.g., bench-press, horizontal-row, knee-flexion): strong biomechanical match
+      if (cand.familyId && cand.familyId === currentExercise.familyId) {
+        score += 35;
+      }
+
+      // Same joint action (e.g., horizontal abduction, hip extension, knee flexion)
+      for (const action of cand.jointActions) {
+        if (currentExercise.jointActions.includes(action)) {
+          score += 22;
+        }
+      }
+
+      // Primary zone match: 40 points per matching primary zone
       for (const p of cand.primary) {
         if (curPrimary.has(p)) score += 40;
       }
 
-      // Secondary muscle match: 10 points each
+      // Exact anatomical muscle & subhead match (prevents string-guessing bugs like "верхних блоков" → upper chest)
+      for (const role of candRoles) {
+        if (role.role === "primary" && curAnatPrimary.has(role.muscleId)) {
+          score += SUBHEAD_MUSCLES.has(role.muscleId) ? 45 : 12;
+        } else if (role.role === "assistant" && curAnatAssist.has(role.muscleId)) {
+          score += 5;
+        }
+      }
+
+      // Secondary zone match: 10 points each
       for (const s of cand.secondary) {
         if (curSecondary.has(s)) score += 10;
         if (curPrimary.has(s)) score += 8;
-      }
-
-      // Sub-head anatomical synergy
-      if (isUpperChest && (candName.includes("наклон") || candName.includes("верх") || candId.includes("incline"))) {
-        score += 35;
-      }
-      if (isLowerChest && (candName.includes("сверху") || candName.includes("низ") || candName.includes("брусь") || candId.includes("decline") || candId.includes("dip"))) {
-        score += 35;
-      }
-      if (isRearDelt && (candName.includes("задн") || candId.includes("rear"))) {
-        score += 35;
-      }
-      if (isSideDelt && (candName.includes("средн") || candName.includes("махи") || candId.includes("lateral"))) {
-        score += 35;
       }
 
       // Equipment variety bonus: if gym equipment differs, give a small boost
@@ -98,7 +125,7 @@ export class ExerciseAlternativesFinder {
       const primaryNames = cand.primary
         .map((p) => MUSCLES.find((m) => m.id === p)?.short || p)
         .join(", ");
-      
+
       let equipReason = "";
       if (candEquip !== curEquip) {
         const fromEquip = EQUIPMENT_NAMES[curEquip];

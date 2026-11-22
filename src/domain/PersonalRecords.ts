@@ -350,39 +350,70 @@ export class PersonalRecordsCalculator {
         const count = we.sets.filter((s) => s.done && !s.warmup).length;
         if (!count) continue;
 
-        const isPush =
-          ex.primary.some((p) =>
-            ["chest", "triceps"].includes(p),
-          ) ||
-          ex.muscles.some(
-            (m) =>
+        const primaryAnat = ex.muscles.filter((m) => m.role === "primary").map((m) => m.muscleId);
+        const hasAnat = primaryAnat.length > 0;
+
+        // Верх тела: жимовые и тяговые мышцы. Разгибатели спины (erector-spinae — становая/гиперэкстензия)
+        // и мышцы кора не искажают соотношение жимов/тяг и верх/низ.
+        const isPush = hasAnat
+          ? primaryAnat.some((id) =>
               [
                 "pectoralis-major",
+                "pectoralis-clavicular",
+                "pectoralis-sternal",
+                "pectoralis-abdominal",
                 "triceps-brachii",
                 "deltoid-anterior",
-              ].includes(m.muscleId) && m.role === "primary",
-          );
+              ].includes(id),
+            )
+          : ex.primary.some((p) => ["chest", "triceps"].includes(p));
 
-        const isPull =
-          ex.primary.some((p) => ["back", "biceps"].includes(p)) ||
-          ex.muscles.some(
-            (m) =>
+        const isPull = hasAnat
+          ? primaryAnat.some((id) =>
               [
                 "latissimus-dorsi",
-                "biceps-brachii",
+                "teres-major",
                 "trapezius-upper",
+                "trapezius-middle",
+                "trapezius-lower",
+                "rhomboids",
                 "deltoid-posterior",
-              ].includes(m.muscleId) && m.role === "primary",
-          );
+                "biceps-brachii",
+                "brachialis",
+                "brachioradialis",
+              ].includes(id),
+            )
+          : ex.primary.some((p) => ["back", "biceps"].includes(p));
 
-        const isUpper = ex.primary.some((p) =>
-          ["chest", "back", "shoulders", "biceps", "triceps", "core"].includes(
-            p,
-          ),
-        );
-        const isLower = ex.primary.some((p) =>
-          ["quads", "hamstrings", "glutes", "calves"].includes(p),
-        );
+        const isUpper = hasAnat
+          ? isPush ||
+            isPull ||
+            primaryAnat.some((id) =>
+              ["deltoid-middle", "infraspinatus", "teres-minor", "supraspinatus", "serratus-anterior"].includes(id),
+            )
+          : ex.primary.some((p) =>
+              ["chest", "back", "shoulders", "biceps", "triceps"].includes(p),
+            );
+        const isLower = hasAnat
+          ? primaryAnat.some((id) =>
+              [
+                "quadriceps-vasti",
+                "rectus-femoris",
+                "gluteus-maximus",
+                "gluteus-medius",
+                "adductor-magnus",
+                "biceps-femoris-long",
+                "biceps-femoris-short",
+                "semitendinosus",
+                "semimembranosus",
+                "gastrocnemius",
+                "soleus",
+                "tibialis-anterior",
+              ].includes(id),
+            )
+          : ex.primary.some((p) =>
+              ["quads", "hamstrings", "glutes", "calves"].includes(p),
+            );
 
         if (isPush) pushSets += count;
         if (isPull) pullSets += count;

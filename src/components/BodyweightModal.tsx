@@ -136,11 +136,9 @@ export function BodyweightModal({
     >
       <div className="progress-section-title">
         <div>
-          <span className="eyebrow">МАССА ТЕЛА</span>
-          <h2>Вес и его динамика</h2>
-          <p>Сравнивай замеры в похожих условиях — например, утром до еды.</p>
+          <h2>Вес тела</h2>
         </div>
-        <Scale size={25} />
+        <Scale size={22} aria-hidden="true" />
       </div>
       <section className="weight-sync-panel" aria-label="Сохранение веса">
         <div role="status">
@@ -235,10 +233,7 @@ export function BodyweightModal({
         >
           <div className="progress-card-head">
             <div>
-              <h3>Динамика веса</h3>
-              <p>
-                Сплошная линия соединяет взвешивания. Пунктир — сглаживание.
-              </p>
+              <h3>Динамика</h3>
             </div>
             <div
               className="progress-period"
@@ -267,18 +262,13 @@ export function BodyweightModal({
             goal={goal.targetWeightKg}
           />
           <div className="weight-goal">
-            <Target size={20} />
+            <Target size={20} aria-hidden="true" />
             <div>
               <b>
                 {goal.targetWeightKg === null
                   ? "Цель по весу"
                   : `Цель: ${fmt(goal.targetWeightKg)} кг`}
               </b>
-              <p>
-                {goal.targetWeightKg === null
-                  ? "Необязательно. Помогает держать ориентир."
-                  : "Цель показана отдельно и не сжимает график."}
-              </p>
             </div>
             <button
               className="text-button"
@@ -342,7 +332,6 @@ export function BodyweightModal({
             <Plus size={22} />
           </span>
           <h3 id="weight-form-title">Записать вес</h3>
-          <p>Один замер на дату. Повторное сохранение обновит запись.</p>
           <form onSubmit={save}>
             <label htmlFor={weightInputId}>
               Вес, кг
@@ -408,11 +397,6 @@ export function BodyweightModal({
               {notice}
             </p>
           )}
-          <p className="tiny">
-            Последний замер используется в новых упражнениях с весом тела. Масса
-            в сохранённых тренировках остаётся прежней. Без сети изменения
-            остаются на устройстве и отправляются при восстановлении связи.
-          </p>
         </section>
       </div>
       {/* R08-REQ03: форма «Записать вес» идёт первой, обзор — ниже; на широком экране порядок на глаз прежний (round-08.css). */}
@@ -453,8 +437,8 @@ export function BodyweightModal({
           </strong>
           <p>
             {rate.label === "Мало данных"
-              ? "От 3 замеров за 7 дней и больше"
-              : "По фактическим замерам, без прогноза"}
+              ? "От 3 замеров за 7 дней"
+              : "За 28 дней"}
           </p>
         </article>
       </div>

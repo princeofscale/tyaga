@@ -1,4 +1,4 @@
-export type ThemeId = "lime" | "cyan" | "emerald" | "gold" | "violet";
+export type ThemeId = "ember" | "cyan" | "emerald" | "gold" | "violet" | "lime";
 
 export interface ThemeDef {
   id: ThemeId;
@@ -7,16 +7,18 @@ export interface ThemeDef {
   accentHover: string;
   accentSubtle: string;
   accentGlow: string;
+  onAccent: string;
 }
 
 export const THEMES: ThemeDef[] = [
   {
-    id: "lime",
-    name: "Лайм",
-    accent: "#cafa64",
-    accentHover: "#dcff93",
-    accentSubtle: "rgba(202, 250, 100, 0.10)",
-    accentGlow: "rgba(202, 250, 100, 0.18)",
+    id: "ember",
+    name: "Коралл",
+    accent: "#e2441f",
+    accentHover: "#f2532e",
+    accentSubtle: "rgba(226, 68, 31, 0.14)",
+    accentGlow: "rgba(226, 68, 31, 0.34)",
+    onAccent: "#ffffff",
   },
   {
     id: "cyan",
@@ -25,6 +27,7 @@ export const THEMES: ThemeDef[] = [
     accentHover: "#33ebff",
     accentSubtle: "rgba(0, 229, 255, 0.12)",
     accentGlow: "rgba(0, 229, 255, 0.35)",
+    onAccent: "#061018",
   },
   {
     id: "emerald",
@@ -33,6 +36,7 @@ export const THEMES: ThemeDef[] = [
     accentHover: "#34d399",
     accentSubtle: "rgba(16, 185, 129, 0.14)",
     accentGlow: "rgba(16, 185, 129, 0.35)",
+    onAccent: "#05140e",
   },
   {
     id: "gold",
@@ -41,19 +45,30 @@ export const THEMES: ThemeDef[] = [
     accentHover: "#fbbf24",
     accentSubtle: "rgba(245, 158, 11, 0.14)",
     accentGlow: "rgba(245, 158, 11, 0.35)",
+    onAccent: "#171004",
   },
   {
     id: "violet",
     name: "Фиолетовый",
-    accent: "#a855f7",
-    accentHover: "#c084fc",
-    accentSubtle: "rgba(168, 85, 247, 0.14)",
-    accentGlow: "rgba(168, 85, 247, 0.35)",
+    accent: "#8b5cf6",
+    accentHover: "#a78bfa",
+    accentSubtle: "rgba(139, 92, 246, 0.16)",
+    accentGlow: "rgba(139, 92, 246, 0.38)",
+    onAccent: "#ffffff",
+  },
+  {
+    id: "lime",
+    name: "Лайм",
+    accent: "#cafa64",
+    accentHover: "#dcff93",
+    accentSubtle: "rgba(202, 250, 100, 0.10)",
+    accentGlow: "rgba(202, 250, 100, 0.18)",
+    onAccent: "#0b1208",
   },
 ];
 
 const STORAGE_KEY = "tyaga_theme_accent";
-export const DEFAULT_THEME: ThemeId = "lime";
+export const DEFAULT_THEME: ThemeId = "ember";
 
 export function getCurrentTheme(): ThemeId {
   try {
@@ -83,6 +98,7 @@ export function applyTheme(themeId: ThemeId, persist = true): void {
     root.style.setProperty("--accent-hover", def.accentHover);
     root.style.setProperty("--accent-subtle", def.accentSubtle);
     root.style.setProperty("--accent-glow", def.accentGlow);
+    root.style.setProperty("--on-accent", def.onAccent);
     root.setAttribute("data-theme-accent", def.id);
   }
 }

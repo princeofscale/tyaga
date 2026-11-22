@@ -80,7 +80,7 @@ function yearJournal(): Workout[] {
 const overflow = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 const openBackup = async (page: Page) => {
   await nav(page, "Сегодня").click();
-  await page.getByRole("button", { name: /^Инструменты/ }).last().click();
+  await page.getByRole("button", { name: "Ещё", exact: true }).last().click();
   await page.getByRole("button", { name: /Резервная копия/ }).click();
 };
 

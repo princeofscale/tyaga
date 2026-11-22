@@ -26,6 +26,28 @@ function machine() {
   return m;
 }
 
+test("stack and assistance can be logged without inventing a machine identity", async () => {
+  const { call } = await setup();
+  const workout = makeWorkout(["row", "pullup-assisted"], [], "UTC");
+  assert.equal(workout.exercises.length, 2);
+  workout.exercises.forEach((entry, index) => {
+    entry.sets = [{ ...entry.sets[0], weight: index ? 0 : 50, reps: 8, done: true, ...(index ? { assistanceKg: 30 } : {}) }];
+  });
+  const result = await call<{ workout: Workout }>("a", "/api/workouts", "PUT", workout);
+  assert.equal(result.status, 200, JSON.stringify(result.data));
+  for (const entry of result.data.workout.exercises) {
+    assert.equal(entry.machineInstanceId, undefined);
+    assert.equal(entry.equipmentNote, undefined);
+  }
+  assert.equal(result.data.workout.exercises[0].sets[0].weight, 50);
+  assert.equal(result.data.workout.exercises[1].sets[0].assistanceKg, 30);
+  assert.equal(volumeSummary([result.data.workout]).total, 0);
+  const machineVolume = TrainingVolume.machines([result.data.workout]);
+  assert.equal(machineVolume.length, 1);
+  assert.equal(machineVolume[0].machineId, undefined);
+  assert.equal(machineVolume[0].volume, 400);
+});
+
 test("machine registry is owner-scoped, revision-safe, idempotent and preserves saved workout snapshots", async () => {
   const { call } = await setup();
   const m = machine();

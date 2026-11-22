@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["@cloudflare/workers-types", "node"]
+  },
+  "include": ["tests/e2e", "playwright.config.ts", "playwright.visual.config.ts", "playwright.agent-baseline.config.ts", "playwright.agent-product.config.ts", "playwright.agent-rounds.config.ts"]
+}

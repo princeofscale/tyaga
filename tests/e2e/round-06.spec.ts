@@ -19,7 +19,7 @@ const BENCH = "Жим штанги лёжа";
 const SIZES = [{ width: 390, height: 844 }, { width: 360, height: 800 }];
 const overflow = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 const openTool = async (page: Page, name: RegExp | string) => {
-  await page.getByRole("button", { name: /^Инструменты/ }).last().click();
+  await page.getByRole("button", { name: "Ещё", exact: true }).last().click();
   await page.getByRole("button", { name: typeof name === "string" ? new RegExp(name) : name }).click();
 };
 
@@ -125,7 +125,14 @@ test("QA-R06-02: вторая разгрузочная тренировка не
   const weight = page.getByLabel(`${BENCH}, подход 1, вес`, { exact: true });
   for (const round of [1, 2]) {
     await nav(page, "Сегодня").click();
-    await page.getByRole("button", { name: "Начать тренировку", exact: true }).first().click();
+    if (round === 1) {
+      await page.getByRole("button", { name: "Начать тренировку", exact: true }).click();
+    } else {
+      await expect(page.getByRole("button", { name: "Посмотреть запись", exact: true })).toBeVisible();
+      await nav(page, "Программы").click();
+      await page.locator(".routine-card").filter({ hasText: "Ноги А" })
+        .getByRole("button", { name: "Начать", exact: true }).click();
+    }
     await expect(page.getByRole("textbox", { name: "Название тренировки" }), `тренировка ${round}`).toHaveValue("Ноги А [Разгрузка]");
     await expect(weight, `тренировка ${round}: старт`).toHaveValue("80");
     const repeat = page.getByRole("button", { name: /^Повторить прошлые/ }).first();

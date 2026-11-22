@@ -1,24 +1,9 @@
-import { quantity } from "../lib/quantity";
+import { m, useReducedMotion } from "motion/react";
 import { lazy, Suspense, useState, useEffect, useMemo, useRef } from "react";
+import { ChevronRight, Plus, Save, Trash2 } from "lucide-react";
+import { TrainingProgram, DAY_NAMES } from "../domain/TrainingProgram";
+import { TrainingCalendar, type ScheduledTraining } from "../domain/TrainingCalendar";
 import {
-  CalendarDays,
-  Check,
-  Copy,
-  Dumbbell,
-  Pencil,
-  Play,
-  Plus,
-  Save,
-  Trash2,
-} from "lucide-react";
-import {
-  TrainingProgram,
-  DAY_NAMES,
-  weightSourceSummary,
-} from "../domain/TrainingProgram";
-import {
-  addCalendarDays,
-  weekStart,
   localDate,
   exerciseForEntry,
   exerciseById,
@@ -35,9 +20,13 @@ import Select from "./Select";
 import { ExerciseLibrary } from "./chunks";
 import { DeloadPlan, type DeloadPlanRecord } from "../domain/DeloadPlan";
 import { dateLabel } from "../lib/calendar";
-import { LaidDupPlan } from "../domain/LaidDupPlan";
+import { LaidDupPlan, type LaidDay } from "../domain/LaidDupPlan";
 import LaidDupModal from "./LaidDupModal";
-import { LaidDupCard, LaidDupSchedule, LaidRoutineLine } from "./LaidDupPanel";
+import { LaidDupCard, LaidDupSchedule, LaidWeekScheduleModal } from "./LaidDupPanel";
+import ScheduleOccurrenceModal from "./ScheduleOccurrenceModal";
+import ProgramRoutineCard from "./ProgramRoutineCard";
+import ProgramWeek from "./ProgramWeek";
+import "../styles/programs.css";
 
 type Props = {
   routines: Routine[];
@@ -48,23 +37,37 @@ type Props = {
   onFavorite: (id: string) => void;
   onSave: (r: Routine) => Promise<Routine>;
   onDelete: (r: Routine) => Promise<void>;
-  onStart: (r: Routine) => void;
+  onStart: (r: Routine, slot?: ScheduledTraining) => void;
+  onOpenWorkout?: (workout: Workout) => void;
   /** Действующая разгрузка на неделю (R04-REQ02) и её отмена. */
   deload?: DeloadPlanRecord | null;
   onCancelDeload?: () => void;
   initial?: Routine | null;
   onInitialUsed?: () => void;
 };
+const laidCopyNotice = (week: number) => "Копия сохранена. Веса из недели " + week + ", без периодизации.";
+
 export default function ProgramsScreen(props: Props) {
   const [editor, setEditor] = useState<Routine | null>(props.initial ?? null);
-  const [offset, setOffset] = useState(0),
-    [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
+  const reduceMotion = useReducedMotion();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
   const [deleting, setDeleting] = useState<Routine | null>(null);
   const [picker, setPicker] = useState(false);
-  /** R10: окно Лейда (создать / обновить максимумы / новый цикл) и расписание на 9 недель; цикл — по общему cycleId. */
+  /** R10: окно Лейда (создать / обновить максимумы / новый цикл), расписание на 9 недель и настройка дней недели; цикл — по общему cycleId. */
   const [laid, setLaid] = useState<{ mode: "create" | "update" | "restart"; cycleId?: string } | null>(null);
   const [schedule, setSchedule] = useState<string | null>(null);
+  const [weekEditor, setWeekEditor] = useState<string | null>(null);
+  const [adjustment, setAdjustment] = useState<Pick<ScheduledTraining, "routine" | "originalDate"> | null>(null);
+  const [calendarNotice, setCalendarNotice] = useState("");
+  const calendarHeading = useRef<HTMLHeadingElement>(null);
+  const focusCalendarAfterSave = useRef(false);
+  useEffect(() => {
+    if (!adjustment && focusCalendarAfterSave.current) {
+      focusCalendarAfterSave.current = false;
+      calendarHeading.current?.focus({ preventScroll: true });
+    }
+  }, [adjustment]);
   const [notice, setNotice] = useState("");
   /** Уведомление, которое покажется после сохранения копии программы Лейда. */
   const [pendingNote, setPendingNote] = useState("");
@@ -100,12 +103,8 @@ export default function ProgramsScreen(props: Props) {
   const [conflict, setConflict] = useState<{ current: Routine | null } | null>(
     null,
   );
-  const anchor = addCalendarDays(
-      weekStart(new Date(), props.timeZone),
-      offset * 7,
-    ),
-    today = localDate(new Date(), props.timeZone),
-    hasCycle = props.routines.some((r) => !!r.cycle);
+  const today = localDate(new Date(), props.timeZone);
+  const hasCycle = props.routines.some((r) => !!r.cycle);
   const laidCycles = useMemo(() => LaidDupPlan.cycles(props.routines), [props.routines]);
   const cycleById = (id?: string) => laidCycles.find((c) => c[0].periodization!.cycleId === id) ?? laidCycles[0];
   /** isDeload walks the whole history per routine, so it stays off the keystroke path. */
@@ -150,6 +149,7 @@ export default function ProgramsScreen(props: Props) {
               ...editor,
               exercises: copied,
               periodization: undefined,
+              occurrenceOverrides: undefined,
               id: crypto.randomUUID(),
               revision: 0,
               name: (editor.name + " (копия)").slice(0, 120),
@@ -162,7 +162,7 @@ export default function ProgramsScreen(props: Props) {
         broken
           ? "Периодизация программы повреждена и убрана — программа сохранена как обычная."
           : plan
-            ? `Копия сохранена как обычная программа. Веса — по плану на неделю ${plan.position.week + 1}; периодизация не копируется.`
+            ? laidCopyNotice(plan.position.week + 1)
             : pendingNote,
       );
       setPendingNote("");
@@ -172,6 +172,50 @@ export default function ProgramsScreen(props: Props) {
       if (e instanceof ApiError && e.status === 409)
         setConflict({ current: e.data.currentRoutine ?? null });
       setError(e instanceof Error ? e.message : "Ошибка сохранения");
+    } finally {
+      setBusy(false);
+    }
+  }
+  const editOccurrence = (routine: Routine, originalDate: string) => {
+    setCalendarNotice("");
+    setAdjustment({ routine, originalDate });
+  };
+  async function saveOccurrence(destination: string | null | undefined) {
+    if (!adjustment) return;
+    const { routine, originalDate } = adjustment;
+    await props.onSave(TrainingCalendar.withOverride(routine, originalDate, destination, props.workouts));
+    setCalendarNotice(destination === undefined ? "Тренировка возвращена в план."
+      : destination === null ? "Тренировка пропущена."
+      : `Тренировка перенесена на ${dateLabel(destination, true)}.`);
+    focusCalendarAfterSave.current = true;
+    setAdjustment(null);
+  }
+  /** Перестановка тренировок цикла Лейда по дням недели: сохраняются только изменившиеся программы. */
+  async function saveLaidWeekdays(cycle: Routine[], weekdays: Record<LaidDay, number>) {
+    const updates = LaidDupPlan.withWeekdays(cycle, weekdays, props.workouts, today);
+    if (!updates.length) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    let saved = 0;
+    try {
+      for (const routine of updates) {
+        await props.onSave(routine);
+        saved++;
+      }
+      const assigned = new Set(Object.values(weekdays));
+      const restIdx = [0, 1, 2, 3, 4, 5, 6].find((d) => !assigned.has(d));
+      setNotice(
+        restIdx !== undefined
+          ? `Дни цикла Лейда обновлены: выходной — ${DAY_NAMES[restIdx]}.`
+          : "Дни цикла Лейда обновлены.",
+      );
+    } catch (e) {
+      const msg =
+        (e instanceof Error ? e.message : "Не удалось сохранить дни недели") +
+        (saved ? ` Уже обновлено программ: ${saved} из ${updates.length} — проверь расписание и повтори.` : "");
+      setError(msg);
+      throw new Error(msg, { cause: e });
     } finally {
       setBusy(false);
     }
@@ -287,7 +331,7 @@ export default function ProgramsScreen(props: Props) {
       return { ...r, exercises };
     });
   return (
-    <div className="programs-screen">
+    <div className="programs-screen programs-ledger">
       {props.deload ? (
         <div className="deload-active-banner" role="status">
           <span>
@@ -301,221 +345,86 @@ export default function ProgramsScreen(props: Props) {
           ) : null}
         </div>
       ) : null}
-      <section className="week-planner panel">
-        <div className="panel-header">
-          <div>
-            <span className="eyebrow">НЕДЕЛЬНЫЙ РИТМ</span>
-            <h2>План на неделю</h2>
-          </div>
-          <div className="week-controls">
-            <button
-              aria-label="Предыдущая неделя плана"
-              onClick={() => setOffset((n) => n - 1)}
-            >
-              Раньше
-            </button>
-            <button onClick={() => setOffset(0)}>Сегодня</button>
-            <button
-              aria-label="Следующая неделя плана"
-              onClick={() => setOffset((n) => n + 1)}
-            >
-              Позже
-            </button>
-          </div>
-        </div>
-        <div className="program-week">
-          {DAY_NAMES.map((day, index) => {
-            const date = addCalendarDays(anchor, index),
-              programs = props.routines.filter((r) => r.days.includes(index));
-            const recorded = props.workouts.filter((w) => w.date === date);
-            return (
-              <div
-                className={`program-day ${today === date ? "today" : ""}`}
-                key={day}
-              >
-                <div className="program-day-label">
-                  <span>{day}</span>
-                  <b>{Number(date.slice(-2))}</b>
-                </div>
-                {programs.map((r) => {
-                  const done = recorded.some((w) => w.routineId === r.id);
-                  return (
-                    <button
-                      className={`day-session ${done ? "completed" : ""}`}
-                      key={r.id}
-                      onClick={() =>
-                        date === today ? props.onStart(r) : open(r)
-                      }
-                    >
-                      <span>
-                        {done ? <Check size={14} /> : <Dumbbell size={14} />}
-                      </span>
-                      {r.name}
-                      <small>
-                        {done
-                          ? "Записано"
-                          : quantity(
-                              r.exercises.length,
-                              "упражнение",
-                              "упражнения",
-                              "упражнений",
-                            )}
-                      </small>
-                    </button>
-                  );
-                })}
-                {!programs.length ? (
-                  <span className="rest-day">Свободный день</span>
-                ) : null}
-                {recorded
-                  .filter((w) => !programs.some((r) => r.id === w.routineId))
-                  .map((w) => (
-                    <div className="day-recorded" key={w.id}>
-                      <Check size={12} />
-                      {w.name}
-                    </div>
-                  ))}
-              </div>
-            );
-          })}
-        </div>
-        <p className="tiny planner-caption">
-          Дни повторяются каждую неделю. Программу можно начать в любой день;
-          выполненные сессии отмечаются по фактической дате.
-        </p>
-      </section>
-      <div className="section-heading">
-        <div>
-          <span className="eyebrow">ТВОИ ШАБЛОНЫ</span>
-          <h2>Сохранённые программы</h2>
-        </div>
-        <button
-          className="button primary"
-          onClick={() => open({ ...TrainingProgram.empty(), name: "" })}
-        >
-          <Plus size={18} />
-          Создать программу
-        </button>
-      </div>
-      {error && !editor && !deleting ? (
-        <p className="error-banner" role="alert">
-          {error}
-        </p>
-      ) : null}
-      {notice && !editor ? (
-        <p className="progression-note laid-notice" role="status">
-          {notice}
-        </p>
-      ) : null}
-      {laidCycles.map((cycle) => (
-        <LaidDupCard
-          key={cycle[0].periodization!.cycleId}
-          cycle={cycle}
-          workouts={props.workouts}
+      <ProgramWeek
+        routines={props.routines}
+        workouts={props.workouts}
+        today={today}
+        notice={calendarNotice}
+        headingRef={calendarHeading}
+        onAdjust={editOccurrence}
+        onEdit={open}
+        onStart={props.onStart}
+        onOpenWorkout={props.onOpenWorkout}
+      />
+      {adjustment ? (
+        <ScheduleOccurrenceModal
+          name={adjustment.routine.name}
+          originalDate={adjustment.originalDate}
           today={today}
-          busy={busy}
-          onSchedule={() => setSchedule(cycle[0].periodization!.cycleId)}
-          onUpdate={() =>
-            setLaid({
-              mode: LaidDupPlan.position(LaidDupPlan.weekOf(cycle[0].periodization!.startMonday, today)).finished ? "restart" : "update",
-              cycleId: cycle[0].periodization!.cycleId,
-            })
+          override={adjustment.routine.occurrenceOverrides?.find((o) => o.from === adjustment.originalDate)}
+          onSave={saveOccurrence}
+          onEditLaidDays={
+            LaidDupPlan.periodizationOf(adjustment.routine)
+              ? () => {
+                  const id = LaidDupPlan.periodizationOf(adjustment.routine)!.cycleId;
+                  setAdjustment(null);
+                  setWeekEditor(id);
+                }
+              : undefined
           }
-          onRecalc={() => void recalc(cycle)}
+          onClose={() => setAdjustment(null)}
         />
-      ))}
-      <div className="routine-grid">
-        {LaidDupPlan.ordered(props.routines).map((r) => (
-          <article className="routine-card panel" key={r.id}>
-            <div className="routine-card-top">
-              <span className="feature-tag">
-                {r.days.length
-                  ? r.days.map((d) => DAY_NAMES[d]).join(" · ")
-                  : "В ЛЮБОЙ ДЕНЬ"}
-              </span>
-              <button
-                className="icon-button"
-                aria-label={`Редактировать программу ${r.name}`}
-                onClick={() => open(r)}
-              >
-                <Pencil size={17} />
-              </button>
-            </div>
-            <h3>{r.name}</h3>
-            {LaidDupPlan.periodizationOf(r) ? <LaidRoutineLine routine={r} workouts={props.workouts} today={today} /> : null}
-            {deloadRoutineIds.has(r.id) ? (
-              <p
-                className="progression-note"
-                style={{
-                  margin: "12px 0 0",
-                  padding: "10px 12px",
-                  fontSize: "0.8rem",
-                  color: "var(--text-soft)",
-                }}
-              >
-                Разгрузочная неделя · половина подходов, 70% веса
-              </p>
-            ) : null}
-            <p>
-              {quantity(
-                r.exercises.length,
-                "упражнение",
-                "упражнения",
-                "упражнений",
-              )}{" "}
-              ·{" "}
-              {quantity(
-                new TrainingProgram(r).workingSets,
-                "рабочий подход",
-                "рабочих подхода",
-                "рабочих подходов",
-              )}
-            </p>
-            <div className="routine-exercise-names">
-              {r.exercises.slice(0, 4).map((e) => {
-                const planned =
-                  e.repMin === undefined && e.repMax === undefined
-                    ? null
-                    : new TrainingProgram(r).range(e);
-                return (
-                  <span key={e.exerciseId}>
-                    {entryName(e)}
-                    {planned
-                      ? ` · ${e.sets.filter((s) => !s.warmup).length} × ${planned.min === planned.max ? planned.min : `${planned.min}–${planned.max}`}`
-                      : ""}
-                  </span>
-                );
+      ) : null}
+      <section className="program-library" aria-labelledby="saved-programs-title">
+        <header className="section-heading routine-heading">
+          <h2 id="saved-programs-title">Сохранённые программы</h2>
+          <m.button
+            type="button"
+            className="button primary"
+            whileTap={reduceMotion ? undefined : { scale: 0.98 }}
+            onClick={() => open({ ...TrainingProgram.empty(), name: "" })}
+          >
+            <Plus size={18} aria-hidden="true" />
+            Создать программу
+          </m.button>
+        </header>
+        {error && !editor && !deleting ? <p className="error-banner" role="alert">{error}</p> : null}
+        {notice && !editor ? <p className="progression-note laid-notice" role="status">{notice}</p> : null}
+        {laidCycles.map((cycle) => {
+          const plan = cycle[0].periodization!;
+          return (
+            <LaidDupCard
+              key={plan.cycleId}
+              cycle={cycle}
+              workouts={props.workouts}
+              today={today}
+              busy={busy}
+              onSchedule={() => setSchedule(plan.cycleId)}
+              onEditDays={() => setWeekEditor(plan.cycleId)}
+              onUpdate={() => setLaid({
+                mode: LaidDupPlan.position(LaidDupPlan.weekOf(plan.startMonday, today)).finished ? "restart" : "update",
+                cycleId: plan.cycleId,
               })}
-              {r.exercises.length > 4 ? (
-                <span>Ещё {r.exercises.length - 4}</span>
-              ) : null}
-            </div>
-            <small>
-              {r.progression === "double"
-                ? `Прогрессия: ${r.repMin}–${r.repMax} повт., шаг ${r.incrementKg} кг`
-                : "Повторять структуру, брать веса из истории"}
-              {" · "}
-              {weightSourceSummary(
-                new TrainingProgram(r).weightSources(
-                  props.workouts,
-                  props.timeZone,
-                  today,
-                ),
-              )}
-            </small>
-            <div className="routine-card-actions">
-              <button
-                className="button primary"
-                onClick={() => props.onStart(r)}
-              >
-                <Play size={16} />
-                Начать
-              </button>
-              <button
-                className="icon-button"
-                aria-label={`Копировать программу ${r.name}`}
-                onClick={() => {
-                  // Копия — обычная программа: в цикле Лейда у каждого дня одна запись; веса лифта — по плану на текущую неделю.
+              onRecalc={() => void recalc(cycle)}
+            />
+          );
+        })}
+        {props.routines.length ? (
+          <div className="routine-grid">
+            {LaidDupPlan.ordered(props.routines).map((r) => (
+              <ProgramRoutineCard
+                key={r.id}
+                routine={r}
+                workouts={props.workouts}
+                timeZone={props.timeZone}
+                today={today}
+                deload={deloadRoutineIds.has(r.id)}
+                onEdit={() => open(r)}
+                onStart={() => {
+                  const slot = TrainingCalendar.onDate([r], today).find((item) => !TrainingCalendar.completed(item, props.workouts));
+                  props.onStart(r, slot);
+                }}
+                onCopy={() => {
                   const plan = LaidDupPlan.planFor(r, today);
                   open({
                     ...r,
@@ -523,110 +432,48 @@ export default function ProgramsScreen(props: Props) {
                       ? r.exercises.map((e) => (e.exerciseId === plan.liftExerciseId ? { ...e, sets: LaidDupPlan.liftSets(plan) } : e))
                       : r.exercises,
                     periodization: undefined,
+                    occurrenceOverrides: undefined,
                     id: crypto.randomUUID(),
                     revision: 0,
                     name: (r.name + " (копия)").slice(0, 120),
                   });
-                  setPendingNote(
-                    plan ? `Копия сохранена как обычная программа. Веса — по плану на неделю ${plan.position.week + 1}; периодизация не копируется.` : "",
-                  );
+                  setPendingNote(plan ? laidCopyNotice(plan.position.week + 1) : "");
                 }}
-              >
-                <Copy size={16} />
-              </button>
-              <button
-                className="icon-button"
-                aria-label={`Удалить программу ${r.name}`}
-                onClick={() => {
-                  setDeleting(r);
-                  setError("");
-                }}
-              >
-                <Trash2 size={16} />
-              </button>
-            </div>
-          </article>
-        ))}
-      </div>
-      {!props.routines.length ? (
-        <div className="program-empty panel">
-          <CalendarDays size={30} />
-          <h3>Собери свой ритм</h3>
-          <p>
-            Создай программу или начни с примера. Упражнения, подходы, дни и
-            веса можно изменить.
-          </p>
-        </div>
-      ) : null}
-      <section className="starter-plans">
-        <div className="section-heading">
-          <div>
-            <h2>Отправная точка</h2>
-            <p>Редактируемые примеры для знакомства с планировщиком.</p>
+                onDelete={() => { setDeleting(r); setError(""); }}
+              />
+            ))}
           </div>
-        </div>
+        ) : <p className="program-empty">Нет сохранённых программ. Создай свою или выбери шаблон.</p>}
+      </section>
+      <section className="starter-plans" aria-labelledby="starter-plans-title">
+        <header className="section-heading">
+          <h2 id="starter-plans-title">Шаблоны</h2>
+        </header>
         <div className="starter-grid">
-          {(
-            [
-              {
-                id: "full",
-                name: "Всё тело",
-                note: "Одна программа · 3 дня",
-                symbol: "01",
-              },
-              {
-                id: "split",
-                name: "Верх / низ",
-                note: "Две программы · 4 дня",
-                symbol: "02",
-              },
-              {
-                id: "ppl",
-                name: "Жимы / тяги / ноги",
-                note: "Три программы · 3 дня",
-                symbol: "03",
-              },
-              {
-                id: "strength",
-                name: "База 5 × 5",
-                note: "Три движения · 3 дня",
-                symbol: "04",
-              },
-              {
-                id: "laid",
-                name: "Дэвид Лейд · DUP · 9 недель · 6 дней",
-                note: laidCycles.length
-                  ? "Шесть программ · уже есть: обновить максимумы или создать ещё раз"
-                  : "Шесть программ · веса от твоих максимумов, схема меняется по неделям",
-                symbol: "06",
-              },
-              {
-                id: "v2",
-                name: "Программа v2 · 5 дней",
-                note: hasCycle
-                  ? "Пять программ · уже добавлена, кнопка добавит недостающие"
-                  : "Пять программ · 5 дней, разгрузка каждую пятую неделю",
-                symbol: "05",
-              },
-            ] as const
-          ).map((p) => (
-            <button
-              className="starter-card panel"
-              key={p.id}
+          {([
+            { id: "full", name: "Всё тело", note: "Одна программа · 3 дня" },
+            { id: "split", name: "Верх / низ", note: "Две программы · 4 дня" },
+            { id: "ppl", name: "Жимы / тяги / ноги", note: "Три программы · 3 дня" },
+            { id: "strength", name: "База 5 × 5", note: "Три движения · 3 дня" },
+            { id: "laid", name: "Дэвид Лейд · DUP · 9 недель · 6 дней", note: laidCycles.length ? "Настроить цикл" : "Веса от 1ПМ" },
+            { id: "v2", name: "Программа v2 · 5 дней", note: hasCycle ? "Добавить недостающие дни" : "Разгрузка каждую пятую неделю" },
+          ] as const).map((template) => (
+            <m.button
+              type="button"
+              className="starter-card"
+              key={template.id}
               disabled={busy}
-              onClick={() => (p.id === "laid" ? (setNotice(""), setLaid({ mode: "create" })) : void starter(p.id))}
+              whileTap={reduceMotion ? undefined : { scale: 0.985 }}
+              onClick={() => {
+                if (template.id === "laid") { setNotice(""); setLaid({ mode: "create" }); }
+                else void starter(template.id);
+              }}
             >
-              <span>{p.symbol}</span>
-              <b>{p.name}</b>
-              <small>{p.note}</small>
-              <Plus size={18} />
-            </button>
+              <span><b>{template.name}</b><small>{template.note}</small></span>
+              {template.id === "laid" ? <ChevronRight size={18} aria-hidden="true" /> : <Plus size={18} aria-hidden="true" />}
+            </m.button>
           ))}
         </div>
-        <p className="tiny">
-          Примеры не учитывают твой опыт, ограничения и восстановление. Выбери
-          подходящие движения и начальные веса.
-        </p>
       </section>
       {laid ? (
         <LaidDupModal
@@ -650,6 +497,11 @@ export default function ProgramsScreen(props: Props) {
           today={today}
           busy={busy}
           onClose={() => setSchedule(null)}
+          onEditDays={() => {
+            const id = cycleById(schedule)[0].periodization!.cycleId;
+            setSchedule(null);
+            setWeekEditor(id);
+          }}
           onUpdate={() => {
             const cycle = cycleById(schedule);
             setSchedule(null);
@@ -659,6 +511,15 @@ export default function ProgramsScreen(props: Props) {
             });
           }}
           onRecalc={() => void recalc(cycleById(schedule))}
+        />
+      ) : null}
+      {weekEditor && cycleById(weekEditor) ? (
+        <LaidWeekScheduleModal
+          cycle={cycleById(weekEditor)}
+          allRoutines={props.routines}
+          today={today}
+          onSave={(weekdays) => saveLaidWeekdays(cycleById(weekEditor), weekdays)}
+          onClose={() => setWeekEditor(null)}
         />
       ) : null}
       {editor ? (
@@ -677,7 +538,7 @@ export default function ProgramsScreen(props: Props) {
           }}
         >
           <form
-            className="product-form"
+            className="product-form routine-editor"
             onSubmit={(e) => {
               e.preventDefault();
               void save();

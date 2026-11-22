@@ -1,4 +1,5 @@
 import type { TrainingMeetup } from "./TrainingMeetups";
+import type { SharedProgram } from "./SharedProgram";
 import { addCalendarDays, localDate, weekStart } from "../lib/calendar";
 import { volumeSummary, workingSets } from "../lib/model";
 import type { Workout } from "../lib/types";
@@ -39,6 +40,7 @@ export interface FriendsData {
   weekStart: string;
   today: string;
   meetups?: TrainingMeetup[];
+  sharedPrograms?: SharedProgram[];
   serverTime: number;
 }
 

@@ -12,9 +12,9 @@ mkdirSync(artifact, { recursive: true });
 const run = mkdtempSync(join(artifact, "migration-"));
 const logDir = join(run, "wrangler-logs"); mkdirSync(logDir);
 const files = readdirSync(join(root, "drizzle")).filter(f => f.endsWith(".sql")).sort();
-const publishedFiles = files.filter((f) => f !== "0011_import_receipts.sql");
-assert.equal(publishedFiles.length, 12);
-assert.equal(files.length, 13);
+const publishedFiles = files.filter((f) => f < "0011_import_receipts.sql");
+assert.equal(publishedFiles.length, 12, "historical published SQL set remains exactly twelve files");
+assert.equal(files.length, 14, "0011 receipts and 0012 email uniqueness are appended separately");
 const journal = JSON.parse(readFileSync(join(root, "drizzle/meta/_journal.json"), "utf8"));
 const pinned = {
   "sql": [
@@ -265,12 +265,15 @@ const pinned = {
   }
 };
 const sha = (value: string) => createHash("sha256").update(value).digest("hex");
-assert.deepEqual(files, [...pinned.sql.map(entry => entry.file), "0011_import_receipts.sql"]);
+assert.deepEqual(files, [...pinned.sql.map(entry => entry.file), "0011_import_receipts.sql", "0012_unique_account_email.sql"]);
 const publishedSql = new Map(pinned.sql.map(entry => { const sql = readFileSync(join(root, "drizzle", entry.file), "utf8"); assert.equal(sha(sql), entry.sha256, `published SQL changed: ${entry.file}`); return [entry.file, sql]; }));
 const publishedDir = join(run, "published-migrations"); mkdirSync(publishedDir);
 for (const [file, sql] of publishedSql) writeFileSync(join(publishedDir, file), sql, { flag: "wx" });
-writeFileSync(join(publishedDir, "0011_import_receipts.sql"), readFileSync(join(root, "drizzle/0011_import_receipts.sql"), "utf8"), { flag: "wx" });
+for (const file of ["0011_import_receipts.sql", "0012_unique_account_email.sql"]) {
+  writeFileSync(join(publishedDir, file), readFileSync(join(root, "drizzle", file), "utf8"), { flag: "wx" });
+}
 const originalSchemaSql = readFileSync(join(root, "drizzle/0011_import_receipts.sql"), "utf8");
+const emailSchemaSql = readFileSync(join(root, "drizzle/0012_unique_account_email.sql"), "utf8");
 const versions = {
   node: process.version,
   wrangler: JSON.parse(readFileSync(join(root, "node_modules/wrangler/package.json"), "utf8")).version,
@@ -300,6 +303,7 @@ writeFileSync(join(run, "published-sql-ddl-oracle.json"), JSON.stringify(schema,
 const migratedSchema = new SQL.Database(); migratedSchema.exec("PRAGMA foreign_keys=ON");
 for (const sql of publishedSql.values()) migratedSchema.exec(sql);
 migratedSchema.exec(originalSchemaSql);
+migratedSchema.exec(emailSchemaSql);
 const newDdl = migratedSchema.exec(ddlQuery)[0].values.map(row => ({ type: String(row[0]), name: String(row[1]), tbl_name: String(row[2]), sql: String(row[3]).replace(/\s+/g, " ").trim() }));
 migratedSchema.close();
 const additiveNames = new Set(newDdl.filter((entry) => !schema.some((old) => old.name === entry.name)).map((entry) => entry.name));
@@ -308,14 +312,15 @@ const expectedSchema = [...schema, ...newDdl.filter((entry) => additiveNames.has
 
 const save = () => writeFileSync(join(run, "results.json"), JSON.stringify(report, null, 2) + "\n");
 
-test("BL-MIG immutable published SQL hashes + historical journal + additive 0011 DDL", () => {
+test("BL-MIG immutable historical SQL hashes + journal + additive 0011 and 0012 DDL", () => {
   assert.equal(publishedFiles.length, 12, "the pinned historical set remains twelve files");
-  assert.equal(files.at(-1), "0011_import_receipts.sql", "new schema is additive and separately tracked");
+  assert.equal(files.at(-1), "0012_unique_account_email.sql", "email uniqueness is additive, historical SQL is immutable");
   assert.deepEqual(newDdl.filter((entry) => !schema.some((old) => old.name === entry.name)).map((entry) => entry.name).sort(), [
     "idx_import_receipts_run", "idx_workout_import_receipt_active", "idx_workout_sync_recovery_owner",
     "workout_import_dependencies", "workout_import_finalize", "workout_import_finalize_requests",
     "workout_import_receipts", "workout_import_runs", "workout_import_staging", "workout_sync_recovery",
-  ]);
+    "idx_accounts_email",
+  ].sort());
   for (const entry of pinned.sql) { assert.equal(sha(publishedSql.get(entry.file)!), entry.sha256); report.provenance.push({ ...entry }); }
   assert.deepEqual(journal.entries.map((e: { idx: number }) => e.idx), Array.from({ length: 12 }, (_, i) => i), "journal retains historical lineage; 0011 is filename-only like prior SQL-only 0010 imports");
   const oldRooms = pinned.journals.rooms;
@@ -340,6 +345,14 @@ test("BL-MIG immutable published SQL hashes + historical journal + additive 0011
   assert.equal(machines.tables.sync_versions, undefined, "machines historical snapshot must retain known SQL-only delta");
   assert.deepEqual(sqlTables.filter(name => !Object.hasOwn(combined.tables, name)), ["sync_versions"], "ONLY published historical sync_versions may be SQL-only; no other missing table");
   assert.deepEqual(Object.keys(combined.tables).sort(), sqlTables.filter(name => name !== "sync_versions"));
+  const current = JSON.parse(readFileSync(join(root, "drizzle/meta/0012_snapshot.json"), "utf8"));
+  assert.equal(current.prevId, combined.id);
+  assert.notEqual(current.id, combined.id);
+  assert.deepEqual(current.tables.accounts.indexes.idx_accounts_email, { name: "idx_accounts_email", columns: ["email"], isUnique: true });
+  assert.deepEqual(combined.tables.accounts.indexes, { idx_accounts_platform: current.tables.accounts.indexes.idx_accounts_platform });
+  const currentAccounts = structuredClone(current.tables.accounts);
+  delete currentAccounts.indexes.idx_accounts_email;
+  assert.deepEqual(currentAccounts, combined.tables.accounts, "0012 changes exactly one additive unique index");
   save();
 });
 for (const scenario of ["fresh", "0009-only", "rooms-only", "machines-only", "combined-replay"]) {
@@ -418,6 +431,7 @@ for (const scenario of ["fresh", "0009-only", "rooms-only", "machines-only", "co
     const constraints = [
       { label: "duplicate-model-owner-pk", sql: `INSERT INTO machine_models(owner_id,id,payload) VALUES('${B}','same-model','{"should":"reject"}')`, message: /UNIQUE constraint failed: machine_models\.owner_id, machine_models\.id/ },
       { label: "duplicate-instance-owner-pk", sql: `INSERT INTO machine_instances(owner_id,id,model_id,payload,revision,active,updated_at) VALUES('${B}','same-machine','same-model','{"should":"reject"}',1,1,'2026-11-09T12:00:00Z')`, message: /UNIQUE constraint failed: machine_instances\.owner_id, machine_instances\.id/ },
+      { label: "duplicate-account-email", sql: `INSERT INTO accounts(id,platform_id,email,display_name,password_hash,salt,recovery_hash,time_zone,revision,created_at) VALUES('${account}-duplicate','${owner}-duplicate','${scenario}@example.test','Duplicate','x','x','x','UTC',1,'2026-11-19T00:00:00Z')`, message: /UNIQUE constraint failed: accounts\.email/ },
       { label: "live-member-account-fk", sql: `INSERT INTO live_members(code,account_id,state,joined_at,updated_at) VALUES('QAFKX','${account}-missing','{}','2026-11-09T12:00:00Z','2026-11-09T12:00:00Z')`, message: /FOREIGN KEY constraint failed/ },
     ];
     for (const probe of constraints) { const rejected = cli(`${scenario}-${probe.label}`, ["d1", "execute", "DB", ...args, "--command", probe.sql, "--json"], false); assert.match(`${rejected.stdout}${rejected.stderr}`, probe.message); }
@@ -427,6 +441,6 @@ for (const scenario of ["fresh", "0009-only", "rooms-only", "machines-only", "co
     assert.deepEqual(query("events-after-replay", "SELECT * FROM sync_versions ORDER BY seq"), eventsBefore);
     assert.deepEqual(query("sentinels-after-replay", sentinelSql()), before);
     assert.deepEqual(query("FK-after-trigger-replay", "PRAGMA foreign_key_check"), []);
-    report.cases.push({ scenario, status: "PASS", seedFiles, databaseId: id, state, fullDDL: actualSchema.length, sentinelRows: before.length, sixEffects: observations, constraintRejections: 3, constraintFailureNoMutation: true, replayNoExtraEvents: true }); save();
+    report.cases.push({ scenario, status: "PASS", seedFiles, databaseId: id, state, fullDDL: actualSchema.length, sentinelRows: before.length, sixEffects: observations, constraintRejections: 4, constraintFailureNoMutation: true, replayNoExtraEvents: true }); save();
   });
 }

@@ -51,6 +51,24 @@ const definitions: {
     emphasis: "pectoralis-abdominal",
     evidence: ["anatomy-upper"],
   },
+  {
+    variant: "pec-deck-fly",
+    revision: 3,
+    emphasis: "pectoralis-sternal",
+    evidence: ["anatomy-upper"],
+  },
+  {
+    variant: "fly-db-flat",
+    revision: 3,
+    emphasis: "pectoralis-sternal",
+    evidence: ["anatomy-upper"],
+  },
+  {
+    variant: "dip-weighted",
+    revision: 3,
+    emphasis: "pectoralis-abdominal",
+    evidence: ["anatomy-upper"],
+  },
 ];
 export const MUSCLE_INVOLVEMENT_V1: readonly MuscleInvolvement[] =
   definitions.flatMap((definition) => {

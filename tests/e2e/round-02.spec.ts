@@ -88,7 +88,7 @@ test("R02-REQ10: в день отдыха на «Сегодня» — «След
   await round01Fixture(page, { routines: [routine("Низ тела", [3], ["squat", "rdl"])] });
   await expect(page.locator(".plan-next")).toContainText("Следующая: Чт · Низ тела");
   await page.locator(".plan-next").click();
-  await expect(page.getByRole("heading", { name: "Программы" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Программы", exact: true, level: 1 })).toBeVisible();
 });
 
 test("R02-REQ07: редактор — крупные кнопки, «Убрать» с «Отменить», поля в одну строку, ≤2500 px", async ({ page }) => {

@@ -54,6 +54,7 @@ export type ImportedWorkout = {
   timeZone: string;
   exercises: ImportedExercise[];
   routineId?: string;
+  programDate?: string;
   restSeconds?: number;
   wearable?: Workout["wearable"];
 };
@@ -413,6 +414,7 @@ export class WorkoutImport {
       notes: w.notes,
       timeZone: w.timeZone ?? this.options.timeZone,
       routineId: w.routineId,
+      ...(w.programDate !== undefined ? { programDate: w.programDate } : {}),
       restSeconds: w.restSeconds,
       wearable: w.wearable,
       exercises: w.exercises.map((e) => ({

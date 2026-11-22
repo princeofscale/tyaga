@@ -139,15 +139,23 @@ npm run dev
 ## Тесты и валидация
 
 ```bash
-npx tsc --noEmit
+npx tsc --noEmit          # продукт: src, server, db, конфиги
+npm run typecheck:tests   # e2e-спеки и конфиги Playwright (tests/ не входит в основной tsconfig)
 npm test
 npm run build
 
 # Изолированные UI-регрессии: все API-запросы перехвачены fixtures
 npx playwright test tests/e2e/design.spec.ts --reporter=line
+
+# Быстрый визуальный цикл: только статическая сборка, скриншоты в artifacts/design-iron
+npx playwright test -c playwright.visual.config.ts tests/e2e/design.spec.ts tests/e2e/visual-extra.spec.ts
 ```
 
+Визуальный слой 2.0 («IRON») и правила анимаций описаны в [docs/design-iron.md](<docs/design-iron.md>).
+
 Остальные E2E делают настоящие запросы и могут создавать/изменять записи. Запускайте полный `npm run test:e2e` только с отдельной тестовой D1 и тестовыми аккаунтами: Playwright вне CI может использовать уже запущенные серверы. Не направляйте такие тесты в production или личную базу.
+
+`agent-*.spec.ts` в продуктовый прогон не входят (`testIgnore` в [playwright.config.ts](<playwright.config.ts>)): это сценарии ролей QA/PO, им нужны собственные стенды — `playwright.agent-baseline.config.ts` (порт 8787) и `playwright.agent-product.config.ts` (порт 8795, переменная `TYAGA_AGENT_VISIT`).
 
 ## Android APK
 

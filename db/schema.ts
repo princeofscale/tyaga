@@ -111,7 +111,10 @@ export const accounts = sqliteTable(
     revision: integer("revision").notNull().default(1),
     createdAt: text("created_at").notNull(),
   },
-  (t) => [uniqueIndex("idx_accounts_platform").on(t.platformId)],
+  (t) => [
+    uniqueIndex("idx_accounts_platform").on(t.platformId),
+    uniqueIndex("idx_accounts_email").on(t.email),
+  ],
 );
 
 export const sessions = sqliteTable(

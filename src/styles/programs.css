@@ -1,0 +1,91 @@
+.programs-ledger {
+  container: programs-ledger / inline-size;
+  display: grid;
+  gap: clamp(22px, 3vw, 36px);
+  min-inline-size: 0;
+}
+.programs-ledger :is(.program-week-head, .section-heading) h2 {
+  margin: 0;
+  color: var(--text);
+  font: 750 clamp(1.45rem, 1.25rem + 1cqi, 2rem)/1.05 var(--font-display);
+  letter-spacing: -.015em;
+  overflow-wrap: anywhere;
+}
+.program-library,
+.starter-plans { display: grid; min-inline-size: 0; gap: 14px; }
+.programs-ledger .section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+}
+.programs-ledger .section-heading .button { white-space: normal; }
+.program-empty {
+  padding-block: 14px;
+  border-block: 1px solid var(--line);
+  color: var(--muted);
+  font-size: .875rem;
+}
+.routine-grid, .starter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18.5rem), 1fr));
+  gap: 14px;
+  min-inline-size: 0;
+}
+.routine-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  min-inline-size: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+.routine-card-top { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: start; }
+.routine-days { margin-bottom: 5px; color: var(--muted); font: 500 .72rem/1.4 var(--font-mono); }
+.routine-card h3 { font: 750 1.5rem/1.1 var(--font-display); letter-spacing: -.02em; }
+.routine-summary, .routine-weight-notes, .routine-deload, .routine-extra {
+  color: var(--muted);
+  font-size: .78rem;
+  line-height: 1.4;
+}
+.routine-deload { border-inline-start: 2px solid var(--accent-line); padding-inline-start: 8px; }
+.routine-exercise-names { display: grid; margin: 2px 0; padding: 0; list-style: none; border-top: 1px solid var(--line); }
+.routine-exercise-names li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--line-soft);
+  font-size: .83rem;
+}
+.routine-exercise-names b { color: var(--text-soft); font: 500 .75rem/1.35 var(--font-mono); text-align: end; }
+.routine-exercise-names .routine-extra { display: block; }
+.routine-card-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding-top: 2px; margin-top: auto; }
+.routine-card .icon-button { min-inline-size: 44px; min-block-size: 44px; }
+.routine-card .routine-start { flex: 1; justify-content: center; color: var(--accent); border-color: var(--accent-line); }
+.routine-card .routine-start:hover { background: var(--accent-soft); }
+.routine-card .routine-delete:hover { color: var(--danger); }
+.starter-grid { gap: 0 18px; }
+.starter-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-block-size: 66px;
+  padding: 11px 9px;
+  border-top: 1px solid var(--line);
+  text-align: start;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+.starter-card > span { display: grid; gap: 4px; }
+.starter-card b { font-weight: 650; line-height: 1.35; }
+.starter-card small { color: var(--muted); line-height: 1.35; }
+.starter-card svg { color: var(--muted); }
+.starter-card:hover:not(:disabled) { background: var(--surface); }
+.starter-card:hover:not(:disabled) svg { color: var(--accent); }

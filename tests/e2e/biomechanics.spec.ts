@@ -1,5 +1,6 @@
 import { newDraft } from "../../src/lib/draft";
 import type { MachineInstance } from "../../src/lib/types";
+import { MachineRegistry } from "../../src/domain/MachineRegistry";
 import { existsSync } from "node:fs";
 import { test, expect, type Page } from "@playwright/test";
 import {
@@ -89,7 +90,7 @@ async function preview(page: Page, workouts: Workout[]) {
 
 async function tool(page: Page, name: string) {
   await page
-    .getByRole("button", { name: /^Инструменты/ })
+    .getByRole("button", { name: "Ещё", exact: true })
     .last()
     .click();
   await page.getByRole("button", { name: new RegExp(name) }).click();
@@ -275,10 +276,14 @@ test("real MediaPipe runtime analyzes local video without uploading its frames",
   clean();
 });
 
-test("machine picker and per-set execution survive draft reload and save with separate machine volume", async ({
+test("saved machine identity and per-set execution survive draft reload without an active picker", async ({
   page,
 }) => {
   const workout = makeWorkout(["row", "db-row"], [], "UTC");
+  const priorMachine = MachineRegistry.create();
+  priorMachine.nickname = "Блок у окна";
+  workout.exercises[0].machineInstanceId = priorMachine.id;
+  workout.exercises[0].machineSnapshot = priorMachine;
   workout.exercises[0].sets.forEach((s) => (s.weight = 50));
   workout.exercises[1].sets.forEach((s) => (s.weight = 20));
   const draft = newDraft(workout);
@@ -310,10 +315,8 @@ test("machine picker and per-set execution survive draft reload and save with se
   await page
     .getByRole("button", { name: "Продолжить тренировку", exact: true })
     .click();
-  await page.getByLabel("Сохранённый тренажёр", { exact: true }).click();
-  await page
-    .getByRole("option", { name: "Блок у окна · Row 100", exact: true })
-    .click();
+  await expect(page.getByLabel("Сохранённый тренажёр", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("Тренажёр / блок", { exact: true })).toHaveCount(0);
   const single = page
     .locator(".exercise-card")
     .filter({
@@ -353,7 +356,7 @@ test("machine picker and per-set execution survive draft reload and save with se
       JSON.parse(localStorage.getItem("tyaga-draft-account:biomechanics")!)
         .workout,
   );
-  expect(persisted.exercises[0].machineInstanceId).toBeTruthy();
+  expect(persisted.exercises[0].machineInstanceId).toBe(priorMachine.id);
   expect(persisted.exercises[1].sets[0].performedSides).toBe("left");
   expect(persisted.exercises[1].sets[0].execution.rom).toBe(
     "lengthened_partial",

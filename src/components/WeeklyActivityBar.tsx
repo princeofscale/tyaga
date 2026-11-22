@@ -2,10 +2,12 @@ import { AnalyticsFacts } from "../domain/AnalyticsFacts";
 import { calendarWeek, addCalendarDays, localDate } from "../lib/calendar";
 import { TrainingVolume } from "../domain/TrainingVolume";
 import { useMemo } from "react";
-import { Check, Flame, Trophy, Calendar } from "lucide-react";
-import { type Workout, fmt } from "../lib/model";
+import { Check } from "lucide-react";
+import type { Workout } from "../lib/model";
 import { quantityWord } from "../lib/quantity";
 import { VolumeLabel } from "../domain/VolumeLabel";
+
+const weekRange = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short", timeZone: "UTC" });
 
 export default function WeeklyActivityBar({
   workouts,
@@ -25,7 +27,6 @@ export default function WeeklyActivityBar({
       dayNum: number;
       isToday: boolean;
       workouts: Workout[];
-      tonnage: number;
     }[] = [];
 
     const dayNames = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
@@ -49,7 +50,6 @@ export default function WeeklyActivityBar({
         dayNum: Number(dateStr.slice(-2)),
         isToday,
         workouts: dayWorkouts,
-        tonnage: dayTonnage,
       });
     }
 
@@ -58,61 +58,45 @@ export default function WeeklyActivityBar({
   }, [workouts, timeZone]);
 
   const tonnageLabel = VolumeLabel.short(weekData.totalTonnage);
+  const range = weekRange.formatRange(
+    new Date(weekData.days[0].dateStr + "T12:00:00Z"),
+    new Date(weekData.days[6].dateStr + "T12:00:00Z"),
+  );
 
   return (
-    <div className="weekly-activity-bar">
+    <section className="weekly-activity-bar" aria-labelledby="week-activity-title">
       <div className="weekly-summary-header">
-        <div className="weekly-title-wrap">
-          <Calendar size={14} className="text-accent" />
-          <span className="weekly-title">Активность за неделю</span>
-        </div>
-        <div className="weekly-stats-badges">
-          <span className="stat-badge">
-            <Flame size={12} className="text-accent" />
-            <b>{weekData.totalWorkouts}</b> {quantityWord(weekData.totalWorkouts, "тренировка", "тренировки", "тренировок")}
-          </span>
-          <span
-            className="stat-badge"
-            title={weekData.totalTonnage > 0 ? undefined : VolumeLabel.reason(weekData.omitted)}
-          >
-            <b>{tonnageLabel}</b>
-          </span>
-          <span className="stat-badge">
-            <b>{weekData.totalWorkingSets}</b> {quantityWord(weekData.totalWorkingSets, "подход", "подхода", "подходов")}
-          </span>
-        </div>
+        <h2 id="week-activity-title">Эта неделя</h2>
+        <span className="week-range">{range}</span>
       </div>
-
-      <div className="week-days-strip">
+      <ol className="week-days-strip" role="list" aria-label="Дни недели">
         {weekData.days.map((day) => {
           const hasWorkout = day.workouts.length > 0;
           return (
-            <div
+            <li
               key={day.dateStr}
               className={`week-day-cell ${day.isToday ? "is-today" : ""} ${hasWorkout ? "has-workout" : ""}`}
-              title={
-                hasWorkout
-                  ? `${day.dayName}: ${day.workouts.map((w) => w.name).join(", ")} (${fmt(day.tonnage)} кг)`
-                  : `${day.dayName}, ${day.dayNum}`
-              }
+              aria-current={day.isToday ? "date" : undefined}
+              title={hasWorkout ? day.workouts.map((workout) => workout.name).join(", ") : undefined}
             >
               <span className="day-name">{day.dayName}</span>
-              <div className="day-circle">
-                {hasWorkout ? (
-                  <Check size={14} className="check-icon" />
-                ) : (
-                  <span className="day-num">{day.dayNum}</span>
-                )}
-              </div>
-              {hasWorkout && (
-                <span className="day-tonnage-mini">
-                  {VolumeLabel.short(day.tonnage)}
-                </span>
-              )}
-            </div>
+              <time className="day-num" dateTime={day.dateStr}>{day.dayNum}</time>
+              {hasWorkout ? <><Check size={13} aria-hidden="true" /><span className="sr-only">Есть тренировка</span></> : <span className="week-day-dash" aria-hidden="true" />}
+            </li>
           );
         })}
+      </ol>
+      <div className="weekly-stats-badges">
+        <span className="stat-badge">
+          <b>{weekData.totalWorkouts}</b>{" "}<span>{quantityWord(weekData.totalWorkouts, "тренировка", "тренировки", "тренировок")}</span>
+        </span>
+        <span className="stat-badge" title={weekData.totalTonnage > 0 ? undefined : VolumeLabel.reason(weekData.omitted)}>
+          <b>{tonnageLabel}</b> <span>тоннаж</span>
+        </span>
+        <span className="stat-badge">
+          <b>{weekData.totalWorkingSets}</b>{" "}<span>{quantityWord(weekData.totalWorkingSets, "подход", "подхода", "подходов")}</span>
+        </span>
       </div>
-    </div>
+    </section>
   );
 }

@@ -1,6 +1,9 @@
 import { defineConfig } from "@playwright/test";
 export default defineConfig({
   testDir: "./tests/e2e",
+  // agent-po/agent-qa ждут собственные стенды (8795/8796) и подготовленный аккаунт;
+  // у них свои конфиги — playwright.agent-product.config.ts и -baseline.
+  testIgnore: ["**/agent-*.spec.ts"],
   workers: 1,
   timeout: 45000,
   fullyParallel: false,

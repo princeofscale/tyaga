@@ -107,6 +107,8 @@ export type Workout = {
   updatedAt?: string;
   analysisVersion?: 1 | 2;
   routineId?: string;
+  /** Original date of a scheduled occurrence; date is when it was actually performed. */
+  programDate?: string;
   restSeconds?: number;
   wearable?: WearableSummary;
 };
@@ -159,11 +161,14 @@ export type RoutinePeriodization = {
   /** «Облегчённо»: вместо одного повторения — три (не по оригиналу). */
   light: boolean;
 };
+/** One adjustment to the recurring schedule. A null destination skips that occurrence. */
+export type RoutineOccurrenceOverride = { from: string; to: string | null };
 export type Routine = {
   id: string;
   name: string;
   notes: string;
   days: number[];
+  occurrenceOverrides?: RoutineOccurrenceOverride[];
   exercises: WorkoutExercise[];
   cycle?: RoutineCycle;
   periodization?: RoutinePeriodization;

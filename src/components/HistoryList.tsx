@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
+import { useReducedMotion } from "motion/react";
 import { ArrowUp, Search } from "lucide-react";
 import type { Workout } from "../lib/types";
 import { HistoryFilter, type HistoryQuery } from "../domain/HistoryFilter";
@@ -26,6 +27,7 @@ export default function HistoryList({
   const [query, setQuery] = useState<HistoryQuery>(HistoryFilter.EMPTY);
   const [range, setRange] = useState(false);
   const [showTop, setShowTop] = useState(false);
+  const reducedMotion = useReducedMotion();
   // R06-REQ04: у месяцев, не попавших на экран, высота — лишь оценка (`content-visibility`). Переход к месяцу по оценке
   // промахивался на 1–2 экрана, поэтому перед переходом месяцы рисуются целиком и высоты становятся настоящими.
   const [exact, setExact] = useState(false);
@@ -59,7 +61,7 @@ export default function HistoryList({
     <>
       <div className="history-toolbar">
         <div className="search-field">
-          <Search size={18} />
+          <Search size={18} aria-hidden="true" />
           <input
             aria-label="Поиск по истории"
             placeholder="Название, упражнение или месяц…"
@@ -143,15 +145,16 @@ export default function HistoryList({
         </div>
       ) : null}
       {sorted.length ? (
-        <p className="history-found" role="status">
-          {active ? `Найдено ${found.length}` : quantity(sorted.length, "тренировка", "тренировки", "тренировок")}
-          {active ? ` из ${sorted.length}` : ""}
+        <div className="history-found">
+          <span role="status">
+            {active ? `Найдено ${found.length} из ${sorted.length}` : quantity(sorted.length, "тренировка", "тренировки", "тренировок")}
+          </span>
           {active ? (
             <button type="button" className="text-button" onClick={reset}>
               Сбросить отбор
             </button>
           ) : null}
-        </p>
+        </div>
       ) : null}
       <div className={`panel history-panel${exact ? " history-exact" : ""}`}>
         {groups.map((group) => (
@@ -165,7 +168,7 @@ export default function HistoryList({
         ))}
         {!sorted.length ? empty : null}
         {sorted.length && !found.length ? (
-          <div className="no-results" role="status">
+          <div className="no-results">
             <p>Таких тренировок нет.</p>
             <p className="tiny">
               Попробуй день («20 янв», «20.01.2026»), месяц с годом («октябрь 2026»), название тренировки («Ноги») или выбери период и тип выше.
@@ -177,7 +180,7 @@ export default function HistoryList({
         ) : null}
       </div>
       {showTop ? (
-        <button type="button" className="history-top" aria-label="Наверх" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
+        <button type="button" className="history-top" aria-label="Наверх" onClick={() => window.scrollTo({ top: 0, behavior: reducedMotion ? "instant" : "smooth" })}>
           <ArrowUp size={20} />
         </button>
       ) : null}

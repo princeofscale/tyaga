@@ -1,12 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DraftTabs, type TabContext } from "../src/lib/draftTabs";
-import { newDraft, type Draft } from "../src/lib/draft";
+import { draftRecord, matchesDraftRecord, newDraft, parseDraft, removeDraftRecord, type Draft, type DraftRecord } from "../src/lib/draft";
 import { makeWorkout } from "../src/lib/model";
 
 const draftOf = (id: string, extra: Partial<Draft> = {}): Draft => ({ ...newDraft(makeWorkout(["bench"], [], "UTC")), ...extra, workout: { ...newDraft(makeWorkout(["bench"], [], "UTC")).workout, id } });
 const raw = (d: Draft, owner?: string, claim?: number) => JSON.stringify({ ...d, ...(owner ? { owner, claim } : {}) });
-const ctx = (mine: Draft | null, over: Partial<TabContext> = {}): TabContext => ({ mine, ownId: mine?.workout.id ?? null, tab: "P1", claim: 0, ...over });
+const ctx = (mine: Draft | null, over: Partial<TabContext> = {}): TabContext => ({ mine, observed: mine ? draftRecord(mine) : null, tab: "P1", ...over });
 
 // ───────────── R11-REQ02: протокол вкладок (чистая логика) ─────────────
 test("R11-REQ02: вкладка без черновика принимает тренировку, начатую в соседней, и становится ведомой", () => {
@@ -17,29 +17,28 @@ test("R11-REQ02: вкладка без черновика принимает т�
   assert.equal((action as { note: unknown }).note, null);
 });
 
-test("R11-REQ02: чужую запись того же черновика принимают, если её вкладка стала основной не раньше нашей; своя более новая — подтверждается", () => {
-  const mine = draftOf("A");
-  assert.equal(DraftTabs.onKey(ctx(mine, { claim: 5 }), raw(mine, "P2", 9), "x").kind, "adopt");
-  assert.equal(DraftTabs.onKey(ctx(mine, { claim: 9 }), raw(mine, "P2", 9), "x").kind, "adopt", "при равенстве идём за записанным в ключе");
-  assert.equal(DraftTabs.onKey(ctx(mine, { claim: 20 }), raw(mine, "P2", 9), "x").kind, "reassert");
-  // собственная запись и запись без владельца (прежняя версия приложения) — ничего
-  assert.equal(DraftTabs.onKey(ctx(mine, { claim: 5 }), raw(mine, "P1", 5), "x").kind, "none");
-  assert.equal(DraftTabs.onKey(ctx(mine, { claim: 5 }), raw(mine), "x").kind, "none");
+test("R11-REQ02: текущее содержимое ключа важнее номера старого владения", () => {
+  const mine = DraftTabs.stamp(draftOf("A"), "P1", 20);
+  assert.equal(DraftTabs.onKey(ctx(mine), raw(mine, "P2", 9)).kind, "adopt");
+  assert.equal(DraftTabs.onKey(ctx(mine), raw(mine, "P2", 20)).kind, "adopt");
+  assert.equal(DraftTabs.onKey(ctx(mine), raw(mine, "P1", 21)).kind, "adopt", "даже тот же владелец не подтверждает новую сессию владения");
+  assert.equal(DraftTabs.onKey(ctx(mine), raw(mine)).kind, "none");
 });
 
 test("R11-REQ02: исчезновение ключа с нашей тренировкой закрывает черновик; с чужой — нет (R09-QA-08)", () => {
   const mine = draftOf("A");
-  assert.deepEqual(DraftTabs.onKey(ctx(mine), null, raw(draftOf("A"), "P2", 3)), { kind: "close", id: "A" });
+  assert.deepEqual(DraftTabs.onKey(ctx(mine), null, raw(mine, "P2", 3)), { kind: "close", id: "A" });
   assert.deepEqual(DraftTabs.onKey(ctx(mine), null, raw(draftOf("B"), "P2", 3)), { kind: "none" });
   assert.deepEqual(DraftTabs.onKey(ctx(null), null, raw(draftOf("A"), "P2", 3)), { kind: "none" });
+  assert.deepEqual(DraftTabs.onKey(ctx(mine), null, raw({ ...mine, startedAt: mine.startedAt + 1 }, "P2", 3)), { kind: "none" });
   assert.deepEqual(DraftTabs.onKey(ctx(mine), null, "{не json"), { kind: "none" }, "старая запись не читается — не закрываем");
 });
 
 test("R11-REQ02: при возвращении на вкладку (без oldValue) пропавший ключ закрывает только тренировку, которую вкладка видела в ключе", () => {
   const mine = draftOf("A");
-  assert.deepEqual(DraftTabs.onKey(ctx(mine, { ownId: "A" }), null), { kind: "close", id: "A" });
-  assert.deepEqual(DraftTabs.onKey(ctx(mine, { ownId: null }), null), { kind: "none" }, "ещё не записанный (хранилище недоступно) черновик не теряется");
-  assert.deepEqual(DraftTabs.onKey(ctx(mine, { ownId: "Z" }), null), { kind: "none" });
+  assert.deepEqual(DraftTabs.onKey(ctx(mine, { observed: draftRecord(mine) }), null), { kind: "close", id: "A" });
+  assert.deepEqual(DraftTabs.onKey(ctx(mine, { observed: null }), null), { kind: "none" }, "ещё не записанный (хранилище недоступно) черновик не теряется");
+  assert.deepEqual(DraftTabs.onKey(ctx(mine, { observed: draftRecord({ ...mine, startedAt: mine.startedAt + 1 }) }), null), { kind: "none" });
 });
 
 test("R11-REQ02: в ключе другая тренировка — вкладка открывает её с пояснением, а не перетирает", () => {
@@ -53,16 +52,16 @@ test("R11-REQ02: перед записью — не воскрешаем зак�
   const mine = draftOf("A");
   // ключа нет: тренировку записывали мы — её закрыли в другом окне; новая (мы ещё не писали) — пишем
   assert.deepEqual(DraftTabs.beforeWrite({ ...ctx(mine), mine }, null), { kind: "close", id: "A" });
-  assert.equal(DraftTabs.beforeWrite({ ...ctx(mine, { ownId: null }), mine }, null), "write");
+  assert.equal(DraftTabs.beforeWrite({ ...ctx(mine, { observed: null }), mine }, null), "write");
   // своя и безымянная записи — пишем
-  assert.equal(DraftTabs.beforeWrite({ ...ctx(mine, { claim: 5 }), mine }, raw(mine, "P1", 5)), "write");
+  assert.equal(DraftTabs.beforeWrite({ ...ctx(DraftTabs.stamp(mine, "P1", 5)), mine }, raw(mine, "P1", 5)), "write");
   assert.equal(DraftTabs.beforeWrite({ ...ctx(mine, { claim: 5 }), mine }, raw(mine)), "write");
-  // чужая запись новее нашей основной — не пишем, принимаем; наша новее — пишем
-  assert.equal((DraftTabs.beforeWrite({ ...ctx(mine, { claim: 5 }), mine }, raw(mine, "P2", 9)) as { kind: string }).kind, "adopt");
-  assert.equal(DraftTabs.beforeWrite({ ...ctx(mine, { claim: 12 }), mine }, raw(mine, "P2", 9)), "write");
+  const local = { ...ctx(DraftTabs.stamp(mine, "P1", 12)), mine };
+  assert.equal((DraftTabs.beforeWrite(local, raw(mine, "P2", 9)) as { kind: string }).kind, "adopt");
+  assert.equal((DraftTabs.beforeWrite(local, raw(mine, "P1", 13)) as { kind: string }).kind, "adopt");
   // в ключе другая тренировка: после нашей записи — принять; до неё поверх чужой не пишем
   assert.equal((DraftTabs.beforeWrite({ ...ctx(mine), mine }, raw(draftOf("B"), "P2", 1)) as { kind: string }).kind, "adopt");
-  assert.equal((DraftTabs.beforeWrite({ ...ctx(mine, { ownId: null }), mine }, raw(draftOf("B"), "P2", 1)) as { kind: string }).kind, "adopt");
+  assert.equal((DraftTabs.beforeWrite({ ...ctx(mine, { observed: null }), mine }, raw(draftOf("B"), "P2", 1)) as { kind: string }).kind, "adopt");
   // ключ нечитаем — пишем (хранилище починят этой записью)
   assert.equal(DraftTabs.beforeWrite({ ...ctx(mine), mine }, "{мусор"), "write");
 });
@@ -74,6 +73,38 @@ test("R11-REQ02: момент «стала основной» всегда по�
   const stamped = DraftTabs.stamp(draftOf("A"), "P1", 9);
   assert.equal(stamped.owner, "P1");
   assert.equal(stamped.claim, 9);
+});
+
+test("R11-REQ02: проверка перед действием принимает текущего владельца, не подтверждая старого", () => {
+  const mine = draftOf("A");
+  const local = { ...ctx(DraftTabs.stamp(mine, "P1", 20)), mine };
+  assert.equal(DraftTabs.beforeEdit(local, raw(mine, "P2", 9)).kind, "adopt");
+  assert.equal(DraftTabs.beforeEdit(local, raw(mine, "P1", 20)).kind, "none");
+  assert.equal(DraftTabs.beforeEdit(local, raw({ ...mine, startedAt: mine.startedAt + 1 }, "P2", 21)).kind, "adopt");
+  assert.equal(DraftTabs.beforeEdit(local, null).kind, "close");
+  assert.equal(DraftTabs.beforeEdit({ ...local, observed: null }, null).kind, "none", "несохранённый черновик всё ещё редактируется");
+});
+
+test("R11-REQ02: явная передача сохраняет текущие таймеры, перезагрузка останавливает часы", () => {
+  const clock = { elapsedMs: 4500, runningSince: 10_000 };
+  const draft = draftOf("A", { clock, restUntil: 30_000 });
+  assert.deepEqual(parseDraft(raw(draft), "handoff")?.clock, clock);
+  assert.equal(parseDraft(raw(draft), "handoff")?.restUntil, 30_000);
+  assert.equal(parseDraft(raw(draft))?.clock.runningSince, null);
+});
+
+test("R11-REQ02: удаление и восстановление проверяют точную сессию владения", () => {
+  const mine = DraftTabs.stamp(draftOf("A"), "P2", 20);
+  const record = draftRecord(mine);
+  let value: string | null = raw(mine);
+  const storage = () => ({ getItem: () => value, removeItem: () => { value = null; } });
+  for (const stale of [{ ...record, owner: "P1" }, { ...record, claim: 19 }, { ...record, startedAt: mine.startedAt - 1 }]) {
+    assert.equal(matchesDraftRecord(mine, stale), false);
+    assert.equal(removeDraftRecord(storage, "draft", stale), "changed");
+    assert.equal(value, raw(mine));
+  }
+  assert.equal(removeDraftRecord(storage, "draft", record), "removed");
+  assert.equal(value, null);
 });
 
 test("R11-REQ02: загрузка с чужим черновиком — ведомая, если есть живое окно; без него — основная; свой или безымянный — основная", () => {
@@ -89,69 +120,73 @@ test("R11-REQ02: загрузка с чужим черновиком — вед�
 /** Две вкладки поверх общего «ключа»: прогон по тем же правилам, что в приложении (без React). */
 class Sim {
   key: string | null = null;
-  tabs: Record<"P1" | "P2", { mine: Draft | null; ownId: string | null; claim: number; role: "owner" | "follower" }> = {
-    P1: { mine: null, ownId: null, claim: 0, role: "owner" },
-    P2: { mine: null, ownId: null, claim: 0, role: "owner" },
+  tabs: Record<"P1" | "P2", { mine: Draft | null; observed: DraftRecord | null; role: "owner" | "follower" }> = {
+    P1: { mine: null, observed: null, role: "owner" },
+    P2: { mine: null, observed: null, role: "owner" },
   };
   now = 100;
   private other = (t: "P1" | "P2") => (t === "P1" ? "P2" : "P1") as "P1" | "P2";
   private deliver(from: "P1" | "P2", old: string | null) {
     const t = this.other(from);
     const s = this.tabs[t];
-    const act = DraftTabs.onKey({ mine: s.mine, ownId: s.ownId, tab: t, claim: s.claim }, this.key, old);
+    const act = DraftTabs.onKey({ mine: s.mine, observed: s.observed, tab: t }, this.key, old);
     this.apply(t, act);
   }
   private apply(t: "P1" | "P2", act: ReturnType<typeof DraftTabs.onKey>) {
     const s = this.tabs[t];
-    if (act.kind === "adopt") { s.mine = act.draft; s.ownId = act.draft.workout.id; s.role = "follower"; }
-    if (act.kind === "close") { s.mine = null; s.ownId = null; s.claim = 0; s.role = "owner"; }
-    if (act.kind === "reassert") this.write(t);
+    if (act.kind === "adopt") { s.mine = act.draft; s.observed = draftRecord(act.draft); s.role = "follower"; }
+    if (act.kind === "close") { s.mine = null; s.observed = null; s.role = "owner"; }
   }
   /** Запись вкладки (как эффект записи в хуке). */
   write(t: "P1" | "P2") {
     const s = this.tabs[t];
     if (!s.mine || s.role !== "owner") return;
-    const verdict = DraftTabs.beforeWrite({ mine: s.mine, ownId: s.ownId, tab: t, claim: s.claim }, this.key);
+    const verdict = DraftTabs.beforeWrite({ mine: s.mine, observed: s.observed, tab: t }, this.key);
     if (verdict !== "write") { this.apply(t, verdict); return; }
-    if (!s.claim) s.claim = DraftTabs.nextClaim(this.key ? JSON.parse(this.key) : null, this.now++);
+    const claim = s.observed?.claim ?? DraftTabs.nextClaim(parseDraft(this.key), this.now++);
+    const stamped = DraftTabs.stamp(s.mine, t, claim);
     const old = this.key;
-    this.key = JSON.stringify(DraftTabs.stamp(s.mine, t, s.claim));
-    s.ownId = s.mine.workout.id;
+    this.key = raw(stamped);
+    s.observed = draftRecord(stamped);
     this.deliver(t, old);
   }
   start(t: "P1" | "P2", id: string) { this.tabs[t].mine = draftOf(id); this.tabs[t].role = "owner"; this.write(t); }
-  /** Человек отметил подход в вкладке: сначала нажатие делает её основной (как в приложении), потом правка. */
+  /** Отметка не передаёт роль. */
   edit(t: "P1" | "P2", sets: number) {
     const s = this.tabs[t];
-    if (!s.mine) return;
-    if (s.role === "follower") this.claimHere(t);
+    if (!s.mine || s.role !== "owner") return;
     s.mine = { ...s.mine, workout: { ...s.mine.workout, notes: `sets:${sets}` } };
     this.write(t);
   }
   claimHere(t: "P1" | "P2") {
     const s = this.tabs[t];
     if (!s.mine || s.role === "owner") return;
-    if (this.key === null && s.ownId === s.mine.workout.id) { this.apply(t, { kind: "close", id: s.mine.workout.id }); return; }
-    const stored = this.key ? (JSON.parse(this.key) as Draft) : null;
-    s.claim = DraftTabs.nextClaim(stored, this.now++);
+    const stored = parseDraft(this.key, "handoff");
+    if (!stored || !DraftTabs.sameDraft(s.mine, stored)) {
+      this.apply(t, DraftTabs.onKey({ mine: s.mine, observed: s.observed, tab: t }, this.key));
+      return;
+    }
+    const stamped = DraftTabs.stamp(stored, t, DraftTabs.nextClaim(stored, this.now++));
+    const old = this.key;
+    this.key = raw(stamped);
+    s.mine = stamped;
+    s.observed = draftRecord(stamped);
     s.role = "owner";
-    if (stored && stored.workout.id === s.mine.workout.id) s.mine = stored;
-    this.write(t);
+    this.deliver(t, old);
   }
   /** Завершить или отменить: ключ убирает вкладка, ведущая тренировку. */
   end(t: "P1" | "P2") {
     const s = this.tabs[t];
-    if (!s.mine) return;
-    if (s.role === "follower") this.claimHere(t);
+    if (!s.mine || s.role !== "owner") return;
     const old = this.key;
     this.key = null;
-    s.mine = null; s.ownId = null; s.claim = 0; s.role = "owner";
+    s.mine = null; s.observed = null; s.role = "owner";
     this.deliver(t, old);
   }
   /** Вернулись на вкладку (чтение ключа без oldValue). */
   focus(t: "P1" | "P2") {
     const s = this.tabs[t];
-    this.apply(t, DraftTabs.onKey({ mine: s.mine, ownId: s.ownId, tab: t, claim: s.claim }, this.key));
+    this.apply(t, DraftTabs.onKey({ mine: s.mine, observed: s.observed, tab: t }, this.key));
   }
   /** Тихие события, которые вкладка не получила: стираем её события (имитация замороженной вкладки). */
   notes(t: "P1" | "P2") { return this.tabs[t].mine?.workout.notes; }
@@ -166,7 +201,7 @@ test("R11-REQ02 / критерий 1: P1 на «Сегодня», P2 начал�
   assert.equal(JSON.parse(sim.key!).workout.id, "A");
 });
 
-test("R11-REQ02 / критерий 2: P1 отметила подход — P2 видит его; ввод во второй вкладке подхватывает последняя пишущая", () => {
+test("R11-REQ02 / критерий 2: P1 отметила подход — P2 видит его; после явной передачи обе видят правки нового владельца", () => {
   const sim2 = new Sim();
   sim2.start("P1", "A");
   sim2.edit("P1", 1);
@@ -175,13 +210,17 @@ test("R11-REQ02 / критерий 2: P1 отметила подход — P2 в
   assert.equal(sim2.notes("P2"), "sets:1");
   sim2.edit("P1", 2);
   assert.equal(sim2.notes("P2"), "sets:2");
-  // человек печатает в P2: она становится основной, P1 — ведомой и видит то же
+  sim2.edit("P2", 3);
+  assert.equal(sim2.notes("P2"), "sets:2", "ввод не забирает роль и не меняет черновик");
+  sim2.claimHere("P2");
+  assert.equal(sim2.notes("P2"), "sets:2", "передача не повторяет ввод");
   sim2.edit("P2", 3);
   assert.equal(sim2.tabs.P2.role, "owner");
   assert.equal(sim2.tabs.P1.role, "follower");
   assert.equal(sim2.notes("P1"), "sets:3");
   assert.equal(JSON.parse(sim2.key!).owner, "P2");
-  // и обратно
+  // И обратно: только через явную передачу.
+  sim2.claimHere("P1");
   sim2.edit("P1", 4);
   assert.equal(sim2.notes("P2"), "sets:4");
   assert.equal(sim2.tabs.P2.role, "follower");
@@ -192,6 +231,7 @@ test("R11-REQ02 / критерий 3: отмена в одной вкладке 
   sim.start("P1", "A");
   sim.focus("P2");
   sim.edit("P1", 1);
+  sim.claimHere("P2");
   sim.end("P2");
   assert.equal(sim.key, null);
   assert.equal(sim.tabs.P1.mine, null, "P1 убрала черновик");
@@ -206,6 +246,7 @@ test("R11-REQ02: вкладка, не получившая событие об �
   sim.focus("P2");
   // P2 заморожена: событие отмены не дошло
   const frozen = structuredClone(sim.tabs.P1);
+  sim.claimHere("P2");
   sim.end("P2");
   sim.tabs.P1 = frozen;
   assert.ok(sim.tabs.P1.mine);
@@ -237,7 +278,7 @@ test("R11-REQ02: «Начать» в обеих вкладках почти од
   sim.tabs.P1.mine = draftOf("A");
   sim.write("P1");
   const keyAfterP1 = sim.key;
-  sim.tabs.P2 = { mine: draftOf("B"), ownId: null, claim: 0, role: "owner" }; // событие P1 до P2 не дошло
+  sim.tabs.P2 = { mine: draftOf("B"), observed: null, role: "owner" }; // событие P1 до P2 не дошло
   sim.key = keyAfterP1; // P2 видит ключ перед своей записью
   sim.write("P2");
   assert.equal(JSON.parse(sim.key!).workout.id, "A", "поверх чужого начатого не пишем");
@@ -252,7 +293,7 @@ test("R11-REQ02: перезагрузка основной вкладки и з�
   const stored = JSON.parse(sim.key!) as Draft;
   assert.equal(DraftTabs.initialRole(stored, "P2", false), "owner");
   assert.equal(DraftTabs.initialRole(stored, "P2", true), "follower");
-  sim.tabs.P1 = { mine: null, ownId: null, claim: 0, role: "owner" };
+  sim.tabs.P1 = { mine: null, observed: null, role: "owner" };
   sim.focus("P2");
   assert.equal(sim.notes("P2"), "sets:1");
 });
@@ -348,8 +389,8 @@ test("R11-REQ04: на неделе 10 день девятой недели бе�
   const done = { ...makeWorkout(["squat"], [], "UTC"), routineId: legs1.id, date: "2027-01-05" };
   assert.deepEqual(LaidDupPlan.dayStatus(legs1, [done], 8, "2027-01-12"), { state: "done", date: "2027-01-05" });
 });
-test("R11-REQ04: число подходов в неделю считает домен: 117 по оригиналу, +18 добавлено; не зависит от максимумов", () => {
-  assert.deepEqual(LaidDupPlan.weeklySets(), { base: 117, added: 18 });
+test("R11-REQ04: число подходов в неделю считает домен: 117 по оригиналу, +24 добавлено (задняя и средняя дельта, икры, пресс); не зависит от максимумов", () => {
+  assert.deepEqual(LaidDupPlan.weeklySets(), { base: 117, added: 24 });
 });
 test("R11-REQ04: окна оценок называются словами — «за 26 недель» и «за 28 дней»", () => {
   assert.equal(LaidDupPlan.windowText(LaidDupPlan.ESTIMATE_DAYS), "за 26 недель");
@@ -382,9 +423,12 @@ test("R11-REQ05: запись для груди — честная: мышцы, 
   assert.equal(chest.recording.e1rmEligible, false);
 });
 
-test("R11-REQ02: своя прежняя тренировка в ключе, а в памяти новая («Сохранить мою отдельной тренировкой») — пишем, а не принимаем за чужую", () => {
-  const old = draftOf("A"), next = draftOf("B");
-  assert.equal(DraftTabs.beforeWrite({ ...ctx(next, { ownId: "A", claim: 5 }), mine: next }, raw(old, "P1", 5)), "write");
-  // чужая запись другой тренировки по-прежнему принимается
-  assert.equal((DraftTabs.beforeWrite({ ...ctx(next, { ownId: "A", claim: 5 }), mine: next }, raw(old, "P2", 5)) as { kind: string }).kind, "adopt");
+test("R11-REQ02: текущий владелец может заменить свой черновик при конфликте, старый — нет", () => {
+  const old = DraftTabs.stamp(draftOf("A"), "P1", 5);
+  const next = { ...old, startedAt: old.startedAt + 1 };
+  const replacing = { ...ctx(old), mine: next };
+  assert.equal(DraftTabs.beforeWrite(replacing, raw(old)), "write");
+  assert.equal(DraftTabs.onKey(replacing, raw(old)).kind, "none", "позднее событие своего ключа не сбрасывает замену");
+  assert.equal((DraftTabs.beforeWrite(replacing, raw(old, "P2", 5)) as { kind: string }).kind, "adopt");
+  assert.equal((DraftTabs.beforeWrite(replacing, raw(old, "P1", 6)) as { kind: string }).kind, "adopt");
 });

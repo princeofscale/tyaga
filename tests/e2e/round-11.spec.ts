@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { nav, round01Fixture, startWith } from "./fixtures/round01";
 import { smallTargets, clipped } from "./fixtures/touch";
+import type { Draft } from "../../src/lib/draft";
+import type { PendingItem } from "../../src/domain/PendingWorkouts";
 
 /**
  * Раунд 11 на телефоне (390×844, 360×800, 320×640), приложение на подставных ответах.
@@ -16,12 +18,11 @@ const SIZES = [{ width: 390, height: 844 }, { width: 360, height: 800 }, { width
 const overflow = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
 // ───────────── REQ02: две вкладки одного аккаунта ─────────────
+const DRAFT_KEY = "tyaga-draft-account:round01-user";
+const PENDING_KEY = "tyaga-pending-workouts:round01-user";
+const readStorage = (page: Page, key: string) => page.evaluate((k) => localStorage.getItem(k), key);
 const draftKeys = (page: Page) => page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("tyaga-draft-account:")));
-const storedDraft = (page: Page) =>
-  page.evaluate(() => {
-    const key = Object.keys(localStorage).find((k) => k.startsWith("tyaga-draft-account:"));
-    return key ? (JSON.parse(localStorage.getItem(key)!) as { workout: { id: string; exercises: { sets: { weight: number; reps: number; done: boolean }[] }[] }; owner?: string }) : null;
-  });
+const storedDraft = async (page: Page): Promise<Draft | null> => JSON.parse((await readStorage(page, DRAFT_KEY)) ?? "null");
 async function openSecondTab(context: BrowserContext, size = { width: 390, height: 844 }) {
   const tab = await context.newPage();
   await tab.setViewportSize(size);
@@ -33,7 +34,16 @@ async function set(page: Page, n: number, kg: string, reps: string, done = true)
   await page.getByLabel(`${BENCH}, подход ${n}, повторы`, { exact: true }).fill(reps);
   if (done) await page.getByRole("button", { name: `Отметить выполненным: ${BENCH}, подход ${n}`, exact: true }).click();
 }
-const follower = (page: Page) => page.getByText("Эта тренировка открыта в другом окне — тут изменения не сохраняются");
+const follower = (page: Page) => page.getByText("Эта тренировка открыта в другом окне — здесь только просмотр.", { exact: true });
+const takeover = (page: Page) => page.getByRole("button", { name: "Продолжить здесь", exact: true });
+const resume = (page: Page) => page.getByRole("button", { name: /Продолжить тренировку/ }).first().click();
+const editor = (page: Page) => page.locator(".workout-edit-frame");
+const ownerRow = (page: Page) => page.getByText("Это окно основное — изменения сохраняются", { exact: true });
+async function handoff(page: Page) {
+  await takeover(page).click();
+  await expect(ownerRow(page)).toBeVisible();
+  await expect(editor(page)).not.toHaveAttribute("inert");
+}
 
 test("R11-REQ02 / 1: вкладка, открытая до начала тренировки в другой, за 3 с показывает «Продолжить тренировку»; «Начать» второй тренировки не создаёт", async ({ page, context }) => {
   test.setTimeout(120_000);
@@ -46,22 +56,27 @@ test("R11-REQ02 / 1: вкладка, открытая до начала трен
   await expect(page.getByRole("button", { name: /Продолжить тренировку/ }).first()).toBeVisible({ timeout: 3000 });
   await expect(page.getByRole("button", { name: "Начать тренировку", exact: true })).toHaveCount(0);
   expect(await draftKeys(page)).toHaveLength(1);
-  // «Продолжить»: открывается идущая тренировка с отмеченным подходом, не пустая
-  await page.getByRole("button", { name: /Продолжить тренировку/ }).first().click();
+  // Открывается та же тренировка в режиме просмотра; владелец не меняется.
+  const owner = (await storedDraft(page))!.owner;
+  await resume(page);
+  await expect(follower(page)).toBeVisible({ timeout: 3000 });
+  await expect(editor(page)).toHaveAttribute("inert");
+  expect((await storedDraft(page))!.owner).toBe(owner);
   await expect(page.getByLabel(`${BENCH}, подход 1, вес`, { exact: true })).toHaveValue("80");
   const d = await storedDraft(page);
   expect(d!.workout.exercises[0].sets[0]).toMatchObject({ weight: 80, reps: 5, done: true });
   expect(await draftKeys(page)).toHaveLength(1);
 });
 
-test("R11-REQ02 / 2: подход, отмеченный в одной вкладке, за 3 с виден в другой; в неосновной — строка «открыта в другом окне», «Открыть здесь» делает окно основным", async ({ page, context }) => {
+test("R11-REQ02 / 2: подход, отмеченный в одной вкладке, за 3 с виден в другой; в неосновной — строка «открыта в другом окне», «Продолжить здесь» делает окно основным", async ({ page, context }) => {
   test.setTimeout(120_000);
   await round01Fixture(page);
   await startWith(page, BENCH);
   await set(page, 1, "80", "5");
   const tab2 = await openSecondTab(context);
-  // «Продолжить тренировку» во второй вкладке делает её основной
-  await tab2.getByRole("button", { name: /Продолжить тренировку/ }).first().click();
+  await resume(tab2);
+  await expect(follower(tab2)).toBeVisible({ timeout: 3000 });
+  await handoff(tab2);
   await expect(tab2.getByLabel(`${BENCH}, подход 1, вес`, { exact: true })).toHaveValue("80");
   await expect(follower(tab2)).toHaveCount(0);
   await page.bringToFront();
@@ -69,8 +84,8 @@ test("R11-REQ02 / 2: подход, отмеченный в одной вклад
   // P2 отмечает подход 2 — P1 (неосновная) видит его за 3 с
   await set(tab2, 2, "82.5", "5");
   await expect(page.getByLabel(`${BENCH}, подход 2, вес`, { exact: true })).toHaveValue("82.5", { timeout: 3000 });
-  // «Открыть здесь»: P1 основная, P2 ведомая; подходы не потеряны
-  await page.getByRole("button", { name: "Открыть здесь", exact: true }).click();
+  // «Продолжить здесь»: P1 основная, P2 ведомая; подходы не потеряны
+  await handoff(page);
   await expect(follower(page)).toHaveCount(0);
   await tab2.bringToFront();
   await expect(follower(tab2)).toBeVisible({ timeout: 3000 });
@@ -78,7 +93,8 @@ test("R11-REQ02 / 2: подход, отмеченный в одной вклад
   await set(page, 3, "85", "5");
   await tab2.bringToFront();
   await expect(tab2.getByLabel(`${BENCH}, подход 3, вес`, { exact: true })).toHaveValue("85", { timeout: 3000 });
-  // ввод в P2 (неосновной) сам делает её основной: правка подхода 3 сохраняется, P1 её видит
+  // Только явная передача позволяет P2 исправить подход 3; P1 увидит правку.
+  await handoff(tab2);
   await set(tab2, 3, "87.5", "4", false);
   await expect
     .poll(async () => (await storedDraft(tab2))!.workout.exercises[0].sets.slice(0, 3).map((s) => [s.weight, s.done]))
@@ -97,6 +113,7 @@ test("R11-REQ02 / 3: «Да, отменить тренировку» в одно
   const tab2 = await openSecondTab(context);
   await tab2.getByRole("button", { name: /Продолжить тренировку/ }).first().click();
   await expect(tab2.getByLabel(`${BENCH}, подход 1, вес`, { exact: true })).toBeVisible();
+  await handoff(tab2);
   await tab2.getByRole("button", { name: "Отмена", exact: true }).click();
   await tab2.getByRole("button", { name: "Да, отменить тренировку", exact: true }).click();
   await expect(tab2.getByRole("heading", { name: "Сегодня", exact: true })).toBeVisible();
@@ -165,6 +182,7 @@ test("R11-REQ02: без связи две вкладки делят чернов
   const tab2 = await openSecondTab(context);
   await tab2.getByRole("button", { name: /Продолжить тренировку/ }).first().click();
   await context.setOffline(true);
+  await handoff(tab2);
   await set(tab2, 2, "82.5", "5");
   await page.bringToFront();
   await expect(page.getByLabel(`${BENCH}, подход 2, вес`, { exact: true })).toHaveValue("82.5", { timeout: 3000 });
@@ -172,24 +190,169 @@ test("R11-REQ02: без связи две вкладки делят чернов
 });
 
 for (const size of SIZES) {
-  test(`R11-REQ02: строка «Эта тренировка открыта в другом окне» и «Открыть здесь» на ${size.width}×${size.height} — без сдвига и срезов, цель ≥ 44 px`, async ({ page, context }) => {
+  test(`R11-REQ02: строка «Эта тренировка открыта в другом окне» и «Продолжить здесь» на ${size.width}×${size.height} — без сдвига и срезов, цель ≥ 44 px`, async ({ page, context }) => {
     test.setTimeout(120_000);
     await page.setViewportSize(size);
     await round01Fixture(page);
     await startWith(page, BENCH);
     await set(page, 1, "80", "5");
     const tab2 = await openSecondTab(context, size);
-    await tab2.getByRole("button", { name: /Продолжить тренировку/ }).first().click();
+    await resume(tab2);
+    await handoff(tab2);
     await page.bringToFront();
     await expect(follower(page)).toBeVisible({ timeout: 3000 });
     expect(await overflow(page)).toBeLessThanOrEqual(1);
-    const btn = page.getByRole("button", { name: "Открыть здесь", exact: true });
+    const btn = takeover(page);
     const box = await btn.boundingBox();
     expect(box!.height).toBeGreaterThanOrEqual(43.5);
     expect((await clipped(page, ".draft-follower")).wide).toEqual([]);
-    expect((await smallTargets(page)).filter((t) => t.cls.includes("draft") || t.text.includes("Открыть здесь"))).toEqual([]);
+    expect((await smallTargets(page)).filter((t) => t.cls.includes("draft") || t.text.includes("Продолжить здесь"))).toEqual([]);
   });
 }
+
+test("R11-REQ02: URL, Назад, focus и pageshow сверяют вид, не передавая роль", async ({ page, context }) => {
+  await round01Fixture(page);
+  await startWith(page, BENCH);
+  await set(page, 1, "80", "5");
+  const owner = (await storedDraft(page))!.owner;
+  const tab2 = await context.newPage();
+  await tab2.addInitScript((key) => window.addEventListener("storage", (event) => {
+    if (event.key === key) event.stopImmediatePropagation();
+  }, true), DRAFT_KEY);
+  await round01Fixture(tab2);
+  await tab2.goto("/?fixture=draft-handoff");
+  await resume(tab2);
+  await expect(follower(tab2)).toBeVisible();
+  await expect(editor(tab2)).toHaveAttribute("inert");
+  const url = tab2.url();
+  await tab2.goBack();
+  await expect(tab2.getByRole("heading", { name: "Сегодня", exact: true })).toBeVisible();
+  await expect(tab2).toHaveURL(url);
+  await resume(tab2);
+  const weight = tab2.getByLabel(`${BENCH}, подход 1, вес`, { exact: true });
+  for (const [event, value] of [["focus", "82.5"], ["pageshow", "85"]] as const) {
+    await set(page, 1, value, "5", false);
+    await tab2.evaluate((type) => window.dispatchEvent(new Event(type)), event);
+    await expect(weight).toHaveValue(value);
+    await expect(follower(tab2)).toBeVisible();
+    expect((await storedDraft(tab2))!.owner).toBe(owner);
+  }
+});
+
+test("R11-REQ02: устаревшая кнопка передачи сначала открывает новый черновик, даже если id тот же", async ({ page, context }) => {
+  await round01Fixture(page);
+  await startWith(page, BENCH);
+  await set(page, 1, "80", "5");
+  const before = (await storedDraft(page))!;
+  const followerTab = await context.newPage();
+  await followerTab.addInitScript((key) => {
+    window.addEventListener("storage", (event) => {
+      if (event.key === key) event.stopImmediatePropagation();
+    }, true);
+    for (const event of ["focus", "pageshow"])
+      window.addEventListener(event, (value) => value.stopImmediatePropagation(), true);
+    document.addEventListener("visibilitychange", (event) => event.stopImmediatePropagation(), true);
+  }, DRAFT_KEY);
+  await round01Fixture(followerTab);
+  await resume(followerTab);
+  await expect(follower(followerTab)).toBeVisible();
+  const weight = followerTab.getByLabel(`${BENCH}, подход 1, вес`, { exact: true });
+  await expect(weight).toHaveValue("80");
+  const next = structuredClone(before);
+  next.startedAt++;
+  next.claim = (next.claim ?? 0) + 1;
+  next.workout.exercises[0].sets[0].weight = 85;
+  await page.evaluate(([key, record]) => localStorage.setItem(key, JSON.stringify(record)), [DRAFT_KEY, next] as const);
+  await takeover(followerTab).click();
+  await expect(weight).toHaveValue("85");
+  await expect(editor(followerTab)).toHaveAttribute("inert");
+  expect(await storedDraft(followerTab)).toEqual(next);
+  await handoff(followerTab);
+  expect((await storedDraft(followerTab))!.owner).not.toBe(before.owner);
+});
+
+test("R11-REQ02: офлайн после передачи — одна очередь и одна отправка при возвращении сети", async ({ page, context }) => {
+  const former = await round01Fixture(page);
+  await startWith(page, BENCH);
+  await set(page, 1, "80", "5");
+  const original = (await storedDraft(page))!.workout.id;
+  const tab2 = await context.newPage();
+  const f = await round01Fixture(tab2);
+  await resume(tab2);
+  let offline = true;
+  let sent = 0;
+  await tab2.route("**/api/workouts", (route) => {
+    if (route.request().method() !== "PUT") return route.fallback();
+    if (offline) return route.abort("internetdisconnected");
+    sent++;
+    return route.fallback();
+  });
+  await context.setOffline(true);
+  await handoff(tab2);
+  await set(tab2, 2, "82.5", "4");
+  await tab2.getByRole("button", { name: "Завершить тренировку", exact: true }).click();
+  await expect(tab2.locator(".pending-banner")).toContainText("Ждёт отправки: 1");
+  await expect(page.getByText("Тренировка закончена или отменена в другом окне")).toBeVisible();
+  expect(await draftKeys(page)).toEqual([]);
+  const queued = JSON.parse((await readStorage(tab2, PENDING_KEY))!) as PendingItem[];
+  expect(queued).toHaveLength(1);
+  expect(queued[0].workout.id).toBe(original);
+  expect(queued[0].workout.exercises[0].sets.filter((s) => s.done)).toMatchObject([
+    { weight: 80, reps: 5, done: true }, { weight: 82.5, reps: 4, done: true },
+  ]);
+  expect(f.savedBodies).toHaveLength(0);
+  offline = false;
+  await context.setOffline(false);
+  await expect.poll(() => f.savedBodies.length).toBe(1);
+  await expect.poll(() => readStorage(tab2, PENDING_KEY)).toBeNull();
+  expect(f.savedBodies[0]).toEqual(queued[0].workout);
+  await tab2.reload();
+  await expect(tab2.getByRole("heading", { name: "Сегодня", exact: true })).toBeVisible();
+  expect(sent).toBe(1);
+  expect(former.savedBodies, "бывший владелец не отправляет копию").toHaveLength(0);
+  expect(f.workouts).toHaveLength(1);
+  expect(await draftKeys(tab2)).toEqual([]);
+});
+
+test("R11-REQ02: старый запрос завершения не ставит в очередь данные после передачи туда и обратно", async ({ page, context }) => {
+  const f = await round01Fixture(page);
+  await startWith(page, BENCH);
+  await set(page, 1, "80", "5");
+  const original = (await storedDraft(page))!;
+  const tab2 = await openSecondTab(context);
+  await resume(tab2);
+  await expect(follower(tab2)).toBeVisible();
+  let fail = () => {};
+  const hold = new Promise<void>((resolve) => { fail = resolve; });
+  let attempted = 0;
+  await page.route("**/api/workouts", async (route) => {
+    if (route.request().method() !== "PUT") return route.fallback();
+    if (++attempted !== 1) return route.fallback();
+    await hold;
+    return route.abort("internetdisconnected");
+  });
+  const finish = page.getByRole("button", { name: "Завершить тренировку", exact: true });
+  await finish.click();
+  await expect.poll(() => attempted).toBe(1);
+  try {
+    await handoff(tab2);
+    await set(tab2, 1, "82.5", "4", false);
+    await handoff(page);
+    expect((await storedDraft(page))!.owner).toBe(original.owner);
+  } finally {
+    fail();
+  }
+  await expect(finish).toBeEnabled();
+  expect(await readStorage(page, PENDING_KEY)).toBeNull();
+  const retained = (await storedDraft(page))!;
+  expect(retained.workout.id).toBe(original.workout.id);
+  expect(retained.workout.exercises[0].sets[0]).toMatchObject({ weight: 82.5, reps: 4, done: true });
+  await finish.click();
+  await expect.poll(() => f.savedBodies.length).toBe(1);
+  expect(f.savedBodies[0].exercises[0].sets[0]).toMatchObject({ weight: 82.5, reps: 4, done: true });
+  await expect.poll(() => draftKeys(tab2)).toEqual([]);
+  expect(attempted).toBe(2);
+});
 
 // ───────────── REQ01: Лейд — «Повторить прошлые» и «+2,5 кг» ─────────────
 import { doneWorkout } from "./fixtures/round01";
@@ -367,7 +530,7 @@ function backupWith(name: string, routines: Routine[]) {
 }
 async function restoreDialog(page: Page, file: string) {
   await nav(page, "Сегодня").click();
-  await page.getByRole("button", { name: /^Инструменты/ }).last().click();
+  await page.getByRole("button", { name: "Ещё", exact: true }).click();
   await page.getByRole("button", { name: /Резервная копия/ }).click();
   await page.getByRole("button", { name: "Восстановить из файла", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Восстановление из копии", exact: true });
@@ -534,12 +697,12 @@ for (const size of SIZES) {
     await page.getByRole("button", { name: /Дэвид Лейд · DUP/ }).click();
     const d = dlg(page);
     const extras = d.getByRole("switch", { name: /Добавить к оригиналу/ });
-    await expect(extras).toContainText("+18 подходов в неделю");
+    await expect(extras).toContainText("+24 подхода в неделю");
     await extras.click();
     await expect(extras).toContainText("без добавок: 117 подходов в неделю");
-    await expect(extras).not.toContainText("+18");
+    await expect(extras).not.toContainText("+24");
     await extras.click();
-    await expect(extras).toContainText("+18 подходов в неделю");
+    await expect(extras).toContainText("+24 подхода в неделю");
     await expect(d.getByRole("button", { name: "по истории ≈ 126,7 кг (Эпли)" })).toBeVisible();
     await expect(d.getByText("по подходам за 26 недель", { exact: true })).toBeVisible();
     expect((await clipped(page, "dialog[open]")).wide).toEqual([]);
@@ -702,7 +865,7 @@ test("R11-QA-07: два видимых окна не перебрасывают 
   const tab2 = await openSecondTab(context);
   await page.bringToFront();
   const open = async (p: Page) => {
-    await p.getByRole("button", { name: /^Инструменты/ }).last().click();
+    await p.getByRole("button", { name: "Ещё", exact: true }).click();
     await p.getByRole("button", { name: /Вес тела и тренд.*синхронизация/ }).click();
     return p.getByRole("dialog").last();
   };
@@ -731,7 +894,7 @@ test("R11-QA-05: копия Лейда — если вес из истории �
 // ───────────── Доработка 1: QA-R11-01 / 02 / 04 / 06 — ведомое окно ─────────────
 const SET_DONE = (n: number) => `Отметить выполненным: ${BENCH}, подход ${n}`;
 const sets = async (page: Page) => (await storedDraft(page))!.workout.exercises[0].sets.map((s) => `${s.weight}×${s.reps}${s.done ? "✓" : ""}`);
-/** Две вкладки: в первой — жим, подход 1 = 80×5 ✓, подход 2 заполнен; вторая нажала «Продолжить» и стала основной, первая — ведомая. */
+/** Две вкладки: в первой — жим, подход 1 = 80×5 ✓, подход 2 заполнен; вторая явно взяла управление, первая — ведомая. */
 async function followerPair(page: Page, context: BrowserContext, size: { width: number; height: number }) {
   await page.setViewportSize(size);
   await round01Fixture(page);
@@ -739,7 +902,8 @@ async function followerPair(page: Page, context: BrowserContext, size: { width: 
   await set(page, 1, "80", "5");
   await set(page, 2, "80", "5", false);
   const tab2 = await openSecondTab(context, size);
-  await tab2.getByRole("button", { name: "Продолжить тренировку", exact: true }).click();
+  await resume(tab2);
+  await handoff(tab2);
   await page.bringToFront();
   await expect(follower(page)).toBeVisible({ timeout: 5000 });
   return tab2;
@@ -747,20 +911,24 @@ async function followerPair(page: Page, context: BrowserContext, size: { width: 
 
 for (const size of SIZES) {
   for (const how of ["tap", "click"] as const) {
-    test(`R11-QA-01: первое ${how === "tap" ? "касание" : "нажатие мышью"} в ведомом окне только делает его основным — вес, повторы, ✓ не меняются; второе срабатывает ${size.width}×${size.height}`, async ({ page, context }) => {
+    test(`R11-QA-01: первое ${how === "tap" ? "касание" : "нажатие мышью"} в ведомом окне не даёт редактировать; явная передача не ставит ✓ ${size.width}×${size.height}`, async ({ page, context }) => {
       test.setTimeout(120_000);
       await followerPair(page, context, size);
+      const oldOwner = (await storedDraft(page))!.owner;
       const before = await sets(page);
       expect(before).toEqual(["80×5✓", "80×5", "0×0"].map((x, i) => (i === 2 ? before[2] : x)));
-      await page.getByRole("button", { name: SET_DONE(2), exact: true })[how]();
-      // окно стало основным; строка осталась на месте и сказала, что нажать надо ещё раз; ничего не изменилось
-      await expect(follower(page)).toHaveCount(0);
-      await expect(page.getByText("Это окно стало основным. Нажми ещё раз.", { exact: true })).toBeVisible();
+      const point = await centre(page, 2);
+      const press = () => how === "tap" ? page.touchscreen.tap(point.x, point.y) : page.mouse.click(point.x, point.y);
+      await press();
+      await expect(follower(page)).toBeVisible();
+      await expect(editor(page)).toHaveAttribute("inert");
       await page.waitForTimeout(600);
       expect(await sets(page)).toEqual(before);
+      expect((await storedDraft(page))!.owner).toBe(oldOwner);
       await expect(page.getByLabel(`${BENCH}, подход 1, вес`, { exact: true })).toHaveValue("80");
       await expect(page.getByLabel(`${BENCH}, подход 2, вес`, { exact: true })).toHaveValue("80");
-      // второе нажатие — обычное
+      await handoff(page);
+      expect(await sets(page), "передача не отметила подход").toEqual(before);
       await page.getByRole("button", { name: SET_DONE(2), exact: true })[how]();
       await expect.poll(() => sets(page)).toEqual([before[0], "80×5✓", before[2]]);
       expect(await overflow(page)).toBeLessThanOrEqual(1);
@@ -768,20 +936,27 @@ for (const size of SIZES) {
   }
 }
 
-test("R11-QA-01: «Открыть здесь» не глушится — первое же нажатие делает окно основным, без сообщения про второе нажатие", async ({ page, context }) => {
+test("R11-QA-01: «Продолжить здесь» передаёт управление без изменения черновика", async ({ page, context }) => {
   test.setTimeout(120_000);
   const before = await followerPair(page, context, SIZES[0]).then(() => sets(page));
-  await page.getByRole("button", { name: "Открыть здесь", exact: true }).click();
+  await handoff(page);
   await expect(follower(page)).toHaveCount(0);
   await expect(page.getByText("Это окно стало основным. Нажми ещё раз.")).toHaveCount(0);
   await expect(page.getByText("Это окно основное — изменения сохраняются", { exact: true })).toBeVisible();
   expect(await sets(page)).toEqual(before);
 });
 
-test("R11-QA-01: ввод с клавиатуры (Tab, символы) в ведомом окне не теряется: окно становится основным, цифры попадают в поле", async ({ page, context }) => {
+test("R11-QA-01: клавиатура недоступна до передачи, после передачи цифры записываются", async ({ page, context }) => {
   test.setTimeout(120_000);
   await followerPair(page, context, SIZES[0]);
   const field = page.getByLabel(`${BENCH}, подход 2, вес`, { exact: true });
+  const before = await sets(page);
+  await field.evaluate((el: HTMLElement) => el.focus());
+  await expect(field).not.toBeFocused();
+  await page.keyboard.type("87.5");
+  await expect(follower(page)).toBeVisible();
+  expect(await sets(page)).toEqual(before);
+  await handoff(page);
   await field.focus();
   await page.keyboard.press("ControlOrMeta+a");
   await page.keyboard.type("87.5");
@@ -803,22 +978,19 @@ test("R11-QA-02: окно с копией sessionStorage (дублированн
     for (const [k, v] of Object.entries(JSON.parse(dump) as Record<string, string>)) sessionStorage.setItem(k, v);
   }, copy);
   await round01Fixture(tab2);
-  await tab2.getByRole("button", { name: "Продолжить тренировку", exact: true }).click();
+  await resume(tab2);
+  await handoff(tab2);
   await page.bringToFront();
   await expect(follower(page)).toBeVisible({ timeout: 5000 });
-  // подход 2 — в первой вкладке (второе нажатие: первое делает окно основным), подход 3 — во второй
-  const act = async (p: Page, n: number) => {
-    const button = p.getByRole("button", { name: SET_DONE(n), exact: true });
-    if (await follower(p).isVisible().catch(() => false)) await button.click();
-    await button.click();
-  };
-  await set(page, 2, "82.5", "5", false);
-  await act(page, 2);
+  // Подход 2 отмечаем в первой вкладке, подход 3 — во второй после явной передачи.
+  await handoff(page);
+  await set(page, 2, "82.5", "5");
   await tab2.bringToFront();
   await expect(follower(tab2)).toBeVisible({ timeout: 5000 });
+  await handoff(tab2);
   await tab2.getByLabel(`${BENCH}, подход 3, вес`, { exact: true }).fill("85");
   await tab2.getByLabel(`${BENCH}, подход 3, повторы`, { exact: true }).fill("5");
-  await act(tab2, 3);
+  await tab2.getByRole("button", { name: SET_DONE(3), exact: true }).click();
   await expect.poll(() => sets(tab2)).toEqual(["80×5✓", "82.5×5✓", "85×5✓"]);
   await expect.poll(() => sets(page)).toEqual(["80×5✓", "82.5×5✓", "85×5✓"]);
   const banners = (await follower(page).count()) + (await follower(tab2).count());
@@ -873,20 +1045,26 @@ test("R11-QA-06: одновременное «Начать» в двух вкл�
 test("R11-QA-09/08: «устаревшая» вкладка при потерянных событиях storage — отмена в другой убирает черновик, ✓ в устаревшей его не воскрешает", async ({ page, context }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(SIZES[0]);
-  await page.addInitScript(() => window.addEventListener("storage", (e) => e.stopImmediatePropagation(), true)); // события storage не доходят
+  await page.addInitScript(() => {
+    const drop = (e: Event) => e.stopImmediatePropagation();
+    for (const event of ["storage", "focus", "pageshow"]) window.addEventListener(event, drop, true);
+    document.addEventListener("visibilitychange", drop, true);
+  });
   await round01Fixture(page);
   await startWith(page, BENCH);
   await set(page, 1, "80", "5");
   await set(page, 2, "80", "5", false);
   const tab2 = await openSecondTab(context);
-  await tab2.getByRole("button", { name: "Продолжить тренировку", exact: true }).click();
+  await resume(tab2);
+  await handoff(tab2);
   await tab2.getByRole("button", { name: "Отмена", exact: true }).click();
   const yes = tab2.getByRole("button", { name: /Да, отменить|Отменить тренировку/ });
   if (await yes.first().isVisible().catch(() => false)) await yes.first().click();
   await expect.poll(() => draftKeys(tab2)).toEqual([]);
   // вкладка 1 ничего не знает; нажимает ✓ — черновик не воскресает
-  await page.bringToFront();
-  await page.getByRole("button", { name: SET_DONE(2), exact: true }).click();
+  await expect(editor(page)).not.toHaveAttribute("inert"); // не было сверки, пока не нажали
+  await page.getByRole("button", { name: SET_DONE(2), exact: true }).evaluate((el: HTMLElement) => el.click());
+  await expect(page.getByText("Тренировка закончена или отменена в другом окне")).toBeVisible();
   await page.waitForTimeout(1500);
   expect(await draftKeys(page), "ключ не вернулся").toEqual([]);
   await page.waitForTimeout(10_000);
@@ -896,14 +1074,13 @@ test("R11-QA-09/08: «устаревшая» вкладка при потеря�
 // ───────────── Доработка 2: QA-R11-09 / 11 — смена роли не двигает вёрстку; сообщение в строке, а не тост ─────────────
 const rowH = (page: Page) => page.locator(".draft-follower").evaluate((el) => Math.round(el.getBoundingClientRect().height * 10) / 10);
 const DONE_ANY = (n: number) => new RegExp(`^(Отметить выполненным|Снять отметку): ${BENCH}, подход ${n}$`);
-const doneTop = (page: Page, n: number) => page.getByRole("button", { name: DONE_ANY(n) }).evaluate((el) => Math.round(el.getBoundingClientRect().top * 10) / 10);
+const doneTop = (page: Page, n: number) => page.getByRole("button", { name: DONE_ANY(n), includeHidden: true }).evaluate((el) => Math.round((el.getBoundingClientRect().top + scrollY) * 10) / 10);
 const centre = async (page: Page, n: number) => {
-  const button = page.getByRole("button", { name: SET_DONE(n), exact: true });
+  const button = page.getByRole("button", { name: SET_DONE(n), exact: true, includeHidden: true });
   await button.scrollIntoViewIfNeeded(); // на 320×640 ✓ подхода 2 может быть ниже экрана
   const box = (await button.boundingBox())!;
   return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 };
-const ownerRow = (page: Page) => page.getByText("Это окно основное — изменения сохраняются", { exact: true });
 const pressedRow = (page: Page) => page.getByText("Это окно стало основным. Нажми ещё раз.", { exact: true });
 
 for (const size of SIZES) {
@@ -916,13 +1093,17 @@ for (const size of SIZES) {
         const [top0, h0, before] = [await doneTop(page, 2), await rowH(page), await sets(page)];
         const press = () => (how === "tap" ? page.touchscreen.tap(point.x, point.y) : page.mouse.click(point.x, point.y));
         await press();
-        await expect(pressedRow(page)).toBeVisible();
-        // смена роли не двигает ни строку, ни ✓ подхода 2
+        await expect(follower(page)).toBeVisible();
+        await page.waitForTimeout(pause);
+        await press();
+        await expect(follower(page)).toBeVisible();
+        expect(await sets(page)).toEqual(before);
+        await handoff(page);
+        // Явная смена роли не двигает ни строку, ни ✓ подхода 2.
         expect(await doneTop(page, 2), "✓ подхода 2 до и после смены роли").toBe(top0);
         expect(await rowH(page), "высота строки до и после смены роли").toBe(h0);
         expect(await sets(page)).toEqual(before);
-        await page.waitForTimeout(pause);
-        await press(); // «нажми ещё раз» — в ту же точку
+        await page.getByRole("button", { name: SET_DONE(2), exact: true })[how === "tap" ? "tap" : "click"]();
         await expect.poll(() => sets(page)).toEqual([before[0], "80×5✓", before[2]]);
         await expect(ownerRow(page)).toBeVisible();
         expect(await doneTop(page, 2)).toBe(top0);
@@ -936,7 +1117,7 @@ for (const size of SIZES) {
 
 for (const size of [SIZES[0], SIZES[2]]) {
   for (const gap of [70, 200]) {
-    test(`R11-QA-09: двойной тап (${gap} мс) по ✓ подхода 2 в ведомом окне — подход 1 цел, подход 2 отмечен один раз ${size.width}×${size.height}`, async ({ page, context }) => {
+    test(`R11-QA-09: двойной тап (${gap} мс) по ✓ подхода 2 в ведомом окне — все подходы и роль неизменны ${size.width}×${size.height}`, async ({ page, context }) => {
       test.setTimeout(120_000);
       await followerPair(page, context, size);
       const before = await sets(page);
@@ -945,31 +1126,28 @@ for (const size of [SIZES[0], SIZES[2]]) {
       await page.waitForTimeout(gap);
       await page.touchscreen.tap(point.x, point.y);
       await page.waitForTimeout(600);
-      const after = await sets(page);
-      expect(after[0], "подход 1 не изменился").toBe(before[0]);
-      expect(after[2], "подход 3 не изменился").toBe(before[2]);
-      expect(after[1] === "80×5✓" || after[1] === before[1], "подход 2 — отмечен или нетронут, но не испорчен").toBe(true);
+      expect(await sets(page)).toEqual(before);
+      await expect(follower(page)).toBeVisible();
     });
   }
-  test(`R11-QA-09: двойной клик мышью по ✓ подхода 2 в ведомом окне — подход 1 цел ${size.width}×${size.height}`, async ({ page, context }) => {
+  test(`R11-QA-09: двойной клик мышью по ✓ подхода 2 в ведомом окне — все подходы и роль неизменны ${size.width}×${size.height}`, async ({ page, context }) => {
     test.setTimeout(120_000);
     await followerPair(page, context, size);
     const before = await sets(page);
-    await page.getByRole("button", { name: SET_DONE(2), exact: true }).dblclick();
+    const point = await centre(page, 2);
+    await page.mouse.dblclick(point.x, point.y);
     await page.waitForTimeout(600);
-    const after = await sets(page);
-    expect(after[0], "подход 1 не изменился").toBe(before[0]);
-    expect(after[1] === "80×5✓" || after[1] === before[1], "подход 2 — отмечен или нетронут, но не испорчен").toBe(true);
+    expect(await sets(page)).toEqual(before);
+    await expect(follower(page)).toBeVisible();
   });
 }
 
 test("R11-QA-11: сообщение о смене роли — не тост: ни одна кнопка тренировки не перекрыта, строка уходит, когда человек вышел с экрана тренировки", async ({ page, context }) => {
   test.setTimeout(120_000);
   await followerPair(page, context, SIZES[2]);
-  await page.getByRole("button", { name: SET_DONE(2), exact: true }).click();
-  await expect(pressedRow(page)).toBeVisible();
-  await expect(page.locator(".toast, [role=alert]").filter({ hasText: "нажми ещё раз" })).toHaveCount(0);
-  await expect(page.getByText(/нажми ещё раз/i).first()).toBeVisible();
+  await handoff(page);
+  await expect(page.locator(".toast, [role=alert]").filter({ hasText: "Это окно основное" })).toHaveCount(0);
+  await expect(pressedRow(page)).toHaveCount(0);
   const covered = await page.evaluate(() => {
     const out: string[] = [];
     for (const el of document.querySelectorAll("button[aria-label^='Снять отметку'], button[aria-label^='Отметить выполненным']")) {
@@ -1016,20 +1194,29 @@ for (const size of [SIZES[0], SIZES[2]]) {
   });
 }
 
-test("R11-QA-10: Enter на сфокусированном ✓ сразу после свайпа срабатывает (клавиатурный клик не глушится)", async ({ page, context }) => {
+test("R11-QA-10: Enter на ✓ работает после явной передачи, до неё — не меняет черновик", async ({ page, context }) => {
   test.setTimeout(120_000);
   await followerPair(page, context, SIZES[0]);
   const before = await sets(page);
   await swipeUp(page, 195, 640, 260);
   await expect(follower(page)).toBeVisible();
-  await page.getByRole("button", { name: SET_DONE(2), exact: true }).focus();
+  const target = page.getByRole("button", { name: SET_DONE(2), exact: true, includeHidden: true });
+  await target.evaluate((el: HTMLElement) => el.focus());
+  await expect(target).not.toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(follower(page)).toBeVisible();
+  expect(await sets(page)).toEqual(before);
+  await takeover(page).focus();
+  await page.keyboard.press("Enter");
+  await expect(ownerRow(page)).toBeVisible();
+  await target.focus();
   await page.keyboard.press("Enter");
   await expect.poll(() => sets(page)).toEqual([before[0], "80×5✓", before[2]]);
   await expect(ownerRow(page)).toBeVisible();
 });
 
 for (const delay of [500, 1500, 2800, 3300]) {
-  test(`R11-QA-10: касание через ${delay} мс после свайпа работает как обычное первое касание, второе — срабатывает`, async ({ page, context }) => {
+  test(`R11-QA-10: касание через ${delay} мс после свайпа не забирает роль, после явной передачи ✓ работает`, async ({ page, context }) => {
     test.setTimeout(120_000);
     await followerPair(page, context, SIZES[0]);
     const before = await sets(page);
@@ -1037,9 +1224,10 @@ for (const delay of [500, 1500, 2800, 3300]) {
     await page.waitForTimeout(delay);
     const point = await centre(page, 2);
     await page.touchscreen.tap(point.x, point.y);
-    await expect(pressedRow(page)).toBeVisible();
+    await expect(follower(page)).toBeVisible();
     expect(await sets(page)).toEqual(before);
-    await page.touchscreen.tap(point.x, point.y);
+    await handoff(page);
+    await page.getByRole("button", { name: SET_DONE(2), exact: true }).tap();
     await expect.poll(() => sets(page)).toEqual([before[0], "80×5✓", before[2]]);
   });
 }
@@ -1049,22 +1237,29 @@ const exerciseCount = async (page: Page) => (await storedDraft(page))!.workout.e
 // Жим уже в тренировке (повтор того же упражнения приложение пропускает), поэтому добавляем приседания
 const addBench = (page: Page) => page.getByRole("button", { name: "Добавить Приседания со штангой", exact: true });
 
-test("R11-QA-12: «Добавить упражнение» программным click (без pointer-событий, как у QA и у чтения с экрана) делает окно основным — упражнение сохраняется", async ({ page, context }) => {
+test("R11-QA-12: «Добавить упражнение» программным click не передаёт роль; упражнение сохраняется после явной передачи", async ({ page, context }) => {
   test.setTimeout(120_000);
   await followerPair(page, context, SIZES[0]);
-  await page.getByRole("button", { name: "Добавить упражнение", exact: true }).evaluate((el: HTMLElement) => el.click());
-  await expect(follower(page)).toHaveCount(0);
+  const oldOwner = (await storedDraft(page))!.owner;
+  const add = page.getByRole("button", { name: "Добавить упражнение", exact: true, includeHidden: true });
+  await add.evaluate((el: HTMLElement) => el.click());
+  await expect(follower(page)).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect(await exerciseCount(page)).toBe(1);
+  expect((await storedDraft(page))!.owner).toBe(oldOwner);
+  await handoff(page);
+  await add.click();
   await addBench(page).evaluate((el: HTMLElement) => el.click());
   await page.getByRole("button", { name: "Готово", exact: true }).click();
   await expect.poll(() => exerciseCount(page)).toBe(2);
-  // «Открыть здесь» после этого не нужен и упражнение не пропало: ни в ключе, ни на экране
+  // Упражнение не пропало ни в ключе, ни на экране.
   await page.reload();
   await page.getByRole("button", { name: "Продолжить тренировку", exact: true }).first().click();
   await expect(page.getByLabel("Приседания со штангой, подход 1, вес", { exact: true })).toBeVisible();
   expect(await exerciseCount(page)).toBe(2);
 });
 
-test("R11-QA-12: диалог открыт до смены роли — нажатие в диалоге делает окно основным, добавленное упражнение сохраняется", async ({ page, context }) => {
+test("R11-QA-12: диалог, открытый до передачи, закрывается без изменения черновика", async ({ page, context }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(SIZES[0]);
   await round01Fixture(page);
@@ -1073,10 +1268,15 @@ test("R11-QA-12: диалог открыт до смены роли — нажа
   await page.getByRole("button", { name: "Добавить упражнение", exact: true }).click();
   await expect(addBench(page)).toBeVisible();
   const tab2 = await openSecondTab(context, SIZES[0]);
-  await tab2.getByRole("button", { name: "Продолжить тренировку", exact: true }).click();
+  await resume(tab2);
+  await handoff(tab2);
   await page.bringToFront();
-  await expect(addBench(page)).toBeVisible(); // диалог на месте, окно стало ведомым
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(follower(page)).toBeVisible();
   const owner2 = (await storedDraft(page))!.owner;
+  expect(await exerciseCount(page)).toBe(1);
+  await handoff(page);
+  await page.getByRole("button", { name: "Добавить упражнение", exact: true }).click();
   await addBench(page).click();
   await page.getByRole("button", { name: "Готово", exact: true }).click();
   await expect.poll(() => exerciseCount(page)).toBe(2);
@@ -1084,10 +1284,10 @@ test("R11-QA-12: диалог открыт до смены роли — нажа
   await expect(follower(page)).toHaveCount(0);
 });
 
-test("R11-QA-12: то же через «Открыть здесь» — упражнение, добавленное после, остаётся", async ({ page, context }) => {
+test("R11-QA-12: то же через «Продолжить здесь» — упражнение, добавленное после, остаётся", async ({ page, context }) => {
   test.setTimeout(120_000);
   await followerPair(page, context, SIZES[0]);
-  await page.getByRole("button", { name: "Открыть здесь", exact: true }).click();
+  await handoff(page);
   await page.getByRole("button", { name: "Добавить упражнение", exact: true }).click();
   await addBench(page).click();
   await page.getByRole("button", { name: "Готово", exact: true }).click();

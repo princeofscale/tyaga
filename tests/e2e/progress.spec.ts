@@ -101,12 +101,12 @@ async function setup(page: Page, empty = false) {
 async function weightTab(page: Page) {
   await page.getByRole("tab", { name: "Вес тела", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "Вес и его динамика" }),
+    page.getByRole("heading", { name: "Вес тела", exact: true }),
   ).toBeVisible();
 }
 async function shot(page: Page, name: string) {
   await page.evaluate(() => document.fonts.ready.then(() => undefined));
-  const path = page.locator(".progress-chart path").first();
+  const path = page.locator(".progress-chart path:not(.progress-chart-area)").first();
   if (await path.count())
     await expect(path).toHaveCSS("stroke-dashoffset", "0px");
   await mkdir("artifacts/progress", { recursive: true });
@@ -128,8 +128,8 @@ test("bodyweight: remote goal keeps a compact chart, long notes and point select
 }) => {
   const clean = await setup(page);
   await weightTab(page);
-  await expect(page.getByText("От 3 замеров за 7 дней и больше")).toBeVisible();
-  await expect(page.getByText(/Цель 70 кг — вне диапазона/)).toBeVisible();
+  await expect(page.getByText("От 3 замеров за 7 дней")).toBeVisible();
+  await expect(page.getByText(/Цель 70 кг.*вне диапазона/)).toBeVisible();
   await expect(page.locator(".progress-chart svg")).toHaveCSS(
     "height",
     "230px",
@@ -237,7 +237,7 @@ test("statistics and strength share volume rules, keyboard navigation and settle
   await page.getByRole("tab", { name: "Обзор", exact: true }).click();
   await expect(page.locator(".progress-analytics")).toHaveCSS("opacity", "1");
   await expect(
-    page.locator(".progress-metric").filter({ hasText: "Нагрузка" }),
+    page.locator(".progress-metric").filter({ hasText: "Объём" }),
   ).toContainText("0,8");
   for (const width of [390, 1440]) {
     await page.setViewportSize({ width, height: 1000 });

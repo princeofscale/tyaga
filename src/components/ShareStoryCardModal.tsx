@@ -6,8 +6,8 @@ import type { AccountProfile } from "../lib/account";
 import { volumeSummary, fmt } from "../lib/model";
 import { TextFitter } from "../domain/TextFitter";
 
-const DISPLAY = '"Tyaga Display", "Arial Narrow", sans-serif';
-const BODY = '"Onest Variable", system-ui, sans-serif';
+const DISPLAY = '"Sofia Sans Condensed", "Arial Narrow", sans-serif';
+const BODY = '"Golos Text", system-ui, sans-serif';
 const MONO = '"JetBrains Mono Variable", ui-monospace, monospace';
 const font = (weight: number, size: number, family = BODY) => `${weight} ${size}px ${family}`;
 

@@ -55,15 +55,16 @@ async function touchInDialog(page: Page) {
   const out: string[] = [];
   const items = await dialog(page).locator("button, a, input:not([type=hidden]), select, summary").elementHandles();
   for (const el of items) {
-    await el.evaluate((node) => node.scrollIntoView({ block: "center" }));
-    const bad = await el.evaluate((node) => {
+    await el.evaluate((raw) => (raw as HTMLElement).scrollIntoView({ block: "center" }));
+    const bad = await el.evaluate((raw) => {
+      const node = raw as HTMLElement;
       const style = getComputedStyle(node);
       const r = node.getBoundingClientRect();
       if (style.visibility === "hidden" || style.display === "none" || r.width === 0 || r.height === 0) return null;
       const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
       const covered = !!hit && hit !== node && !node.contains(hit) && !hit.contains(node);
       if (r.width + 0.5 >= 44 && r.height + 0.5 >= 44 && !covered) return null;
-      return `${(node as HTMLElement).innerText?.trim().slice(0, 40) || node.getAttribute("placeholder") || node.tagName} ${Math.round(r.width)}×${Math.round(r.height)}${covered ? ` перекрыт ${(hit as HTMLElement)?.tagName}.${(hit as HTMLElement)?.className}` : ""}`;
+      return `${node.innerText?.trim().slice(0, 40) || node.getAttribute("placeholder") || node.tagName} ${Math.round(r.width)}×${Math.round(r.height)}${covered ? ` перекрыт ${(hit as HTMLElement)?.tagName}.${(hit as HTMLElement)?.className}` : ""}`;
     });
     if (bad) out.push(bad);
   }
@@ -114,7 +115,7 @@ for (const size of SIZES) {
     // сегодня вторник: по умолчанию «с понедельника этой недели»
     await expect(d.getByRole("button", { name: /^с понедельника этой недели/ })).toHaveAttribute("aria-pressed", "true");
     await expect(d.getByRole("button", { name: /^со следующего понедельника/ })).toHaveAttribute("aria-pressed", "false");
-    await expect(d.getByRole("switch", { name: /^Добавить к оригиналу: задняя и средняя дельта, пресс/ })).toHaveAttribute("aria-checked", "true");
+    await expect(d.getByRole("switch", { name: /^Добавить к оригиналу: задняя дельта, отведения, икры, пресс/ })).toHaveAttribute("aria-checked", "true");
     await expect(d.getByRole("switch", { name: /^Облегчённо: вместо одного повторения — три/ })).toHaveAttribute("aria-checked", "false");
     // пустые поля: создать нельзя, причина названа
     await d.getByRole("button", { name: "Создать программу", exact: true }).click();
@@ -200,12 +201,12 @@ test("R10-REQ02: переключатель «Добавить к оригина
   await openPrograms(page);
   await page.getByRole("button", { name: /Дэвид Лейд · DUP/ }).click();
   await fillMaxes(page);
-  await dialog(page).getByRole("switch", { name: /^Добавить к оригиналу: задняя и средняя дельта, пресс/ }).click();
+  await dialog(page).getByRole("switch", { name: /^Добавить к оригиналу: задняя дельта, отведения, икры, пресс/ }).click();
   await dialog(page).getByRole("switch", { name: /^Облегчённо: вместо одного повторения — три/ }).click();
   await dialog(page).getByRole("button", { name: "Создать программу", exact: true }).click();
   await expect(dialog(page)).toHaveCount(0);
   const ids = puts.flatMap((r) => r.exercises.map((e) => e.exerciseId));
-  for (const added of ["rear-delt-fly", "lateral-cable-single", "hanging-leg-raise", "ab-roller"]) expect(ids).not.toContain(added);
+  for (const added of ["rear-delt-fly", "lateral-cable-single", "calf-standing-machine", "calf-seated", "hanging-leg-raise", "ab-roller"]) expect(ids).not.toContain(added);
   expect(puts.every((r) => r.periodization!.extras === false && r.periodization!.light === true)).toBe(true);
   // неделя 2: по таблице 1 × 1 — облегчённо 1 × 3 × 90 %
   await setToday(page, "2026-11-17");
@@ -244,7 +245,8 @@ test("R10-REQ03: критерий 3 — Ноги 1, Жим 1, Тяга 2 нед�
   await expect(page.getByText("Тяжёлый подход: 1 × 5 повторений · 85 % от 1ПМ (100 кг) = 85 кг.")).toBeVisible();
   await expect(page.getByText("Затем 4 × 12 повторений · 65 % = 65 кг.")).toBeVisible();
   await expect(page.getByLabel("Заметка").or(page.locator("textarea")).first()).toHaveValue(/Неделя 1 из 9 · волна 1/);
-  await expect(page.getByText("Добавлено к оригиналу Лейда: в его таблице этого нет.")).toBeVisible();
+  await expect(page.getByText("Добавлено к оригиналу Лейда: в его таблице этого нет.").first()).toBeVisible();
+  await expect(page.getByText("Добавлено к оригиналу Лейда: в его таблице этого нет.")).toHaveCount(2);
   // вспомогательное: без выдуманных чисел — вес пуст
   await expect(page.getByLabel("Румынская тяга со штангой, подход 1, вес", { exact: true })).toHaveValue("");
   expect(await overflow(page)).toBeLessThanOrEqual(1);
@@ -341,10 +343,17 @@ for (const size of SIZES) {
     await expect(weeks.nth(1)).toContainText("1 × 1 × 95 кг · 4 × 4 × 85 кг");
     await expect(weeks.nth(3)).toContainText("1 × 5 × 85 кг · 4 × 12 × 65 кг");
     await expect(weeks.nth(8)).toContainText("Неделя 9 · волна 3");
+    // фильтр волн Motion: выбор волны показывает 3 недели и баннер фазы, возврат — все 9
+    await d.getByRole("button", { name: "Волна 2", exact: true }).click();
+    await expect(weeks).toHaveCount(3);
+    await expect(d.locator(".laid-wave-banner")).toContainText("Недели 4–6 · Интенсификация");
+    await d.getByRole("button", { name: "Все 9 нед.", exact: true }).click();
+    await expect(weeks).toHaveCount(9);
     // состав дней: оригинал и добавленное
     await d.getByText("Состав дней: оригинал и добавленное").click();
+    await expect(d.locator(".laid-comp-day").first()).toContainText("Подъём на носки стоя в тренажёре");
     await expect(d.locator(".laid-comp-day").first()).toContainText("Подъём ног в висе");
-    await expect(d.locator(".laid-comp-day").first().locator(".laid-origin.added")).toHaveText("добавлено");
+    await expect(d.locator(".laid-comp-day").first().locator(".laid-origin.added").first()).toHaveText("добавлено");
     await expect(d.locator(".laid-comp-day").first().locator(".laid-origin.original").first()).toHaveText("оригинал");
     expect(await d.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
     expect(await overflow(page)).toBeLessThanOrEqual(1);
@@ -430,7 +439,7 @@ test("R10-REQ05: резервная копия содержит периодиз
   test.setTimeout(90_000);
   const old = { ...TrainingProgram.empty(), id: "old", name: "Старая программа", days: [6], exercises: [TrainingProgram.starter("full")[0].exercises[0]], revision: 3 };
   await laidApp(page, { routines: [...sixRoutines(), old] });
-  await page.getByRole("button", { name: /^Инструменты/ }).last().click();
+  await page.getByRole("button", { name: "Ещё", exact: true }).last().click();
   await page.getByRole("button", { name: /^Резервная копия/ }).click();
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Скачать полную копию", exact: true }).click();
@@ -492,7 +501,7 @@ test("QA-R10-07: программа с битой периодизацией, н
     await expect(card(page, "Битая программа").getByText(/Неделя \d из 9/)).toHaveCount(0);
     await expect(page.getByLabel("Программа Дэвида Лейда")).toHaveCount(0);
     await card(page, "Битая программа").getByRole("button", { name: "Начать", exact: true }).click();
-    await expect(page.getByLabel(`${good.exercises[0].name ?? "Приседания со штангой"}, подход 1, вес`).first()).toBeVisible();
+    await expect(page.getByLabel("Приседания со штангой, подход 1, вес").first()).toBeVisible();
     await discard(page);
   }
   expect(errors).toEqual([]);
@@ -577,7 +586,7 @@ test("QA-R10-05: фиолетовая тема — акцентный текст
       };
       const out: string[] = [];
       let seen = 0;
-      for (const el of document.querySelectorAll(".laid-week, .laid-origin.added, .laid-switch-state, .laid-card .eyebrow, .laid-status.done, .laid-estimate")) {
+      for (const el of document.querySelectorAll(".laid-week, .laid-origin.added, .laid-switch-state, .laid-card .laid-phase-badge, .laid-status.done, .laid-estimate")) {
         const rect = el.getBoundingClientRect();
         if (!rect.width) continue;
         const fg = parse(getComputedStyle(el).color).slice(0, 3);
@@ -590,7 +599,7 @@ test("QA-R10-05: фиолетовая тема — акцентный текст
     });
   expect(await page.evaluate(() => document.documentElement.getAttribute("data-theme-accent"))).toBe("violet");
   const card = await worst();
-  expect(card.seen, "проверены .laid-week, eyebrow и статусы карточки").toBeGreaterThanOrEqual(2);
+  expect(card.seen, "проверены неделя, фаза и статусы карточки").toBeGreaterThanOrEqual(2);
   expect(card.out).toEqual([]);
   await page.getByRole("button", { name: "Расписание на 9 недель" }).click();
   await expect(dialog(page)).toBeVisible();
@@ -605,7 +614,7 @@ test("QA-R10-05: фиолетовая тема — акцентный текст
 const FAULTS: { tab: string; literal: string }[] = [
   { tab: "Сегодня", literal: 'children:"Сегодня"' },
   { tab: "История", literal: 'children:"История тренировок"' },
-  { tab: "Прогресс", literal: 'children:"ТВОЯ РАБОТА В ЦИФРАХ"' },
+  { tab: "Прогресс", literal: 'children:"Прогресс"' },
   { tab: "Упражнения", literal: 'children:"Упражнения"' },
 ];
 async function injectFault(page: Page) {
@@ -718,7 +727,7 @@ test("QA-R10-14: копия программы Лейда — веса теку�
   const copy = puts.at(-1)!;
   expect(copy.periodization).toBeUndefined();
   expect(copy.exercises[0].sets.map((s) => [s.weight, s.reps])).toEqual(want);
-  await expect(page.getByText("Копия сохранена как обычная программа. Веса — по плану на неделю 3; периодизация не копируется.")).toBeVisible();
+  await expect(page.getByText("Копия сохранена. Веса из недели 3, без периодизации.")).toBeVisible();
 });
 
 for (const size of [{ width: 360, height: 800 }, { width: 320, height: 640 }]) {
@@ -736,3 +745,46 @@ for (const size of [{ width: 360, height: 800 }, { width: 320, height: 640 }]) {
     expect((await clipped(page, "main")).wide).toEqual([]);
   });
 }
+
+test.describe("Motion UI & улучшенный план Лейда (без reducedMotion)", () => {
+  test.use({ reducedMotion: "no-preference" });
+
+  test("Motion domMax: выбор ритма 3+1+3 (отдых Чт), пружинные тумблеры, облегчённый режим на Тяге 2 и фильтр волн работают без ошибок", async ({ page }) => {
+    test.setTimeout(90_000);
+    const errors: string[] = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    const history = [
+      doneWorkout("База", "2026-11-02", [
+        ["squat", 100, 5, 2],
+        ["bench", 80, 5, 2],
+        ["deadlift-bar", 140, 3, 1],
+        ["ohp-bar", 55, 5, 2],
+      ]),
+    ];
+    const { puts } = await laidApp(page, { workouts: history });
+    await openPrograms(page);
+    await page.getByRole("button", { name: /Дэвид Лейд · DUP/ }).click();
+    const d = dialog(page);
+    await fillMaxes(page);
+    await d.getByRole("button", { name: /3 \+ 1 \+ 3 · выходной Чт/ }).click();
+    await expect(d.getByRole("button", { name: /3 \+ 1 \+ 3 · выходной Чт/ })).toHaveAttribute("aria-pressed", "true");
+    await d.getByRole("switch", { name: /^Облегчённо/ }).click();
+    await expect(d.locator(".laid-preview")).toContainText("1 × 3 × 125 кг · 4 × 4 × 120 кг");
+    await d.getByRole("button", { name: "Создать программу", exact: true }).click();
+    await expect(dialog(page)).toHaveCount(0);
+    expect(puts).toHaveLength(6);
+    expect(puts.map((r) => r.days)).toEqual([[0], [1], [2], [4], [5], [6]]);
+    expect(puts.every((r) => r.restSeconds === 180)).toBe(true);
+
+    const lead = page.getByLabel("Программа Дэвида Лейда");
+    await expect(lead.locator(".laid-card-maxes")).toContainText("140 кг");
+    await lead.getByRole("button", { name: "Расписание на 9 недель", exact: true }).click();
+    const sched = dialog(page);
+    await sched.getByRole("button", { name: "Волна 3", exact: true }).click();
+    await expect(sched.locator(".laid-wave-banner")).toContainText("Пик силы");
+    await expect(sched.locator(".laid-week-card")).toHaveCount(3);
+    await sched.getByText("Состав дней: оригинал и добавленное").click();
+    await expect(sched.locator(".laid-audit-card")).toContainText("Push 2 выстроен строго по листу оригинала");
+    expect(errors).toEqual([]);
+  });
+});

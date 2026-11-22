@@ -12,6 +12,7 @@ import {
 } from "../lib/model";
 import { MUSCLES } from "../data/muscles";
 import { addCalendarDays } from "../lib/calendar";
+import { calendarWeekday, TrainingCalendar } from "./TrainingCalendar";
 import type {
   Muscle,
   Routine,
@@ -21,9 +22,7 @@ import type {
 } from "../lib/types";
 
 export const DAY_NAMES = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
-export function calendarWeekday(date: string) {
-  return (new Date(date + "T12:00:00Z").getUTCDay() + 6) % 7;
-}
+export { calendarWeekday } from "./TrainingCalendar";
 /** Monday-based week number of a calendar date, in whole weeks since 1970. */
 function calendarWeekNumber(date: string) {
   const d = new Date(date + "T12:00:00Z");
@@ -90,7 +89,7 @@ export class TrainingProgram {
     );
   }
   scheduled(date: string) {
-    return this.routine.days.includes(calendarWeekday(date));
+    return TrainingCalendar.onDate([this.routine], date).length > 0;
   }
   /** Planned rep range of one movement; the routine range fills the gaps. */
   range(plan: WorkoutExercise) {
@@ -104,8 +103,9 @@ export class TrainingProgram {
    */
   weekIndex(history: Workout[], date: string) {
     const first = history
-      .filter((w) => w.routineId === this.routine.id && w.date <= date)
-      .map((w) => w.date)
+      .filter((w) => w.routineId === this.routine.id)
+      .map((w) => w.programDate ?? w.date)
+      .filter((day) => day <= date)
       .sort()[0];
     if (!first) return 0;
     return Math.max(0, calendarWeekNumber(date) - calendarWeekNumber(first));
@@ -140,7 +140,7 @@ export class TrainingProgram {
   ) {
     return WorkoutReference.latest(
       // QA-R06-13: разгрузочные тренировки («[Разгрузка]» в названии) не бывают базой веса — ни при цикле, ни после «Применить разгрузку».
-      history.filter((w) => !DeloadEngine.isDeloadName(w.name) && (!skipDeload || !this.isDeload(history, w.date))),
+      history.filter((w) => !DeloadEngine.isDeloadName(w.name) && (!skipDeload || !this.isDeload(history, w.programDate ?? w.date))),
       plan,
       undefined,
       today,
@@ -187,13 +187,15 @@ export class TrainingProgram {
     history: Workout[],
     timeZone: string,
     today = localDate(new Date(), timeZone),
+    programDate?: string,
   ): Workout {
     const r = this.routine;
     const workout = makeWorkout([], [], timeZone);
-    // R10: у программы с периодизацией свой счёт недель; разгрузочный цикл обычных программ к ней не применяется.
-    const laid = LaidDupPlan.planFor(r, today);
+    // A move changes the training day, not the plan phase (including Laid's independent cycle).
+    const phaseDate = programDate ?? today;
+    const laid = LaidDupPlan.planFor(r, phaseDate);
     const cycle = laid ? undefined : r.cycle;
-    const deload = !laid && this.isDeload(history, today);
+    const deload = !laid && this.isDeload(history, phaseDate);
     const built: Workout = {
       ...workout,
       date: today,
@@ -212,6 +214,7 @@ export class TrainingProgram {
               .join("\n\n")
           : r.notes,
       routineId: r.id,
+      ...(programDate !== undefined ? { programDate } : {}),
       restSeconds: r.restSeconds,
       exercises: r.exercises.map((plan) => {
         const definition = exerciseForEntry(plan)!;
@@ -304,9 +307,23 @@ export class TrainingProgram {
         if (entry.exerciseId === plan.liftExerciseId)
           return { ...entry, sets: LaidDupPlan.liftSets(plan), repMin: undefined, repMax: undefined, progressionNote: LaidDupPlan.describe(plan) };
         const reps = LaidDupPlan.auxReps(day, entry.exerciseId, plan.position.inWave);
+        if (reps !== null) {
+          // Волновая подсобка (push press 4/8/12, наклонный жим 12/4/8): если подходы взялись из истории
+          // с другим числом повторений, подстраиваем повторы под текущую неделю волны, а пустые (без истории) не выдумываем.
+          const sets = entry.sets.map((s) =>
+            !s.warmup && s.reps > 0 && s.reps !== reps ? { ...s, reps } : s,
+          );
+          const workCount = sets.filter((s) => !s.warmup).length;
+          return {
+            ...entry,
+            sets,
+            repMin: reps,
+            repMax: reps,
+            progressionNote: `Волна недели: ${workCount} × ${reps} ${LaidDupPlan.repsWord(reps)} (RPE 8–9) — подбери вес под это число повторений.`,
+          };
+        }
         return {
           ...entry,
-          ...(reps === null ? {} : { repMin: reps, repMax: reps }),
           progressionNote: LaidDupPlan.isAdded(day, entry.exerciseId) ? "Добавлено к оригиналу Лейда: в его таблице этого нет." : undefined,
         };
       }),

@@ -206,7 +206,7 @@ function LibraryContent({
         : [...e.primary, ...e.secondary];
   return (
     <div className={`exercise-library ${picker ? "is-picker" : ""}`}>
-      <div className="catalog-tabs" aria-label="Каталог упражнений">
+      <div className="catalog-tabs" role="group" aria-label="Каталог упражнений">
         <button
           className={source === "tyaga" ? "active" : ""}
           aria-pressed={source === "tyaga"}
@@ -384,7 +384,7 @@ function LibraryContent({
       ) : null}
       <div className="exercise-filters">
         <div className="search-field">
-          <Search size={18} />
+          <Search size={18} aria-hidden="true" />
           <input
             aria-label="Поиск упражнений"
             placeholder={
@@ -437,6 +437,7 @@ function LibraryContent({
           <button
             type="button"
             className={`subhead-btn ${subheadFilter === "all" ? "active" : ""}`}
+            aria-pressed={subheadFilter === "all"}
             onClick={() => setSubheadFilter("all")}
           >
             Все
@@ -446,6 +447,7 @@ function LibraryContent({
               <button
                 type="button"
                 className={`subhead-btn ${subheadFilter === "chest-upper" ? "active" : ""}`}
+                aria-pressed={subheadFilter === "chest-upper"}
                 onClick={() => setSubheadFilter("chest-upper")}
               >
                 Верх груди
@@ -453,6 +455,7 @@ function LibraryContent({
               <button
                 type="button"
                 className={`subhead-btn ${subheadFilter === "chest-mid" ? "active" : ""}`}
+                aria-pressed={subheadFilter === "chest-mid"}
                 onClick={() => setSubheadFilter("chest-mid")}
               >
                 Середина груди
@@ -460,6 +463,7 @@ function LibraryContent({
               <button
                 type="button"
                 className={`subhead-btn ${subheadFilter === "chest-lower" ? "active" : ""}`}
+                aria-pressed={subheadFilter === "chest-lower"}
                 onClick={() => setSubheadFilter("chest-lower")}
               >
                 Низ груди
@@ -470,6 +474,7 @@ function LibraryContent({
               <button
                 type="button"
                 className={`subhead-btn ${subheadFilter === "deltoid-anterior" ? "active" : ""}`}
+                aria-pressed={subheadFilter === "deltoid-anterior"}
                 onClick={() => setSubheadFilter("deltoid-anterior")}
               >
                 Передняя дельта
@@ -477,6 +482,7 @@ function LibraryContent({
               <button
                 type="button"
                 className={`subhead-btn ${subheadFilter === "deltoid-middle" ? "active" : ""}`}
+                aria-pressed={subheadFilter === "deltoid-middle"}
                 onClick={() => setSubheadFilter("deltoid-middle")}
               >
                 Средняя дельта
@@ -484,6 +490,7 @@ function LibraryContent({
               <button
                 type="button"
                 className={`subhead-btn ${subheadFilter === "deltoid-posterior" ? "active" : ""}`}
+                aria-pressed={subheadFilter === "deltoid-posterior"}
                 onClick={() => setSubheadFilter("deltoid-posterior")}
               >
                 Задняя дельта
@@ -539,10 +546,11 @@ function LibraryContent({
                       />
                     </label>
                   ) : null}
-                  <div className="library-icon">
-                    <Dumbbell size={21} />
+                  <div className="library-icon" aria-hidden="true">
+                    <Dumbbell size={19} />
                   </div>
                   <div className="library-copy">
+                    <h3>{e.name}</h3>
                     {e.source || e.custom ? (
                       <span className="exercise-source-tag">
                         {e.custom
@@ -558,7 +566,6 @@ function LibraryContent({
                         <span className="library-head-tag">{badge}</span>
                       ) : null;
                     })()}
-                    <h3>{e.name}</h3>
                     <p>
                       {zones(e)
                         .slice(0, 3)
@@ -579,42 +586,44 @@ function LibraryContent({
                       </small>
                     ) : null}
                   </div>
-                  <button
-                    className={
-                      picker ? "icon-button add-exercise-button" : "library-add"
-                    }
-                    aria-label={`Добавить ${e.name}`}
-                    disabled={added || limitReached || !loggable}
-                    onClick={() => onAdd(e.id)}
-                  >
-                    {added ? <Check size={19} /> : <Plus size={19} />}
-                  </button>
-                  {onFavorite ? (
+                  <div className="library-actions">
                     <button
-                      className={`favorite-button ${favorites.includes(e.id) ? "active" : ""}`}
-                      aria-label={`${favorites.includes(e.id) ? "Убрать из избранного" : "В избранное"}: ${e.name}`}
-                      aria-pressed={favorites.includes(e.id)}
-                      onClick={() => onFavorite(e.id)}
+                      className={
+                        picker ? "icon-button add-exercise-button" : "library-add"
+                      }
+                      aria-label={`Добавить ${e.name}`}
+                      disabled={added || limitReached || !loggable}
+                      onClick={() => onAdd(e.id)}
                     >
-                      <Star
-                        size={17}
-                        fill={
-                          favorites.includes(e.id) ? "currentColor" : "none"
-                        }
-                      />
+                      {added ? <Check size={19} /> : <Plus size={19} />}
                     </button>
-                  ) : null}
-                  {e.custom && onEdit ? (
-                    <button
-                      className="custom-edit-button"
-                      aria-label={`Редактировать ${e.name}`}
-                      onClick={() => onEdit(e)}
-                    >
-                      <Pencil size={15} />
-                    </button>
-                  ) : null}
+                    {onFavorite ? (
+                      <button
+                        className={`favorite-button ${favorites.includes(e.id) ? "active" : ""}`}
+                        aria-label={`${favorites.includes(e.id) ? "Убрать из избранного" : "В избранное"}: ${e.name}`}
+                        aria-pressed={favorites.includes(e.id)}
+                        onClick={() => onFavorite(e.id)}
+                      >
+                        <Star
+                          size={17}
+                          fill={
+                            favorites.includes(e.id) ? "currentColor" : "none"
+                          }
+                        />
+                      </button>
+                    ) : null}
+                    {e.custom && onEdit ? (
+                      <button
+                        className="custom-edit-button"
+                        aria-label={`Редактировать ${e.name}`}
+                        onClick={() => onEdit(e)}
+                      >
+                        <Pencil size={15} />
+                      </button>
+                    ) : null}
+                  </div>
                   {!picker ? (
-                    <span className="library-index">
+                    <span className="library-index" aria-hidden="true">
                       {String(
                         (source === "wger" ? (page - 1) * 24 : 0) + i + 1,
                       ).padStart(2, "0")}

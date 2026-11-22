@@ -385,7 +385,7 @@ test("validation rejects impossible dates, unknown time zones, version mismatche
   bad.exercises[0].sets.push(bad.exercises[0].sets[0]);
   assert.throws(() => validWorkout(bad), InputError);
 });
-test("validation rejects warmup-only and unfinished sessions, ambiguous sides and missing machine identity", () => {
+test("validation rejects warmup-only, unfinished and ambiguous sets but permits unlabelled machine entries", () => {
   assert.throws(
     () => validWorkout(sample("bench", { warmup: true })),
     InputError,
@@ -396,7 +396,9 @@ test("validation rejects warmup-only and unfinished sessions, ambiguous sides an
   assert.throws(() => validWorkout(row), InputError);
   const machine = sample("lat-pulldown");
   delete machine.exercises[0].equipmentNote;
-  assert.throws(() => validWorkout(machine), InputError);
+  const saved = validWorkout(machine).exercises[0];
+  assert.equal(saved.equipmentNote, undefined);
+  assert.equal(saved.machineInstanceId, undefined);
   const assisted = sample("pullup-assisted", { weight: -20 });
   assert.throws(() => validWorkout(assisted), InputError);
 });
@@ -438,6 +440,15 @@ test("rest deadline survives reload while the active workout clock does not incl
   const delayed = checkpointDraft(d, 8 * 3600000);
   assert.equal(delayed.clock.runningSince, null);
   assert.ok(delayed.clock.elapsedMs <= 360000);
+});
+test("active workout clock keeps counting accurately across background pauses up to 2 hours", () => {
+  const d = newDraft(sample(), false, 1000);
+  // 15 minutes later (e.g. phone screen locked between sets): full 15 min counted, clock keeps running.
+  const after15m = checkpointDraft(d, 1000 + 15 * 60_000);
+  assert.equal(after15m.clock.elapsedMs, 15 * 60_000);
+  assert.equal(after15m.clock.runningSince, 1000 + 15 * 60_000);
+  // Another 40 minutes later: 55 min total without freezing at 1 minute.
+  assert.equal(elapsedMs(after15m, 1000 + 55 * 60_000), 55 * 60_000);
 });
 test("legacy drafts restore paused without assuming wall-clock duration; corrupt drafts are ignored", () => {
   const restored = parseDraft(

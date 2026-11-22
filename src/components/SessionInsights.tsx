@@ -148,7 +148,7 @@ export default function SessionInsights({
       <details className="insights-more">
         <summary>Подробнее: мышцы, тренажёры, разминка</summary>
       {report.machineVolume.length > 0 && <section className="session-machine-volume"><h3>Тоннаж на отдельных тренажёрах</h3>
-        {report.machineVolume.map((row)=><p key={row.key}>{row.label}: {fmt(row.volume)} кг·повт. · {row.sets} подх.</p>)}
+        {report.machineVolume.map((row)=><p key={row.key}>{row.label}: {fmt(row.volume)} кг·повт. · {row.sets} подх.{row.calibratedVolume !== undefined && row.calibrationFactor !== undefined ? ` (с коэф. ×${fmt(row.calibrationFactor)}: ${fmt(row.calibratedVolume)} кг·повт.)` : ""}</p>)}
         <p className="tiny">Значения стека сравниваются только на той же машине в том же варианте движения.</p></section>}
       {report.density.supersetGroups > 0 && <p className="tiny">Групп суперсетов: {report.density.supersetGroups} · {report.density.setsPerMinute === null ? "длительность не указана" : `${fmt(report.density.setsPerMinute)} рабочих подхода/мин`}. Плотность записи не измеряет усталость.</p>}
       {report.muscles.length > 0 && (

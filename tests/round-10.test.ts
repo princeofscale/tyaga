@@ -109,7 +109,7 @@ test("R10-REQ01: неделя 10 и дальше — схема недели 9 �
   assert.equal(LaidDupPlan.weekLabel(LaidDupPlan.position(3)), "Неделя 4 из 9 · волна 2");
 });
 
-test("R10-REQ01: «облегчённо» — три повторения вместо одного: 90 / 91 / 92,5 % по волнам, остальные подходы без изменений", () => {
+test("R10-REQ01: «облегчённо» — три повторения вместо одного: 90 / 91 / 92,5 % по волнам, а двойки тяги сдвигаются до 4 × 4 (топ-сет всегда тяжелее откатных)", () => {
   const light = (day: LaidDay, week: number) => LaidDupPlan.day(day, week, MAXES, { light: true });
   const l1 = light("legs1", 1);
   assert.deepEqual([l1.heavy.reps, l1.heavy.percent, l1.heavy.weightKg, l1.heavy.light], [3, 90, 90, true]);
@@ -120,18 +120,26 @@ test("R10-REQ01: «облегчённо» — три повторения вме
   assert.deepEqual(light("legs1", 2).heavy, LaidDupPlan.day("legs1", 2, MAXES).heavy);
   assert.deepEqual(light("legs1", 1).work, LaidDupPlan.day("legs1", 1, MAXES).work);
   assert.match(LaidDupPlan.describe(l1), /облегчённо, не по оригиналу/);
+  // PO-R10-08: на становой (Pull 2 н.1 и Pull 1 н.2) откатные не остаются двойками 130 кг поверх топ-сета 125 кг
+  const p2 = light("pull2", 0);
+  assert.deepEqual([p2.heavy.reps, p2.heavy.weightKg, p2.work.reps, p2.work.weightKg, p2.work.light], [3, 125, 4, 120, true]);
+  for (let week = 0; week < LAID_WEEKS; week++)
+    for (const day of DAYS) {
+      const plan = light(day, week);
+      assert.ok(plan.heavy.weightKg > plan.work.weightKg, `${day} н.${week + 1}: топ-сет ${plan.heavy.weightKg} > откатных ${plan.work.weightKg}`);
+    }
 });
 
-test("R10-REQ01: блок «добавлено» — состав по дням включён и выключен", () => {
+test("R10-REQ01: блок «добавлено» — задняя и средняя дельта, икры (стоя и сидя), пресс; включён и выключен", () => {
   const ids = (routines: Routine[], day: LaidDay) => byDay(routines, day).exercises.map((e) => e.exerciseId);
   const on = six({ extras: true });
   const off = six({ extras: false });
   assert.ok(ids(on, "pull1").includes("rear-delt-fly") && ids(on, "pull2").includes("rear-delt-fly"));
   assert.ok(ids(on, "push1").includes("lateral-cable-single") && ids(on, "push2").includes("lateral-cable-single"));
-  assert.ok(ids(on, "legs1").includes("hanging-leg-raise"));
-  assert.ok(!ids(on, "legs2").includes("hanging-leg-raise"));
+  assert.ok(ids(on, "legs1").includes("calf-standing-machine") && ids(on, "legs1").includes("hanging-leg-raise"));
+  assert.ok(ids(on, "legs2").includes("calf-seated") && !ids(on, "legs2").includes("hanging-leg-raise"));
   assert.ok(ids(on, "pull2").includes("ab-roller") && !ids(on, "pull1").includes("ab-roller"));
-  const added = new Set(["rear-delt-fly", "lateral-cable-single", "hanging-leg-raise", "ab-roller"]);
+  const added = new Set(["rear-delt-fly", "lateral-cable-single", "calf-standing-machine", "calf-seated", "hanging-leg-raise", "ab-roller"]);
   for (const day of DAYS) {
     assert.ok(!ids(off, day).some((id) => added.has(id)), `${day}: без блока «добавлено» добавленных нет`);
     assert.deepEqual(ids(off, day), LaidDupPlan.originalIds(day), `${day}: без блока остаётся ровно оригинал`);
@@ -139,9 +147,10 @@ test("R10-REQ01: блок «добавлено» — состав по дням 
   }
 });
 
-test("R10-REQ01: состав оригинала — шесть дней по таблице, названия упражнений есть в каталоге", () => {
+test("R10-REQ01: состав оригинала — шесть дней по таблице (точный порядок Push 2, сгибания ног вместо GHR), отдых 180 с и ритм 3+1+3", () => {
   const names = (day: LaidDay) => byDay(six({ extras: false }), day).exercises.map((e) => exerciseById(e.exerciseId)!.name);
-  assert.deepEqual(names("legs1"), ["Приседания со штангой", "Румынская тяга со штангой", "Выпады со штангой", "Гиперэкстензия"]);
+  assert.deepEqual(names("legs1"), ["Приседания со штангой", "Румынская тяга со штангой", "Выпады со штангой", "Сгибание ног сидя"]);
+  assert.deepEqual(names("legs2"), ["Приседания со штангой", "Румынская тяга со штангой", "Выпады со штангой", "Сгибание ног лёжа"]);
   assert.deepEqual(names("push1"), [
     "Жим штанги лёжа", "Жим штанги с ног (push press)", "Отжимания на брусьях с дополнительным весом", "Разведения гантелей лёжа",
     "Махи гантелями в стороны", "Французский жим с EZ-штангой лёжа на наклонной", "Разгибание гантели из-за головы",
@@ -151,11 +160,16 @@ test("R10-REQ01: состав оригинала — шесть дней по т
     "Шраги со штангой", "Подъём штанги на бицепс стоя", "Молотковые сгибания сидя",
   ]);
   assert.deepEqual(names("push2"), [
-    "Жим штанги стоя", "Жим штанги на наклонной скамье 30°", "Отжимания на брусьях с дополнительным весом", "Махи гантелями в стороны",
-    "Французский жим с EZ-штангой лёжа на наклонной", "Разгибание гантели из-за головы",
+    "Жим штанги стоя", "Жим штанги на наклонной скамье 30°", "Махи гантелями в стороны", "Отжимания на брусьях с дополнительным весом",
+    "Разгибание гантели из-за головы", "Французский жим с EZ-штангой лёжа на наклонной",
   ]);
-  assert.deepEqual(names("legs2"), names("legs1"));
   assert.deepEqual(names("pull2").slice(1), names("pull1").slice(1));
+  assert.ok(six().every((r) => r.restSeconds === 180));
+  const split3x1x3 = LaidDupPlan.routines({ maxes: MAXES, extras: true, light: false, startMonday: "2026-11-09", rhythm: "3x1x3" });
+  assert.deepEqual(split3x1x3.map((r) => r.days), [[0], [1], [2], [4], [5], [6]]);
+  assert.equal(LaidDupPlan.waveAuxSummary("push1", 0), "Push press 3 × 4");
+  assert.equal(LaidDupPlan.waveAuxSummary("push2", 0), "Наклонный жим 3 × 12");
+  assert.equal(LaidDupPlan.waveAuxSummary("legs1", 0), null);
 });
 
 test("R10-REQ06: новые записи каталога — честные, с мышцами, снарядом и правилом веса; ни одна не подменяет соседнюю", () => {

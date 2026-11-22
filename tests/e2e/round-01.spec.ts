@@ -171,14 +171,16 @@ test("R01-REQ04: поправленная вручную строка не пе�
   await expect(weight(page, 3)).toHaveValue("105");
 });
 
-test("R01-REQ05: на «Сегодня» цифры недели объяснены, слова «сетов» нет", async ({ page }) => {
+test("R01-REQ05: цифры недели ссылаются на пояснение в «Прогрессе», слова «сетов» нет", async ({ page }) => {
   await round01Fixture(page, { workouts: [doneWorkout("Ноги и грудь", "2026-11-10", [["squat", 100, 8, 3], ["bench", 80, 8, 1]])] });
   const week = page.locator(".weekly-activity-bar");
   await expect(week).toContainText("1 тренировка");
   await expect(week).toContainText("4 подхода");
   const summary = page.locator(".week-summary");
   await expect(summary).toContainText("зачтено зонам");
-  await expect(summary).toContainText("Один подход засчитывается каждой зоне");
+  await expect(summary).not.toContainText("Один подход засчитывается каждой зоне");
+  await summary.click();
+  await expect(page.locator(".zones-panel")).toContainText("Один подход засчитывается каждой зоне");
   for (const path of ["Сегодня", "История", "Прогресс", "Упражнения"]) {
     await nav(page, path).click();
     await expect(page.locator("body")).not.toContainText(/(^|[^а-яё])сет(ов|а|ы)?([^а-яё]|$)/i);
@@ -576,12 +578,12 @@ test("D6: пояснение «число больше» не показывае
   await expect(page.locator("body")).not.toContainText("Поэтому число больше");
 });
 
-test("D6: после тренировки пояснение есть на «Сегодня» и на «Прогресс → Мышцы»", async ({ page }) => {
+test("D6: подробное пояснение переехало с «Сегодня» в «Прогресс → Мышцы»", async ({ page }) => {
   await round01Fixture(page, { workouts: [doneWorkout("Грудь", "2026-11-10", [["bench", 100, 8, 3]])] });
-  await expect(page.locator(".week-summary-note")).toContainText("Один подход засчитывается каждой зоне");
-  await expect(page.locator(".week-summary-note")).toContainText("Поэтому число больше, чем подходов в записи");
-  await nav(page, "Прогресс").click();
-  await page.getByRole("tab", { name: "Мышцы", exact: true }).click();
+  await expect(page.locator(".week-summary-note")).toHaveCount(0);
+  await page.locator(".week-summary").click();
+  await expect(page.getByRole("tab", { name: "Мышцы", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator(".zones-panel")).toContainText("Поэтому число больше, чем подходов в записи");
   await expect(page.locator(".zones-panel")).toContainText("по твоим целям");
   await expect(page.locator(".zones-panel")).toContainText("Один подход засчитывается каждой зоне");
 });

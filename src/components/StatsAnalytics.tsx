@@ -6,27 +6,17 @@ import {
   Trophy,
   Flame,
   Clock,
-  TrendingUp,
-  Dumbbell,
-  Scale,
   Calendar,
   Layers,
   ChevronRight,
-  Sparkles,
   Zap,
-  Info,
 } from "lucide-react";
-import {
-  PersonalRecordsCalculator,
-  type ExercisePR,
-  type ActivityHeatmapDay,
-} from "../domain/PersonalRecords";
+import { PersonalRecordsCalculator } from "../domain/PersonalRecords";
 import {
   localDate,
   volumeSummary,
   fmt,
   dateLabel,
-  MUSCLES,
   type Workout,
   type Settings,
 } from "../lib/model";
@@ -48,7 +38,10 @@ export default function StatsAnalytics({
   rangeStart?: string;
   onOpenExerciseStrength?: (key: string) => void;
 }) {
-  const workouts = useMemo(() => new AnalyticsFacts(history, { timeZone: settings.timeZone }).workouts(), [history, settings.timeZone]);
+  const workouts = useMemo(
+    () => new AnalyticsFacts(history, { timeZone: settings.timeZone }).workouts(),
+    [history, settings.timeZone],
+  );
   const [filterCategory, setFilterCategory] = useState<
     "all" | "big5" | "chest" | "back" | "legs" | "shoulders"
   >("big5");
@@ -59,21 +52,14 @@ export default function StatsAnalytics({
     [workouts],
   );
   const prs = useMemo(() => calc.calculateRecords(settings.timeZone), [calc, settings.timeZone]);
-  const streak = useMemo(
-    () => calc.calculateStreak(settings.timeZone),
-    [calc, settings.timeZone],
-  );
-  const trends = useMemo(
-    () => calc.calculateVolumeTrends(settings.timeZone),
-    [calc, settings.timeZone],
-  );
-  const ratios = useMemo(() => calc.calculateRatios(settings.timeZone), [calc, settings.timeZone]);
+  const streak = useMemo(() => calc.calculateStreak(settings.timeZone), [calc, settings.timeZone]);
+  const trends = useMemo(() => calc.calculateVolumeTrends(settings.timeZone), [calc, settings.timeZone]);
   const heatmap = useMemo(
     () => calc.calculateHeatmap(weeks + (compact ? 1 : 0), settings.timeZone),
     [calc, settings.timeZone, weeks, compact],
   );
 
-  const selectedDay = heatmap.find((day)=>day.date===selectedDate) ?? null;
+  const selectedDay = heatmap.find((day) => day.date === selectedDate) ?? null;
   const volumeAll = useMemo(() => volumeSummary(workouts), [workouts]);
   const totalVolume = volumeAll.total;
   const volumeOmitted = volumeAll.omittedSets;
@@ -84,8 +70,7 @@ export default function StatsAnalytics({
         (sum, w) =>
           sum +
           w.exercises.reduce(
-            (eSum, e) =>
-              eSum + e.sets.filter((s) => s.done && !s.warmup).length,
+            (eSum, e) => eSum + e.sets.filter((s) => s.done && !s.warmup).length,
             0,
           ),
         0,
@@ -97,10 +82,6 @@ export default function StatsAnalytics({
     () => workouts.reduce((sum, w) => sum + (w.duration || 0), 0),
     [workouts],
   );
-
-  const avgWorkoutVolume = workouts.length
-    ? Math.round(totalVolume / workouts.length)
-    : 0;
   const avgWorkoutDuration = workouts.length
     ? Math.round(totalDurationMinutes / workouts.length)
     : 0;
@@ -145,31 +126,23 @@ export default function StatsAnalytics({
       className="stats-analytics-view progress-analytics"
       initial={reduced ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25 }}
+      transition={{ duration: 0.24 }}
     >
-      {/* 1. Hero Highlights Grid */}
       {!compact && (
-        <section
-          className="analytics-hero-grid"
-          aria-label="Сводные показатели"
-        >
+        <section className="analytics-hero-grid" aria-label="Сводные показатели">
           <div className="stat-card accent-glow">
             <div className="stat-card-icon">
               <Zap size={22} />
             </div>
             <div className="stat-card-content">
-              <span className="stat-label">Тоннаж свободных весов</span>
+              <span className="stat-label">Тоннаж</span>
               <b
                 className="stat-value"
                 title={totalVolume > 0 ? undefined : VolumeLabel.reason(volumeOmitted)}
               >
                 {totalVolume > 0 ? (
                   <>
-                    {fmt(
-                      totalVolume >= 10000
-                        ? Math.round(totalVolume / 100) / 10
-                        : totalVolume,
-                    )}{" "}
+                    {fmt(totalVolume >= 10000 ? Math.round(totalVolume / 100) / 10 : totalVolume)}{" "}
                     <small>{totalVolume >= 10000 ? "т" : "кг"}</small>
                   </>
                 ) : (
@@ -180,13 +153,8 @@ export default function StatsAnalytics({
                 )}
               </b>
               {trends.priorVolume > 0 && trends.growthPct !== 0 && (
-                <span
-                  className={`stat-trend ${trends.growthPct > 0 ? "positive" : "negative"}`}
-                >
-                  {trends.growthPct > 0
-                    ? `+${trends.growthPct}%`
-                    : `${trends.growthPct}%`}{" "}
-                  за 4 нед.
+                <span className={`stat-trend ${trends.growthPct > 0 ? "positive" : "negative"}`}>
+                  {trends.growthPct > 0 ? `+${trends.growthPct}%` : `${trends.growthPct}%`} за 4 нед.
                 </span>
               )}
             </div>
@@ -197,13 +165,11 @@ export default function StatsAnalytics({
               <Flame size={22} />
             </div>
             <div className="stat-card-content">
-              <span className="stat-label">Серия тренировок</span>
+              <span className="stat-label">Серия</span>
               <b className="stat-value">
-                {streak.currentWeekStreak} <small>нед. подряд</small>
+                {streak.currentWeekStreak} <small>нед.</small>
               </b>
-              <span className="stat-sub">
-                Рекорд: {streak.bestWeekStreak} нед.
-              </span>
+              <span className="stat-sub">Рекорд: {streak.bestWeekStreak} нед.</span>
             </div>
           </div>
 
@@ -216,9 +182,7 @@ export default function StatsAnalytics({
               <b className="stat-value">
                 {totalHours} <small>ч</small> {totalMinutes} <small>мин</small>
               </b>
-              <span className="stat-sub">
-                ~{avgWorkoutDuration} мин / тренировка
-              </span>
+              <span className="stat-sub">~{avgWorkoutDuration} мин</span>
             </div>
           </div>
 
@@ -227,26 +191,19 @@ export default function StatsAnalytics({
               <Layers size={22} />
             </div>
             <div className="stat-card-content">
-              <span className="stat-label">Рабочих подходов</span>
+              <span className="stat-label">Подходов</span>
               <b className="stat-value">{totalWorkingSets}</b>
-              <span className="stat-sub">
-                {workouts.length} тренировок всего
-              </span>
+              <span className="stat-sub">{workouts.length} тренировок</span>
             </div>
           </div>
         </section>
       )}
 
-      {/* 2. Interactive Activity Calendar Heatmap */}
+      {/* Календарь активности */}
       <section className="panel heatmap-panel">
         <div className="panel-header">
           <div>
-            <h2>Календарь активности</h2>
-            <p>
-              {compact
-                ? "Тренировки за выбранный период"
-                : `${weeks} недель регулярности тренировок`}
-            </p>
+            <h2>Активность</h2>
           </div>
           <div className="heatmap-legend">
             <span>Меньше</span>
@@ -290,7 +247,7 @@ export default function StatsAnalytics({
         {selectedDay && (
           <div className="heatmap-detail-card">
             <div className="detail-date">
-              <Calendar size={14} />
+              <Calendar size={14} aria-hidden="true" />
               <b>{dateLabel(selectedDay.date, true)}</b>
             </div>
             {selectedDay.workingSets > 0 ? (
@@ -299,38 +256,30 @@ export default function StatsAnalytics({
                 <b>
                   {workingSets(selectedDay.workingSets)} ·{" "}
                   {selectedDay.totalVolume > 0
-                    ? `${fmt(selectedDay.totalVolume)} кг тоннаж`
-                    : `тоннаж: ${VolumeLabel.NONE}`}
+                    ? `${fmt(selectedDay.totalVolume)} кг`
+                    : `тоннаж ${VolumeLabel.NONE}`}
                 </b>
               </div>
             ) : (
-              <p className="tiny">
-                В этот день тренировок не было (день отдыха или восстановления).
-              </p>
+              <p className="tiny">Отдых</p>
             )}
           </div>
         )}
       </section>
 
-      {/* 4. Personal Records (PR) Hall of Fame */}
+      {/* Личные рекорды */}
       <section className="panel pr-panel">
         <div className="panel-header">
           <div className="pr-header-title">
-            <div className="pr-trophy-badge">
-              <Trophy size={20} />
+            <div className="pr-trophy-badge" aria-hidden="true">
+              <Trophy size={18} />
             </div>
-            <div>
-              <h2>Зал личных рекордов</h2>
-              <p>
-                {compact
-                  ? "Лучшие подходы за выбранный период"
-                  : "Лучшие подходы за всю историю"}
-              </p>
-            </div>
+            <h2>Личные рекорды</h2>
+            <span className="pr-count-badge">{filteredPrs.length}</span>
           </div>
         </div>
 
-        <div className="pr-filter-chips">
+        <div className="pr-filter-chips" role="region" aria-label="Фильтр личных рекордов" tabIndex={0}>
           {[
             { id: "big5", label: "Базовые" },
             { id: "all", label: "Все" },
@@ -359,15 +308,14 @@ export default function StatsAnalytics({
                   <h3>{pr.name}</h3>
                   {pr.context && <p className="tiny">{pr.context}</p>}
                   <span className="pr-date">
-                    Рекорд от {dateLabel(pr.bestWeight.date, true)} · «
-                    {pr.bestWeight.workoutName}»
+                    {dateLabel(pr.bestWeight.date, true)} · {pr.bestWeight.workoutName}
                   </span>
                 </div>
                 {onOpenExerciseStrength && (
                   <button
                     type="button"
                     className="icon-button pr-nav-btn"
-                    title="Посмотреть динамику силы"
+                    title="Динамика силы"
                     aria-label={`Динамика силы: ${pr.name}`}
                     onClick={() => onOpenExerciseStrength?.(pr.key)}
                   >
@@ -386,18 +334,21 @@ export default function StatsAnalytics({
                 </div>
 
                 {pr.machineVolume !== undefined && (
-                  <div className="pr-metric-pill volume"><span className="pr-metric-label">Тоннаж на этой машине · {pr.machineLabel}</span><b>{fmt(pr.machineVolume)} кг·повт.</b></div>
+                  <div className="pr-metric-pill volume">
+                    <span className="pr-metric-label">Машина · {pr.machineLabel}</span>
+                    <b>{fmt(pr.machineVolume)} кг·повт.</b>
+                  </div>
                 )}
                 {pr.bestE1rm && (
                   <div className="pr-metric-pill e1rm">
-                    <span className="pr-metric-label">Расчётный 1ПМ</span>
+                    <span className="pr-metric-label">1ПМ (Эпли)</span>
                     <b>{fmt(pr.bestE1rm.e1rm)} кг</b>
                   </div>
                 )}
 
                 {pr.bestSetVolume.volume > 0 && (
                   <div className="pr-metric-pill volume">
-                    <span className="pr-metric-label">Тоннаж свободного веса</span>
+                    <span className="pr-metric-label">Тоннаж подхода</span>
                     <b>{fmt(pr.bestSetVolume.volume)} кг</b>
                   </div>
                 )}
@@ -406,9 +357,7 @@ export default function StatsAnalytics({
           ))}
 
           {!filteredPrs.length && (
-            <div className="no-results">
-              В этой категории пока нет записанных рекордов.
-            </div>
+            <div className="no-results">Пока пусто</div>
           )}
         </div>
       </section>

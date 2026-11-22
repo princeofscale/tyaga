@@ -279,6 +279,7 @@ export class HistoryImportService {
           ...(source.routineId
             ? { routineId: routineMap.get(String(source.routineId)) }
             : {}),
+          ...(format === "tyaga" && source.programDate !== undefined ? { programDate: source.programDate } : {}),
           ...(source.restSeconds ? { restSeconds: source.restSeconds } : {}),
         },
         { timeZone, importedExercises: definitions, machines: machineDefinitions },

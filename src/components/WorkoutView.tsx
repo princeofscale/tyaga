@@ -1,19 +1,16 @@
-import ExecutionFields from "./ExecutionFields";
 import { MuscleParticipation } from "../domain/MuscleParticipation";
 import { ExecutionIdentity } from "../domain/ExecutionIdentity";
 import { PreviousSets } from "../domain/PreviousSets";
 import { DeloadEngine, type DeloadMode } from "../domain/DeloadEngine";
 import { SetCompleteness, type MissingField } from "../domain/SetCompleteness";
-import type { MachineInstance } from "../lib/types";
 import { WorkoutUndo } from "../domain/WorkoutUndo";
 import { SetPropagation, type SetFollowers } from "../domain/SetPropagation";
 import { WorkoutDiscard } from "../domain/WorkoutDiscard";
 import { selectOnFocus, trimLeadingZeros } from "../lib/numberField";
 import { ExerciseLibrary } from "./chunks";
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Fragment, memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import {
-  Check,
   ChevronDown,
   Plus,
   Minus,
@@ -25,26 +22,19 @@ import {
   X,
   Dumbbell,
   Calendar,
-  Target,
-  Sparkles,
-  Activity,
   Volume2,
   VolumeX,
   Flame,
   RotateCcw,
   TrendingUp,
   Zap,
-  Link2,
   ArrowLeftRight,
-  Focus,
   CheckCircle2,
 } from "lucide-react";
 import PlateCalculator from "./PlateCalculator";
 import { PlateApplication } from "../domain/PlateApplication";
 import { LaidDupPlan } from "../domain/LaidDupPlan";
-import OneRepMaxCalculator from "./OneRepMaxCalculator";
 import ExerciseSwapModal from "./ExerciseSwapModal";
-import BodyMap from "./BodyMap";
 import LiveStrip from "./LiveStrip";
 import RoomBadge from "./RoomBadge";
 import { useLiveRoom } from "./LiveRoomProvider";
@@ -52,6 +42,7 @@ import Modal from "./Modal";
 import { audioHaptics } from "../lib/audioHaptics";
 import type { Exercise } from "../lib/types";
 import { detectExerciseEquipment } from "../domain/ExerciseAlternatives";
+import "../styles/workout-redesign.css";
 import {
   MUSCLES,
   exerciseForEntry,
@@ -81,7 +72,7 @@ import { DeloadHint } from "../domain/DeloadHint";
 import { ExerciseSwap } from "../domain/ExerciseSwap";
 import { setsWord } from "../lib/quantity";
 import type { DeloadPlanRecord } from "../domain/DeloadPlan";
-import Select from "./Select";
+import WorkoutGym from "./WorkoutGym";
 
 type Props = {
   focusRequest?: {exerciseId:string;setId:string;id:string}|null;
@@ -90,8 +81,7 @@ type Props = {
   update: (draft: Draft) => void;
   settings: Settings;
   history: Workout[];
-  machines?: MachineInstance[];
-  onMachines?: () => void;
+  readOnly?: boolean;
   saving: boolean;
   error: string;
   persistence: PersistenceStatus;
@@ -109,11 +99,25 @@ type Props = {
   /** Действующая разгрузка: строка и «Подставить 85 %» на свободной тренировке (R07-REQ05). */
   deloadPlan?: DeloadPlanRecord | null;
 };
-const clock = (seconds: number) =>
-  `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+const GYM_MODE_KEY = "tyaga_workout_view_mode";
+const gymSelectionKey = (workoutId: string) => `${GYM_MODE_KEY}:set:${workoutId}`;
+const savedGymMode = () => {
+  try { return localStorage.getItem(GYM_MODE_KEY) === "gym"; }
+  catch { return false; }
+};
+const clock = (seconds: number) => {
+  const s = Math.max(0, Math.floor(seconds));
+  const h = Math.floor(s / 3600);
+  const mins = Math.floor((s % 3600) / 60);
+  const secs = s % 60;
+  if (h > 0) {
+    return `${h}:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  }
+  return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+};
 const setCheckFeedback = {
-  idle: { scale: 1 },
-  complete: { scale: [0.82, 1.1, 1] },
+  idle: { pathLength: 1 },
+  complete: { pathLength: [0, 1] },
 };
 /** "80 × 8" for the set at the same position (working or warm-up) last time. */
 function previousLabel(entry: WorkoutExercise, previous?: SetEntry) {
@@ -127,83 +131,215 @@ function previousLabel(entry: WorkoutExercise, previous?: SetEntry) {
 }
 /** Узкая ячейка переносит «100 × 8» на две строки перед «×», а не обрезает многоточием. */
 const wrapSafe = (label: string) => label.replace(" × ", " ×\u00a0");
-/** Для строки есть что показать: стороны или параметры исполнения. */
-const hasSetContext = (set: SetEntry) =>
-  !!set.performedSides || (!!set.execution && Object.values(set.execution).some((v) => v !== undefined && v !== ""));
-const playTimerChime = () => {
-  try {
-    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof window.AudioContext }).webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx = new AudioCtx();
-    const now = ctx.currentTime;
 
-    const osc1 = ctx.createOscillator();
-    const gain1 = ctx.createGain();
-    osc1.type = "sine";
-    osc1.frequency.setValueAtTime(880, now);
-    osc1.frequency.exponentialRampToValueAtTime(1320, now + 0.15);
-    gain1.gain.setValueAtTime(0.25, now);
-    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
-    osc1.connect(gain1);
-    gain1.connect(ctx.destination);
-    osc1.start(now);
-    osc1.stop(now + 0.35);
+/** Изолированный живой таймер тренировки в шапке — тикает сам, не перерисовывая список упражнений. */
+const WorkoutLiveClock = memo(function WorkoutLiveClock({
+  draft,
+  manualClock,
+  saving,
+  onTogglePause,
+}: {
+  draft: Draft;
+  manualClock: boolean;
+  saving: boolean;
+  onTogglePause: () => void;
+}) {
+  const running = !manualClock && draft.clock.runningSince !== null;
+  const [now, setNow] = useState(() => Date.now());
 
-    const osc2 = ctx.createOscillator();
-    const gain2 = ctx.createGain();
-    osc2.type = "sine";
-    osc2.frequency.setValueAtTime(1760, now + 0.18);
-    gain2.gain.setValueAtTime(0.2, now + 0.18);
-    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
-    osc2.connect(gain2);
-    gain2.connect(ctx.destination);
-    osc2.start(now + 0.18);
-    osc2.stop(now + 0.5);
-  } catch {
-    // AudioContext blocked
+  useEffect(() => {
+    if (!running) return;
+    const sync = () => setNow(Date.now());
+    const id = setInterval(sync, 1000);
+    const onVis = () => {
+      if (document.visibilityState === "visible") sync();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("focus", sync);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("focus", sync);
+    };
+  }, [running]);
+
+  const valueText = manualClock
+    ? `${draft.workout.duration} мин`
+    : clock(Math.floor(elapsedMs(draft, now) / 1000));
+  const labelText = manualClock
+    ? "Длительность"
+    : draft.clock.runningSince === null
+      ? "Счётчик · пауза"
+      : "Счётчик";
+
+  const content = (
+    <>
+      <b>
+        <span
+          aria-hidden="true"
+          className={`live-rec-dot ${running ? "recording" : "paused"}`}
+        />
+        {valueText}
+        {!draft.editing && !manualClock ? (
+          <span className="clock-action-icon" aria-hidden="true">
+            {running ? <Pause size={12} /> : <Play size={12} />}
+          </span>
+        ) : null}
+      </b>
+      <span className="hud-label">{labelText}</span>
+    </>
+  );
+
+  if (draft.editing || manualClock) {
+    return <span className="live-clock-badge">{content}</span>;
   }
-  try {
-    if (navigator.vibrate) {
-      navigator.vibrate([120, 80, 180]);
+
+  return (
+    <button
+      type="button"
+      className="live-clock-badge is-interactive"
+      disabled={saving}
+      aria-label={
+        running
+          ? "Пауза таймера тренировки"
+          : "Возобновить таймер тренировки"
+      }
+      title={running ? "Нажми, чтобы поставить на паузу" : "Нажми, чтобы продолжить таймер"}
+      onClick={onTogglePause}
+    >
+      {content}
+    </button>
+  );
+});
+
+/** Изолированный таймер отдыха внизу экрана — тикает только пока идёт отдых. */
+const WorkoutRestBar = memo(function WorkoutRestBar({
+  draft,
+  restSeconds,
+  soundEnabled,
+  reducedMotion,
+  onShift,
+  onTogglePause,
+  onSkip,
+  onAnnounce,
+}: {
+  draft: Draft;
+  restSeconds: number;
+  soundEnabled: boolean;
+  reducedMotion: boolean | null;
+  onShift: (seconds: number) => void;
+  onTogglePause: (remaining: number) => void;
+  onSkip: () => void;
+  onAnnounce: (text: string) => void;
+}) {
+  const [now, setNow] = useState(() => Date.now());
+  const announcedTimer = useRef<number | null>(null);
+  const lastTickSecond = useRef<number | null>(null);
+  const activeCountdown = draft.pausedRest === null && draft.restUntil !== null;
+
+  useEffect(() => {
+    if (!activeCountdown) return;
+    const sync = () => setNow(Date.now());
+    sync();
+    const id = setInterval(sync, 500);
+    const onVis = () => {
+      if (document.visibilityState === "visible") sync();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [activeCountdown, draft.restUntil]);
+
+  const remaining =
+    draft.pausedRest ??
+    (draft.restUntil
+      ? Math.max(0, Math.ceil((draft.restUntil - now) / 1000))
+      : 0);
+
+  useEffect(() => {
+    if (
+      draft.restUntil &&
+      draft.pausedRest === null &&
+      draft.restUntil <= now &&
+      announcedTimer.current !== draft.restUntil
+    ) {
+      announcedTimer.current = draft.restUntil;
+      onAnnounce("Отдых завершён");
+      if (soundEnabled) audioHaptics.playTimerAlert();
+    } else if (remaining > 0) {
+      onAnnounce("");
+      if (remaining <= 3 && soundEnabled && lastTickSecond.current !== remaining) {
+        lastTickSecond.current = remaining;
+        audioHaptics.playCountdownTick();
+      }
     }
-  } catch {
-    // vibrate ignored
-  }
-};
+  }, [draft.restUntil, draft.pausedRest, now, remaining, soundEnabled, onAnnounce]);
 
-const playSetDoneChime = () => {
-  try {
-    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof window.AudioContext }).webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx = new AudioCtx();
-    const now = ctx.currentTime;
+  if (!(remaining > 0 || draft.pausedRest !== null)) return null;
 
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(587.33, now); // D5
-    osc.frequency.exponentialRampToValueAtTime(880, now + 0.08); // A5
-    gain.gain.setValueAtTime(0.2, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start(now);
-    osc.stop(now + 0.22);
-  } catch {
-    // AudioContext blocked
-  }
-  try {
-    if (navigator.vibrate) {
-      navigator.vibrate([35, 25, 45]);
-    }
-  } catch {
-    // vibrate ignored
-  }
-};
+  return (
+    <m.section
+      className="rest-bar"
+      aria-label="Таймер отдыха"
+      data-paused={draft.pausedRest !== null}
+      initial={reducedMotion ? false : { opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: reducedMotion ? 0 : 0.16, ease: "easeOut" }}
+    >
+      <div className="rest-progress">
+        <span
+          style={{
+            transform: `scaleX(${Math.min(1, remaining / Math.max(restSeconds, remaining, 1))})`,
+          }}
+        />
+      </div>
+      <div className="rest-body">
+        <div className="rest-copy">
+          <span>{draft.pausedRest !== null ? "Отдых на паузе" : "Отдых"}</span>
+          <span className="rest-digits active" aria-live="off">
+            {clock(remaining)}
+          </span>
+        </div>
+        <button type="button" aria-label="Минус 15 секунд" onClick={() => onShift(-15)}>
+          −15
+        </button>
+        <button
+          type="button"
+          className="timer-plus"
+          aria-label="Плюс 15 секунд"
+          onClick={() => onShift(15)}
+        >
+          +15
+        </button>
+        <button
+          type="button"
+          className="icon-button"
+          aria-label={
+            draft.pausedRest !== null
+              ? "Продолжить таймер"
+              : "Приостановить таймер"
+          }
+          onClick={() => onTogglePause(remaining)}
+        >
+          {draft.pausedRest !== null ? <Play size={20} /> : <Pause size={20} />}
+        </button>
+        <button
+          type="button"
+          className="icon-button"
+          aria-label="Пропустить отдых"
+          onClick={onSkip}
+        >
+          <X size={20} />
+        </button>
+      </div>
+    </m.section>
+  );
+});
 
 export default function WorkoutView({
-  machines = [], onMachines,
-  focusRequest, notificationError,
+  focusRequest, notificationError, readOnly = false,
   draft,
   update,
   settings,
@@ -223,18 +359,49 @@ export default function WorkoutView({
 }: Props) {
   const [undoError,setUndoError] = useState("");
   const reducedMotion = useReducedMotion();
-  const [now, setNow] = useState(Date.now());
   const [announcement, setAnnouncement] = useState("");
   const [rirHelp, setRirHelp] = useState(false);
   const [datePanel, setDatePanel] = useState(false);
   const [needs, setNeeds] = useState<{ setId: string; field: MissingField } | null>(null);
   const [plateCalcTarget, setPlateCalcTarget] = useState<{ weight: number; ei: number } | null>(null);
-  const [oneRepMaxTarget, setOneRepMaxTarget] = useState<{ weight: number; reps: number } | null>(null);
   const [swapTarget, setSwapTarget] = useState<{ ei: number; exercise: Exercise } | null>(null);
-  const [expandedAnatomy, setExpandedAnatomy] = useState<string | null>(null);
   const [activeSetKey, setActiveSetKey] = useState<string | null>(null);
-  const [focusMode, setFocusMode] = useState(false);
+  const workoutId = draft?.workout.id;
+  const [preferGym, setPreferGym] = useState(savedGymMode);
+  const [gymSelection, setGymSelection] = useState<{ workoutId: string; setId: string | null } | null>(null);
+  // View state belongs to this tab, not to the shared workout draft.
+  const restoredGymSet = useMemo(() => {
+    if (!workoutId) return null;
+    try { return sessionStorage.getItem(gymSelectionKey(workoutId)); }
+    catch { return null; }
+  }, [workoutId]);
+  const gymSetId = gymSelection && gymSelection.workoutId === workoutId ? gymSelection.setId : restoredGymSet;
+  const selectGymSet = useCallback((setId: string | null) => {
+    if (!workoutId) return;
+    setGymSelection({ workoutId, setId });
+    try {
+      if (setId) sessionStorage.setItem(gymSelectionKey(workoutId), setId);
+      else sessionStorage.removeItem(gymSelectionKey(workoutId));
+    } catch { /* The in-memory choice still works if storage is blocked. */ }
+  }, [workoutId]);
+  const gymMode = preferGym && !draft?.editing;
+  const gymToggleRef = useRef<HTMLButtonElement>(null);
+  const focusGymToggle = useRef(false);
+  const consumedFocus = useRef<string | null>(null);
+  const lastGymMark = useRef(-Infinity);
+  const hintPrefix = useId();
+  useLayoutEffect(() => {
+    if (!focusGymToggle.current) return;
+    focusGymToggle.current = false;
+    gymToggleRef.current?.focus({ preventScroll: true });
+  }, [gymMode]);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  useEffect(() => {
+    if (!readOnly) return;
+    setPlateCalcTarget(null);
+    setSwapTarget(null);
+    setShowCancelConfirm(false);
+  }, [readOnly]);
   // R09-REQ01: правка сохранённой тренировки — не тренировка в комнате: ни шапки комнаты, ни строк напарников.
   const { room: liveRoom } = useLiveRoom();
   const room = draft?.editing ? null : liveRoom;
@@ -256,16 +423,16 @@ export default function WorkoutView({
       window.removeEventListener("resize", fit);
     };
   }, [room, draft?.workout.name]);
-  const [contextKey, setContextKey] = useState<string | null>(null);
+  const screenRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLElement>(null);
-  const pinRef = useRef<HTMLSpanElement>(null);
+  const pinRef = useRef<HTMLDivElement>(null);
+  const dockRef = useRef<HTMLDivElement>(null);
   // Кто пойдёт за правкой поля: определяется один раз, когда поле получило фокус, а не после каждой цифры.
   const followersRef = useRef<SetFollowers | null>(null);
   // Каталог упражнений — отдельный файл. Докачиваем его, пока связь есть: «Добавить упражнение» в подвале без сети должно открыться.
   useEffect(() => {
     ExerciseLibrary.preload();
   }, []);
-  const [expandedExercises, setExpandedExercises] = useState<Record<number, boolean>>({});
   const [soundEnabled, setSoundEnabled] = useState(() => !audioHaptics.isMuted());
 
   useEffect(() => {
@@ -280,49 +447,30 @@ export default function WorkoutView({
     errorRef.current?.scrollIntoView({ block: "center", behavior: reducedMotion ? "auto" : "smooth" });
   }, [error, saving, reducedMotion]);
 
-  useEffect(()=>{
-    if(!focusRequest)return;
-    const timer=window.setTimeout(()=>{
-      const row=document.querySelector<HTMLElement>(`.set-row[data-exercise-id="${CSS.escape(focusRequest.exerciseId)}"][data-set-id="${CSS.escape(focusRequest.setId)}"]`);
-      row?.querySelector<HTMLInputElement>('input[type="number"]')?.focus();
-      row?.scrollIntoView({block:"center",behavior:"instant"});
-    },100);
-    return ()=>clearTimeout(timer);
-  },[focusRequest?.id]);
-  const restSeconds = draft?.workout.restSeconds ?? settings.restSeconds;
-  const announcedTimer = useRef<number | null>(null);
-  const lastTickSecond = useRef<number | null>(null);
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
-  const remaining =
-    draft?.pausedRest ??
-    (draft?.restUntil
-      ? Math.max(0, Math.ceil((draft.restUntil - now) / 1000))
-      : 0);
-  useEffect(() => {
-    if (
-      draft?.restUntil &&
-      draft.pausedRest === null &&
-      draft.restUntil <= now &&
-      announcedTimer.current !== draft.restUntil
-    ) {
-      announcedTimer.current = draft.restUntil;
-      setAnnouncement("Отдых завершён");
-      if (soundEnabled) {
-        audioHaptics.playTimerAlert();
-      }
-    } else if (remaining > 0) {
-      setAnnouncement("");
-      if (remaining <= 3 && soundEnabled && lastTickSecond.current !== remaining) {
-        lastTickSecond.current = remaining;
-        audioHaptics.playCountdownTick();
-      }
+    if (!focusRequest || consumedFocus.current === focusRequest.id) return;
+    if (readOnly || !workoutId) {
+      consumedFocus.current = focusRequest.id;
+      return;
     }
-  }, [draft?.restUntil, draft?.pausedRest, now, remaining, soundEnabled]);
+    if (gymMode) {
+      consumedFocus.current = focusRequest.id;
+      selectGymSet(focusRequest.setId);
+      return;
+    }
+    // Only an explicit rest-notification action focuses an input in the full list.
+    const timer = window.setTimeout(() => {
+      consumedFocus.current = focusRequest.id;
+      const row = screenRef.current?.querySelector<HTMLElement>(
+        `.set-row[data-exercise-id="${CSS.escape(focusRequest.exerciseId)}"][data-set-id="${CSS.escape(focusRequest.setId)}"]`,
+      );
+      row?.querySelector<HTMLInputElement>('input[type="number"]')?.focus();
+      row?.scrollIntoView({ block: "center", behavior: "instant" });
+    }, 100);
+    return () => window.clearTimeout(timer);
+  }, [focusRequest, gymMode, readOnly, selectGymSet, workoutId]);
+  const restSeconds = draft?.workout.restSeconds ?? settings.restSeconds;
   const exercises = draft?.workout.exercises;
-  const workoutId = draft?.workout.id;
   const previous = useMemo(
     () =>
       new Map(
@@ -355,22 +503,25 @@ export default function WorkoutView({
       }),
     );
   }, [inDeload, history, exercises, workoutId, draft?.workout.date, settings.timeZone]);
-  // На телефоне шапка при прокрутке уходит вверх, пока не останется строка таймера и «Завершить».
-  // Сколько уйти — меряем здесь, а не пишем числом: в шапке бывает полоса напарников.
   const hasDraft = !!draft;
   useLayoutEffect(() => {
+    const screen = screenRef.current;
     const bar = barRef.current;
-    if (!bar) return;
+    const pin = pinRef.current;
+    const dock = dockRef.current;
+    if (!screen || !bar || !pin || !dock) return;
+
     const measure = () => {
-      const pin = pinRef.current;
-      if (!pin) return;
-      const pad = parseFloat(getComputedStyle(bar).paddingTop) || 0;
-      bar.style.setProperty("--bar-collapse", `${Math.max(0, Math.round(pin.offsetTop - pad))}px`);
+      bar.style.setProperty("--bar-collapse", `${pin.offsetTop}px`);
+      screen.style.setProperty("--workout-header-space", `${pin.offsetHeight + 12}px`);
+      screen.style.setProperty("--workout-dock-space", `${dock.offsetHeight + 12}px`);
     };
     measure();
     if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(measure);
     observer.observe(bar);
+    observer.observe(pin);
+    observer.observe(dock);
     return () => observer.disconnect();
   }, [hasDraft]);
   if (!draft)
@@ -379,8 +530,7 @@ export default function WorkoutView({
         <div className="empty-icon">
           <Play size={30} />
         </div>
-        <h2>Время сделать первый подход</h2>
-        <p>Выбери упражнения и записывай вес, повторы и запас повторений.</p>
+        <h2>Нет активной тренировки</h2>
         <button className="button primary" onClick={onPick}>
           <Plus size={18} />
           Начать тренировку
@@ -427,8 +577,20 @@ export default function WorkoutView({
       w.exercises[ei + 1]?.supersetId === targetEx.supersetId;
     const effectiveRest = isSupersetTransition ? 15 : restSeconds;
 
+    const shouldAutoResume =
+      !draft.editing &&
+      !draft.manualDuration &&
+      draft.restored === true &&
+      draft.clock.runningSince === null;
+
     update({
       ...draft,
+      ...(shouldAutoResume
+        ? {
+            restored: false,
+            clock: { ...draft.clock, runningSince: Date.now() },
+          }
+        : {}),
       workout: {
         ...w,
         exercises: w.exercises.map((e, i) =>
@@ -490,7 +652,23 @@ export default function WorkoutView({
   const manualClock = BackdatedWorkout.manualDuration(draft, settings.timeZone);
   const elapsed = manualClock
     ? w.duration
-    : Math.floor(elapsedMs(draft, now) / 60000);
+    : Math.floor(elapsedMs(draft) / 60000);
+  const toggleSessionClock = () =>
+    update(
+      draft.clock.runningSince === null
+        ? {
+            ...draft,
+            manualDuration: false,
+            restored: false,
+            clock: {
+              elapsedMs: draft.manualDuration
+                ? w.duration * 60000
+                : draft.clock.elapsedMs,
+              runningSince: Date.now(),
+            },
+          }
+        : checkpointDraft(draft, Date.now(), true),
+    );
   // Дату позже сегодняшней не принимаем (max у поля это и обещает, но вручную вводится любая).
   const dateField = (panel = false) => (
     <label>
@@ -538,13 +716,12 @@ export default function WorkoutView({
     (count, exercise) => count + exercise.sets.filter((set) => !set.warmup).length,
     0,
   );
-  const resting = remaining > 0 || draft.pausedRest !== null;
   /** Общие свойства числовых полей строки: выбрать подход и выделить число при касании. */
   const fieldProps = (ei: number, si: number) => ({
     onFocus: (e: React.FocusEvent<HTMLInputElement>) => {
       selectOnFocus.onFocus(e);
       followersRef.current = SetPropagation.followers(w.exercises[ei].sets, si);
-      setActiveSetKey(`${ei}-${si}`);
+      setActiveSetKey(w.exercises[ei].sets[si].id);
     },
     onMouseUp: selectOnFocus.onMouseUp,
     onBlur: (e: React.FocusEvent<HTMLInputElement>) => {
@@ -553,6 +730,175 @@ export default function WorkoutView({
     },
     onClick: (e: React.MouseEvent) => e.stopPropagation(),
   });
+  const nameForSet = (entry: WorkoutExercise, si: number) => `${entryName(entry)}, подход ${si + 1}`;
+  const renderSet = (entry: WorkoutExercise, ei: number, si: number, gym = false, kindIndex = 0, quickControls?: ReactNode) => {
+    const set = entry.sets[si];
+    const exercise = exerciseForEntry(entry)!;
+    const spec = exercise.recording;
+    const timed = spec.type === "duration";
+    const assistance = spec.loadMode === "assisted_bodyweight";
+    const noLoad = spec.loadMode === "bodyweight";
+    const perSide = !timed && spec.repsMode === "per_side";
+    const name = nameForSet(entry, si);
+    const comparable = previous.get(ExecutionIdentity.key(entry, set));
+    const comparableIndex = ExecutionIdentity.setIndex(entry, set);
+    const last = (set.warmup ? comparable?.warmup : comparable?.working)?.[comparableIndex];
+    const lastText = previousLabel(entry, last);
+    const fromLast = deloaded(entry, last, comparableIndex, set.warmup, set);
+    const isActive = !gym && activeSetKey === set.id;
+    const isLaidTopSet = !gym && !set.warmup && kindIndex === 0 && LaidDupPlan.hasPlanWeight(entry);
+    const missing = needs?.setId === set.id && SetCompleteness.missing(exercise, set) === needs.field
+      ? needs.field
+      : null;
+    const hintId = `${hintPrefix}-${ei}-${si}`;
+    const invalid = (field: MissingField) => ({
+      "aria-invalid": missing === field || undefined,
+      "aria-describedby": missing === field ? hintId : undefined,
+      "data-set-field": field,
+    });
+    const field = (label: string, input: ReactNode) => gym ? <label><span>{label}</span>{input}</label> : input;
+    const loadLabel = assistance ? "Помощь, кг" : spec.loadMode === "per_implement"
+      ? "На гантель, кг" : spec.loadMode === "added_bodyweight"
+        ? "Доп. вес, кг" : spec.loadMode === "machine_stack" ? "Стек, кг" : "Вес, кг";
+    const plannedRange = entry.repMin !== undefined && entry.repMax !== undefined
+      ? entry.repMin === entry.repMax ? String(entry.repMin) : `${entry.repMin}–${entry.repMax}`
+      : "—";
+    const fields = (
+      <>
+        {noLoad ? (gym ? null : <span className="no-load-value" aria-label="Без внешнего веса">—</span>) : field(loadLabel, (
+          <input
+            aria-label={`${name}, ${assistance ? "помощь" : "вес"}`}
+            title={recordingLabel(entry)}
+            type="number"
+            min="0"
+            max="1000"
+            step="0.5"
+            inputMode="decimal"
+            value={assistance ? (set.assistanceKg ?? 0) : set.weight || ""}
+            placeholder={last ? `${last.weight}` : "0"}
+            {...invalid("weight")}
+            {...fieldProps(ei, si)}
+            onChange={(event) => {
+              const value = Number(trimLeadingZeros(event.target));
+              changeSet(ei, si, assistance ? { assistanceKg: value, weight: 0 } : { weight: value }, true);
+            }}
+          />
+        ))}
+        {field(timed ? "Секунды" : perSide ? "Повторы на сторону" : "Повторы", (
+          <input
+            aria-label={`${name}, ${timed ? "секунды" : "повторы"}${perSide ? " на сторону" : ""}`}
+            type="number"
+            min="1"
+            max={timed ? "86400" : "200"}
+            inputMode="numeric"
+            value={timed ? (set.durationSeconds ?? 30) : set.reps || ""}
+            placeholder={last ? `${last.reps}` : timed ? "30" : plannedRange}
+            {...invalid("reps")}
+            {...fieldProps(ei, si)}
+            onChange={(event) => {
+              const value = Number(trimLeadingZeros(event.target));
+              changeSet(ei, si, timed ? { durationSeconds: value, reps: 1 } : { reps: value }, true);
+            }}
+          />
+        ))}
+        {field(timed ? "Дистанция, км" : "RIR", (
+          <input
+            aria-label={`${name}, ${timed ? "дистанция, км" : "RIR"}`}
+            type="number"
+            min="0"
+            max={timed ? "1000" : "10"}
+            step={timed ? "0.01" : "0.5"}
+            inputMode="decimal"
+            value={timed ? (set.distanceKm ?? "") : (set.rir ?? "")}
+            placeholder="—"
+            {...fieldProps(ei, si)}
+            onChange={(event) => changeSet(ei, si, timed
+              ? { distanceKm: event.target.value === "" ? undefined : Number(event.target.value) }
+              : { rir: event.target.value === "" ? null : Number(trimLeadingZeros(event.target)) }, true)}
+          />
+        ))}
+      </>
+    );
+    const toggleLabel = set.done ? "Снять отметку" : "Отметить выполненным";
+    return (
+      <div key={gym ? undefined : set.id} className={gym ? "gym-set-editor" : "set-row-wrapper"}>
+        <div
+          data-exercise-id={entry.exerciseId}
+          data-set-id={set.id}
+          className={gym ? "gym-set-row" : `set-row ${set.done ? "done" : ""} ${isActive ? "row-active" : ""}${isLaidTopSet ? " laid-top-set" : ""}`}
+          onClick={gym ? undefined : () => setActiveSetKey(isActive ? null : set.id)}
+        >
+          {!gym && (
+            <button
+              type="button"
+              className={`set-kind ${set.kind || (set.warmup ? "warmup" : "normal")}`}
+              title="Тип подхода (обычный, разминка, дропсет, мио-повторы)"
+              aria-label={`Подход ${si + 1}: ${set.kind || (set.warmup ? "разминочный" : "рабочий")}. Нажми для переключения`}
+              onClick={(event) => { event.stopPropagation(); changeSet(ei, si, cycleSetKind(set)); }}
+            >
+              {set.kind === "dropset" ? "D" : set.kind === "myorep" ? "M" : set.warmup ? "Р" : kindIndex + 1}
+            </button>
+          )}
+          <button
+            type="button"
+            className="set-previous"
+            disabled={!fromLast}
+            aria-label={last
+              ? `Подставить прошлый результат: ${lastText}${deloadNow ? ` (в разгрузку — ${previousLabel(entry, fromLast)})` : ""}`
+              : "Прошлого результата нет"}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (fromLast) changeSet(ei, si, PreviousSets.patch(fromLast, { timed, assistance }), true);
+            }}
+          >
+            {gym ? `Прошлый: ${lastText}` : wrapSafe(lastText)}
+          </button>
+          {gym ? <div className="gym-set-fields">{fields}</div> : fields}
+          <button
+            type="button"
+            className={gym ? `button ${set.done ? "secondary" : "primary"} gym-set-check` : "set-check"}
+            aria-label={`${toggleLabel}: ${name}`}
+            aria-pressed={set.done}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (!set.done) {
+                const field = SetCompleteness.missing(exercise, set);
+                if (field) {
+                  setNeeds({ setId: set.id, field });
+                  if (!gym) event.currentTarget.closest(".set-row")
+                    ?.querySelector<HTMLInputElement>(`[data-set-field="${field}"]`)?.focus();
+                  return;
+                }
+                if (gym) {
+                  // A double tap must not log the newly displayed set as well.
+                  const time = performance.now();
+                  if (time - lastGymMark.current < 350) return;
+                  lastGymMark.current = time;
+                }
+              }
+              setNeeds(null);
+              changeSet(ei, si, { done: !set.done });
+              if (!set.done && gymSetId === set.id) selectGymSet(null);
+            }}
+          >
+            <svg className="set-check-feedback" aria-hidden="true" width="22" height="22" viewBox="0 0 24 24"
+              fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <m.path
+                d="M4 12l5 5L20 6"
+                initial={false}
+                variants={setCheckFeedback}
+                animate={set.done && !reducedMotion ? "complete" : "idle"}
+                transition={{ duration: reducedMotion ? 0 : 0.2, ease: "easeOut" }}
+              />
+            </svg>
+            {gym && toggleLabel}
+          </button>
+        </div>
+        {missing && <p id={hintId} className="set-hint" role="alert">{SetCompleteness.message(missing)}</p>}
+        {isActive ? quickControls : null}
+      </div>
+    );
+  };
   const lastRemoval = draft.removals?.at(-1);
   // Один вопрос, и только когда есть что терять: пустую тренировку закрываем сразу.
   const requestDiscard = () => {
@@ -568,88 +914,88 @@ export default function WorkoutView({
             restUntil: Math.max(Date.now(), draft.restUntil ?? 0) + seconds * 1000,
           },
     );
+  const modeSwitch = (
+    <button
+      ref={gymToggleRef}
+      type="button"
+      className="button secondary gym-mode-toggle"
+      onClick={() => {
+        focusGymToggle.current = true;
+        setPreferGym(!gymMode);
+        try { localStorage.setItem(GYM_MODE_KEY, gymMode ? "list" : "gym"); }
+        catch { /* Keep the in-session choice if storage is unavailable. */ }
+      }}
+    >
+      {gymMode ? "Весь список" : "Режим «В зале»"}
+    </button>
+  );
   return (
-    <div className="workout-screen workout-athletic">
+    <div className={`workout-screen workout-athletic workout-steel${gymMode ? " is-gym-mode" : ""}`} ref={screenRef} inert={readOnly}>
       <header className="workout-bar" ref={barRef}>
-        <button
-          className="icon-button workout-minimize-btn"
-          aria-label="Свернуть тренировку"
-          onClick={onMinimize}
-        >
-          <ChevronDown size={24} />
-        </button>
-        <div className="workout-bar-title">
-          <span className="workout-session-label" aria-hidden="true">
-            {draft.editing ? "Редактирование тренировки" : "Активная тренировка"}
-          </span>
-          {room ? (
-            // R06-REQ01: в комнате название переносится на вторую строку, а не обрезается многоточием.
-            <textarea
-              ref={nameBox}
-              rows={1}
-              className="workout-name-wrap"
-              aria-label="Название тренировки"
-              value={w.name}
-              maxLength={120}
-              disabled={saving}
-              onChange={(e) => setWorkout({ ...w, name: e.target.value.replace(/\n/g, " ") })}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") e.preventDefault();
-              }}
-            />
-          ) : (
-            <input
-              aria-label="Название тренировки"
-              value={w.name}
-              maxLength={120}
-              disabled={saving}
-              onChange={(e) => setWorkout({ ...w, name: e.target.value })}
-            />
-          )}
-          {/* QA-R04-01: комната — в строке названия (подпись над ним + два значка справа), а не отдельной плашкой: шапка не растёт. */}
-          {room ? <RoomBadge onToast={onToast ?? (() => {})} /> : null}
-        </div>
-        <button
-          type="button"
-          className={`icon-button focus-toggle-btn ${focusMode ? "active" : ""}`}
-          aria-label={focusMode ? "Выключить режим фокуса" : "Включить режим фокуса"}
-          aria-pressed={focusMode}
-          title={focusMode ? "Режим фокуса: активен (завершённые свёрнуты)" : "Режим фокуса (сворачивать завершённые)"}
-          onClick={() => setFocusMode((v) => !v)}
-        >
-          <Focus size={18} />
-        </button>
-        <button
-          type="button"
-          className="icon-button sound-toggle-btn"
-          aria-label={soundEnabled ? "Выключить звук" : "Включить звук"}
-          aria-pressed={soundEnabled}
-          title={soundEnabled ? "Звуковые сигналы включены" : "Звуковые сигналы выключены"}
-          onClick={() => setSoundEnabled((v) => !v)}
-        >
-          {soundEnabled ? <Volume2 size={20} /> : <VolumeX size={20} />}
-        </button>
-        <div className="workout-head-buttons-cluster">
-          <button
-            type="button"
-            className="button secondary cancel-workout-btn"
-            title="Отменить тренировку без сохранения"
-            onClick={requestDiscard}
-          >
-            <X size={15} />
-            <span>Отмена</span>
-          </button>
-          <button
-            className="button primary finish-button"
-            aria-label={draft.editing ? "Сохранить изменения" : "Завершить тренировку"}
-            onClick={onSave}
-            disabled={
-              saving ||
-              !w.exercises.some((e) => e.sets.some((s) => s.done && !s.warmup))
-            }
-          >
-            {saving ? "…" : draft.editing ? "Сохранить" : "Завершить"}
-          </button>
+        <div className="workout-headline">
+          <div className="workout-bar-title">
+            <h1 className="workout-session-label">
+              {draft.editing ? "Редактирование тренировки" : "Активная тренировка"}
+            </h1>
+            <label className="sr-only" htmlFor={`${hintPrefix}-name`}>Название тренировки</label>
+            {room ? (
+              <textarea
+                id={`${hintPrefix}-name`}
+                ref={nameBox}
+                rows={1}
+                className="workout-name-wrap"
+                value={w.name}
+                maxLength={120}
+                disabled={saving}
+                onChange={(e) => setWorkout({ ...w, name: e.target.value.replace(/\n/g, " ") })}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.nativeEvent.isComposing) e.preventDefault();
+                }}
+              />
+            ) : (
+              <div className="workout-name-field">
+                <span className="workout-name-copy" aria-hidden="true">{w.name || "Название тренировки"}</span>
+                <input
+                  id={`${hintPrefix}-name`}
+                  type="text"
+                  value={w.name}
+                  maxLength={120}
+                  disabled={saving}
+                  onChange={(e) => setWorkout({ ...w, name: e.target.value })}
+                />
+              </div>
+            )}
+            {room ? <RoomBadge onToast={onToast ?? (() => {})} /> : null}
+          </div>
+          <div className="workout-head-buttons-cluster">
+            <button
+              type="button"
+              className="icon-button workout-minimize-btn"
+              aria-label="Свернуть тренировку"
+              onClick={onMinimize}
+            >
+              <ChevronDown size={22} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className="icon-button sound-toggle-btn"
+              aria-label={soundEnabled ? "Выключить звук" : "Включить звук"}
+              aria-pressed={soundEnabled}
+              title={soundEnabled ? "Звук включён" : "Звук выключен"}
+              onClick={() => setSoundEnabled((v) => !v)}
+            >
+              {soundEnabled ? <Volume2 size={19} aria-hidden="true" /> : <VolumeX size={19} aria-hidden="true" />}
+            </button>
+            <button
+              type="button"
+              className="button secondary cancel-workout-btn"
+              title="Отменить тренировку без сохранения"
+              onClick={requestDiscard}
+            >
+              <X size={15} aria-hidden="true" />
+              <span>Отмена</span>
+            </button>
+          </div>
         </div>
         {deloadLine ? (
           <div className="deload-hint" role="status">
@@ -679,37 +1025,45 @@ export default function WorkoutView({
             ) : null}
           </div>
         ) : null}
-        <div className="workout-live-hud">
-          <span className="live-clock-badge" ref={pinRef}>
-            <b>
-              <span
-                aria-hidden="true"
-                className={`live-rec-dot ${draft.clock.runningSince !== null && !manualClock ? "recording" : "paused"}`}
-              />
-              {manualClock
-                ? `${w.duration} мин`
-                : clock(Math.floor(elapsedMs(draft, now) / 1000))}
-            </b>
-            <span className="hud-label">
-              {manualClock
-                ? "Длительность"
-                : draft.clock.runningSince === null
-                  ? "Счётчик · пауза"
-                  : "Счётчик"}
-            </span>
-          </span>
-          <span className="hud-metric">
-            <b>{doneWorking}<small> / {totalWorking}</small></b>
-            <span className="hud-label">Рабочие подходы</span>
-          </span>
-          <span className="hud-metric hud-tonnage">
-            <b>{fmt(summary.total)}<small> кг</small></b>
-            <span className="hud-label">Тоннаж свободных весов</span>
-          </span>
-        </div>
         {draft.editing ? null : <LiveStrip onOpen={onOpenTogether} />}
-        <div className="workout-session-progress" aria-hidden="true">
-          <span style={{ transform: `scaleX(${totalWorking ? doneWorking / totalWorking : 0})` }} />
+        <div className="workout-command-strip" ref={pinRef}>
+          <div className="workout-live-hud">
+            <WorkoutLiveClock
+              draft={draft}
+              manualClock={manualClock}
+              saving={saving}
+              onTogglePause={toggleSessionClock}
+            />
+            <span className="hud-metric">
+              <b>{doneWorking}<small> / {totalWorking}</small></b>
+              <span className="hud-label">Рабочие подходы</span>
+            </span>
+            <span className="hud-metric hud-tonnage-inline">
+              <b>{fmt(summary.total)}<small> кг</small></b>
+              <span className="hud-label">Тоннаж</span>
+            </span>
+          </div>
+          <button
+            type="button"
+            className="button primary finish-button"
+            aria-label={draft.editing ? "Сохранить изменения" : "Завершить тренировку"}
+            onClick={onSave}
+            disabled={
+              saving || readOnly ||
+              !w.exercises.some((e) => e.sets.some((s) => s.done && !s.warmup))
+            }
+          >
+            {saving ? "…" : draft.editing ? "Сохранить" : "Завершить"}
+          </button>
+          {gymMode && modeSwitch}
+          <div className="workout-session-progress" aria-hidden="true">
+            <m.div
+              className="workout-session-progress-fill"
+              initial={false}
+              animate={{ scaleX: totalWorking ? doneWorking / totalWorking : 0 }}
+              transition={{ duration: reducedMotion ? 0 : 0.24, ease: "easeOut" }}
+            />
+          </div>
         </div>
       </header>
       {notificationError && <p className="inline-error" role="alert">{notificationError}. Таймер на экране продолжает работать.</p>}
@@ -730,16 +1084,45 @@ export default function WorkoutView({
       ) : null}
       {undoError && <p className="form-error" role="alert">{undoError}</p>}
       <fieldset
+        key={readOnly ? "read-only" : "editable"}
         className="workout-main"
-        disabled={saving}
-        aria-label="Поля тренировки" onKeyDown={event=>{if(event.key!=="Enter"||!(event.target instanceof HTMLInputElement)||event.target.type!=="number")return;event.preventDefault();const inputs=Array.from(event.currentTarget.querySelectorAll<HTMLInputElement>('input[type="number"]:not(:disabled)')).filter(input=>input.getClientRects().length>0);const index=inputs.indexOf(event.target);inputs[index+1]?.focus();inputs[index+1]?.select();}}
+        disabled={saving || readOnly}
+        aria-label="Поля тренировки"
+        onKeyDown={(event) => {
+          if (readOnly || event.nativeEvent.isComposing) return;
+          if (gymMode && event.repeat && (event.key === "Enter" || event.key === " ")) {
+            event.preventDefault();
+            return;
+          }
+          if (event.key !== "Enter" || !(event.target instanceof HTMLInputElement) || event.target.type !== "number") return;
+          const container = gymMode ? event.target.closest(".gym-set-fields") : event.currentTarget;
+          if (!container) return;
+          event.preventDefault();
+          const inputs = Array.from(container.querySelectorAll<HTMLInputElement>('input[type="number"]:not(:disabled)'))
+            .filter((input) => input.getClientRects().length > 0);
+          const next = inputs[inputs.indexOf(event.target) + 1];
+          next?.focus();
+          next?.select();
+        }}
       >
+        {!gymMode && !draft.editing && w.exercises.length > 0 ? (
+          <div className="workout-mode-row">
+            {modeSwitch}
+          </div>
+        ) : null}
         {!w.exercises.length ? (
-          <p className="workout-empty">
-            Добавь первое упражнение — веса подставим из прошлой тренировки.
+          <p className="workout-empty-clean">
+            Добавь первое упражнение
           </p>
         ) : null}
-        {w.exercises.map((we, ei) => {
+        {gymMode ? (
+          <WorkoutGym
+            exercises={w.exercises}
+            selected={gymSetId}
+            onSelect={selectGymSet}
+            editor={(entry, ei, si) => renderSet(entry, ei, si, true)}
+          />
+        ) : w.exercises.map((we, ei) => {
           const exercise = exerciseForEntry(we)!;
           const spec = exercise.recording;
           const timed = spec.type === "duration";
@@ -780,57 +1163,19 @@ export default function WorkoutView({
           const headBadges = label ? [{ text: label, kind: "head-explicit" }] : [];
           const allSetsDone = we.sets.length > 0 && we.sets.every((s) => s.done);
           const completedSets = we.sets.filter((set) => set.done).length;
-          const quickSetIndex = we.sets.findIndex((_, si) => activeSetKey === `${ei}-${si}`);
+          const quickSetIndex = we.sets.findIndex((set) => activeSetKey === set.id);
           const quickSet = we.sets[quickSetIndex];
-          const isCollapsedInFocus = focusMode && allSetsDone && !expandedExercises[ei];
-
-          if (isCollapsedInFocus) {
-            const topSet = we.sets.filter((s) => !s.warmup && s.weight > 0).sort((a, b) => b.weight - a.weight)[0];
-            return (
-              <Fragment key={`${we.exerciseId}-${ei}`}>
-                <article className="exercise-card collapsed-focus-card">
-                  <button
-                    type="button"
-                    className="collapsed-focus-row"
-                    onClick={() => setExpandedExercises((prev) => ({ ...prev, [ei]: true }))}
-                  >
-                    <div className="collapsed-info-left">
-                      <CheckCircle2 size={18} className="text-accent" />
-                      <div className="collapsed-name-wrap">
-                        <span className="collapsed-title">{entryName(we)}</span>
-                        <span className="tiny muted">
-                          {we.sets.length} подх. {topSet ? `· топ: ${topSet.weight} кг × ${topSet.reps}` : ""}
-                        </span>
-                      </div>
-                    </div>
-                    <span className="collapsed-toggle-action">Развернуть</span>
-                  </button>
-                </article>
-                {we.supersetId && w.exercises[ei + 1]?.supersetId === we.supersetId && (
-                  <div className="superset-connector-strip">
-                    <div className="connector-line" />
-                    <span className="connector-tag">
-                      <Zap size={12} className="text-accent" />
-                      Без отдыха переходи к следующему упражнению
-                    </span>
-                    <div className="connector-line" />
-                  </div>
-                )}
-              </Fragment>
-            );
-          }
 
           const isBarbell = !timed && !noLoad && detectExerciseEquipment(exercise) === "barbell";
-          const contextOpen = !!quickSet && contextKey === activeSetKey;
-          const quickControls = (
-            <div className={`set-quick-controls-dock ${timed ? "is-timed" : ""} ${noLoad ? "is-lite" : ""}`}>
+          const quickControls = !noLoad ? (
+            <div className={`set-quick-controls-dock ${timed ? "is-timed" : ""}`}>
               <div className="quick-controls-heading">
                 <span>
-                  {noLoad ? "Подход" : "Быстрая правка · подход"}
+                  Быстрая правка · подход
                   {quickSet ? ` ${quickSetIndex + 1}` : ": выбери строку"}
                 </span>
               </div>
-              {!noLoad && <div className="set-quick-steppers-bar" onClick={(e) => e.stopPropagation()}>
+              <div className="set-quick-steppers-bar" onClick={(e) => e.stopPropagation()}>
                 <div className="stepper-weights-group">
                   <span className="steppers-label">Вес:</span>
                   {[-5, -2.5, -1.25, 1.25, 2.5, 5].map((delta) => (
@@ -866,52 +1211,12 @@ export default function WorkoutView({
                     ))}
                   </div>
                 )}
-              </div>}
-        <button
-          type="button"
-          className="set-context-toggle"
-          aria-expanded={contextOpen}
-          disabled={!quickSet}
-          onClick={(e) => {
-            e.stopPropagation();
-            setContextKey(contextOpen ? null : activeSetKey);
-          }}
-        >
-          {quickSet ? `Контекст подхода ${quickSetIndex + 1}` : "Контекст"}
-        </button>
-              {contextOpen && quickSet && (
-                <div className="set-context-panel" onClick={(e) => e.stopPropagation()}>
-                  {spec.laterality === "unilateral" && (
-                    <label>
-                      Стороны этого подхода
-                      <Select
-                        aria-label={`${entryName(we)}, подход ${quickSetIndex + 1}, стороны`}
-                        value={quickSet.performedSides ?? ""}
-                        onChange={(side) =>
-                          changeSet(ei, quickSetIndex, { performedSides: side ? (side as SetEntry["performedSides"]) : undefined })
-                        }
-                        options={[
-                          { value: "", label: "Как в упражнении" },
-                          { value: "both", label: "Обе стороны" },
-                          { value: "left", label: "Только левая" },
-                          { value: "right", label: "Только правая" },
-                        ]}
-                      />
-                    </label>
-                  )}
-                  <ExecutionFields
-                    value={quickSet.execution}
-                    label={`Подход ${quickSetIndex + 1}`}
-                    onChange={(execution) => changeSet(ei, quickSetIndex, { execution })}
-                  />
-                </div>
-              )}
+              </div>
             </div>
-          );
+          ) : null;
 
           const canWarmup = !we.sets.some((s) => s.warmup) && new WarmupPlanner(we).create().length > 0;
           let working = 0;
-          let warm = 0;
           return (
             <Fragment key={`${we.exerciseId}-${ei}`}>
               <article
@@ -924,18 +1229,9 @@ export default function WorkoutView({
                 </div>
               )}
 
-              {/* Title & Delete Header (Always clean and uncrowded) */}
               <div className="exercise-card-head">
-                <div className="exercise-head-left">
-                  <div className="exercise-header-meta">
-                    <span className="exercise-order" aria-hidden="true">
-                      Упражнение {String(ei + 1).padStart(2, "0")}
-                    </span>
-                    <span className={`exercise-set-status ${allSetsDone ? "complete" : ""}`}>
-                      {allSetsDone ? <CheckCircle2 size={13} aria-hidden="true" /> : null}
-                      {completedSets} / {we.sets.length} {setsWord(we.sets.length)}
-                    </span>
-                  </div>
+               <span className="exercise-order" aria-hidden="true">{String(ei + 1).padStart(2, "0")}</span>
+               <div className="exercise-head-left">
                   <div className="title-with-badges">
                     <h3>{entryName(we)}</h3>
                     {headBadges.map((b) => (
@@ -944,284 +1240,95 @@ export default function WorkoutView({
                       </span>
                     ))}
                   </div>
-                  <p>
-                    {exercise.primary
-                      .map((id) => MUSCLES.find((m) => m.id === id)!.short)
-                      .join(" · ")}
-                    {!timed && plannedRange
-                      ? ` · ${we.sets.filter((s) => !s.warmup).length} × ${plannedRange} по плану`
-                      : null}
-                  </p>
+                 <div className="exercise-header-meta">
+                   <p>
+                     {exercise.primary
+                       .map((id) => MUSCLES.find((m) => m.id === id)!.short)
+                       .join(" · ")}
+                     {!timed && plannedRange
+                       ? ` · ${we.sets.filter((s) => !s.warmup).length} × ${plannedRange} по плану`
+                       : null}
+                   </p>
+                   <span className={`exercise-set-status ${allSetsDone ? "complete" : ""}`}>
+                     {allSetsDone ? <CheckCircle2 size={13} aria-hidden="true" /> : null}
+                     {completedSets} / {we.sets.length} {setsWord(we.sets.length)}
+                   </span>
+                 </div>
                 </div>
-                <button
-                  type="button"
-                  className="icon-button exercise-delete-btn"
-                  aria-label={`Убрать ${entryName(we)}`}
-                  title="Убрать упражнение"
-                  onClick={() =>
-                    update(WorkoutUndo.exercise(draft,ei))
-                  }
-                >
-                  <Trash2 size={16} />
-                </button>
-              </div>
-
-              {/* Dedicated Compact Toolbar Pills Row (Always inside card, never overflows) */}
-              <div className="exercise-extras">
-              <details className="exercise-more-tools"><summary>Ещё для упражнения</summary><div className="exercise-toolbar-pills">
-                <button
-                  type="button"
-                  className="quick-calc-btn"
-                  title="Заменить упражнение на аналогичное"
-                  onClick={() => setSwapTarget({ ei, exercise })}
-                >
-                  <ArrowLeftRight size={13} />
-                  <span>Заменить</span>
-                </button>
-                <button
-                  type="button"
-                  className={`quick-calc-btn superset-toggle-btn ${we.supersetId ? "active" : ""}`}
-                  title={
-                    we.supersetId
-                      ? "Убрать из суперсета"
-                      : "Объединить в суперсет с соседним упражнением"
-                  }
-                  onClick={() => {
-                    if (we.supersetId) {
-                      patchExercise(ei, { supersetId: undefined });
-                    } else {
-                      const prevSS = w.exercises[ei - 1]?.supersetId;
-                      const targetSS = prevSS || `ss-${ei + 1}`;
-                      patchExercise(ei, { supersetId: targetSS });
-                      if (!prevSS && ei > 0) {
-                        patchExercise(ei - 1, { supersetId: targetSS });
-                      }
-                    }
-                  }}
-                >
-                  <Zap size={13} />
-                  <span>{we.supersetId ? "В суперсете" : "Суперсет"}</span>
-                </button>
-                <button
-                  type="button"
-                  className={`quick-calc-btn ${expandedAnatomy === we.exerciseId ? "active" : ""}`}
-                  title="Анатомический фокус упражнения"
-                  onClick={() =>
-                    setExpandedAnatomy((curr) =>
-                      curr === we.exerciseId ? null : we.exerciseId,
-                    )
-                  }
-                >
-                  <Activity size={13} />
-                  <span>Анатомия</span>
-                </button>
-                {isBarbell && (
-                  <button
-                    type="button"
-                    className="quick-calc-btn"
-                    title="Калькулятор блинов на штангу"
-                    onClick={() => {
-                      setPlateCalcTarget({ weight: PlateApplication.openWeight(we.sets), ei });
-                    }}
-                  >
-                    <Dumbbell size={13} />
-                    <span>Блины</span>
-                  </button>
-                )}
-                {!timed && !noLoad && (
-                  <button
-                    type="button"
-                    className="quick-calc-btn"
-                    title="Калькулятор 1ПМ"
-                    onClick={() => {
-                      const firstWorking = we.sets.find((s) => !s.warmup && s.weight > 0);
-                      setOneRepMaxTarget({
-                        weight: firstWorking?.weight ?? 60,
-                        reps: firstWorking?.reps ?? 8,
-                      });
-                    }}
-                  >
-                    <Target size={13} />
-                    <span>1ПМ</span>
-                  </button>
-                )}
-              </div></details>
-              <ExecutionFields value={we.execution} onChange={(execution) => patchExercise(ei, { execution })} label={`Упражнение ${ei + 1}`} />
-              </div>
-
-              {/* Upgraded Anatomy Drawer */}
-              {expandedAnatomy === we.exerciseId && (
-                <div className="exercise-inline-anatomy">
-                  <div className="anatomy-drawer-header">
-                    <div className="drawer-title-wrap">
-                      <Activity size={16} className="text-accent" />
-                      <h4>Биомеханика: {entryName(we)}</h4>
-                    </div>
+                <div className="exercise-card-actions">
+                  {isBarbell && (
                     <button
                       type="button"
-                      className="icon-button close-drawer-btn"
-                      onClick={() => setExpandedAnatomy(null)}
-                      aria-label="Закрыть анатомию"
+                      className="icon-button"
+                      aria-label={`Блины: ${entryName(we)}`}
+                      title="Калькулятор блинов"
+                      onClick={() => {
+                        setPlateCalcTarget({ weight: PlateApplication.openWeight(we.sets), ei });
+                      }}
                     >
-                      <X size={15} />
+                      <Dumbbell size={16} aria-hidden="true" />
                     </button>
-                  </div>
-
-                  <div className="anatomy-drawer-grid">
-                    <div className="inline-atlas-wrapper">
-                      <BodyMap
-                        loads={[]}
-                        selected={null}
-                        onSelect={() => {}}
-                        exercise={exercise}
-                        compact
-                      />
-                      <span className="atlas-pedestal-tag">3D Атлас тела</span>
-                    </div>
-
-                    <div className="inline-anatomy-info">
-                      <div className="anatomy-role-group primary">
-                        <span className="role-heading">🎯 Главные движители</span>
-                        <div className="anatomy-role-pills">
-                          {headBadges.map((b) => (
-                            <span key={b.text} className={`head-indicator-badge ${b.kind}`}>
-                              {b.text}
-                            </span>
-                          ))}
-                          {exercise.primary.map((p) => {
-                            const m = MUSCLES.find((x) => x.id === p);
-                            return (
-                              <span key={p} className="muscle-role-pill primary">
-                                {m?.name ?? p}
-                              </span>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {exercise.secondary.length > 0 && (
-                        <div className="anatomy-role-group secondary">
-                          <span className="role-heading">🤝 Синергисты и помощь</span>
-                          <div className="anatomy-role-pills">
-                            {exercise.secondary.map((s) => {
-                              const m = MUSCLES.find((x) => x.id === s);
-                              return (
-                                <span key={s} className="muscle-role-pill secondary">
-                                  {m?.name ?? s}
-                                </span>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {exercise.tip && (
-                        <div className="inline-exercise-tip">
-                          <Sparkles size={14} className="text-accent" />
-                          <div className="tip-content">
-                            <b>Фокус техники:</b>
-                            <p>{exercise.tip}</p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                  )}
+                  <button
+                    type="button"
+                    className="icon-button"
+                    aria-label={`Заменить ${entryName(we)}`}
+                    title="Заменить упражнение"
+                    onClick={() => setSwapTarget({ ei, exercise })}
+                  >
+                    <ArrowLeftRight size={16} aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    className={`icon-button${we.supersetId ? " active" : ""}`}
+                    aria-label={we.supersetId ? `Убрать ${entryName(we)} из суперсета` : `Суперсет: ${entryName(we)}`}
+                    aria-pressed={!!we.supersetId}
+                    title={we.supersetId ? "Убрать из суперсета" : "Суперсет"}
+                    onClick={() => {
+                      if (we.supersetId) {
+                        patchExercise(ei, { supersetId: undefined });
+                      } else {
+                        const prevSS = w.exercises[ei - 1]?.supersetId;
+                        const targetSS = prevSS || `ss-${ei + 1}`;
+                        patchExercise(ei, { supersetId: targetSS });
+                        if (!prevSS && ei > 0) {
+                          patchExercise(ei - 1, { supersetId: targetSS });
+                        }
+                      }
+                    }}
+                  >
+                    <Zap size={16} aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    className="icon-button exercise-delete-btn"
+                    aria-label={`Убрать ${entryName(we)}`}
+                    title="Убрать упражнение"
+                    onClick={() =>
+                      update(WorkoutUndo.exercise(draft, ei))
+                    }
+                  >
+                    <Trash2 size={16} aria-hidden="true" />
+                  </button>
                 </div>
-              )}
+              </div>
 
               {hint ? (
                 <p
                   className={`recording-hint ${exercise.catalogRevision === 1 ? "legacy-hint" : ""}`}
                 >
-                  <Info size={14} />
+                  <Info size={14} aria-hidden="true" />
                   {hint}
                 </p>
               ) : null}
 
               {we.progressionNote && !we.progressionNote.includes("правило программы") ? (
-                <div className="progression-banner">
-                  <TrendingUp size={15} className="text-accent" />
+                <div className={`progression-banner${LaidDupPlan.hasPlanWeight(we) ? " laid-plan-banner" : ""}`}>
+                  <TrendingUp size={15} className="text-accent" aria-hidden="true" />
                   <span>{we.progressionNote}</span>
                 </div>
               ) : null}
-              {["machine_stack", "assisted_bodyweight"].includes(spec.loadMode) && <div className="machine-picker">
-                <label>Сохранённый тренажёр<Select aria-label="Сохранённый тренажёр" value={we.machineInstanceId ?? ""}
-                  options={[{value:"",label:"Текстовая пометка / не выбран"}, ...machines.map((m)=>({value:m.id,label:[m.nickname, m.gym || (m.model.model !== m.nickname ? m.model.model : "")].filter(Boolean).join(" · ")})),
-                    ...(we.machineSnapshot && !machines.some((m)=>m.id===we.machineInstanceId) ? [{value:we.machineSnapshot.id,label:we.machineSnapshot.nickname+" · из истории"}] : [])]}
-                  onChange={(id) => patchExercise(ei, { machineInstanceId: id || undefined,
-                    machineSnapshot: machines.find((m)=>m.id===id) ?? (we.machineSnapshot?.id===id ? we.machineSnapshot : undefined) })} /></label>
-                {onMachines && <button type="button" className="text-button" onClick={onMachines}>Добавить или изменить тренажёр</button>}
-              </div>}
-              {spec.laterality === "unilateral" ? (
-                <label className="recording-field">
-                  Выполненные стороны
-                  <Select
-                    aria-label="Выполненные стороны"
-                    value={we.performedSides ?? "both"}
-                    onChange={(v) =>
-                      patchExercise(ei, {
-                        performedSides: v as WorkoutExercise["performedSides"],
-                      })
-                    }
-                    options={[
-                      { value: "both", label: "Обе — один парный подход" },
-                      { value: "left", label: "Только левая" },
-                      { value: "right", label: "Только правая" },
-                    ]}
-                  />
-                </label>
-              ) : null}
-              {["machine_stack", "assisted_bodyweight"].includes(
-                spec.loadMode,
-              ) ? (
-                <label className="recording-field">
-                  Тренажёр / блок
-                  <input
-                    aria-label="Тренажёр / блок"
-                    maxLength={120}
-                    value={we.equipmentNote ?? ""}
-                    placeholder="Например: верхний блок у окна"
-                    onChange={(e) =>
-                      patchExercise(ei, { equipmentNote: e.target.value })
-                    }
-                    required={!we.machineInstanceId}
-                  />
-                  <small className="tiny">
-                    Нужно для сохранения: вес сравнивается только на этой
-                    машине.
-                  </small>
-                </label>
-              ) : null}
-              {exercise.bodyweight && exercise.catalogRevision === 2 ? (
-                <details className="recording-extra">
-                  <summary>Записать массу тела (по желанию)</summary>
-                  <label>
-                    Масса тела, кг
-                    <input
-                      type="number"
-                      min="20"
-                      max="500"
-                      step="0.1"
-                      value={we.bodyMassKg ?? ""}
-                      onChange={(e) =>
-                        patchExercise(ei, {
-                          bodyMassKg:
-                            e.target.value === ""
-                              ? undefined
-                              : Number(e.target.value),
-                        })
-                      }
-                    />
-                  </label>
-                  <p className="tiny">
-                    Хранится как контекст; не превращается в нагрузку мышцы или
-                    расчётный 1ПМ.
-                  </p>
-                </details>
-              ) : null}
-              {LaidDupPlan.hasPlanWeight(we) ? (
-                <p className="tiny plan-weight-note">Вес по плану недели. Поправить — в строке подхода.</p>
-              ) : before?.working && before.working.length > 0 && (
+              {!LaidDupPlan.hasPlanWeight(we) && before?.working && before.working.length > 0 && (
                 <div className="exercise-autofill-bar">
                   <button
                     type="button"
@@ -1295,237 +1402,22 @@ export default function WorkoutView({
                       RIR
                     </button>
                   )}
-                  <span className="sr-only">Готово</span>
+                  <span className="set-check-heading">Готово</span>
                 </div>
                 {rirHelp && !timed && (
-                  <div className="rir-explainer-popover" onClick={(e) => e.stopPropagation()}>
-                    <div className="rir-popover-header">
-                      <div className="rir-popover-title">
-                        <Sparkles size={16} className="text-accent" />
-                        <b>RIR (Reps in Reserve) — Запас повторений</b>
-                      </div>
-                      <button
-                        type="button"
-                        className="icon-button close-rir"
-                        onClick={() => setRirHelp(false)}
-                        aria-label="Закрыть"
-                      >
-                        <X size={15} />
-                      </button>
-                    </div>
-                    <p className="rir-popover-desc">
-                      Сколько чистых повторений с правильной техникой ты мог бы ещё выполнить до полного отказа.
-                    </p>
-                    <div className="rir-levels-grid">
-                      <div className="rir-level-chip rir-0">
-                        <b className="rir-code">0</b>
-                        <span className="rir-meaning">Отказ (предел сил)</span>
-                      </div>
-                      <div className="rir-level-chip rir-1">
-                        <b className="rir-code">1–2</b>
-                        <span className="rir-meaning">Близко к отказу</span>
-                      </div>
-                      <div className="rir-level-chip rir-3">
-                        <b className="rir-code">3</b>
-                        <span className="rir-meaning">Есть запас</span>
-                      </div>
-                      <div className="rir-level-chip rir-4">
-                        <b className="rir-code">4+</b>
-                        <span className="rir-meaning">Большой запас</span>
-                      </div>
-                    </div>
-                    <div className="rir-popover-footer">
-                      <span className="tiny muted">
-                        Не обязателен для записи. Фильтр «тяжёлых» рабочих подходов в прогрессе использует <b>RIR ≤ 3</b>.
-                      </span>
-                      <button
-                        type="button"
-                        className="button secondary rir-ok-btn"
-                        onClick={() => setRirHelp(false)}
-                      >
-                        Понятно
-                      </button>
-                    </div>
+                  <div className="rir-inline-note" onClick={(e) => e.stopPropagation()}>
+                    <span>RIR — запас повторений до отказа (0 = отказ, 1–2 = тяжело, 3+ = с запасом).</span>
+                    <button
+                      type="button"
+                      className="icon-button"
+                      onClick={() => setRirHelp(false)}
+                      aria-label="Закрыть подсказку RIR"
+                    >
+                      <X size={15} aria-hidden="true" />
+                    </button>
                   </div>
                 )}
-                {we.sets.map((s, si) => {
-                  const index = s.warmup ? warm++ : working++;
-                  const comparable = previous.get(ExecutionIdentity.key(we,s));
-                  const comparableIndex = ExecutionIdentity.setIndex(we,s);
-                  const last = (s.warmup ? comparable?.warmup : comparable?.working)?.[comparableIndex];
-                  const lastText = previousLabel(we, last);
-                  const isRowActive = activeSetKey === `${ei}-${si}`;
-                  return (
-                    <div key={s.id} className="set-row-wrapper">
-                      <div
-                        data-exercise-id={we.exerciseId} data-set-id={s.id}
-                        className={`set-row ${s.done ? "done" : ""} ${isRowActive ? "row-active" : ""}`}
-                        onClick={() => setActiveSetKey(isRowActive ? null : `${ei}-${si}`)}
-                      >
-                        <button
-                          type="button"
-                          className={`set-kind ${s.kind || (s.warmup ? "warmup" : "normal")} ${hasSetContext(s) ? "has-context" : ""}`}
-                          title="Тип подхода (обычный, разминка, дропсет, мио-повторы)"
-                          aria-label={`Подход ${si + 1}: ${s.kind || (s.warmup ? "разминочный" : "рабочий")}. Нажми для переключения`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            changeSet(ei, si, cycleSetKind(s));
-                          }}
-                        >
-                          {s.kind === "dropset"
-                            ? "D"
-                            : s.kind === "myorep"
-                              ? "M"
-                              : s.warmup
-                                ? "Р"
-                                : index + 1}
-                        </button>
-                        <button
-                          type="button"
-                          className="set-previous"
-                          disabled={!last}
-                          aria-label={
-                            last
-                              ? `Подставить прошлый результат: ${lastText}${deloadNow ? ` (в разгрузку — ${previousLabel(we, deloaded(we, last, comparableIndex, s.warmup, s))})` : ""}`
-                              : "Прошлого результата нет"
-                          }
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            last &&
-changeSet(ei, si, PreviousSets.patch(deloaded(we, last, comparableIndex, s.warmup, s)!, { timed, assistance }), true);
-                          }}
-                        >
-                          {wrapSafe(lastText)}
-                        </button>
-                        {noLoad ? (
-                          <span
-                            className="no-load-value"
-                            aria-label="Без внешнего веса"
-                          >
-                            —
-                          </span>
-                        ) : (
-                          <input
-                            aria-label={`${entryName(we)}, подход ${si + 1}, ${assistance ? "помощь" : "вес"}`}
-                            title={recordingLabel(we)}
-                            type="number"
-                            min="0"
-                            max="1000"
-                            step="0.5"
-                            inputMode="decimal"
-                            value={assistance ? (s.assistanceKg ?? 0) : s.weight || ""}
-                            placeholder={last ? `${last.weight}` : "0"}
-                            {...fieldProps(ei, si)}
-                            onChange={(e) =>
-                              changeSet(
-                                ei,
-                                si,
-                                assistance
-                                  ? {
-                                      assistanceKg: Number(trimLeadingZeros(e.target)),
-                                      weight: 0,
-                                    }
-                                  : { weight: Number(trimLeadingZeros(e.target)) },
-                                true,
-                              )
-                            }
-                          />
-                        )}
-                        <input
-                          aria-label={`${entryName(we)}, подход ${si + 1}, ${timed ? "секунды" : "повторы"}${!timed && spec.repsMode === "per_side" ? " на сторону" : ""}`}
-                          type="number"
-                          min="1"
-                          max={timed ? "86400" : "200"}
-                          inputMode="numeric"
-                          value={timed ? (s.durationSeconds ?? 30) : s.reps || ""}
-                          placeholder={last ? `${last.reps}` : timed ? "30" : (plannedRange ?? "—")}
-                          {...fieldProps(ei, si)}
-                          onChange={(e) =>
-                            changeSet(
-                              ei,
-                              si,
-                              timed
-                                ? {
-                                    durationSeconds: Number(trimLeadingZeros(e.target)),
-                                    reps: 1,
-                                  }
-                                : { reps: Number(trimLeadingZeros(e.target)) },
-                              true,
-                            )
-                          }
-                        />
-                        <input
-                          aria-label={`${entryName(we)}, подход ${si + 1}, ${timed ? "дистанция, км" : "RIR"}`}
-                          type="number"
-                          min="0"
-                          max={timed ? "1000" : "10"}
-                          step={timed ? "0.01" : "0.5"}
-                          inputMode="decimal"
-                          value={timed ? (s.distanceKm ?? "") : (s.rir ?? "")}
-                          placeholder="—"
-                          {...fieldProps(ei, si)}
-                          onChange={(e) =>
-                            changeSet(
-                              ei,
-                              si,
-                              timed
-                                ? {
-                                    distanceKm:
-                                      e.target.value === ""
-                                        ? undefined
-                                        : Number(e.target.value),
-                                  }
-                                : {
-                                    rir:
-                                      e.target.value === ""
-                                        ? null
-                                        : Number(trimLeadingZeros(e.target)),
-                                  },
-                              true,
-                            )
-                          }
-                        />
-                        <button
-                          type="button"
-                          className="set-check"
-                          aria-label={`${s.done ? "Снять отметку" : "Отметить выполненным"}: ${entryName(we)}, подход ${si + 1}`}
-                          aria-pressed={s.done}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (!s.done) {
-                              // ✓ — это «я это сделал»: без введённого веса и повторов подход не записываем молча.
-                              const missing = SetCompleteness.missing(exercise, s);
-                              if (missing) {
-                                setNeeds({ setId: s.id, field: missing });
-                                const row = e.currentTarget.closest(".set-row");
-                                const fields = row?.querySelectorAll<HTMLInputElement>('input[type="number"]');
-                                fields?.[missing === "weight" || noLoad ? 0 : 1]?.focus();
-                                return;
-                              }
-                            }
-                            setNeeds(null);
-                            changeSet(ei, si, { done: !s.done });
-                          }}
-                        >
-                          <m.span
-                            className="set-check-feedback"
-                            aria-hidden="true"
-                            initial={false}
-                            variants={setCheckFeedback}
-                            animate={s.done && !reducedMotion ? "complete" : "idle"}
-                            transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
-                          >
-                            <Check size={22} strokeWidth={3} />
-                          </m.span>
-                        </button>
-                      </div>
-                      {needs?.setId === s.id && SetCompleteness.missing(exercise, s) === needs.field ? (
-                        <p className="set-hint" role="alert">{SetCompleteness.message(needs.field)}</p>
-                      ) : null}
-                      {isRowActive ? quickControls : null}
-                    </div>
-                  );
-                })}
+                {we.sets.map((s, si) => renderSet(we, ei, si, false, s.warmup ? 0 : working++, quickControls))}
               </div>
               <div className="set-actions">
                 <button
@@ -1585,8 +1477,8 @@ changeSet(ei, si, PreviousSets.patch(deloaded(we, last, comparableIndex, s.warmu
               <div className="superset-connector-strip">
                 <div className="connector-line" />
                 <span className="connector-tag">
-                  <Zap size={12} className="text-accent" />
-                  Без отдыха переходи к следующему упражнению
+                  <Zap size={12} className="text-accent" aria-hidden="true" />
+                  Суперсет · без отдыха
                 </span>
                 <div className="connector-line" />
               </div>
@@ -1616,23 +1508,7 @@ changeSet(ei, si, PreviousSets.patch(deloaded(we, last, comparableIndex, s.warmu
                     ? "Продолжить счётчик тренировки"
                     : "Приостановить счётчик тренировки"
                 }
-                onClick={() =>
-                  update(
-                    draft.clock.runningSince === null
-                      ? {
-                          ...draft,
-                          manualDuration: false,
-                          restored: false,
-                          clock: {
-                            elapsedMs: draft.manualDuration
-                              ? w.duration * 60000
-                              : draft.clock.elapsedMs,
-                            runningSince: Date.now(),
-                          },
-                        }
-                      : checkpointDraft(draft, Date.now(), true),
-                  )
-                }
+                onClick={toggleSessionClock}
               >
                 {draft.clock.runningSince === null ? (
                   <Play size={18} />
@@ -1642,16 +1518,11 @@ changeSet(ei, si, PreviousSets.patch(deloaded(we, last, comparableIndex, s.warmu
               </button>
             ) : null}
           </div>
-          {draft.restored ? (
-            <p className="tiny">
-              Черновик восстановлен, счётчик на паузе — продолжи его кнопкой выше.
-            </p>
-          ) : null}
           <label className="notes-label">
             Заметки
             <textarea
-              rows={3}
-              placeholder="Как самочувствие? Что стоит помнить в следующий раз?"
+              rows={2}
+              placeholder="Заметка"
               value={w.notes}
               maxLength={2000}
               onChange={(e) => setWorkout({ ...w, notes: e.target.value })}
@@ -1665,25 +1536,12 @@ changeSet(ei, si, PreviousSets.patch(deloaded(we, last, comparableIndex, s.warmu
               Рабочие подходы<b>{doneWorking}</b>
             </span>
             <span>
-              Рабочий тоннаж<b>{fmt(summary.total)} кг</b>
+              Тоннаж<b>{fmt(summary.total)} кг</b>
             </span>
             <span>
               Разминка<b>{warmupCount} подх. · {fmt(warmupSummary.total)} кг</b>
             </span>
           </div>
-          {summary.omittedSets ? (
-            <p className="tiny">
-              {summary.omittedSets} подх. с массой тела, тренажёрами или
-              неизвестным правилом веса не входят во внешний объём.
-            </p>
-          ) : null}
-          <p className="tiny draft-note">
-            {persistence === "saved"
-              ? "Черновик сохранён на этом устройстве."
-              : persistence === "pending"
-                ? "Сохраняем черновик…"
-                : "Локальное сохранение недоступно."}
-          </p>
           <button
             className="text-button danger-text discard"
             disabled={saving}
@@ -1694,7 +1552,7 @@ changeSet(ei, si, PreviousSets.patch(deloaded(we, last, comparableIndex, s.warmu
         </details>
       </fieldset>
       {/* Одна нижняя стопка: «Отменить удаление» и таймер отдыха идут друг под другом в одном липком блоке, поэтому не могут перекрыть друг друга. */}
-      <div className="workout-dock">
+      <div className="workout-dock" ref={dockRef}>
       <AnimatePresence initial={false}>
         {lastRemoval ? (
           <m.div
@@ -1728,81 +1586,33 @@ changeSet(ei, si, PreviousSets.patch(deloaded(we, last, comparableIndex, s.warmu
           </m.div>
         ) : null}
       </AnimatePresence>
-      <AnimatePresence initial={false}>
-      {resting ? (
-        <m.section
-          key="rest"
-          className="rest-bar"
-          aria-label="Таймер отдыха"
-          initial={{ opacity: 0, y: 28 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 28, transition: { duration: 0.2 } }}
-          transition={{ type: "spring", stiffness: 420, damping: 34 }}
-        >
-          <div className="rest-progress">
-            <span
-              style={{
-                transform: `scaleX(${Math.min(1, remaining / Math.max(restSeconds, remaining, 1))})`,
-              }}
-            />
-          </div>
-          <div className="rest-body">
-            <div className="rest-copy">
-              <span>{draft.pausedRest !== null ? "Отдых на паузе" : "Отдых"}</span>
-              <span className="rest-digits active" aria-live="off">
-                {clock(remaining)}
-              </span>
-            </div>
-            <button aria-label="Минус 15 секунд" onClick={() => shiftRest(-15)}>
-              −15
-            </button>
-            <button
-              className="timer-plus"
-              aria-label="Плюс 15 секунд"
-              onClick={() => shiftRest(15)}
-            >
-              +15
-            </button>
-            <button
-              className="icon-button"
-              aria-label={
-                draft.pausedRest !== null
-                  ? "Продолжить таймер"
-                  : "Приостановить таймер"
-              }
-              onClick={() =>
-                update(
-                  draft.pausedRest !== null
-                    ? {
-                        ...draft,
-                        restUntil: Date.now() + draft.pausedRest * 1000,
-                        pausedRest: null,
-                      }
-                    : { ...draft, pausedRest: remaining, restUntil: null },
-                )
-              }
-            >
-              {draft.pausedRest !== null ? <Play size={20} /> : <Pause size={20} />}
-            </button>
-            <button
-              className="icon-button"
-              aria-label="Пропустить отдых"
-              onClick={() =>
-                update({ ...draft, restUntil: null, pausedRest: null })
-              }
-            >
-              <X size={20} />
-            </button>
-          </div>
-        </m.section>
-      ) : null}
-      </AnimatePresence>
+      {/* A skipped or expired rest must stop covering the controls immediately. */}
+      <WorkoutRestBar
+        draft={draft}
+        restSeconds={restSeconds}
+        soundEnabled={soundEnabled}
+        reducedMotion={reducedMotion}
+        onShift={shiftRest}
+        onTogglePause={(rem) =>
+          update(
+            draft.pausedRest !== null
+              ? {
+                  ...draft,
+                  restUntil: Date.now() + draft.pausedRest * 1000,
+                  pausedRest: null,
+                }
+              : { ...draft, pausedRest: rem, restUntil: null },
+          )
+        }
+        onSkip={() => update({ ...draft, restUntil: null, pausedRest: null })}
+        onAnnounce={setAnnouncement}
+      />
       </div>
       <span className="sr-only" role="status" aria-live="polite">
         {announcement}
       </span>
 
-      {plateCalcTarget && (
+      {!readOnly && plateCalcTarget && (
         <Modal title="Калькулятор блинов" onClose={() => setPlateCalcTarget(null)} wide>
           <PlateCalculator
             initialWeight={plateCalcTarget.weight}
@@ -1821,17 +1631,7 @@ changeSet(ei, si, PreviousSets.patch(deloaded(we, last, comparableIndex, s.warmu
         </Modal>
       )}
 
-      {oneRepMaxTarget && (
-        <Modal title="Калькулятор 1ПМ" onClose={() => setOneRepMaxTarget(null)} wide>
-          <OneRepMaxCalculator
-            initialWeight={oneRepMaxTarget.weight}
-            initialReps={oneRepMaxTarget.reps}
-            onClose={() => setOneRepMaxTarget(null)}
-          />
-        </Modal>
-      )}
-
-      {swapTarget && (
+      {!readOnly && swapTarget && (
         <ExerciseSwapModal
           currentExercise={swapTarget.exercise}
           onClose={() => setSwapTarget(null)}
@@ -1865,7 +1665,7 @@ changeSet(ei, si, PreviousSets.patch(deloaded(we, last, comparableIndex, s.warmu
         />
       )}
 
-      {showCancelConfirm && (
+      {!readOnly && showCancelConfirm && (
         <Modal
           title={draft.editing ? "Отменить изменения?" : "Отменить тренировку?"}
           onClose={() => setShowCancelConfirm(false)}

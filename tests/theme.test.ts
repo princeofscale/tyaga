@@ -27,25 +27,25 @@ function preferenceStore(initial?: string) {
   };
 }
 
-test("Theme definitions add lime and preserve the four existing palettes", () => {
-  assert.equal(THEMES.length, 5);
-  assert.equal(new Set(THEMES.map((t) => t.id)).size, 5);
-  for (const id of ["lime", "cyan", "emerald", "gold", "violet"]) {
+test("Theme definitions include ember default and preserve the existing palettes", () => {
+  assert.equal(THEMES.length, 6);
+  assert.equal(new Set(THEMES.map((t) => t.id)).size, 6);
+  for (const id of ["ember", "lime", "cyan", "emerald", "gold", "violet"]) {
     assert.ok(THEMES.some((t) => t.id === id));
   }
   assert.equal(THEMES.find((t) => t.id === "cyan")?.accent, "#00e5ff");
-  assert.equal(THEMES.find((t) => t.id === "lime")?.accent, "#cafa64");
+  assert.equal(THEMES.find((t) => t.id === "ember")?.accent, "#e2441f");
 });
 
-test("Default theme is athletic lime without browser storage", () => {
+test("Default theme is ember without browser storage", () => {
   withGlobals({ localStorage: undefined }, () => {
-    assert.equal(DEFAULT_THEME, "lime");
-    assert.equal(getCurrentTheme(), "lime");
+    assert.equal(DEFAULT_THEME, "ember");
+    assert.equal(getCurrentTheme(), "ember");
   });
 });
 
 test("Existing saved palette IDs remain authoritative", () => {
-  for (const id of ["cyan", "emerald", "gold", "violet"] as const) {
+  for (const id of ["cyan", "emerald", "gold", "violet", "lime"] as const) {
     const storage = preferenceStore(id);
     withGlobals({ localStorage: storage }, () => {
       assert.equal(getCurrentTheme(), id);
@@ -55,10 +55,10 @@ test("Existing saved palette IDs remain authoritative", () => {
   }
 });
 
-test("Unknown saved themes fall back to lime without overwriting the store", () => {
+test("Unknown saved themes fall back to ember without overwriting the store", () => {
   const storage = preferenceStore("obsolete-theme");
   withGlobals({ localStorage: storage }, () => {
-    assert.equal(getCurrentTheme(), "lime");
+    assert.equal(getCurrentTheme(), "ember");
     assert.equal(storage.values.get("tyaga_theme_accent"), "obsolete-theme");
   });
 });
@@ -98,7 +98,7 @@ test("Blocked preference reads/writes do not crash theme selection", () => {
     setItem() { throw new Error("Storage disabled"); },
   };
   withGlobals({ localStorage: blocked }, () => {
-    assert.equal(getCurrentTheme(), "lime");
+    assert.equal(getCurrentTheme(), "ember");
     assert.doesNotThrow(() => applyTheme("emerald"));
   });
 });

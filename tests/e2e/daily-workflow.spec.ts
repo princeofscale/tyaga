@@ -263,7 +263,7 @@ test("undo survives reload and minimization, preserves edited sets and the tools
   const f = await fixture(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page
-    .getByRole("button", { name: /^Инструменты/ })
+    .getByRole("button", { name: "Ещё", exact: true })
     .last()
     .click();
   const hub = page.getByRole("dialog", {
@@ -469,7 +469,7 @@ test("profile and new bodyweight sets share the weighing journal; complete expor
   expect(f.workouts[0].exercises[0].bodyMassKg).toBe(74.5);
   await nav(page, "Сегодня").click();
   await page
-    .getByRole("button", { name: /^Инструменты/ })
+    .getByRole("button", { name: "Ещё", exact: true })
     .last()
     .click();
   await page.getByRole("button", { name: /^Резервная копия/ }).click();
@@ -779,7 +779,7 @@ test("Android notification controls are opt-in and a native action restores the 
     await page.evaluate(() => Reflect.get(window, "__restTest").enabledCalls),
   ).toBe(0);
   await page
-    .getByRole("button", { name: /^Инструменты/ })
+    .getByRole("button", { name: "Ещё", exact: true })
     .last()
     .click();
   await page.getByRole("button", { name: /^Уведомления отдыха/ }).click();

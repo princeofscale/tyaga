@@ -1,0 +1,744 @@
+/* ============================================================================
+   ТЯГА · OBSIDIAN & EMBER (Полный редизайн палитры, глубины, поверхностей и экранов)
+   Глубокий графит-обсидиан + тонкие стеклянные грани + электрический коралл.
+   ============================================================================ */
+
+:root {
+  --in-oklab: ;
+  --bg: #090a0f;
+  --bg-elevated: #0e1018;
+  --journal-top: rgba(12, 14, 21, 0.88);
+  --surface: #131621;
+  --surface-2: #1a1e2e;
+  --surface-3: #23283d;
+
+  --text: #f5f7fc;
+  --text-soft: #c9d0e0;
+  --muted: #8892aa;
+  --faint: #58627a;
+
+  --line-soft: rgba(255, 255, 255, 0.06);
+  --line: rgba(255, 255, 255, 0.11);
+  --line-strong: rgba(255, 255, 255, 0.19);
+
+  --accent: #e2441f;
+  --accent-hover: #f2532e;
+  --on-accent: #ffffff;
+  --accent-soft: color-mix(in oklab, var(--accent) 13%, var(--surface));
+  --accent-line: color-mix(in oklab, var(--accent) 44%, var(--line));
+  --accent-dim: color-mix(in oklab, var(--accent) 68%, var(--surface));
+
+  --over: #f59e0b;
+  --warn: #f59e0b;
+  --danger: #f43f5e;
+  --assist: #a78bfa;
+  --stabilize: #38bdf8;
+
+  --r-card: 18px;
+  --r-btn: 12px;
+  --r-field: 11px;
+  --r-pill: 999px;
+
+  --shadow-card:
+    0 1px 0 inset rgba(255, 255, 255, 0.06),
+    0 1px 2px rgba(0, 0, 0, 0.45),
+    0 14px 36px -16px rgba(0, 0, 0, 0.65);
+  --shadow-float:
+    0 1px 0 inset rgba(255, 255, 255, 0.08),
+    0 12px 40px rgba(0, 0, 0, 0.65);
+  --shadow-accent: 0 8px 24px -8px color-mix(in oklab, var(--accent) 55%, transparent);
+
+  --surface-grad: linear-gradient(180deg, rgba(255, 255, 255, 0.032) 0%, rgba(255, 255, 255, 0) 100%);
+  --journal-rail: 232px;
+  --journal-width: 1280px;
+  --journal-gutter: clamp(20px, 3vw, 44px);
+  --journal-gap: clamp(16px, 1.8vw, 24px);
+}
+
+@supports (background: linear-gradient(in oklab, white, black)) {
+  :root {
+    --in-oklab: in oklab;
+  }
+}
+
+/* ───────────── Фон и атмосфера ───────────── */
+html,
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  color-scheme: dark;
+}
+
+body {
+  background-image:
+    radial-gradient(ellipse 75% 42% at 55% -12%, color-mix(in oklab, var(--accent) 13%, transparent), transparent 68%),
+    radial-gradient(ellipse 50% 35% at 0% 100%, rgba(56, 189, 248, 0.05), transparent 65%);
+  background-attachment: fixed;
+}
+
+/* ───────────── Типографика: геометрический заголовок + спортивные цифры ───────────── */
+.today-head h1,
+.screen-head h1,
+.training-hero #plan-title,
+.progress-overview .overview-period h2,
+.friends-screen h1,
+.today-section-head h2,
+.weekly-summary-header h2,
+.routine-card h3,
+.shared-program-title-row h3 {
+  font-family: var(--font-body);
+  font-weight: 800;
+  letter-spacing: -0.032em;
+  text-wrap: balance;
+}
+
+/* Крупные табло-цифры сохраняют спортивный характер Sofia Sans Condensed */
+.total-number,
+.progress-overview .progress-metric > strong,
+.telemetry-value-row strong,
+.weekly-stats-badges .stat-badge b,
+.week-summary-head strong,
+.pulse-streak-copy strong,
+.total-lift-tile strong,
+.app-shell .brand,
+.steel-auth .auth-brand-name {
+  font-family: var(--font-display);
+}
+
+/* ───────────── Кнопки и инпуты ───────────── */
+.button.primary {
+  background: linear-gradient(180deg var(--in-oklab), color-mix(in oklab, var(--accent) 88%, white), var(--accent));
+  border: 1px solid color-mix(in oklab, var(--accent) 75%, white);
+  color: var(--on-accent);
+  border-radius: var(--r-btn);
+  font-weight: 700;
+  box-shadow: var(--shadow-accent);
+  transition: transform 140ms ease-out, filter 150ms ease-out, box-shadow 180ms ease-out;
+}
+
+.button.primary:hover:not(:disabled) {
+  background: linear-gradient(180deg var(--in-oklab), color-mix(in oklab, var(--accent-hover) 90%, white), var(--accent-hover));
+  box-shadow: 0 10px 28px -6px color-mix(in oklab, var(--accent) 68%, transparent);
+}
+
+.button.primary:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.button.secondary {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: var(--r-btn);
+  box-shadow: 0 1px 0 inset rgba(255, 255, 255, 0.05);
+  transition: background-color 140ms ease-out, border-color 140ms ease-out, color 140ms ease-out;
+}
+
+.button.secondary:hover:not(:disabled) {
+  background: var(--surface-3);
+  border-color: var(--line-strong);
+}
+
+.icon-button {
+  border-radius: 11px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text-soft);
+  transition: background-color 140ms ease-out, border-color 140ms ease-out, color 140ms ease-out;
+}
+
+.icon-button:hover:not(:disabled) {
+  background: var(--surface-2);
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+input,
+select,
+textarea {
+  background: #0b0d15;
+  border: 1px solid var(--line);
+  border-radius: var(--r-field);
+  color: var(--text);
+  transition: border-color 150ms ease-out, box-shadow 150ms ease-out, background-color 150ms ease-out;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 22%, transparent);
+  outline: none;
+}
+
+/* ───────────── Навигация: стеклянный сайдбар и док ───────────── */
+.sidebar {
+  background: var(--journal-top);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  border-inline-end: 1px solid var(--line-soft);
+  padding: 24px 14px 76px;
+}
+
+.app-shell .brand {
+  letter-spacing: 0.01em;
+  color: var(--text);
+}
+
+.brand-mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: linear-gradient(135deg var(--in-oklab), color-mix(in oklab, var(--accent) 26%, var(--surface-2)), var(--surface));
+  border: 1px solid color-mix(in oklab, var(--accent) 42%, var(--line));
+  color: var(--accent);
+  box-shadow: 0 4px 16px -6px color-mix(in oklab, var(--accent) 45%, transparent);
+}
+
+.sidebar .nav-item {
+  border-radius: 11px;
+  color: var(--muted);
+  font-weight: 560;
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.sidebar .nav-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+}
+
+.sidebar .nav-item[aria-current="page"] {
+  background: linear-gradient(90deg var(--in-oklab), color-mix(in oklab, var(--accent) 16%, var(--surface-2)), var(--surface-2));
+  border: 1px solid color-mix(in oklab, var(--accent) 30%, var(--line-soft));
+  color: var(--text);
+}
+
+.journal-tab-marker {
+  inset: 9px auto 9px 2px;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 10px color-mix(in oklab, var(--accent) 70%, transparent);
+}
+
+.journal-profile {
+  border-radius: 13px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+
+.journal-profile .profile-avatar {
+  border-radius: 9px;
+  background: linear-gradient(135deg var(--in-oklab), color-mix(in oklab, var(--accent) 28%, var(--surface-2)), var(--surface-3));
+  color: var(--text);
+  font-weight: 700;
+}
+
+@media (max-width: 960px) {
+  .sidebar {
+    background: rgba(11, 13, 20, 0.92);
+    backdrop-filter: blur(22px);
+    -webkit-backdrop-filter: blur(22px);
+    border-top: 1px solid var(--line);
+    box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.45);
+  }
+  .journal-topbar {
+    background: rgba(10, 12, 18, 0.88);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .journal-tab-marker {
+    inset: auto auto 2px calc(50% - 9px);
+    width: 18px;
+    height: 3px;
+  }
+}
+
+/* ───────────── Главная страница «Сегодня» ───────────── */
+.today-date {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text-soft);
+  font-weight: 550;
+}
+
+.today-training {
+  position: relative;
+  border-radius: 22px;
+  border: 1px solid var(--line);
+  background:
+    radial-gradient(ellipse 60% 70% at 100% 0%, color-mix(in oklab, var(--accent) 14%, transparent), transparent 65%),
+    var(--surface-grad),
+    var(--surface);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.training-hero {
+  padding: clamp(22px, 3vw, 34px);
+}
+
+.today-training .plan-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-soft);
+  font-size: 0.74rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+.today-training .plan-status.is-live,
+.today-training .plan-status.is-complete {
+  border-color: color-mix(in oklab, var(--accent) 50%, var(--line));
+  background: color-mix(in oklab, var(--accent) 14%, transparent);
+  color: var(--accent-hover);
+}
+
+.today-readiness {
+  border-top: 1px solid var(--line-soft);
+  background: rgba(9, 10, 15, 0.35);
+}
+
+.readiness-tile {
+  background: rgba(19, 22, 33, 0.85);
+  border-radius: 13px;
+  border: 1px solid var(--line);
+  transition: border-color 150ms ease-out;
+}
+
+.readiness-tile.is-ready {
+  border-color: color-mix(in oklab, var(--accent) 30%, var(--line));
+}
+
+.today-quick-tools {
+  background: rgba(9, 10, 15, 0.25);
+  border-top: 1px solid var(--line-soft);
+}
+
+.quick-tool-chip {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  color: var(--text);
+}
+
+.today-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.today-dashboard .weekly-activity-bar,
+.today-rail .week-summary,
+.today-rail .today-telemetry-card {
+  padding: 18px 20px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: var(--surface-grad), var(--surface);
+  box-shadow: var(--shadow-card);
+}
+
+.today-rail .week-summary:hover,
+.today-rail .today-telemetry-card:hover {
+  border-color: var(--line-strong);
+  background: var(--surface-grad), var(--surface-2);
+}
+
+.week-day-cell.is-today {
+  background: color-mix(in oklab, var(--accent) 14%, var(--surface-2));
+  border-color: color-mix(in oklab, var(--accent) 55%, var(--line));
+}
+
+.recent-panel {
+  padding: 20px clamp(18px, 2.5vw, 26px);
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: var(--surface-grad), var(--surface);
+  box-shadow: var(--shadow-card);
+}
+
+.recent-panel .session-item {
+  padding-inline: 10px;
+  border-radius: 12px;
+  border-top: 1px solid var(--line-soft);
+  transition: background-color 140ms ease-out;
+}
+
+.recent-panel .session-item:hover {
+  background: var(--surface-2);
+}
+
+/* ───────────── Активная тренировка (исправляем 4 иконки в шапке + обсидиан-кокпит) ───────────── */
+.workout-steel.workout-athletic .workout-bar {
+  background: rgba(9, 10, 15, 0.9);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.workout-steel .workout-command-strip {
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: var(--surface-grad), var(--surface);
+  box-shadow: var(--shadow-card);
+}
+
+.workout-steel.workout-athletic .exercise-card {
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: var(--surface-grad), var(--surface);
+  box-shadow: var(--shadow-card);
+}
+
+/* Критичный фикс: 3-я колонка auto, чтобы все 4 иконки (Блины/Заменить/Суперсет/Убрать) влезали целиком */
+.workout-steel.workout-athletic .exercise-card-head {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+@container workout (max-width: 34rem) {
+  .workout-steel.workout-athletic .exercise-card-head {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+}
+
+.workout-steel.workout-athletic .sets-table {
+  background: #0c0e16;
+  border: 1px solid var(--line-soft);
+  border-radius: 13px;
+}
+
+.workout-steel.workout-athletic .set-row input[type="number"] {
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.workout-steel.workout-athletic .set-row input[type="number"]:focus {
+  background: #090a0f;
+  border-color: var(--accent);
+}
+
+.workout-steel.workout-athletic .rest-bar,
+.workout-steel .workout-undo {
+  background: rgba(20, 24, 36, 0.94);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid color-mix(in oklab, var(--accent) 35%, var(--line-strong));
+  border-radius: 16px;
+  box-shadow: var(--shadow-float);
+}
+
+.workout-steel .gym-mode-toggle {
+  border-color: var(--line-strong);
+  background: var(--surface);
+  color: var(--text-soft);
+}
+
+.workout-steel .gym-mode-toggle:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+/* ───────────── Прогресс: обсидиан-телеметрия + динамическая теплокарта ───────────── */
+.tabs.progress-tabs,
+.friends-tabs {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 1px 0 inset rgba(255, 255, 255, 0.04);
+}
+
+.progress-overview .progress-metrics > .progress-metric,
+.total-card,
+.pulse-strip,
+.progress-overview .weekly-trend,
+.progress-card,
+.stats-grid .stat-card,
+.progress-panel {
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: var(--surface-grad), var(--surface);
+  box-shadow: var(--shadow-card);
+}
+
+.total-card {
+  background:
+    radial-gradient(ellipse 55% 65% at 100% 0%, color-mix(in oklab, var(--accent) 13%, transparent), transparent 65%),
+    var(--surface-grad),
+    var(--surface);
+}
+
+.total-lift-tile,
+.total-sim-row,
+.balance-meter-card {
+  background: #0c0e16;
+  border-radius: 13px;
+  border: 1px solid var(--line);
+}
+
+/* Теплокарта теперь наследует активную тему, а не жёсткий зелёный! */
+.heatmap-grid .heat-cell.lvl-0::before,
+.heatmap-legend .heat-cell.lvl-0 {
+  background: rgba(255, 255, 255, 0.06);
+}
+.heatmap-grid .heat-cell.lvl-1::before,
+.heatmap-legend .heat-cell.lvl-1 {
+  background: color-mix(in oklab, var(--accent) 34%, var(--surface-2));
+}
+.heatmap-grid .heat-cell.lvl-2::before,
+.heatmap-legend .heat-cell.lvl-2 {
+  background: color-mix(in oklab, var(--accent) 66%, var(--surface-2));
+}
+.heatmap-grid .heat-cell.lvl-3::before,
+.heatmap-legend .heat-cell.lvl-3 {
+  background: var(--accent);
+  box-shadow: 0 0 10px color-mix(in oklab, var(--accent) 55%, transparent);
+}
+
+.progress-overview .progress-analytics .heatmap-panel,
+.progress-overview .progress-analytics .pr-panel {
+  padding: clamp(16px, 2.2vw, 22px);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface-grad), var(--surface);
+  box-shadow: var(--shadow-card);
+}
+
+@media (max-width: 419px) {
+  .progress-overview .progress-analytics .heatmap-panel {
+    padding: 14px 4px;
+  }
+}
+
+.progress-overview .filter-chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+  font-weight: 700;
+}
+
+/* ───────────── Программы, История, Упражнения, Друзья ───────────── */
+.routine-card,
+.laid-panel,
+.program-week,
+.friends-add-card,
+.friend-row-card,
+.shared-program-card,
+.together {
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: var(--surface-grad), var(--surface);
+  box-shadow: var(--shadow-card);
+}
+
+.history-panel .history-month-title {
+  border-radius: 14px 14px 0 0;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+
+.history-panel .history-month .session-item {
+  border-color: var(--line-soft);
+}
+
+/* ───────────── Модалки, тосты и экран входа ───────────── */
+.modal-backdrop,
+.modal-overlay {
+  background: rgba(5, 6, 10, 0.72);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.modal-card,
+.modal-sheet,
+dialog[open] {
+  border-radius: 22px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface-grad), #121520;
+  box-shadow: var(--shadow-float);
+}
+
+.tools-hub section > button {
+  border-radius: 13px;
+  border: 1px solid var(--line-soft);
+  background: rgba(255, 255, 255, 0.02);
+  transition: background-color 140ms ease-out, border-color 140ms ease-out;
+}
+
+.tools-hub section > button:hover {
+  background: var(--surface-2);
+  border-color: var(--line-strong);
+}
+
+.resume-pill {
+  background: rgba(19, 22, 33, 0.94);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid color-mix(in oklab, var(--accent) 45%, var(--line-strong));
+  box-shadow: var(--shadow-float);
+}
+
+.toast {
+  background: rgba(19, 22, 33, 0.95);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  box-shadow: var(--shadow-float);
+}
+
+.account-page.steel-auth {
+  background:
+    radial-gradient(ellipse 70% 45% at 50% 0%, color-mix(in oklab, var(--accent) 16%, transparent), transparent 70%),
+    var(--bg);
+}
+
+.steel-auth .auth-card {
+  padding: clamp(22px, 3vw, 30px);
+  border-radius: 22px;
+  border: 1px solid var(--line);
+  background: var(--surface-grad), var(--surface);
+  box-shadow: var(--shadow-card);
+}
+
+/* ───────────── Forced Colors Mode (WCAG) ───────────── */
+@media (forced-colors: active) {
+  .button.primary,
+  .today-training,
+  .exercise-card,
+  .total-card,
+  .routine-card,
+  .friend-row-card,
+  .shared-program-card {
+    box-shadow: none;
+    background-image: none;
+  }
+  .sidebar .nav-item[aria-current="page"] {
+    outline: 2px solid Highlight;
+  }
+}
+
+
+/* ══ BIOMECHANICS ENGINE UI (.rp-bio-strip, .rp-bio-signals, .orm-rir-row) ══ */
+.rp-bio-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding: 10px 12px;
+  margin: 10px 0;
+  border-radius: 12px;
+  background: color-mix(in oklab, var(--bg-soft) 72%, var(--accent) 8%);
+  border: 1px solid color-mix(in oklab, var(--line) 80%, var(--accent) 20%);
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+.rp-bio-strip span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.rp-bio-strip b {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.rp-bio-signals {
+  list-style: none;
+  margin: 10px 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.rp-bio-signal {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 9px;
+  align-items: start;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--bg-card);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+.rp-bio-signal svg {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+.rp-bio-signal.warn {
+  border-color: color-mix(in oklab, #f59e0b 45%, var(--line));
+  background: color-mix(in oklab, #f59e0b 8%, var(--bg-card));
+}
+.rp-bio-signal.warn svg {
+  color: #f59e0b;
+}
+.rp-bio-signal.ok {
+  border-color: color-mix(in oklab, var(--ok) 45%, var(--line));
+  background: color-mix(in oklab, var(--ok) 8%, var(--bg-card));
+}
+.rp-bio-signal.ok svg {
+  color: var(--ok);
+}
+.rp-bio-signal.info svg {
+  color: var(--accent-soft);
+}
+.rp-bio-signal div {
+  display: grid;
+  gap: 2px;
+}
+.rp-bio-signal b {
+  color: var(--ink);
+  font-weight: 600;
+}
+.rp-bio-signal span {
+  color: var(--ink-soft);
+}
+
+.orm-rir-row {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 8px;
+}
+.orm-rir-row .orm-rep-presets {
+  flex-wrap: wrap;
+}
+
+
+/* ══ TOPBAR SUPPLEMENTS SHORTCUT & RESPONSIVE FIT ══ */
+.journal-supplements {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-inline-size: 44px;
+  min-block-size: 44px;
+  padding: 0 12px;
+  white-space: nowrap;
+}
+.journal-supplements.active {
+  border-color: color-mix(in oklab, var(--accent) 55%, var(--line));
+  background: color-mix(in oklab, var(--accent) 16%, var(--bg-soft));
+  color: var(--ink);
+}
+@media (min-width: 961px) {
+  .journal-supplements {
+    display: none;
+  }
+}
+@media (max-width: 440px) {
+  .journal-supplements {
+    padding: 0;
+    inline-size: 44px;
+  }
+  .journal-supplements span {
+    display: none;
+  }
+}

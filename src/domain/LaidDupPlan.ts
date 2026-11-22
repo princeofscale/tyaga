@@ -12,7 +12,11 @@ import type {
   WorkoutExercise,
 } from "../lib/types";
 
+export type { LaidDay };
 export type LaidLift = keyof LaidMaxes;
+export type LaidRhythm = "6x1" | "3x1x3";
+/** Слот недели (0 — Пн … 6 — Вс): один из шести дней цикла или выходной (`null`). */
+export type LaidWeekSlot = LaidDay | null;
 export const LAID_WEEKS = 9;
 /** Недель в одной волне: три волны по три недели. */
 const WAVE_WEEKS = 3;
@@ -43,7 +47,23 @@ export type LaidDayPlan = {
   liftExerciseId: string;
   maxKg: number;
   heavy: LaidPlanSet & { light: boolean };
-  work: LaidPlanSet & { sets: number };
+  work: LaidPlanSet & { sets: number; light?: boolean };
+};
+
+/** Автоматическое обновление максимумов: какие лифты и на сколько выросли, с какой недели действует. */
+export type LaidAutoUpdate = {
+  maxes: LaidMaxes;
+  applied: { lift: LaidLift; from: number; estimate: number; to: number }[];
+  fromWeek: number;
+};
+
+export type LaidExerciseSpec = {
+  exerciseId: string;
+  role: "lift" | "wave-aux" | "aux" | "added";
+  setsLabel: string;
+  intensityLabel: string;
+  note?: string;
+  added: boolean;
 };
 
 type Aux = {
@@ -53,21 +73,46 @@ type Aux = {
   repMax: number;
   /** Повторения зависят от недели волны (push press, жим на наклонной). */
   byWave?: [number, number, number];
+  note?: string;
 };
 type Layout = { aux: Aux[]; extras: Aux[] };
 
-const a = (exerciseId: string, repMin = 10, repMax = repMin, sets = 3): Aux => ({ exerciseId, sets, repMin, repMax });
-const LEGS_AUX = [a("rdl"), a("lunge-bar"), a("back-extension")];
-const PULL_AUX = [a("deadlift-stiff"), a("pullup-weighted", 8, 10), a("row-yates"), a("shrug-bar"), a("curl-bar"), a("hammer-seated")];
-const PUSH_TAIL = [a("lateral"), a("skullcrusher-ez"), a("triceps-db")];
+const a = (exerciseId: string, repMin = 10, repMax = repMin, sets = 3, note?: string): Aux => ({
+  exerciseId,
+  sets,
+  repMin,
+  repMax,
+  ...(note ? { note } : {}),
+});
+
+const LEGS_1_AUX = [
+  a("rdl", 10, 10, 3, "Тазобедренный шарнир с акцентом на растяжение бицепса бедра"),
+  a("lunge-bar", 10, 10, 3, "10 повторений на каждую ногу"),
+  a("legcurl-seated", 10, 12, 3, "Замена GHR из таблицы для обычного зала: сгибание колена без осевой нагрузки на поясницу"),
+];
+const LEGS_2_AUX = [
+  a("rdl", 10, 10, 3, "Контролируемое опускание, без рывка с нижней точки"),
+  a("lunge-bar", 10, 10, 3, "10 повторений на каждую ногу"),
+  a("legcurl-prone", 10, 12, 3, "Замена GHR: сгибание колена лёжа, без осевой нагрузки на поясницу; второй вариант того же движения"),
+];
+const PULL_AUX = [
+  a("deadlift-stiff", 10, 10, 3, "По таблице Лейда — с возвышения 5–7 см (2–3″); при усталости поясницы работай с пола"),
+  a("pullup-weighted", 8, 10, 3, "Добавляй вес на пояс по мере сил"),
+  a("row-yates", 10, 10, 3, "Наклон ~45°, обратный хват к низу живота"),
+  a("shrug-bar", 10, 10, 3),
+  a("curl-bar", 10, 10, 3),
+  a("hammer-seated", 10, 10, 3),
+];
 
 /**
  * Программа Дэвида Лейда (DUP, 9 недель, 6 дней) по распространяемой таблице `David Laid DUP Program.xlsx`.
- * Схема недель и состав дней — по таблице; проценты округлены и усреднены между максимумами (реконструкция),
- * поэтому официальный калькулятор может дать другие числа. Чистая логика: ни хранилища, ни React.
+ * Схема недель и волн — по таблице; порядок упражнений Push 2 сверен с листом оригинала; GHR/Reverse Hyper адаптированы
+ * под коммерческий зал сгибаниями ног (коленный сустав без перегрузки разгибателей спины), а отключаемый блок добавок закрывает
+ * недостающее в таблице: заднюю дельту, объём средней дельты (там всего 6 подходов махов в неделю), икры и пресс. Чистая логика: ни хранилища, ни React.
  */
 export class LaidDupPlan {
   static readonly DAYS: LaidDay[] = PeriodizationRules.DAYS;
+  static readonly REST_SECONDS = 180;
   static readonly NAMES: Record<LaidDay, string> = {
     legs1: "Лейд · Ноги 1",
     push1: "Лейд · Жим 1",
@@ -95,6 +140,160 @@ export class LaidDupPlan {
   };
   /** День недели по умолчанию (0 — понедельник): Пн–Сб подряд. */
   static readonly WEEKDAY: Record<LaidDay, number> = { legs1: 0, push1: 1, pull1: 2, legs2: 3, push2: 4, pull2: 5 };
+  /** Варианты раскладки по неделе: классика Пн–Сб или 3+1+3 с отдыхом в четверг между Тягой 1 и Ногами 2. */
+  static readonly RHYTHM_WEEKDAYS: Record<LaidRhythm, Record<LaidDay, number>> = {
+    "6x1": LaidDupPlan.WEEKDAY,
+    "3x1x3": { legs1: 0, push1: 1, pull1: 2, legs2: 4, push2: 5, pull2: 6 },
+  };
+  /** Семь слотов недели (Пн–Вс) для выбранного ритма: шесть тренировок и один выходной (`null`). */
+  static slotsForRhythm(rhythm: LaidRhythm): LaidWeekSlot[] {
+    const slots: LaidWeekSlot[] = Array.from({ length: 7 }, () => null);
+    const map = LaidDupPlan.RHYTHM_WEEKDAYS[rhythm];
+    for (const day of LaidDupPlan.DAYS) slots[map[day]] = day;
+    return slots;
+  }
+  /** Карта «день цикла → день недели (0–6)» по семи слотам недели. */
+  static weekdaysFromSlots(slots: readonly LaidWeekSlot[]): Record<LaidDay, number> {
+    const out: Partial<Record<LaidDay, number>> = {};
+    slots.forEach((slot, weekday) => {
+      if (slot && weekday >= 0 && weekday <= 6 && out[slot] === undefined) out[slot] = weekday;
+    });
+    for (const day of LaidDupPlan.DAYS) {
+      if (out[day] === undefined) out[day] = LaidDupPlan.WEEKDAY[day];
+    }
+    return out as Record<LaidDay, number>;
+  }
+  /** Текущая раскладка цикла по семи дням недели (Пн–Вс); коллизии или пустые дни аккуратно раскладываются в свободные слоты. */
+  static slotsFromCycle(cycle: readonly Routine[]): LaidWeekSlot[] {
+    const slots: LaidWeekSlot[] = Array.from({ length: 7 }, () => null);
+    const unplaced: LaidDay[] = [];
+    const byDay = new Map<LaidDay, Routine>();
+    for (const r of cycle) {
+      const p = LaidDupPlan.periodizationOf(r);
+      if (p && !byDay.has(p.day)) byDay.set(p.day, r);
+    }
+    for (const day of LaidDupPlan.DAYS) {
+      const r = byDay.get(day);
+      const preferred = r?.days.length ? r.days[0] : LaidDupPlan.WEEKDAY[day];
+      if (preferred >= 0 && preferred <= 6 && slots[preferred] === null) slots[preferred] = day;
+      else unplaced.push(day);
+    }
+    for (const day of unplaced) {
+      const free = slots.indexOf(null);
+      if (free !== -1) slots[free] = day;
+    }
+    return slots;
+  }
+  /** Переставить слот недели с `fromIndex` на `toIndex` (вставка со сдвигом остальных дней). */
+  static moveSlot(slots: readonly LaidWeekSlot[], fromIndex: number, toIndex: number): LaidWeekSlot[] {
+    const from = Math.max(0, Math.min(slots.length - 1, Math.trunc(fromIndex)));
+    const to = Math.max(0, Math.min(slots.length - 1, Math.trunc(toIndex)));
+    if (from === to) return [...slots];
+    const next = [...slots];
+    const [item] = next.splice(from, 1);
+    next.splice(to, 0, item);
+    return next;
+  }
+  /** Поменять два дня недели местами. */
+  static swapSlots(slots: readonly LaidWeekSlot[], a: number, b: number): LaidWeekSlot[] {
+    if (a === b || a < 0 || b < 0 || a >= slots.length || b >= slots.length) return [...slots];
+    const next = [...slots];
+    [next[a], next[b]] = [next[b], next[a]];
+    return next;
+  }
+  /** Назначить тренировку `day` на день недели `targetWeekday`, поменяв её местами с тем, что стояло там раньше. */
+  static assignDay(slots: readonly LaidWeekSlot[], day: LaidDay, targetWeekday: number): LaidWeekSlot[] {
+    const from = slots.indexOf(day);
+    if (from === -1 || targetWeekday < 0 || targetWeekday >= slots.length) return [...slots];
+    return LaidDupPlan.swapSlots(slots, from, targetWeekday);
+  }
+  /** Совпадает ли текущая раскладка с одним из готовых ритмов или настроена вручную. */
+  static matchingRhythm(slots: readonly LaidWeekSlot[]): LaidRhythm | "custom" {
+    for (const rhythm of ["6x1", "3x1x3"] as const) {
+      const preset = LaidDupPlan.slotsForRhythm(rhythm);
+      if (preset.length === slots.length && preset.every((slot, idx) => slot === slots[idx])) return rhythm;
+    }
+    return "custom";
+  }
+  /** Индекс дня отдыха в раскладке (`0..6`) или `null`, если выходного нет. */
+  static restWeekday(slots: readonly LaidWeekSlot[]): number | null {
+    const idx = slots.indexOf(null);
+    return idx === -1 ? null : idx;
+  }
+  /** Ненавязчивые подсказки о восстановлении, если парные дни (Ноги 1/2, Жим 1/2, Тяга 1/2) стоят подряд; ничего не запрещают. */
+  static backToBackNotice(slots: readonly LaidWeekSlot[], dayNames: readonly string[]): string[] {
+    const pairs: [LaidDay, LaidDay, string][] = [
+      ["legs1", "legs2", "присед два дня подряд"],
+      ["push1", "push2", "жимы два дня подряд"],
+      ["pull1", "pull2", "становая два дня подряд"],
+    ];
+    const notes: string[] = [];
+    for (const [a, b, reason] of pairs) {
+      const ia = slots.indexOf(a);
+      const ib = slots.indexOf(b);
+      if (ia === -1 || ib === -1) continue;
+      const adjacent = Math.abs(ia - ib) === 1 || (ia === 0 && ib === 6) || (ia === 6 && ib === 0);
+      if (!adjacent) continue;
+      const first = (ia === 6 && ib === 0) ? ia : (ib === 6 && ia === 0) ? ib : Math.min(ia, ib);
+      const second = first === ia ? ib : ia;
+      notes.push(
+        `${LaidDupPlan.SHORT[slots[first]!]} и ${LaidDupPlan.SHORT[slots[second]!]} стоят подряд (${dayNames[first]}–${dayNames[second]}) — ${reason}, следи за восстановлением.`,
+      );
+    }
+    return notes;
+  }
+  /** Первый назначенный день недели программы (`0..6`), или `7`, если дни не заданы. */
+  static weekdayOf(routine: Routine): number {
+    return routine.days.length ? Math.min(...routine.days) : 7;
+  }
+  private static compareCycleRoutines(x: Routine, y: Routine): number {
+    const dx = LaidDupPlan.weekdayOf(x) - LaidDupPlan.weekdayOf(y);
+    if (dx !== 0) return dx;
+    return (
+      LaidDupPlan.DAYS.indexOf(LaidDupPlan.periodizationOf(x)!.day) -
+      LaidDupPlan.DAYS.indexOf(LaidDupPlan.periodizationOf(y)!.day)
+    );
+  }
+  /**
+   * Обновить дни недели цикла: возвращает только те программы, у которых изменились дни или очистились устаревшие
+   * будущие разовые переносы. Выполненные и прошлые переносы сохраняются нетронутыми.
+   */
+  static withWeekdays(
+    cycle: readonly Routine[],
+    weekdays: Record<LaidDay, number>,
+    workouts: readonly Workout[],
+    today: string,
+  ): Routine[] {
+    const changed: Routine[] = [];
+    for (const r of cycle) {
+      const p = LaidDupPlan.periodizationOf(r);
+      if (!p) continue;
+      const targetDay = weekdays[p.day];
+      if (!Number.isInteger(targetDay) || targetDay < 0 || targetDay > 6) continue;
+      const overrides = r.occurrenceOverrides ?? [];
+      const kept = overrides.filter((o) => {
+        if (workouts.some((w) => w.routineId === r.id && w.programDate === o.from)) return true;
+        if (o.from < today && (o.to === null || o.to < today)) return true;
+        const fromWeekday = (new Date(o.from + "T12:00:00Z").getUTCDay() + 6) % 7;
+        return fromWeekday === targetDay;
+      });
+      const sameDays = r.days.length === 1 && r.days[0] === targetDay;
+      const sameOverrides = kept.length === overrides.length;
+      if (!sameDays || !sameOverrides) {
+        changed.push({
+          ...r,
+          days: [targetDay],
+          occurrenceOverrides: kept.length ? kept : undefined,
+        });
+      }
+    }
+    return changed.sort(LaidDupPlan.compareCycleRoutines);
+  }
+  static readonly WAVE_META: Record<1 | 2 | 3, { title: string; subtitle: string; range: string }> = {
+    1: { title: "Втягивание", subtitle: "Стартовые проценты волны: 85 / 90 / 95 % на топ-сетах", range: "Недели 1–3" },
+    2: { title: "Интенсификация", subtitle: "Рост процентов во всех схемах: 86 / 91 / 96,5 % на топ-сетах", range: "Недели 4–6" },
+    3: { title: "Пик силы", subtitle: "Пиковые веса цикла: 88 / 92,5 / 97,5 % на топ-сетах", range: "Недели 7–9" },
+  };
   static readonly LIFT_OF: Record<LaidDay, LaidLift> = {
     legs1: "squat",
     push1: "bench",
@@ -123,7 +322,10 @@ export class LaidDupPlan {
     return days % 7 === 0 && days > 28 ? `за ${quantity(days / 7, "неделю", "недели", "недель")}` : `за ${quantity(days, "день", "дня", "дней")}`;
   }
   static readonly NOTICE = "Веса восстановлены по опубликованной таблице и округлены; официальный калькулятор может дать другие числа.";
+  static readonly AUTO_NOTICE = "Максимумы обновляются автоматически, когда оценка 1ПМ по свежим подходам выше действующей на 5 %.";
   static readonly LOAD_NOTICE = "Шесть тренировок в неделю и тяжёлые подходы — вводи осторожные максимумы.";
+  static readonly DELOAD_NOTICE =
+    "После 9-й недели проведи разгрузочную неделю (50–60 % от 1ПМ, половина подходов, запас 4 повторения) перед новым циклом.";
   static readonly MAX_KG = MAX_KG;
 
   private static readonly SCHEME: Record<LaidDay, DayScheme> = {
@@ -149,23 +351,49 @@ export class LaidDupPlan {
     2: [92.5, 93, 93.5],
   };
   private static readonly LAYOUT: Record<LaidDay, Layout> = {
-    legs1: { aux: LEGS_AUX, extras: [a("hanging-leg-raise", 10, 15)] },
-    legs2: { aux: LEGS_AUX, extras: [] },
+    legs1: {
+      aux: LEGS_1_AUX,
+      extras: [
+        a("calf-standing-machine", 12, 15, 3, "Икроножная на прямых коленях (в оригинале икр нет)"),
+        a("hanging-leg-raise", 10, 15, 3, "Прямая мышца живота с подкручиванием таза"),
+      ],
+    },
+    legs2: {
+      aux: LEGS_2_AUX,
+      extras: [a("calf-seated", 12, 15, 3, "Камбаловидная мышца при согнутых коленях (в оригинале икр нет)")],
+    },
     push1: {
       aux: [
-        { ...a("push-press", 4, 12), byWave: [4, 8, 12] },
-        a("dip-weighted"),
-        a("fly-db-flat"),
-        ...PUSH_TAIL,
+        { ...a("push-press", 4, 12, 3, "Повторения меняются с волной жима: 4 → 8 → 12"), byWave: [4, 8, 12] },
+        a("dip-weighted", 10, 10, 3, "Дополнительный вес на поясе"),
+        a("fly-db-flat", 10, 10, 3, "В таблице: разведения гантелей или пек-дек"),
+        a("lateral", 10, 10, 3),
+        a("skullcrusher-ez", 10, 10, 3),
+        a("triceps-db", 10, 10, 3, "Акцент на длинную головку трицепса в растяжении"),
       ],
-      extras: [a("lateral-cable-single", 12, 15)],
+      extras: [a("lateral-cable-single", 12, 15, 3, "Постоянное натяжение средней дельты с нижнего блока")],
     },
     push2: {
-      aux: [{ ...a("incline-bar", 4, 12), byWave: [12, 4, 8] }, a("dip-weighted"), ...PUSH_TAIL],
-      extras: [a("lateral-cable-single", 12, 15)],
+      aux: [
+        { ...a("incline-bar", 4, 12, 3, "Повторения меняются с волной жима стоя: 12 → 4 → 8"), byWave: [12, 4, 8] },
+        a("lateral", 10, 10, 3, "Стоит перед брусьями по оригиналу — даёт передышку трицепсу"),
+        a("dip-weighted", 10, 10, 3, "Дополнительный вес на поясе"),
+        a("triceps-db", 10, 10, 3, "В Push 2 идёт перед французским жимом по таблице"),
+        a("skullcrusher-ez", 10, 10, 3),
+      ],
+      extras: [a("lateral-cable-single", 12, 15, 3, "Дополнительный объём средней дельты")],
     },
-    pull1: { aux: PULL_AUX, extras: [a("rear-delt-fly", 12, 15)] },
-    pull2: { aux: PULL_AUX, extras: [a("rear-delt-fly", 12, 15), a("ab-roller", 8, 12)] },
+    pull1: {
+      aux: PULL_AUX,
+      extras: [a("rear-delt-fly", 12, 15, 3, "Баланс плечевого сустава под большой объём жимов")],
+    },
+    pull2: {
+      aux: PULL_AUX,
+      extras: [
+        a("rear-delt-fly", 12, 15, 3, "Обратный пек-дек на заднюю дельту"),
+        a("ab-roller", 8, 12, 3, "Жёсткое антиразгибание кора"),
+      ],
+    },
   };
 
   /** Ближайшие 2,5 кг; ровно посередине — большее (76,25 → 77,5; 76 → 75). */
@@ -213,7 +441,11 @@ export class LaidDupPlan {
     return chosen;
   }
 
-  /** План одного дня: тяжёлый подход и четыре рабочих с весами, округлёнными до 2,5 кг. */
+  /**
+   * План одного дня: тяжёлый подход и четыре рабочих с весами, округлёнными до 2,5 кг.
+   * В режиме `light` синглы (1 повтор, 95–97,5 %) заменяются тройками (90–92,5 %), а парные двойки становой (4 × 2 @ 92,5–93,5 %)
+   * сдвигаются до 4 × 4 @ 85–87 %, чтобы откатные подходы никогда не оказывались тяжелее топ-сета (исправление PO-R10-08).
+   */
   static day(
     day: LaidDay,
     raw: number,
@@ -228,7 +460,9 @@ export class LaidDupPlan {
     const heavyScheme: HeavyScheme = light ? 3 : scheme.heavy[position.inWave];
     const wave = position.wave - 1;
     const heavyPercent = LaidDupPlan.HEAVY_PCT[heavyScheme][wave];
-    const workReps = scheme.work[position.inWave];
+    const rawWorkReps = scheme.work[position.inWave];
+    const workLight = light && rawWorkReps === 2;
+    const workReps: WorkReps = workLight ? 4 : rawWorkReps;
     const workPercent = LaidDupPlan.WORK_PCT[workReps][wave];
     return {
       day,
@@ -237,7 +471,13 @@ export class LaidDupPlan {
       liftExerciseId: LaidDupPlan.LIFT_EXERCISE[lift],
       maxKg,
       heavy: { reps: heavyScheme, percent: heavyPercent, weightKg: LaidDupPlan.weight(maxKg, heavyPercent), light },
-      work: { sets: 4, reps: workReps, percent: workPercent, weightKg: LaidDupPlan.weight(maxKg, workPercent) },
+      work: {
+        sets: 4,
+        reps: workReps,
+        percent: workPercent,
+        weightKg: LaidDupPlan.weight(maxKg, workPercent),
+        ...(workLight ? { light: true } : {}),
+      },
     };
   }
 
@@ -246,7 +486,56 @@ export class LaidDupPlan {
     const found = LaidDupPlan.LAYOUT[day].aux.find((x) => x.exerciseId === exerciseId);
     return found?.byWave ? found.byWave[inWave] : null;
   }
-  /** Упражнения оригинального дня (без тяжёлого базового): всё, чего здесь нет, — «добавлено». */
+  /** Волновую подсобку дня на конкретной неделе (Push 1 — push press, Push 2 — наклонный жим), если есть. */
+  static waveAuxSummary(day: LaidDay, inWave: 0 | 1 | 2): string | null {
+    const found = LaidDupPlan.LAYOUT[day].aux.find((x) => x.byWave);
+    if (!found?.byWave) return null;
+    const label = found.exerciseId === "push-press" ? "Push press" : "Наклонный жим";
+    return `${label} ${found.sets} × ${found.byWave[inWave]}`;
+  }
+  /** Подробная спецификация упражнения дня для расписания и разбора состава. */
+  static exerciseSpec(day: LaidDay, exerciseId: string): LaidExerciseSpec {
+    const liftId = LaidDupPlan.LIFT_EXERCISE[LaidDupPlan.LIFT_OF[day]];
+    if (exerciseId === liftId) {
+      const s = LaidDupPlan.SCHEME[day];
+      return {
+        exerciseId,
+        role: "lift",
+        setsLabel: `1 × (${s.heavy.join("/")}) + 4 × (${s.work.join("/")})`,
+        intensityLabel: "85–97,5 % от 1ПМ · отдых 3–4 мин",
+        note: "Вес и повторения меняются каждую неделю по волне DUP",
+        added: false,
+      };
+    }
+    const layout = LaidDupPlan.LAYOUT[day];
+    const aux = layout.aux.find((x) => x.exerciseId === exerciseId);
+    if (aux) {
+      const repsText = aux.byWave
+        ? `${aux.byWave.join(" / ")} по неделе волны`
+        : aux.repMin === aux.repMax
+          ? String(aux.repMin)
+          : `${aux.repMin}–${aux.repMax}`;
+      return {
+        exerciseId,
+        role: aux.byWave ? "wave-aux" : "aux",
+        setsLabel: `${aux.sets} × ${repsText}`,
+        intensityLabel: "RPE 8–9 · запас 1–2 повт.",
+        note: aux.note,
+        added: false,
+      };
+    }
+    const extra = layout.extras.find((x) => x.exerciseId === exerciseId);
+    const repsText = extra ? (extra.repMin === extra.repMax ? String(extra.repMin) : `${extra.repMin}–${extra.repMax}`) : "12–15";
+    return {
+      exerciseId,
+      role: "added",
+      setsLabel: `${extra?.sets ?? 3} × ${repsText}`,
+      intensityLabel: "RPE 8–9 · запас 1–2 повт.",
+      note: extra?.note,
+      added: true,
+    };
+  }
+  /** Упражнения оригинального дня (включая базовое): всё, чего здесь нет, — «добавлено». */
   static originalIds(day: LaidDay): string[] {
     return [LaidDupPlan.LIFT_EXERCISE[LaidDupPlan.LIFT_OF[day]], ...LaidDupPlan.LAYOUT[day].aux.map((x) => x.exerciseId)];
   }
@@ -257,6 +546,10 @@ export class LaidDupPlan {
   /** Строка плана дня: «1 × 5 × 85 кг · 4 × 12 × 65 кг». */
   static line(plan: LaidDayPlan): string {
     return `1 × ${plan.heavy.reps} × ${LaidDupPlan.kg(plan.heavy.weightKg)} кг · ${plan.work.sets} × ${plan.work.reps} × ${LaidDupPlan.kg(plan.work.weightKg)} кг`;
+  }
+  /** Короткая строка для компактных плиток дней: «85×5 · 4×12×65 кг». */
+  static compactLine(plan: LaidDayPlan): string {
+    return `1×${plan.heavy.reps} ${LaidDupPlan.kg(plan.heavy.weightKg)} кг · ${plan.work.sets}×${plan.work.reps} ${LaidDupPlan.kg(plan.work.weightKg)} кг`;
   }
   /** Число с запятой, без лишнего нуля: 67,5; 85. */
   static kg(value: number): string {
@@ -285,7 +578,7 @@ export class LaidDupPlan {
     return [
       `${LaidDupPlan.weekLabel(plan.position)}.`,
       `${LaidDupPlan.PLAN_MARK} 1 × ${heavy.reps} ${LaidDupPlan.repsWord(heavy.reps)} · ${LaidDupPlan.pct(heavy.percent)} % от 1ПМ (${LaidDupPlan.kg(plan.maxKg)} кг) = ${LaidDupPlan.kg(heavy.weightKg)} кг${heavy.light ? " (облегчённо, не по оригиналу)" : ""}.`,
-      `Затем ${work.sets} × ${work.reps} ${LaidDupPlan.repsWord(work.reps)} · ${LaidDupPlan.pct(work.percent)} % = ${LaidDupPlan.kg(work.weightKg)} кг.`,
+      `Затем ${work.sets} × ${work.reps} ${LaidDupPlan.repsWord(work.reps)} · ${LaidDupPlan.pct(work.percent)} % = ${LaidDupPlan.kg(work.weightKg)} кг${work.light ? " (облегчённо)" : ""}.`,
     ].join(" ");
   }
   static pct(value: number): string {
@@ -315,22 +608,26 @@ export class LaidDupPlan {
     return [lift, ...rows];
   }
 
-  /** Шесть программ цикла: названия, дни Пн–Сб, общая настройка периодизации. */
+  /** Шесть программ цикла: названия, дни недели (Пн–Сб, 3+1+3 или свой порядок), отдых 180 с, общая настройка периодизации. */
   static routines(input: {
     maxes: LaidMaxes;
     extras: boolean;
     light: boolean;
     startMonday: string;
     cycleId?: string;
+    rhythm?: LaidRhythm;
+    weekdays?: Partial<Record<LaidDay, number>>;
   }): Routine[] {
     const cycleId = input.cycleId ?? crypto.randomUUID();
+    const baseWeekdays = LaidDupPlan.RHYTHM_WEEKDAYS[input.rhythm ?? "6x1"];
+    const weekdays: Record<LaidDay, number> = { ...baseWeekdays, ...(input.weekdays ?? {}) };
     return LaidDupPlan.DAYS.map((day) => ({
       id: crypto.randomUUID(),
       name: LaidDupPlan.NAMES[day],
-      notes: `${LaidDupPlan.ORIGINAL[day]} программы Дэвида Лейда (DUP, 9 недель).`,
-      days: [LaidDupPlan.WEEKDAY[day]],
+      notes: `${LaidDupPlan.ORIGINAL[day]} программы Дэвида Лейда (DUP, 9 недель). Отдых на базовом движении — 3–4 мин, вспомогательные — запас 1–2 повторения (RPE 8–9).`,
+      days: [weekdays[day]],
       exercises: LaidDupPlan.entries(day, input.maxes, input),
-      restSeconds: 90,
+      restSeconds: LaidDupPlan.REST_SECONDS,
       progression: "repeat" as const,
       repMin: 8,
       repMax: 12,
@@ -380,19 +677,19 @@ export class LaidDupPlan {
     const id = LaidDupPlan.periodizationOf(routine)?.cycleId;
     return id ? routines.filter((r) => LaidDupPlan.periodizationOf(r)?.cycleId === id) : [];
   }
-  /** Цикл программы: по одному представителю каждого дня, дни — в порядке таблицы. */
+  /** Цикл программы: по одному представителю каждого дня, дни — в порядке недели (Пн → Вс). */
   static cycles(routines: Routine[]): Routine[][] {
     const valid = routines.filter((r) => LaidDupPlan.periodizationOf(r));
     const ids = [...new Set(valid.map((r) => LaidDupPlan.periodizationOf(r)!.cycleId))];
     return ids.map((id) =>
       valid
         .filter((r) => LaidDupPlan.periodizationOf(r)!.cycleId === id)
-        .sort((x, y) => LaidDupPlan.DAYS.indexOf(LaidDupPlan.periodizationOf(x)!.day) - LaidDupPlan.DAYS.indexOf(LaidDupPlan.periodizationOf(y)!.day)),
+        .sort(LaidDupPlan.compareCycleRoutines),
     );
   }
 
   /**
-   * Список программ для показа: шесть программ цикла идут в порядке Пн → Сб (Ноги 1 … Тяга 2) на тех же местах списка,
+   * Список программ для показа: шесть программ цикла идут в порядке назначенных дней недели (Пн → Вс) на тех же местах списка,
    * остальные программы не двигаются.
    */
   static ordered(routines: Routine[]): Routine[] {
@@ -403,9 +700,7 @@ export class LaidDupPlan {
       if (id) slots.set(id, [...(slots.get(id) ?? []), i]);
     });
     for (const at of slots.values()) {
-      const sorted = at
-        .map((i) => routines[i])
-        .sort((x, y) => LaidDupPlan.DAYS.indexOf(LaidDupPlan.periodizationOf(x)!.day) - LaidDupPlan.DAYS.indexOf(LaidDupPlan.periodizationOf(y)!.day));
+      const sorted = at.map((i) => routines[i]).sort(LaidDupPlan.compareCycleRoutines);
       at.forEach((index, k) => (out[index] = sorted[k]));
     }
     return out;
@@ -435,14 +730,24 @@ export class LaidDupPlan {
     const monday = addCalendarDays(p.startMonday, week * 7);
     const sunday = addCalendarDays(monday, 6);
     const done = workouts
-      .filter((w) => w.routineId === routine.id && w.date >= monday && w.date <= sunday)
+      .filter((w) => {
+        if (w.routineId !== routine.id) return false;
+        const effective = w.programDate ?? w.date;
+        return effective >= monday && effective <= sunday;
+      })
       .map((w) => w.date)
       .sort()[0];
     if (done) return { state: "done", date: done };
+    const planned = routine.days.length ? Math.max(...routine.days) : 6;
+    const plannedDate = addCalendarDays(monday, planned);
+    const override = routine.occurrenceOverrides?.find((o) => o.from === plannedDate);
+    if (override) {
+      if (override.to === null) return { state: today < monday ? "ahead" : "missed" };
+      return { state: override.to < today ? "missed" : "ahead" };
+    }
     if (today > sunday) return { state: "missed" };
     if (today < monday) return { state: "ahead" };
-    const planned = routine.days.length ? Math.max(...routine.days) : 6;
-    return { state: addCalendarDays(monday, planned) < today ? "missed" : "ahead" };
+    return { state: plannedDate < today ? "missed" : "ahead" };
   }
 
   /**
@@ -464,7 +769,7 @@ export class LaidDupPlan {
 
   /**
    * Сколько подходов в неделю даёт цикл (шесть дней: тяжёлый и четыре рабочих подхода базового упражнения плюс вспомогательные):
-   * `base` — по оригиналу, `added` — добавленное (задняя и средняя дельта, пресс). Число считается по плану, а не вписано в текст.
+   * `base` — по оригиналу (117), `added` — добавленное: задняя дельта, отведения на среднюю дельту, икры и пресс (+24).
    */
   static weeklySets(): { base: number; added: number } {
     const maxes: LaidMaxes = { squat: 100, bench: 100, deadlift: 100, ohp: 100 };
@@ -476,16 +781,30 @@ export class LaidDupPlan {
 
   /**
    * Лучший расчётный 1ПМ базового упражнения по Эпли среди выполненных рабочих подходов с даты `since` (включительно):
-   * null, если подходящих нет. Тот же расчёт, что в «Прогрессе».
+   * null, если подходящих нет. Дедуплицирует ревизии тренировок и игнорирует частичную амплитуду (ROM),
+   * чтобы не завышать рабочие максимумы полной амплитуды.
    */
   static estimate(workouts: Workout[], lift: LaidLift, since = "0000-01-01", until = "9999-12-31"): number | null {
     const id = LaidDupPlan.LIFT_EXERCISE[lift];
-    let best: number | null = null;
+    const unique = new Map<string, Workout>();
     for (const w of workouts) {
+      const prev = unique.get(w.id);
+      if (
+        !prev ||
+        (w.revision ?? 0) > (prev.revision ?? 0) ||
+        ((w.revision ?? 0) === (prev.revision ?? 0) && (w.updatedAt ?? "") > (prev.updatedAt ?? ""))
+      ) {
+        unique.set(w.id, w);
+      }
+    }
+    let best: number | null = null;
+    for (const w of unique.values()) {
       if (w.date < since || w.date > until) continue;
       for (const entry of w.exercises) {
         if (entry.exerciseId !== id) continue;
         for (const set of entry.sets) {
+          const rom = set.execution?.rom ?? entry.execution?.rom;
+          if (rom === "shortened_partial" || rom === "lengthened_partial") continue;
           const value = estimatedOneRepMax(set, entry);
           if (value !== null && (best === null || value > best)) best = value;
         }
@@ -523,6 +842,29 @@ export class LaidDupPlan {
       }
     }
     return found;
+  }
+
+  /**
+   * Максимумы, которые обновляются сами: то же правило, что у подсказки (оценка по подходам за 28 дней выше
+   * действующего максимума не меньше чем на 5 %), но без нажатия. Действуют с текущей недели; прошлые недели
+   * остаются на прежних числах, потому что старая настройка уходит в `earlier` (`withMaxes`). После 9-й недели
+   * не срабатывает: обновлять нечего, цикл закончен. Ничего не понижается — правило только на рост.
+   */
+  static autoMaxes(p: RoutinePeriodization, workouts: Workout[], today: string): LaidAutoUpdate | null {
+    const position = LaidDupPlan.position(LaidDupPlan.weekOf(p.startMonday, today));
+    if (position.finished) return null;
+    const applied = LaidDupPlan.suggestion(p, workouts, today);
+    if (!applied.length) return null;
+    const maxes = { ...p.maxes };
+    for (const item of applied) maxes[item.lift] = item.to;
+    return { maxes, applied, fromWeek: position.week };
+  }
+  /** Уведомление об автопересчёте: что выросло и с какой недели. */
+  static autoNotice(update: LaidAutoUpdate): string {
+    const list = update.applied
+      .map((item) => `${LaidDupPlan.LIFT_LABEL[item.lift]} ${LaidDupPlan.kg(item.from)} → ${LaidDupPlan.kg(item.to)} кг`)
+      .join("; ");
+    return `Максимумы обновлены автоматически: ${list}. Оценка — по подходам ${LaidDupPlan.windowText(LaidDupPlan.SUGGEST_DAYS)}, новые веса — с недели ${update.fromWeek + 1}.`;
   }
 
   /** Новые настройки программы после обновления максимумов: с недели `fromWeek` действуют `maxes`, прежние остаются для прошлых недель. */

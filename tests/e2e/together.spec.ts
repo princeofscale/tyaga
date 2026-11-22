@@ -73,7 +73,8 @@ async function fixture(page: Page, options: { room?: LiveRoom | null; signedIn?:
 const nav = (page: Page) => page.getByRole("navigation", { name: "Основная навигация" });
 async function openFriends(page: Page) {
   await nav(page).getByRole("button", { name: "Друзья", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Напарники", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Друзья", exact: true })).toBeVisible();
+  await page.getByRole("tab", { name: /Вместе/ }).click();
 }
 const roomCard = (page: Page) => page.getByRole("region", { name: "Комната совместной тренировки" });
 const codeLabel = (code: string) => `Код комнаты ${[...code].join(" ")}`;
@@ -243,7 +244,7 @@ test("a room link asks before joining and leaves the address clean", async ({ pa
   await page.goto(`/?r=${ROOM_CODE}`);
   const invite = page.getByRole("region", { name: `Тебя зовут в комнату ${ROOM_CODE}` });
   await expect(invite).toBeVisible();
-  await expect(page).toHaveURL("http://localhost:5173/");
+  await expect(page).toHaveURL(/\/$/);
   expect(f.live.joined, "согласие спрашиваем до входа").toEqual([]);
   await invite.getByRole("button", { name: "Войти в комнату", exact: true }).click();
   await expect(roomCard(page)).toBeVisible();
@@ -299,6 +300,6 @@ test("a malformed room link is ignored", async ({ page }) => {
   await page.goto("/?r=ab");
   await expect(page.getByRole("heading", { name: "Сегодня", exact: true })).toBeVisible();
   await expect(page.getByRole("region", { name: /Тебя зовут в комнату/ })).toHaveCount(0);
-  await expect(page).toHaveURL("http://localhost:5173/?r=ab");
+  await expect(page).toHaveURL(/\/\?r=ab$/);
   f.clean();
 });

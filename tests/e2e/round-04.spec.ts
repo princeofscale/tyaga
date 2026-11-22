@@ -18,7 +18,7 @@ test.use({
 const BENCH = "Жим штанги лёжа";
 const SIZES = [{ width: 390, height: 844 }, { width: 360, height: 800 }];
 const openTool = async (page: Page, name: RegExp | string) => {
-  await page.getByRole("button", { name: /^Инструменты/ }).last().click();
+  await page.getByRole("button", { name: "Ещё", exact: true }).last().click();
   await page.getByRole("button", { name: typeof name === "string" ? new RegExp(name) : name }).click();
 };
 const overflow = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
@@ -43,7 +43,7 @@ test("R04-REQ01: лесенка — набрано «77.5» и «100», в по�
   const field = page.getByLabel("Рабочий вес, кг", { exact: true });
   const last = page.locator(".ladder-step-card.work-set .step-weight");
   await field.fill("");
-  await expect(field).toHaveValue("", "пустое поле остаётся пустым, а не 20");
+  await expect(field, "пустое поле остаётся пустым, а не 20").toHaveValue("");
   await field.pressSequentially("77.5", { delay: 60 });
   await expect(field).toHaveValue("77.5");
   await expect(last).toHaveText("77,5 кг");

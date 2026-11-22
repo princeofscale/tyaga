@@ -1,4 +1,4 @@
-import { InputError, object, str, num, validPeriodization } from "./validation";
+import { InputError, object, str, num, validPeriodization, validOccurrenceOverrides, validProgramDate } from "./validation";
 
 // Device ↔ cloud replication. Triggers (drizzle/0006_sync.sql) record every
 // write in sync_versions; a document's version time travels with it, so the
@@ -166,7 +166,16 @@ function parseDoc(value: unknown): SyncDoc {
     try { payload = object(JSON.parse(String(row.payload))); }
     catch { throw new InputError("Повреждённые данные документа"); }
     // Периодизация программы проверяется той же функцией, что и при PUT /api/routines: битое поле не записывается.
-    if (kind === "routine" && payload.periodization !== undefined) validPeriodization(payload.periodization);
+    if (kind === "routine") {
+      if (payload.periodization !== undefined) validPeriodization(payload.periodization);
+      if (payload.occurrenceOverrides !== undefined) {
+        const overrides = validOccurrenceOverrides(payload.occurrenceOverrides);
+        if (overrides.length) payload.occurrenceOverrides = overrides;
+        else delete payload.occurrenceOverrides;
+        row.payload = JSON.stringify(payload);
+      }
+    }
+    if (kind === "workout" && payload.programDate !== undefined) validProgramDate(payload.programDate);
   }
   return { kind, id, versionAt, deleted: false, row };
 }

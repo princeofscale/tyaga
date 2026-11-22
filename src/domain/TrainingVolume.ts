@@ -61,6 +61,23 @@ export class TrainingVolume {
       return null;
     return OneRepMaxFormulas.epley(set.weight, set.reps);
   }
+  /**
+   * Эффективный коэффициент передачи тренажёра из его калибровки (`pulleyRatio * stackRatio`).
+   * Например, для полиспаста 2:1 (`pulleyRatio: 0.5`) 50 кг на стеке дают 25 кг реального сопротивления на рукояти.
+   */
+  static machineEffectiveFactor(entry: WorkoutExercise): number {
+    const cal = entry.machineSnapshot?.calibration;
+    if (!cal) return 1;
+    const stack =
+      typeof cal.stackRatio === "number" && Number.isFinite(cal.stackRatio) && cal.stackRatio > 0
+        ? cal.stackRatio
+        : 1;
+    const pulley =
+      typeof cal.pulleyRatio === "number" && Number.isFinite(cal.pulleyRatio) && cal.pulleyRatio > 0
+        ? cal.pulleyRatio
+        : 1;
+    return Math.round(stack * pulley * 1000) / 1000;
+  }
   /** Machine markings are compared only within the same movement/station/context. */
   static machines(workouts: Workout[], options: FactsOptions = {}) {
     const rows = new Map<
@@ -71,6 +88,8 @@ export class TrainingVolume {
         machineId?: string;
         label: string;
         volume: number;
+        calibratedVolume?: number;
+        calibrationFactor?: number;
         sets: number;
       }
     >();
@@ -84,6 +103,7 @@ export class TrainingVolume {
       )
         continue;
       const key = ExecutionIdentity.key(entry, set);
+      const factor = this.machineEffectiveFactor(entry);
       const row = rows.get(key) ?? {
         key,
         exerciseId: entry.exerciseId,
@@ -93,9 +113,14 @@ export class TrainingVolume {
           entry.equipmentNote ??
           "Тренажёр не указан",
         volume: 0,
+        ...(factor !== 1 ? { calibratedVolume: 0, calibrationFactor: factor } : {}),
         sets: 0,
       };
-      row.volume += this.setLoadVolume(entry, set);
+      const setVol = this.setLoadVolume(entry, set);
+      row.volume += setVol;
+      if (row.calibratedVolume !== undefined) {
+        row.calibratedVolume = Math.round((row.calibratedVolume + setVol * factor) * 10) / 10;
+      }
       row.sets++;
       rows.set(key, row);
     }

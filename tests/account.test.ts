@@ -61,6 +61,23 @@ test("real account adopts existing history; cookies, profiles, revocation, recov
     assert.equal((await call("/api/data","GET",undefined,fresh)).status,401);
   } finally { await mf.dispose(); }
 });
+test("successful sign-ins never trip the attempt limit; failures still do",async()=> {
+  const {mf,db,call}=await setup();
+  try {
+    assert.equal((await call("/api/auth/register","POST",credentials)).status,201);
+    // Регрессия: раньше счётчик рос и на успешных входах, поэтому 16-й вход за 15 минут
+    // отвечал 429 и запирал аккаунт, включая смену пароля.
+    for (let i=0;i<16;i+=1) assert.equal((await call("/api/auth/login","POST",credentials)).status,200);
+    // Отказы по-прежнему считаются: 15 неверных паролей закрывают вход.
+    for (let i=0;i<15;i+=1)
+      assert.equal((await call("/api/auth/login","POST",{...credentials,password:"wrong passphrase"})).status,401);
+    assert.equal((await call("/api/auth/login","POST",credentials)).status,429);
+    // Новое окно: удачный вход разрешён и обнуляет счётчик отказов.
+    await db.prepare("UPDATE auth_limits SET window_start = window_start - 901000").run();
+    assert.equal((await call("/api/auth/login","POST",credentials)).status,200);
+    assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM auth_limits WHERE platform_id='owner-a'").first<{n:number}>())!.n,0);
+  } finally { await mf.dispose(); }
+});
 test("authentication attempt limits are persisted and cannot be bypassed by removing cookies",async()=> {
   const {mf,db,call}=await setup();
   try {

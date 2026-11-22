@@ -30,15 +30,26 @@ function sessionToken(request: Request) {
   return cookie && TOKEN.test(cookie[1] ?? "") ? { token: cookie[1], bearer: false } : null;
 }
 
-/** Sign-in attempts per IP: AccountService only limits per account. */
-async function tooManyAttempts(env: Env, request: Request) {
+/**
+ * Sign-in failures per IP: AccountService only limits per account. Успешный
+ * запрос счётчик не двигает — иначе 30 удачных входов с одного адреса запирали
+ * всех за общим NAT.
+ */
+const ipKey = (request: Request) => "ip:" + (request.headers.get("CF-Connecting-IP") ?? "unknown");
+async function ipFailures(env: Env, request: Request) {
+  const row = await env.DB.prepare("SELECT attempts, window_start FROM auth_limits WHERE platform_id = ?")
+    .bind(ipKey(request))
+    .first<{ attempts: number; window_start: number }>();
+  if (!row) return 0;
+  return row.window_start < Date.now() - 900000 ? 0 : row.attempts;
+}
+async function noteIpFailure(env: Env, request: Request) {
   const now = Date.now();
-  const row = await env.DB.prepare(
-    "INSERT INTO auth_limits (platform_id,attempts,window_start) VALUES (?,1,?) ON CONFLICT(platform_id) DO UPDATE SET attempts = CASE WHEN auth_limits.window_start < ? THEN 1 ELSE auth_limits.attempts + 1 END, window_start = CASE WHEN auth_limits.window_start < ? THEN excluded.window_start ELSE auth_limits.window_start END RETURNING attempts",
+  await env.DB.prepare(
+    "INSERT INTO auth_limits (platform_id,attempts,window_start) VALUES (?,1,?) ON CONFLICT(platform_id) DO UPDATE SET attempts = CASE WHEN auth_limits.window_start < ? THEN 1 ELSE auth_limits.attempts + 1 END, window_start = CASE WHEN auth_limits.window_start < ? THEN excluded.window_start ELSE auth_limits.window_start END",
   )
-    .bind("ip:" + (request.headers.get("CF-Connecting-IP") ?? "unknown"), now, now - 900000, now - 900000)
-    .first<{ attempts: number }>();
-  return (row?.attempts ?? 0) > 30;
+    .bind(ipKey(request), now, now - 900000, now - 900000)
+    .run();
 }
 
 async function api(request: Request, env: Env, url: URL) {
@@ -61,7 +72,7 @@ async function api(request: Request, env: Env, url: URL) {
   const authPost = request.method === "POST" && AUTH_POSTS.includes(url.pathname);
   const body = ["GET", "HEAD"].includes(request.method) ? undefined : await request.text();
   if (authPost) {
-    if (await tooManyAttempts(env, request))
+    if ((await ipFailures(env, request)) > 30)
       return json({ error: "Слишком много попыток. Попробуй через 15 минут." }, 429);
     let email = "";
     try {
@@ -88,7 +99,10 @@ async function api(request: Request, env: Env, url: URL) {
     if (auth) headers.set("Cookie", `__Host-tyaga_session=${auth.token}; tyaga_session=${auth.token}`);
     else headers.delete("Cookie");
   }
-  return handleApi(new Request(request.url, { method: request.method, headers, body }), env);
+  const response = await handleApi(new Request(request.url, { method: request.method, headers, body }), env);
+  // 401 — неверные учётные данные; 409 «почта занята» попыткой не считается.
+  if (authPost && response.status === 401) await noteIpFailure(env, request);
+  return response;
 }
 
 export default {

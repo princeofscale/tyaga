@@ -1,33 +1,26 @@
-import TeamChallenges from "./TeamChallenges";
-import TrainingMeetups, { WeeklyGoal } from "./TrainingMeetups";
-import type { TrainingMeetup } from "../domain/TrainingMeetups";
-import type { Workout } from "../lib/types";
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
-  type CSSProperties,
   type FormEvent,
 } from "react";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import {
-  ArrowUpRight,
+  CalendarDays,
   Check,
   CheckCheck,
   Copy,
+  Download,
   Dumbbell,
-  Flame,
-  MapPin,
+  Play,
   Plus,
-  Radio,
   RefreshCw,
   Share2,
-  ShieldCheck,
-  ThumbsUp,
-  Trophy,
-  Users,
+  Trash2,
   UserPlus,
+  Users,
   X,
 } from "lucide-react";
 import {
@@ -35,22 +28,29 @@ import {
   type Athlete,
   type FriendsData,
 } from "../domain/FriendsService";
+import { LaidDupPlan } from "../domain/LaidDupPlan";
+import {
+  SHARED_TEMPLATES,
+  SharedProgramBuilder,
+  type SharedProgram,
+} from "../domain/SharedProgram";
 import { friendsApi } from "../services/FriendsApi";
 import { CLOUD_URL, cloudState } from "../device/cloudSync";
-import { fmt } from "../lib/model";
-import { quantity, workingSetsWord } from "../lib/quantity";
+import { localDate } from "../lib/calendar";
+import type { Routine, Workout } from "../lib/types";
+import { useLiveRoom } from "./LiveRoomProvider";
 import Modal from "./Modal";
 import RoomInvite from "./RoomInvite";
 import TogetherCard from "./TogetherCard";
 import "../styles/friends.css";
+import "../styles/friends-redesign.css";
+
+type FriendsTab = "friends" | "together" | "programs";
+type CreateMode = "template" | "mine";
 
 const initialCode = () =>
   new URLSearchParams(location.search).get("friend") ?? "";
-const dateLabel = (date: string) =>
-  new Date(date + "T12:00:00").toLocaleDateString("ru-RU", {
-    day: "numeric",
-    month: "short",
-  });
+
 const initials = (name: string) =>
   name
     .trim()
@@ -59,20 +59,17 @@ const initials = (name: string) =>
     .map((s) => s[0])
     .join("")
     .toUpperCase();
+
 function Avatar({
   athlete,
   small = false,
 }: {
-  athlete: Pick<Athlete, "id" | "displayName">;
+  athlete: Pick<Athlete, "displayName">;
   small?: boolean;
 }) {
-  const color = ["var(--accent)", "#b6a1e8", "#ffb878", "#8dcde0"][
-    Array.from(athlete.id).reduce((n, c) => n + c.charCodeAt(0), 0) % 4
-  ];
   return (
     <span
       className={`friend-avatar ${small ? "small" : ""}`}
-      style={{ "--avatar-color": color } as CSSProperties}
       aria-hidden="true"
     >
       {initials(athlete.displayName)}
@@ -83,50 +80,72 @@ function Avatar({
 export default function FriendsScreen({
   onProfile,
   workouts = [],
-  onStartMeetup = () => {},
+  routines = [],
+  timeZone,
   roomInvite = null,
   onRoomInviteHandled = () => {},
   onToast = () => {},
   workoutActive = false,
   onWorkout = () => {},
+  onSaveRoutine,
+  onStartRoutine,
+  onOpenPrograms,
 }: {
   onProfile: () => void;
   workouts?: Workout[];
-  onStartMeetup?: (m: TrainingMeetup) => void;
-  /** Код комнаты из ссылки-приглашения: сначала спрашиваем, потом входим. */
+  routines?: Routine[];
+  timeZone?: string;
   roomInvite?: string | null;
   onRoomInviteHandled?: () => void;
   onToast?: (text: string) => void;
   workoutActive?: boolean;
-  /** Перейти к тренировке (открыть текущую или начать новую). */
   onWorkout?: () => void;
+  onSaveRoutine?: (routine: Routine) => Promise<Routine>;
+  onStartRoutine?: (routine: Routine) => void;
+  onOpenPrograms?: () => void;
 }) {
+  const { room, create: createRoom } = useLiveRoom();
+  const [tab, setTab] = useState<FriendsTab>(() =>
+    roomInvite || room ? "together" : "friends",
+  );
   const [data, setData] = useState<FriendsData | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [invite, setInvite] = useState(() => !!initialCode());
   const [code, setCode] = useState(initialCode);
-  const [statusEditor, setStatusEditor] = useState(false);
   const [removing, setRemoving] = useState<Athlete | null>(null);
-  const [clock, setClock] = useState(Date.now());
+
+  // Модалка «Поделиться / Создать общую программу»
+  const [programModal, setProgramModal] = useState<CreateMode | null>(null);
+  const [selectedFriends, setSelectedFriends] = useState<string[]>([]);
+  const [templateId, setTemplateId] = useState<"laid_dup" | "upper_lower" | "ppl" | "fullbody">("laid_dup");
+  const [selectedRoutineId, setSelectedRoutineId] = useState<string>("");
+  const [customTitle, setCustomTitle] = useState("");
+  const [adoptImmediately, setAdoptImmediately] = useState(true);
+
   const [cloudToken, setCloudToken] = useState(() =>
     import.meta.env.MODE === "device" ? (cloudState()?.token ?? null) : null,
   );
-  const serverOffset = useRef(0);
-  const generation = useRef(0),
-    mounted = useRef(true),
-    mutating = useRef(false);
+  const generation = useRef(0);
+  const mounted = useRef(true);
+  const mutating = useRef(false);
   const reduced = useReducedMotion();
   const connected =
     import.meta.env.MODE !== "device" || !!(CLOUD_URL && cloudToken);
+  const today = useMemo(() => localDate(new Date(), timeZone), [timeZone]);
+
+  useEffect(() => {
+    if (roomInvite) setTab("together");
+  }, [roomInvite]);
+
   useEffect(() => {
     if (import.meta.env.MODE !== "device") return;
     const changed = () => setCloudToken(cloudState()?.token ?? null);
     window.addEventListener("tyaga:cloud", changed);
     return () => window.removeEventListener("tyaga:cloud", changed);
   }, []);
+
   const refresh = useCallback(async (signal?: AbortSignal) => {
     const version = ++generation.current;
     const next = await friendsApi.request<FriendsData>(
@@ -138,11 +157,10 @@ export default function FriendsScreen({
     if (!mounted.current || signal?.aborted || version !== generation.current)
       return;
     setData(next);
-    serverOffset.current = next.serverTime - Date.now();
-    setClock(next.serverTime);
     setError("");
     return next;
   }, []);
+
   useEffect(() => {
     mounted.current = true;
     setData(null);
@@ -153,16 +171,12 @@ export default function FriendsScreen({
       void refresh(controller.signal).catch((e) => {
         if (!controller.signal.aborted && mounted.current)
           setError(
-            e instanceof Error ? e.message : "Не удалось загрузить напарников",
+            e instanceof Error ? e.message : "Не удалось загрузить друзей",
           );
       });
     };
     load();
     const interval = window.setInterval(load, 20000);
-    const tick = window.setInterval(
-      () => setClock(Date.now() + serverOffset.current),
-      10000,
-    );
     document.addEventListener("visibilitychange", load);
     window.addEventListener("online", load);
     return () => {
@@ -170,7 +184,6 @@ export default function FriendsScreen({
       controller.abort();
       ++generation.current;
       clearInterval(interval);
-      clearInterval(tick);
       document.removeEventListener("visibilitychange", load);
       window.removeEventListener("online", load);
     };
@@ -183,7 +196,7 @@ export default function FriendsScreen({
     message: string,
     after?: () => void,
   ) {
-    if (mutating.current) return;
+    if (mutating.current) return false;
     mutating.current = true;
     ++generation.current;
     setBusy(true);
@@ -191,30 +204,30 @@ export default function FriendsScreen({
     setNotice("");
     try {
       await friendsApi.request(path, method, body);
-      if (!mounted.current) return;
+      if (!mounted.current) return false;
       after?.();
-      setNotice(message);
+      if (message) setNotice(message);
       try {
         await refresh();
       } catch {
-        if (mounted.current)
-          setError(
-            "Действие сохранено, но список не обновился. Нажми «Обновить».",
-          );
+        if (mounted.current) setError("Сохранено, но список не обновился.");
       }
+      return true;
     } catch (e) {
       if (mounted.current)
         setError(
           e instanceof Error ? e.message : "Не удалось выполнить действие",
         );
+      return false;
     } finally {
       mutating.current = false;
       if (mounted.current) setBusy(false);
     }
   }
-  function dismissInvite() {
-    setInvite(false);
+
+  function clearInviteQuery() {
     const url = new URL(location.href);
+    if (!url.searchParams.has("friend")) return;
     url.searchParams.delete("friend");
     history.replaceState(
       history.state,
@@ -222,72 +235,219 @@ export default function FriendsScreen({
       url.pathname + url.search + url.hash,
     );
   }
-  async function share() {
+
+  async function copyMyCode() {
+    if (!data) return;
+    try {
+      await navigator.clipboard.writeText(data.me.inviteCode);
+      setNotice("Код скопирован");
+    } catch {
+      setError("Не удалось скопировать код");
+    }
+  }
+
+  async function shareInvite() {
     if (!data) return;
     const url = new URL(
       import.meta.env.MODE === "device" ? CLOUD_URL : location.origin,
     );
     url.searchParams.set("friend", data.me.inviteCode);
     try {
-      if (navigator.share)
+      if (navigator.share) {
         await navigator.share({
-          title: "Тяга · напарники",
-          text: "Добавляйся в Тяге. Будем тренироваться на связи.",
+          title: "Тяга · друзья",
+          text: `Добавляйся в друзья в Тяге. Код: ${data.me.inviteCode}`,
           url: url.href,
         });
-      else {
+      } else {
         await navigator.clipboard.writeText(url.href);
-        setNotice("Ссылка скопирована — отправь её другу");
+        setNotice("Ссылка скопирована");
       }
     } catch (e) {
       if (!(e instanceof DOMException && e.name === "AbortError"))
-        setError(
-          "Не удалось поделиться ссылкой. Скопируй код из приглашения вручную.",
-        );
+        setError("Не удалось поделиться ссылкой");
     }
   }
-  const team = data ? [data.me, ...data.friends] : [];
-  const progress = FriendsService.teamProgress(team);
-  const live =
-    data?.friends.filter((friend) => friend.activeUntil > clock) ?? [];
-  const inGym = !!data && data.me.activeUntil > clock;
-  const entrance = (index = 0) => ({
-    initial: { opacity: 0, y: reduced ? 0 : 12 },
-    animate: { opacity: 1, y: 0 },
-    transition: {
-      duration: 0.3,
-      delay: reduced ? 0 : Math.min(index * 0.04, 0.2),
-    },
-  });
-  const request = (e: FormEvent) => {
+
+  const sendFriendRequest = (e: FormEvent) => {
     e.preventDefault();
     const value = FriendsService.inviteCode(code);
     if (!value) {
-      setError("Введи код из 12 символов или ссылку приглашения");
+      setError("Введи 12-значный код или ссылку друга");
       return;
     }
     void perform(
       "/api/friends/requests",
       "POST",
       { code: value },
-      "Заявка отправлена. Друг сможет принять её в разделе «Друзья».",
+      "Заявка отправлена",
       () => {
-        dismissInvite();
+        clearInviteQuery();
         setCode("");
       },
     );
   };
+
+  // Группируем свои программы: если есть цикл Дэвида Лейда — показываем его одной строкой + обычные рутины
+  const shareableMine = useMemo(() => {
+    const laidCycles = LaidDupPlan.cycles(routines);
+    const nonLaid = routines.filter((r) => !LaidDupPlan.periodizationOf(r));
+    const items: Array<{ id: string; title: string; meta: string; kind: "laid_dup" | "routine"; routine?: Routine }> = [];
+    if (laidCycles.length > 0) {
+      items.push({
+        id: "__laid_dup__",
+        title: "Дэвид Лейд · DUP",
+        meta: "9 недель · 6 дней · мой цикл",
+        kind: "laid_dup",
+      });
+    }
+    for (const r of nonLaid) {
+      items.push({
+        id: r.id,
+        title: r.name,
+        meta: `${r.exercises.length} упр.`,
+        kind: "routine",
+        routine: r,
+      });
+    }
+    return items;
+  }, [routines]);
+
+  function openProgramModal(mode: CreateMode, preselectedFriendId?: string) {
+    setProgramModal(mode);
+    setCustomTitle("");
+    setAdoptImmediately(mode === "template");
+    if (preselectedFriendId) {
+      setSelectedFriends([preselectedFriendId]);
+    } else if (data?.friends.length) {
+      setSelectedFriends(data.friends.map((f) => f.id));
+    } else {
+      setSelectedFriends([]);
+    }
+    if (mode === "mine" && shareableMine.length > 0) {
+      setSelectedRoutineId(shareableMine[0].id);
+    }
+  }
+
+  async function saveMaterializedProgram(program: Pick<SharedProgram, "title" | "kind" | "payload">) {
+    if (!onSaveRoutine) return;
+    const est = LaidDupPlan.estimates(workouts, today);
+    const maxes = {
+      squat: est.squat ?? 100,
+      bench: est.bench ?? 80,
+      deadlift: est.deadlift ?? 120,
+      ohp: est.ohp ?? 55,
+    };
+    const nextRoutines = SharedProgramBuilder.materialize(program, today, maxes);
+    for (const routine of nextRoutines) {
+      await onSaveRoutine(routine);
+    }
+  }
+
+  async function handleCreateSharedProgram(e: FormEvent) {
+    e.preventDefault();
+    if (!programModal) return;
+
+    let title: string;
+    let kind: SharedProgram["kind"] = "template";
+    let payload: SharedProgram["payload"] = {};
+
+    if (programModal === "template") {
+      const tpl = SHARED_TEMPLATES.find((t) => t.id === templateId)!;
+      title = customTitle.trim() || tpl.title;
+      kind = tpl.kind;
+      payload =
+        tpl.id === "laid_dup"
+          ? { templateId: "laid_dup", laidRhythm: "6x1", laidExtras: true }
+          : { templateId: tpl.id, routines: tpl.routines };
+    } else {
+      const picked = shareableMine.find((x) => x.id === selectedRoutineId);
+      if (!picked) {
+        setError("Выбери программу");
+        return;
+      }
+      title = customTitle.trim() || picked.title;
+      if (picked.kind === "laid_dup") {
+        kind = "laid_dup";
+        payload = { templateId: "laid_dup", laidRhythm: "6x1", laidExtras: true };
+      } else if (picked.routine) {
+        kind = "routine";
+        payload = { routines: [SharedProgramBuilder.fromRoutine(picked.routine)] };
+      }
+    }
+
+    const ok = await perform(
+      "/api/friends/programs",
+      "POST",
+      {
+        title,
+        kind,
+        payload,
+        friendIds: selectedFriends,
+        ownerAdopted: programModal === "mine" ? true : adoptImmediately,
+      },
+      programModal === "mine" ? "Программа отправлена" : "Общая программа создана",
+      () => {
+        setProgramModal(null);
+        setTab("programs");
+      },
+    );
+
+    if (ok && programModal === "template" && adoptImmediately) {
+      try {
+        await saveMaterializedProgram({ title, kind, payload });
+        onToast("Программа добавлена в «Программы»");
+      } catch {
+        setError("Общая программа создана, но не удалось добавить в локальный план");
+      }
+    }
+  }
+
+  async function handleAdoptProgram(program: SharedProgram) {
+    try {
+      await saveMaterializedProgram(program);
+      await perform(
+        `/api/friends/programs/${encodeURIComponent(program.id)}/adopt`,
+        "POST",
+        {},
+        "Программа добавлена в «Программы»",
+      );
+      onToast("Добавлено в «Программы»");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось добавить программу");
+    }
+  }
+
+  function startSharedProgram(program: SharedProgram) {
+    if (program.kind === "laid_dup" || program.payload.templateId === "laid_dup") {
+      const laid = LaidDupPlan.cycles(routines)[0];
+      if (laid?.length && onStartRoutine) {
+        onStartRoutine(laid[0]);
+        return;
+      }
+    }
+    const specName = program.payload.routines?.[0]?.name ?? program.title;
+    const match = routines.find(
+      (r) => r.name === specName || r.notes?.includes(program.title),
+    );
+    if (match && onStartRoutine) {
+      onStartRoutine(match);
+      return;
+    }
+    onOpenPrograms?.();
+  }
+
+  const sharedPrograms = data?.sharedPrograms ?? [];
+
   return (
-    <div className="friends-screen">
+    <div className="friends-screen friends-v2">
       <header className="screen-head friends-heading">
-        <div>
-          <span className="eyebrow">ТВОЯ КОМАНДА</span>
-          <h1>Напарники</h1>
-        </div>
+        <h1>Друзья</h1>
         <div className="friends-heading-actions">
           <button
+            type="button"
             className="icon-button"
-            aria-label="Обновить напарников"
+            aria-label="Обновить"
             disabled={busy || refreshing || !connected}
             onClick={async () => {
               setRefreshing(true);
@@ -302,705 +462,542 @@ export default function FriendsScreen({
               }
             }}
           >
-            <RefreshCw size={18} />
-          </button>
-          <button
-            className="button primary"
-            disabled={!data}
-            onClick={() => setInvite(true)}
-          >
-            <UserPlus size={18} />
-            Добавить друга
+            <RefreshCw size={18} aria-hidden="true" />
           </button>
         </div>
       </header>
+
       <div aria-live="polite">
         {notice && (
           <p className="friends-notice">
-            <CheckCheck size={18} />
+            <CheckCheck size={17} aria-hidden="true" />
             {notice}
           </p>
         )}
       </div>
+
       {error && (
         <p className="form-error friends-error" role="alert">
-          {error}{" "}
-          <button
-            className="text-button"
-            onClick={() => {
-              setRefreshing(true);
-              void refresh()
-                .catch((e) =>
-                  setError(
-                    e instanceof Error ? e.message : "Не удалось обновить",
-                  ),
-                )
-                .finally(() => setRefreshing(false));
-            }}
-            disabled={refreshing}
-          >
-            Обновить
-          </button>
+          {error}
         </p>
       )}
+
       {!connected ? (
         <section className="friends-empty">
-          <Users size={32} />
-          <h2>Тренируйтесь на связи</h2>
-          <p>
-            Подключи облако в профиле. Напарники и респекты работают через
-            интернет, а журнал по-прежнему доступен без сети.
-          </p>
-          <button className="button primary" onClick={onProfile}>
-            Подключить облако
+          <Users size={30} aria-hidden="true" />
+          <h2>Нужно облако</h2>
+          <p>Подключи аккаунт в профиле, чтобы добавлять друзей и тренироваться вместе.</p>
+          <button type="button" className="button primary" onClick={onProfile}>
+            Открыть профиль
           </button>
         </section>
       ) : !data ? (
         <div className="friends-empty" role="status">
-          {error
-            ? "Список пока недоступен. Можно повторить загрузку."
-            : "Загружаем команду…"}
+          {error ? "Нет связи" : "Загрузка…"}
         </div>
       ) : (
         <>
-          <m.section
-            className="friends-hero friends-hero-compact"
-            {...entrance()}
-          >
-            <div>
-              <h2>Твоя команда</h2>
-              <p>Тренируйтесь в своём ритме, оставайтесь на связи.</p>
-            </div>
-            <div
-              className="friends-hero-team"
-              aria-label={`${data.friends.length} напарников, ${live.length} сейчас в зале`}
-            >
-              <div className="friends-avatar-stack">
-                {team.slice(0, 4).map((athlete) => (
-                  <Avatar key={athlete.id} athlete={athlete} />
-                ))}
-                {team.length === 1 && (
-                  <span className="friend-avatar empty" aria-hidden="true">
-                    <Plus size={24} />
-                  </span>
-                )}
-              </div>
-              <strong>
-                {data.friends.length
-                  ? quantity(
-                      data.friends.length,
-                      "напарник",
-                      "напарника",
-                      "напарников",
-                    )
-                  : "Собери свою команду"}
-              </strong>
-              <span>
-                {live.length
-                  ? `${live.length} сейчас в зале`
-                  : "Пригласи тех, с кем идёшь к прогрессу"}
-              </span>
-            </div>
-          </m.section>
-          <section
-            className={`friend-checkin ${inGym ? "is-live" : ""}`}
-            aria-labelledby="checkin-title"
-          >
-            <span className="friend-checkin-icon">
-              <Radio size={22} />
-            </span>
-            <div>
-              <h2 id="checkin-title">
-                {inGym ? "Ты в зале" : "Сегодня тренируешься?"}
-              </h2>
-              <p>
-                {inGym
-                  ? [
-                      data.me.gym || "Зал не указан",
-                      data.me.focus || "Силовая тренировка",
-                    ].join(" · ")
-                  : "Отметься — напарники увидят, что ты на тренировке"}
-              </p>
-              {inGym && (
-                <small>
-                  Статус до{" "}
-                  {new Date(data.me.activeUntil).toLocaleTimeString("ru-RU", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </small>
-              )}
-            </div>
+          <div className="friends-tabs" role="tablist" aria-label="Разделы друзей">
             <button
-              className={`button ${inGym ? "secondary" : "primary"}`}
-              disabled={busy}
-              onClick={() => setStatusEditor(true)}
+              type="button"
+              role="tab"
+              aria-selected={tab === "friends"}
+              onClick={() => setTab("friends")}
             >
-              {inGym ? "Изменить" : "Я в зале"}
-              <ArrowUpRight size={16} />
+              <span>Друзья</span>
+              <b className="friends-tab-count">{data.friends.length}</b>
             </button>
-          </section>
-          {roomInvite && (
-            <RoomInvite
-              code={roomInvite}
-              onDone={onRoomInviteHandled}
-              onToast={onToast}
-            />
-          )}
-          <TogetherCard
-            workoutActive={workoutActive}
-            onWorkout={onWorkout}
-            onToast={onToast}
-            quietErrors={!!roomInvite}
-          />
-          {data.requests.length > 0 && (
-            <section
-              className="friend-requests"
-              aria-labelledby="requests-title"
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "together"}
+              onClick={() => setTab("together")}
             >
-              <div className="section-head">
-                <h2 id="requests-title">
-                  Заявки{" "}
-                  <span className="friend-count">{data.requests.length}</span>
-                </h2>
+              <span>Вместе</span>
+              {room ? <i className="friends-tab-live-dot" aria-label="Активная комната" /> : null}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "programs"}
+              onClick={() => setTab("programs")}
+            >
+              <span>Программы</span>
+              {sharedPrograms.length > 0 ? (
+                <b className="friends-tab-count">{sharedPrograms.length}</b>
+              ) : null}
+            </button>
+          </div>
+
+          {data.requests.length > 0 && (
+            <section className="friend-requests-v2" aria-label="Заявки в друзья">
+              <div className="friends-block-head">
+                <h2>Заявки</h2>
+                <span className="friends-pill-count">{data.requests.length}</span>
               </div>
               <AnimatePresence initial={false}>
                 {data.requests.map((item) => (
                   <m.div
                     key={item.id}
-                    className="friend-request"
-                    {...entrance()}
+                    className="friend-request-row"
+                    initial={reduced ? false : { opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0 }}
+                    transition={{ duration: reduced ? 0 : 0.16 }}
                   >
                     <Avatar athlete={item} small />
-                    <div>
+                    <div className="friend-row-info">
                       <b>{item.displayName}</b>
-                      <p>
+                      <span>
                         {item.direction === "incoming"
-                          ? "Хочет стать напарником"
-                          : "Ждём подтверждения"}
-                      </p>
+                          ? "Входящая заявка"
+                          : "Заявка отправлена"}
+                      </span>
                     </div>
-                    {item.direction === "incoming" && (
+                    <div className="friend-row-actions">
+                      {item.direction === "incoming" && (
+                        <button
+                          type="button"
+                          className="button primary"
+                          disabled={busy}
+                          onClick={() =>
+                            void perform(
+                              `/api/friends/connections/${item.id}`,
+                              "PUT",
+                              {},
+                              "Добавлен в друзья",
+                            )
+                          }
+                        >
+                          <Check size={16} aria-hidden="true" />
+                          Принять
+                        </button>
+                      )}
                       <button
-                        className="button primary"
+                        type="button"
+                        className="icon-button"
+                        aria-label={`${item.direction === "incoming" ? "Отклонить заявку" : "Отменить заявку"}: ${item.displayName}`}
                         disabled={busy}
                         onClick={() =>
                           void perform(
                             `/api/friends/connections/${item.id}`,
-                            "PUT",
+                            "DELETE",
                             {},
-                            "Напарник добавлен. Теперь вы видите активность друг друга.",
+                            "Заявка удалена",
                           )
                         }
                       >
-                        <Check size={16} />
-                        Принять
+                        <X size={17} aria-hidden="true" />
                       </button>
-                    )}
-                    <button
-                      className="icon-button"
-                      aria-label={`${item.direction === "incoming" ? "Отклонить заявку" : "Отменить заявку"}: ${item.displayName}`}
-                      disabled={busy}
-                      onClick={() =>
-                        void perform(
-                          `/api/friends/connections/${item.id}`,
-                          "DELETE",
-                          {},
-                          "Заявка удалена",
-                        )
-                      }
-                    >
-                      <X size={17} />
-                    </button>
+                    </div>
                   </m.div>
                 ))}
               </AnimatePresence>
             </section>
           )}
-          <TrainingMeetups
-            error={error}
-            data={data}
-            workouts={workouts}
-            busy={busy}
-            mutate={perform}
-            onStart={onStartMeetup}
-          />
-          <TeamChallenges key={data.me.id} data={data} />
-          <div className="friends-columns">
-            <div className="friends-main">
-              <section aria-labelledby="team-title">
-                <div className="section-head">
-                  <h2 id="team-title">
-                    Твоя команда{" "}
-                    <span className="friend-count">{data.friends.length}</span>
-                  </h2>
-                  <span className="friends-live-label">
-                    <span />
-                    {live.length} в зале
-                  </span>
-                </div>
-                {!data.friends.length ? (
-                  <div className="friends-empty">
-                    <Users size={32} />
-                    <h3>Первый напарник — твой ход</h3>
-                    <p>
-                      Отправь приглашение другу. После принятия заявки здесь
-                      появятся его тренировки и статус зала.
-                    </p>
+
+          {tab === "friends" && (
+            <div className="friends-tab-body" role="tabpanel" aria-label="Друзья">
+              <section className="friends-add-card" aria-label="Добавить друга">
+                <form className="friends-add-form" onSubmit={sendFriendRequest}>
+                  <label className="sr-only" htmlFor="friend-code-input">
+                    Код или ссылка друга
+                  </label>
+                  <input
+                    id="friend-code-input"
+                    value={code}
+                    onChange={(e) => setCode(e.target.value)}
+                    placeholder="Код друга (12 символов) или ссылка"
+                    autoCapitalize="characters"
+                    autoComplete="off"
+                  />
+                  <button
+                    type="submit"
+                    className="button primary"
+                    disabled={busy || !code.trim()}
+                  >
+                    <UserPlus size={16} aria-hidden="true" />
+                    Отправить заявку
+                  </button>
+                </form>
+                <div className="friends-my-code-row">
+                  <span className="my-code-label">Мой код:</span>
+                  <code className="my-code-value">
+                    {data.me.inviteCode.match(/.{1,4}/g)?.join("–")}
+                  </code>
+                  <div className="my-code-actions">
                     <button
-                      className="button secondary"
-                      onClick={() => setInvite(true)}
+                      type="button"
+                      className="icon-button"
+                      aria-label="Скопировать мой код"
+                      title="Скопировать код"
+                      onClick={() => void copyMyCode()}
                     >
-                      <UserPlus size={17} />
-                      Пригласить напарника
+                      <Copy size={16} aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      className="button secondary my-code-share"
+                      onClick={() => void shareInvite()}
+                    >
+                      <Share2 size={15} aria-hidden="true" />
+                      Поделиться
                     </button>
                   </div>
-                ) : (
-                  <div className="friend-grid">
-                    {[...data.friends]
-                      .sort(
-                        (a, b) =>
-                          Number(b.activeUntil > clock) -
-                            Number(a.activeUntil > clock) ||
-                          a.displayName.localeCompare(b.displayName, "ru"),
-                      )
-                      .map((athlete, i) => (
-                        <m.article
-                          className="friend-card"
-                          key={athlete.id}
-                          {...entrance(i)}
-                        >
-                          <div className="friend-card-head">
-                            <Avatar athlete={athlete} />
-                            <span
-                              className={`friend-presence ${athlete.activeUntil > clock ? "is-live" : ""}`}
-                            >
-                              {athlete.activeUntil > clock
-                                ? "В зале"
-                                : "Без статуса"}
-                            </span>
-                          </div>
-                          <h3>{athlete.displayName}</h3>
-                          <p className="friend-location">
-                            <MapPin size={14} />
-                            {athlete.gym || "Зал не указан"}
-                          </p>
-                          <p className="friend-focus">
-                            {athlete.activeUntil > clock
-                              ? athlete.focus || "Силовая тренировка"
-                              : "До следующей тренировки"}
-                          </p>
-                          <div className="friend-week">
+                </div>
+              </section>
+
+              {!data.friends.length ? (
+                <div className="friends-empty-clean">
+                  <Users size={26} aria-hidden="true" />
+                  <p>Пока нет друзей — отправь заявку по коду выше.</p>
+                </div>
+              ) : (
+                <div className="friends-list-v2">
+                  {[...data.friends]
+                    .sort((a, b) => a.displayName.localeCompare(b.displayName, "ru"))
+                    .map((friend) => (
+                      <article key={friend.id} className="friend-row-card">
+                        <div className="friend-row-main">
+                          <Avatar athlete={friend} />
+                          <div className="friend-row-info">
+                            <h3>{friend.displayName}</h3>
                             <span>
-                              <Dumbbell size={14} />
-                              {athlete.weekWorkouts} за неделю
+                              <Dumbbell size={13} aria-hidden="true" />
+                              {friend.weekWorkouts} тр. за неделю
                             </span>
-                            <button
-                              className="text-button"
-                              aria-label={`Удалить напарника: ${athlete.displayName}`}
-                              disabled={busy}
-                              onClick={() => setRemoving(athlete)}
-                            >
-                              Удалить
-                            </button>
                           </div>
-                        </m.article>
-                      ))}
-                  </div>
-                )}
-              </section>
-              <section className="friends-feed" aria-labelledby="feed-title">
-                <div className="section-head">
-                  <h2 id="feed-title">Лента тренировок</h2>
-                  <span>Последние 30 дней</span>
-                </div>
-                {!data.feed.length ? (
-                  <div className="friends-empty compact">
-                    <Dumbbell size={26} />
-                    <h3>Здесь будут ваши тренировки</h3>
-                    <p>
-                      Сохраните тренировку в журнале — она появится в ленте
-                      команды.
-                    </p>
-                  </div>
-                ) : (
-                  data.feed.map((workout, index) => (
-                    <m.article
-                      key={workout.id}
-                      className="friend-workout"
-                      {...entrance(index)}
-                    >
-                      <div className="friend-workout-head">
-                        <Avatar
-                          athlete={{
-                            id: workout.athleteId,
-                            displayName: workout.displayName,
-                          }}
-                          small
-                        />
-                        <div>
-                          <b>
-                            {workout.displayName}
-                            {workout.athleteId === data.me.id && (
-                              <span className="muted"> · ты</span>
-                            )}
-                          </b>
-                          <span>Завершена · {dateLabel(workout.date)}</span>
                         </div>
-                        <CheckCheck size={18} className="text-accent" />
-                      </div>
-                      <h3>{workout.name}</h3>
-                      <div className="friend-workout-stats">
-                        <span>
-                          <strong>{workout.setsCount}</strong> {workingSetsWord(workout.setsCount)}
-                        </span>
-                        <span>
-                          <strong>{workout.duration}</strong> мин
-                        </span>
-                        {workout.volumeKg > 0 && (
-                          <span title="Только однозначно записанные свободные веса">
-                            <strong>{fmt(workout.volumeKg / 1000)}</strong> т
-                            свободных весов
-                          </span>
-                        )}
-                      </div>
-                      <div className="friend-workout-foot">
-                        <span>
-                          <Flame size={15} />
-                          Тренировка в копилку команды
-                        </span>
-                        {workout.athleteId === data.me.id ? (
-                          <span className="friend-own-kudos">
-                            <ThumbsUp size={16} />
-                            {workout.kudosCount}
-                          </span>
-                        ) : (
-                          <m.button
-                            whileTap={reduced ? undefined : { scale: 0.92 }}
-                            className={`friend-kudos ${workout.hasGivenKudos ? "is-given" : ""}`}
-                            aria-label={`Респект: ${workout.displayName}, ${workout.name}`}
-                            aria-pressed={workout.hasGivenKudos}
-                            disabled={busy}
-                            onClick={() =>
-                              void perform(
-                                `/api/friends/kudos/${workout.id}`,
-                                "PUT",
-                                { given: !workout.hasGivenKudos },
-                                workout.hasGivenKudos
-                                  ? "Респект убран"
-                                  : "Респект отправлен",
-                              )
-                            }
+                        <div className="friend-card-actions">
+                          <button
+                            type="button"
+                            className="button secondary"
+                            onClick={() => {
+                              setTab("together");
+                              if (!room) void createRoom();
+                            }}
                           >
-                            <m.span
-                              key={String(workout.hasGivenKudos)}
-                              initial={reduced ? false : { scale: 0.7 }}
-                              animate={{ scale: 1 }}
-                            >
-                              <ThumbsUp size={16} />
-                            </m.span>
-                            Респект <b>{workout.kudosCount}</b>
-                          </m.button>
-                        )}
-                      </div>
-                    </m.article>
-                  ))
-                )}
-                {data.feed.length === 60 && (
-                  <p className="tiny">
-                    Показаны 60 последних тренировок за 30 дней.
-                  </p>
-                )}
-              </section>
-            </div>
-            <aside className="friends-aside">
-              <section
-                className="friends-week-card"
-                aria-labelledby="week-title"
-              >
-                <span className="friends-card-icon">
-                  <Trophy size={21} />
-                </span>
-                <span className="eyebrow">ОБЩИЙ ОРИЕНТИР</span>
-                <h2 id="week-title">Неделя в движении</h2>
-                <p>
-                  У каждого свой недельный ориентир.
-                  <br />У каждого свой вес и свой темп.
-                </p>
-                <div className="friends-team-score">
-                  <strong>
-                    {progress.done}
-                    <span> / {progress.target}</span>
-                  </strong>
-                  <span>
-                    {dateLabel(data.weekStart)} — {dateLabel(data.today)}
-                  </span>
-                </div>
-                <div
-                  className="friends-meter"
-                  role="progressbar"
-                  aria-label="Недельная активность команды"
-                  aria-valuenow={progress.done}
-                  aria-valuemin={0}
-                  aria-valuemax={progress.target}
-                >
-                  <m.span
-                    initial={false}
-                    animate={{ width: `${progress.percent}%` }}
-                    transition={{ duration: reduced ? 0 : 0.6 }}
-                  />
-                </div>
-                <WeeklyGoal
-                  key={data.me.weeklyTarget ?? 3}
-                  value={data.me.weeklyTarget ?? 3}
-                  busy={busy}
-                  onSave={(target) =>
-                    void perform(
-                      "/api/friends/goal",
-                      "PUT",
-                      { target },
-                      "Недельная цель сохранена",
-                    )
-                  }
-                />
-                <div className="friends-week-list">
-                  {[...team]
-                    .sort(
-                      (a, b) =>
-                        b.weekWorkouts - a.weekWorkouts ||
-                        a.displayName.localeCompare(b.displayName, "ru"),
-                    )
-                    .map((athlete) => (
-                      <div key={athlete.id}>
-                        <Avatar athlete={athlete} small />
-                        <span>
-                          {athlete.id === data.me.id
-                            ? "Ты"
-                            : athlete.displayName}
-                        </span>
-                        <b>
-                          {athlete.weekWorkouts}
-                          <span> / {athlete.weeklyTarget ?? 3}</span>
-                        </b>
-                        {athlete.weekWorkouts >=
-                          (athlete.weeklyTarget ?? 3) && (
-                          <Check size={15} className="text-accent" />
-                        )}
-                      </div>
+                            <Play size={14} aria-hidden="true" />
+                            Вместе
+                          </button>
+                          <button
+                            type="button"
+                            className="button secondary"
+                            onClick={() => openProgramModal(shareableMine.length ? "mine" : "template", friend.id)}
+                          >
+                            <Share2 size={14} aria-hidden="true" />
+                            Программа
+                          </button>
+                          <button
+                            type="button"
+                            className="icon-button friend-remove-btn"
+                            aria-label={`Удалить друга: ${friend.displayName}`}
+                            title="Удалить из друзей"
+                            disabled={busy}
+                            onClick={() => setRemoving(friend)}
+                          >
+                            <Trash2 size={16} aria-hidden="true" />
+                          </button>
+                        </div>
+                      </article>
                     ))}
                 </div>
-                <p className="tiny">
-                  Считаем сохранённые тренировки с понедельника, по твоему
-                  часовому поясу. Это ориентир, а не обязательный план.
-                </p>
-              </section>
-              <section className="friends-invite-card">
-                <UserPlus size={22} />
-                <h2>Код приглашения</h2>
-                <p>Твой код напарника</p>
-                <code className="friend-invite-code">
-                  {data.me.inviteCode.match(/.{1,4}/g)?.join("–")}
-                </code>
+              )}
+            </div>
+          )}
+
+          {tab === "together" && (
+            <div className="friends-tab-body" role="tabpanel" aria-label="Вместе">
+              {roomInvite && (
+                <RoomInvite
+                  code={roomInvite}
+                  onDone={onRoomInviteHandled}
+                  onToast={onToast}
+                />
+              )}
+              <TogetherCard
+                workoutActive={workoutActive}
+                onWorkout={onWorkout}
+                onToast={onToast}
+                quietErrors={!!roomInvite}
+              />
+            </div>
+          )}
+
+          {tab === "programs" && (
+            <div className="friends-tab-body" role="tabpanel" aria-label="Общие программы">
+              <div className="shared-programs-toolbar">
                 <button
-                  className="button secondary"
-                  onClick={() => void share()}
+                  type="button"
+                  className="button primary"
+                  disabled={busy}
+                  onClick={() => openProgramModal("template")}
                 >
-                  <Share2 size={17} />
-                  Поделиться приглашением
+                  <Plus size={16} aria-hidden="true" />
+                  Общая программа
                 </button>
-              </section>
-              <p className="friends-privacy">
-                <ShieldCheck size={18} />
-                <span>
-                  После принятия заявки видны статус зала и сводки тренировок за
-                  30 дней. Почта, вес тела, заметки и детали подходов остаются
-                  личными. Удаление напарника закрывает доступ.
-                </span>
-              </p>
-            </aside>
-          </div>
+                <button
+                  type="button"
+                  className="button secondary"
+                  disabled={busy || !shareableMine.length}
+                  onClick={() => openProgramModal("mine")}
+                >
+                  <Share2 size={15} aria-hidden="true" />
+                  Поделиться своей
+                </button>
+              </div>
+
+              {!sharedPrograms.length ? (
+                <div className="friends-empty-clean">
+                  <CalendarDays size={26} aria-hidden="true" />
+                  <p>Создай общую программу (например, Дэвида Лейда) или поделись своей.</p>
+                </div>
+              ) : (
+                <div className="shared-programs-list">
+                  {sharedPrograms.map((program) => (
+                    <article key={program.id} className="shared-program-card">
+                      <div className="shared-program-head">
+                        <div>
+                          <div className="shared-program-title-row">
+                            <h3>{program.title}</h3>
+                            <span className="shared-program-badge">
+                              {SharedProgramBuilder.summary(program)}
+                            </span>
+                          </div>
+                          <span className="shared-program-owner">
+                            {program.isOwner ? "Создана тобой" : `От ${program.ownerName}`}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          className="icon-button friend-remove-btn"
+                          aria-label={program.isOwner ? `Удалить программу: ${program.title}` : `Выйти из программы: ${program.title}`}
+                          title={program.isOwner ? "Удалить" : "Выйти"}
+                          disabled={busy}
+                          onClick={() =>
+                            void perform(
+                              `/api/friends/programs/${encodeURIComponent(program.id)}`,
+                              "DELETE",
+                              {},
+                              program.isOwner ? "Программа удалена" : "Ты вышел из программы",
+                            )
+                          }
+                        >
+                          <Trash2 size={16} aria-hidden="true" />
+                        </button>
+                      </div>
+
+                      <div className="shared-program-members">
+                        {program.members.map((member) => (
+                          <span
+                            key={member.accountId}
+                            className={`shared-member-pill${member.adopted ? " is-adopted" : ""}`}
+                          >
+                            {member.adopted ? <Check size={12} aria-hidden="true" /> : null}
+                            <b>{member.accountId === data.me.id ? "Ты" : member.displayName}</b>
+                            <small>{member.weekWorkouts} тр./нед</small>
+                          </span>
+                        ))}
+                      </div>
+
+                      <div className="shared-program-actions">
+                        {!program.adoptedByMe ? (
+                          <button
+                            type="button"
+                            className="button primary"
+                            disabled={busy}
+                            onClick={() => void handleAdoptProgram(program)}
+                          >
+                            <Download size={15} aria-hidden="true" />
+                            Добавить себе и тренироваться
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              className="button primary"
+                              onClick={() => startSharedProgram(program)}
+                            >
+                              <Play size={15} aria-hidden="true" />
+                              Тренироваться
+                            </button>
+                            {onOpenPrograms ? (
+                              <button
+                                type="button"
+                                className="button secondary"
+                                onClick={onOpenPrograms}
+                              >
+                                В программы
+                              </button>
+                            ) : null}
+                          </>
+                        )}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </>
       )}
-      {invite && data && (
-        <Modal title="Добавить друга" onClose={dismissInvite}>
-          <div className="friends-invite-dialog">
-            <p>
-              Отправь другу свой код или введи его приглашение. Вы увидите
-              тренировки друг друга только после принятия заявки.
-            </p>
-            <div className="friends-code-box">
-              <span>Твой код</span>
-              <code className="friend-invite-code">
-                {data.me.inviteCode.match(/.{1,4}/g)?.join("–")}
-              </code>
+
+      {programModal && (
+        <Modal
+          title={programModal === "mine" ? "Поделиться программой" : "Общая программа"}
+          onClose={() => setProgramModal(null)}
+        >
+          <form className="shared-program-form" onSubmit={(e) => void handleCreateSharedProgram(e)}>
+            <div className="shared-mode-switch" role="group" aria-label="Источник программы">
               <button
-                className="icon-button"
-                aria-label="Скопировать код"
-                onClick={async () => {
-                  try {
-                    await navigator.clipboard.writeText(data.me.inviteCode);
-                    setNotice("Код скопирован");
-                  } catch {
-                    setError("Выдели и скопируй код вручную");
+                type="button"
+                aria-pressed={programModal === "template"}
+                onClick={() => setProgramModal("template")}
+              >
+                Готовый шаблон
+              </button>
+              <button
+                type="button"
+                aria-pressed={programModal === "mine"}
+                disabled={!shareableMine.length}
+                onClick={() => {
+                  setProgramModal("mine");
+                  if (!selectedRoutineId && shareableMine[0]) {
+                    setSelectedRoutineId(shareableMine[0].id);
                   }
                 }}
               >
-                <Copy size={18} />
+                Моя программа
               </button>
             </div>
-            <button className="button secondary" onClick={() => void share()}>
-              <Share2 size={17} />
-              Поделиться приглашением
-            </button>
-            <form onSubmit={request}>
-              <label>
-                Код или ссылка друга
-                <input
-                  autoFocus
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
-                  maxLength={200}
-                  placeholder="Например, A1B2C3D4E5F6"
-                  autoCapitalize="characters"
-                  autoComplete="off"
-                  spellCheck={false}
-                  required
-                />
-              </label>
-              <p className="tiny">Друг найдёт свой код в разделе «Друзья».</p>
-              <button
-                className="button primary"
-                disabled={busy || !code.trim()}
-              >
-                <UserPlus size={17} />
-                {busy ? "Отправляем…" : "Отправить заявку"}
-              </button>
-            </form>
-            {notice && (
-              <p className="friends-notice" role="status">
-                {notice}
-              </p>
+
+            {programModal === "template" ? (
+              <div className="template-picker-grid">
+                {SHARED_TEMPLATES.map((tpl) => (
+                  <button
+                    key={tpl.id}
+                    type="button"
+                    className={`template-pick-card${templateId === tpl.id ? " is-selected" : ""}`}
+                    aria-pressed={templateId === tpl.id}
+                    onClick={() => setTemplateId(tpl.id)}
+                  >
+                    <b>{tpl.title}</b>
+                    <span>{tpl.meta}</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="template-picker-grid">
+                {shareableMine.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`template-pick-card${selectedRoutineId === item.id ? " is-selected" : ""}`}
+                    aria-pressed={selectedRoutineId === item.id}
+                    onClick={() => setSelectedRoutineId(item.id)}
+                  >
+                    <b>{item.title}</b>
+                    <span>{item.meta}</span>
+                  </button>
+                ))}
+              </div>
             )}
-            {error && (
-              <p className="form-error" role="alert">
-                {error}
-              </p>
-            )}
-          </div>
-        </Modal>
-      )}
-      {statusEditor && data && (
-        <Modal title="Моя тренировка" onClose={() => setStatusEditor(false)}>
-          <form
-            className="friends-status-form"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const fields = new FormData(e.currentTarget);
-              void perform(
-                "/api/friends/status",
-                "PUT",
-                {
-                  inGym: true,
-                  gym: fields.get("gym"),
-                  focus: fields.get("focus"),
-                },
-                "Ты в зале. Напарники увидят твой статус.",
-                () => setStatusEditor(false),
-              );
-            }}
-          >
-            <p>
-              Статус видят только принятые напарники. Он выключится через 2 часа
-              или когда ты закончишь.
-            </p>
-            <label>
-              Зал
+
+            <label className="shared-field">
+              <span>Название (необязательно)</span>
               <input
-                name="gym"
-                maxLength={60}
-                defaultValue={data.me.gym}
-                placeholder="Например, Атлетика на Лесной"
-              />
-            </label>
-            <label>
-              Что тренируешь?
-              <input
-                name="focus"
+                value={customTitle}
                 maxLength={80}
-                defaultValue={data.me.focus}
-                placeholder="Например, спина и бицепс"
+                placeholder={
+                  programModal === "template"
+                    ? SHARED_TEMPLATES.find((t) => t.id === templateId)?.title
+                    : shareableMine.find((x) => x.id === selectedRoutineId)?.title
+                }
+                onChange={(e) => setCustomTitle(e.target.value)}
               />
             </label>
-            <button className="button primary" disabled={busy}>
-              <Radio size={17} />
-              {busy
-                ? "Сохраняем…"
-                : inGym
-                  ? "Обновить статус на 2 часа"
-                  : "Начать — я в зале"}
+
+            {data && data.friends.length > 0 && (
+              <div className="shared-friends-picker">
+                <span className="shared-field-label">С кем тренироваться</span>
+                <div className="shared-friends-chips">
+                  {data.friends.map((friend) => {
+                    const active = selectedFriends.includes(friend.id);
+                    return (
+                      <button
+                        key={friend.id}
+                        type="button"
+                        className={`shared-friend-chip${active ? " is-selected" : ""}`}
+                        aria-pressed={active}
+                        onClick={() =>
+                          setSelectedFriends((prev) =>
+                            active
+                              ? prev.filter((id) => id !== friend.id)
+                              : [...prev, friend.id],
+                          )
+                        }
+                      >
+                        {active ? <Check size={14} aria-hidden="true" /> : null}
+                        <span>{friend.displayName}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {programModal === "template" && (
+              <label className="shared-checkbox">
+                <input
+                  type="checkbox"
+                  checked={adoptImmediately}
+                  onChange={(e) => setAdoptImmediately(e.target.checked)}
+                />
+                <span>Сразу добавить себе в «Программы»</span>
+              </label>
+            )}
+
+            <button
+              type="submit"
+              className="button primary full-width"
+              disabled={busy || (programModal === "mine" && !selectedRoutineId)}
+            >
+              {programModal === "mine" ? "Отправить друзьям" : "Создать общую программу"}
             </button>
-            {inGym && (
-              <button
-                type="button"
-                className="button secondary"
-                disabled={busy}
-                onClick={() =>
-                  void perform(
-                    "/api/friends/status",
-                    "PUT",
-                    { inGym: false, gym: data.me.gym, focus: data.me.focus },
-                    "Статус зала выключен",
-                    () => setStatusEditor(false),
-                  )
-                }
-              >
-                Закончил тренировку
-              </button>
-            )}
-            {error && (
-              <p className="form-error" role="alert">
-                {error}
-              </p>
-            )}
           </form>
         </Modal>
       )}
+
       {removing && (
-        <Modal title="Удалить напарника?" onClose={() => setRemoving(null)}>
-          <p>
-            {removing.displayName} больше не увидит твою активность, а ты — его
-            тренировки. Чтобы вернуться в команду, понадобится новая заявка.
-          </p>
-          <div className="modal-actions">
-            <button
-              className="button secondary"
-              disabled={busy}
-              onClick={() => setRemoving(null)}
-            >
-              Оставить
-            </button>
-            <button
-              className="button primary"
-              disabled={busy}
-              onClick={() =>
-                void perform(
-                  `/api/friends/connections/${removing.id}`,
-                  "DELETE",
-                  {},
-                  "Напарник удалён",
-                  () => setRemoving(null),
-                )
-              }
-            >
-              Удалить напарника
-            </button>
+        <Modal title="Удалить из друзей?" onClose={() => setRemoving(null)}>
+          <div className="friend-modal">
+            <p>{removing.displayName} будет удалён из списка друзей.</p>
+            <div className="friend-modal-actions">
+              <button
+                type="button"
+                className="button secondary"
+                onClick={() => setRemoving(null)}
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                className="button primary"
+                disabled={busy}
+                onClick={() =>
+                  void perform(
+                    `/api/friends/connections/${removing.id}`,
+                    "DELETE",
+                    {},
+                    "Удалён из друзей",
+                    () => setRemoving(null),
+                  )
+                }
+              >
+                Удалить
+              </button>
+            </div>
           </div>
-          {error && (
-            <p className="form-error" role="alert">
-              {error}
-            </p>
-          )}
         </Modal>
       )}
     </div>

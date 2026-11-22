@@ -87,10 +87,13 @@ test("SETUP: both published 0010 files and original snapshots retain their prove
   }
 });
 
-test("SETUP: Drizzle generates no destructive migration from the combined snapshot to the actual schema", async () => {
+test("SETUP: Drizzle emits exactly the email index for 0012, then a clean current diff", async () => {
   const combined = await snapshot("drizzle/meta/0011_snapshot.json");
+  const latest = await snapshot("drizzle/meta/0012_snapshot.json");
   const current = await generateSQLiteDrizzleJson(schema, combined.id);
-  assert.deepEqual(await generateSQLiteMigration(combined, current), []);
+  assert.deepEqual(await generateSQLiteMigration(combined, current), ["CREATE UNIQUE INDEX `idx_accounts_email` ON `accounts` (`email`);"]);
+  assert.equal(latest.prevId, combined.id);
+  assert.deepEqual(await generateSQLiteMigration(latest, current), []);
 });
 
 for (const branch of ["empty", "rooms-only", "machines-only"] as const) {
@@ -131,7 +134,7 @@ for (const branch of ["empty", "rooms-only", "machines-only"] as const) {
       const combined = await snapshot("drizzle/meta/0011_snapshot.json");
       for (const name of Object.keys(combined.tables)) assert.ok(tableNames.has(name), name);
       assert.equal(rows(db, "SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'sync_machine_%'").length, 6);
-      for (const index of ["idx_live_members_account", "idx_live_members_code", "idx_machines_owner"]) {
+      for (const index of ["idx_accounts_email", "idx_live_members_account", "idx_live_members_code", "idx_machines_owner"]) {
         assert.equal(rows(db, `SELECT name FROM sqlite_master WHERE type='index' AND name='${index}'`).length, 1, index);
       }
       assert.deepEqual(db.exec("PRAGMA foreign_key_check"), []);
@@ -151,6 +154,19 @@ for (const branch of ["empty", "rooms-only", "machines-only"] as const) {
     }
   });
 }
+
+test("SETUP: duplicate normalized email cannot bypass registration pre-check", async () => {
+  const { call } = await setup();
+  const registration = {
+    email: "Race@Example.test", password: "a long shared test password",
+    displayName: "Гонка", timeZone: "Europe/Saratov",
+  };
+  const first = await call("race-owner", "/api/auth/register", "POST", registration);
+  assert.equal(first.status, 201);
+  const second = await call("race-other-owner", "/api/auth/register", "POST", { ...registration, email: "race@example.test" });
+  assert.equal(second.status, 409);
+  assert.equal(second.data.error, "Эта почта уже зарегистрирована. Войди с ней.");
+});
 
 test("SETUP: rooms and private owner-scoped machines coexist without leaking social state into sync or backup", async () => {
   const { call, db } = await setup();

@@ -1,0 +1,307 @@
+.account-page.steel-auth {
+  --auth-field-line: color-mix(in srgb, var(--text) 34%, var(--surface-2));
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 1.5rem;
+  min-block-size: 100dvh;
+  padding: max(clamp(1.5rem, 10dvh - 2rem, 6rem), var(--sat, 0px)) 1rem max(1.5rem, var(--sab, 0px));
+  background: var(--bg);
+  color: var(--text);
+  color-scheme: dark;
+  font-family: var(--font-body);
+}
+
+.steel-auth :is(.auth-masthead, .auth-card, .auth-bottom) {
+  inline-size: min(100%, 25rem);
+  min-inline-size: 0;
+}
+
+.steel-auth .auth-masthead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: .3rem .65rem;
+}
+
+.steel-auth .auth-brand-name {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: .035em;
+}
+
+.steel-auth .auth-brand-caption {
+  color: var(--muted);
+  font-size: .875rem;
+}
+
+.steel-auth .auth-card h1 {
+  margin: 0 0 1rem;
+  font-family: var(--font-display);
+  font-size: clamp(2.75rem, 2.4rem + 1.5vw, 3.75rem);
+  font-weight: 760;
+  line-height: 1;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+
+.steel-auth .auth-card-intro {
+  margin: 0 0 .75rem;
+  color: var(--muted);
+  font-size: .9375rem;
+  line-height: 1.5;
+}
+
+.steel-auth .account-tabs {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0 0 1rem;
+  border-block-end: 1px solid var(--line);
+}
+
+.steel-auth .account-tabs button {
+  min-block-size: 3rem;
+  padding: .5rem .25rem;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: .875rem;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.steel-auth .account-tabs button[aria-pressed="true"] {
+  color: var(--text);
+}
+
+.steel-auth .auth-mode-indicator {
+  position: absolute;
+  inset-block-end: -1px;
+  inset-inline-start: 0;
+  inline-size: 50%;
+  block-size: 2px;
+  background: var(--accent);
+  pointer-events: none;
+}
+
+.steel-auth .account-form {
+  gap: .875rem;
+}
+
+.steel-auth .account-form label,
+.steel-auth .auth-password-field {
+  display: grid;
+  gap: .375rem;
+  min-inline-size: 0;
+  color: var(--text);
+  font-size: .875rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.steel-auth .account-form input {
+  display: block;
+  inline-size: 100%;
+  min-inline-size: 0;
+  min-block-size: 3rem;
+  margin: 0;
+  padding: .625rem .875rem;
+  border: 1px solid var(--auth-field-line);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  font-weight: 450;
+  line-height: 1.4;
+}
+
+.steel-auth .account-form input::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+
+.steel-auth .account-form input:focus {
+  border-color: var(--accent);
+  box-shadow: none;
+}
+
+.steel-auth .password-input-row {
+  position: relative;
+  min-inline-size: 0;
+}
+
+.steel-auth .password-input-row input {
+  padding-inline-end: 3.5rem;
+}
+
+.steel-auth .password-toggle-btn {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 0;
+  display: grid;
+  place-items: center;
+  inline-size: 3rem;
+  min-block-size: 3rem;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--muted);
+}
+
+.steel-auth .password-toggle-btn[aria-pressed="true"] {
+  color: var(--text);
+}
+
+.steel-auth :is(.auth-field-hint, .account-assurance) {
+  color: var(--muted);
+  font-size: .875rem;
+  font-weight: 450;
+  line-height: 1.5;
+}
+
+.steel-auth .recover-no-code {
+  margin: 0 0 1rem;
+  padding-inline-start: .75rem;
+  border-inline-start: 2px solid var(--line-strong);
+}
+
+.steel-auth .account-form > .auth-submit {
+  gap: .5rem;
+  inline-size: 100%;
+  min-block-size: 3.125rem;
+  margin: .25rem 0 0;
+  padding: .7rem .875rem;
+  border-radius: 10px;
+  box-shadow: none;
+  font-size: .9375rem;
+  line-height: 1.4;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.steel-auth .auth-submit:disabled {
+  opacity: .75;
+  cursor: wait;
+}
+
+.steel-auth .account-recover,
+.steel-auth .auth-bottom .android-download {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-block-size: 3rem;
+  margin: 0 auto;
+  padding: .5rem .75rem;
+  color: var(--muted);
+  font-size: .875rem;
+  font-weight: 550;
+  line-height: 1.4;
+  text-align: center;
+  text-decoration: underline;
+  text-underline-offset: .22em;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.steel-auth .account-assurance {
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  text-align: center;
+}
+
+.steel-auth .form-error {
+  display: flex;
+  align-items: flex-start;
+  gap: .55rem;
+  margin: 0;
+  padding: .65rem .75rem;
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, var(--line));
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--danger);
+  font-size: .875rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.steel-auth .form-error svg {
+  flex: none;
+  margin-block-start: .13rem;
+}
+
+.steel-auth .auth-bottom .android-download {
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.steel-auth :is(button, a, input):focus-visible,
+.steel-auth-loading button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.steel-auth .account-tabs button:focus-visible,
+.steel-auth .password-toggle-btn:focus-visible {
+  outline-offset: -3px;
+}
+
+.auth-loading.steel-auth-loading {
+  gap: .8rem;
+  padding: 1rem;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+}
+
+.steel-auth-loading .auth-loading-mark {
+  display: grid;
+  place-items: center;
+  inline-size: 3.5rem;
+  block-size: 3.5rem;
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  background: none;
+  color: var(--accent);
+}
+
+.steel-auth-loading h1 {
+  font-family: var(--font-display);
+  font-size: 2.75rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.steel-auth-loading [role="status"] {
+  color: var(--muted);
+}
+
+.steel-auth-loading [role="alert"] {
+  color: var(--danger);
+  overflow-wrap: anywhere;
+}
+
+@media (hover: hover) {
+  .steel-auth .account-tabs button:hover,
+  .steel-auth .password-toggle-btn:hover,
+  .steel-auth .account-recover:hover,
+  .steel-auth .auth-bottom .android-download:hover {
+    color: var(--text);
+  }
+
+  .steel-auth .account-form > .auth-submit:hover:not(:disabled) {
+    background: var(--accent-hover);
+    box-shadow: none;
+  }
+}

@@ -15,16 +15,20 @@ export default function OneRepMaxCalculator({
 }) {
   const [weight, setWeight] = useState(initialWeight || 80);
   const [reps, setReps] = useState(initialReps || 8);
+  const [rir, setRir] = useState(0);
 
-  // Основная формула приложения — Эпли (как в «Прогрессе» и «Зале личных рекордов»); остальные — для сравнения.
+  // Основная формула приложения — Эпли (как в «Прогрессе» и «Зале личных рекордов»);
+  // при RIR > 0 используется модель Helms / Zourdos: effectiveReps = reps + rir.
+  const effectiveReps = reps + rir;
   const formulas = useMemo(() => {
     if (!weight || !reps) return null;
     return {
-      epley: OneRepMaxFormulas.round(OneRepMaxFormulas.epley(weight, reps)),
-      brzycki: OneRepMaxFormulas.round(OneRepMaxFormulas.brzycki(weight, reps)),
-      lombardi: OneRepMaxFormulas.round(OneRepMaxFormulas.lombardi(weight, reps)),
+      epley: OneRepMaxFormulas.round(OneRepMaxFormulas.epley(weight, effectiveReps)),
+      brzycki: OneRepMaxFormulas.round(OneRepMaxFormulas.brzycki(weight, effectiveReps)),
+      lombardi: OneRepMaxFormulas.round(OneRepMaxFormulas.lombardi(weight, effectiveReps)),
+      rawEpley: OneRepMaxFormulas.round(OneRepMaxFormulas.epley(weight, reps)),
     };
-  }, [weight, reps]);
+  }, [weight, reps, effectiveReps]);
 
   const oneRepMax = formulas?.epley ?? weight;
 
@@ -148,6 +152,22 @@ export default function OneRepMaxCalculator({
               </button>
             ))}
           </div>
+          <div className="orm-rir-row" role="group" aria-label="Повторения в запасе (RIR)">
+            <span className="orm-card-label">Запас (RIR)</span>
+            <div className="orm-rep-presets">
+              {[0, 1, 2, 3, 4, 5].map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={rir === value}
+                  className={`orm-preset-chip ${rir === value ? "active" : ""}`}
+                  onClick={() => setRir(value)}
+                >
+                  {value === 0 ? "0 (отказ)" : `RIR ${value}`}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -169,7 +189,9 @@ export default function OneRepMaxCalculator({
             <span className="formula-pill">Lombardi: <b>{DecimalInput.format(formulas?.lombardi ?? 0, 1)} кг</b></span>
           </div>
           <p className="orm-formula-note">
-            Основная формула в приложении — Эпли: по ней считаются «Прогресс» и «Зал личных рекордов». Brzycki и Lombardi — для сравнения.
+            {rir > 0
+              ? `Учтён запас RIR ${rir} (${reps} + ${rir} = ${effectiveReps} эфф. повт.). Без поправки на RIR: ${DecimalInput.format(formulas?.rawEpley ?? 0, 1)} кг.`
+              : "Основная формула в приложении — Эпли: по ней считаются «Прогресс» и «Зал личных рекордов». Brzycki и Lombardi — для сравнения."}
           </p>
         </div>
       </div>

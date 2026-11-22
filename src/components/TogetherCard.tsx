@@ -22,10 +22,10 @@ function MemberRow({ member, now }: { member: LiveMember; now: number }) {
   return (
     <m.li
       className={`live-member ${member.isMe ? "me" : ""} ${phase}`}
-      initial={{ opacity: 0, y: 10 }}
+      initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, x: -16 }}
-      transition={{ duration: 0.32, ease: EASE }}
+      exit={{ opacity: 0, x: -12 }}
+      transition={{ duration: 0.24, ease: EASE }}
     >
       <LiveAvatar name={member.displayName} />
       <span className="live-member-text">
@@ -38,7 +38,7 @@ function MemberRow({ member, now }: { member: LiveMember; now: number }) {
           <m.span
             initial={{ scaleX: 0 }}
             animate={{ scaleX: state?.phase === "done" ? 1 : LivePresenter.progress(state) }}
-            transition={{ duration: 0.6, ease: EASE }}
+            transition={{ duration: 0.45, ease: EASE }}
           />
         </span>
       </span>
@@ -59,7 +59,7 @@ function MemberRow({ member, now }: { member: LiveMember; now: number }) {
   );
 }
 
-/** «Вместе»: создать комнату, войти по коду и видеть, кто что делает прямо сейчас. */
+/** Комната совместной тренировки: код, список участников и живые подходы. */
 export default function TogetherCard({
   workoutActive,
   onWorkout,
@@ -69,7 +69,6 @@ export default function TogetherCard({
   workoutActive: boolean;
   onWorkout: () => void;
   onToast: (text: string) => void;
-  /** Причину отказа уже показывает приглашение над карточкой, второй раз её не повторяем. */
   quietErrors?: boolean;
 }) {
   const { room, ready, busy, error, create, join, leave, watch } = useLiveRoom();
@@ -108,9 +107,9 @@ export default function TogetherCard({
   if (!room)
     return (
       <section className="together" aria-label="Тренироваться вместе">
-        <Users size={26} aria-hidden="true" className="together-icon" />
-        <h2>Тренируйтесь вместе</h2>
-        <p>Создай комнату и отправь код напарнику. Вы видите подходы и отдых друг друга прямо во время тренировки.</p>
+        <Users size={24} aria-hidden="true" className="together-icon" />
+        <h2>Совместная тренировка</h2>
+        <p>Подходы и таймер отдыха видны в реальном времени.</p>
         <div className="together-actions">
           <button type="button" className="button primary" disabled={busy} onClick={() => void create()}>
             {busy && !joining ? "Создаём…" : "Создать комнату"}
@@ -129,7 +128,7 @@ export default function TogetherCard({
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.25, ease: EASE }}
+              transition={{ duration: 0.22, ease: EASE }}
             >
               <label htmlFor={fieldId}>Код комнаты</label>
               <span className="join-field">
@@ -166,9 +165,9 @@ export default function TogetherCard({
           {[...room.code].map((char, index) => (
             <m.span
               key={`${room.code}-${index}`}
-              initial={{ opacity: 0, y: 10 }}
+              initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.35, delay: index * 0.05, ease: EASE }}
+              transition={{ duration: 0.28, delay: index * 0.04, ease: EASE }}
             >
               {char}
             </m.span>
@@ -181,9 +180,9 @@ export default function TogetherCard({
           <button
             type="button"
             className="icon-button"
-            aria-label="Позвать напарника"
+            aria-label="Позвать друга"
             onClick={() =>
-              void shareLink({ title: "Тренируемся вместе", text: `Заходи в мою комнату в Тяге. Код: ${room.code}`, url: link }, onToast)
+              void shareLink({ title: "Тренируемся вместе", text: `Код комнаты в Тяге: ${room.code}`, url: link }, onToast)
             }
           >
             <Share2 size={18} aria-hidden="true" />
@@ -199,7 +198,7 @@ export default function TogetherCard({
         </AnimatePresence>
       </ul>
 
-      {alone ? <p className="together-hint">Пока ты один. Отправь код или ссылку — напарник увидит твои подходы, как только войдёт.</p> : null}
+      {alone ? <p className="together-hint">Пока ты один — отправь код другу.</p> : null}
       {failure}
       <footer className="together-actions">
         <button type="button" className="button primary" onClick={onWorkout}>

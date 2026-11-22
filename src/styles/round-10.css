@@ -1,52 +1,189 @@
-/* R10: программа Дэвида Лейда (DUP, 9 недель) — карточка, окно создания, расписание на 9 недель.
+/* R10 + Motion Upgrade: программа Дэвида Лейда (DUP, 9 недель) — карточка, окно создания, расписание на 9 недель, активная тренировка.
    Телефон 390/360/320: без горизонтальной прокрутки, подписи переносятся, цели касания ≥ 44 px, плашки не сжимаются (flex: none). */
+
 .laid-card {
+  position: relative;
   padding: 20px;
-  margin-bottom: 18px;
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 14px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.laid-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px 12px;
 }
 .laid-card h3 {
-  margin-top: 6px;
-  font-size: 1.15rem;
+  font: 750 1.55rem/1.1 var(--font-display);
+  letter-spacing: -.01em;
   overflow-wrap: anywhere;
+}
+.laid-phase-badge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--line));
+  background: var(--bg);
+  color: var(--text-soft);
+  font-size: 0.76rem;
+  font-weight: 600;
+  line-height: 1.35;
 }
 .laid-week {
   font-weight: 650;
+  font-size: 0.94rem;
   font-variant-numeric: tabular-nums;
   color: var(--accent-hover, var(--accent));
   overflow-wrap: anywhere;
 }
+
+/* Трек прогресса 9 недель (3 волны × 3 недели) */
+.laid-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+}
+.laid-progress-segments {
+  display: grid;
+  grid-template-columns: repeat(9, minmax(0, 1fr));
+  gap: 4px;
+}
+.laid-seg {
+  position: relative;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--line-soft);
+  overflow: hidden;
+}
+.laid-seg.wave-end {
+  margin-right: 3px;
+}
+.laid-seg-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  transform-origin: left center;
+  background: color-mix(in srgb, var(--accent) 58%, var(--line-strong));
+}
+.laid-seg.active {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 65%, transparent);
+}
+.laid-seg.active .laid-seg-fill {
+  background: var(--accent);
+}
+.laid-progress-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 10px;
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+/* Сводка 4 максимумов на карточке */
+.laid-card-maxes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+@media (min-width: 560px) {
+  .laid-card-maxes {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+.laid-mini-max {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  padding: 7px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  font-variant-numeric: tabular-nums;
+}
+.laid-mini-max small {
+  font-size: 0.72rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.laid-mini-max b {
+  font-size: 0.88rem;
+  font-family: var(--font-mono, inherit);
+  color: var(--text);
+}
+
 .laid-days,
 .laid-maxes,
 .laid-preview ul,
 .laid-week-card ul,
-.laid-comp-day ul {
+.laid-comp-day ul,
+.laid-audit-card ul {
   list-style: none;
   margin: 0;
   padding: 0;
 }
 .laid-days {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10.5rem), 1fr));
   gap: 8px;
 }
 .laid-days li {
   display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--bg);
+  transition: border-color 0.18s ease;
+}
+.laid-days li.done {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--line));
+}
+.laid-days li.missed {
+  border-color: color-mix(in srgb, var(--danger) 38%, var(--line));
+}
+.laid-day-top {
+  display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: space-between;
   gap: 4px 8px;
   min-width: 0;
-  padding: 8px 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--line-soft);
+}
+.laid-day-title {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
 }
 .laid-day-name {
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
+}
+.laid-day-plan {
+  font-size: 0.78rem;
+  font-family: var(--font-mono, inherit);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-soft);
+  overflow-wrap: anywhere;
 }
 .laid-status {
   flex: none;
@@ -54,9 +191,10 @@
   padding: 2px 8px;
   border-radius: 6px;
   border: 1px solid var(--line-strong, var(--line));
-  font-size: 0.75rem;
+  background: var(--bg);
+  font-size: 0.74rem;
   font-weight: 650;
-  line-height: 1.5;
+  line-height: 1.45;
   white-space: nowrap;
   color: var(--muted);
 }
@@ -68,14 +206,24 @@
   color: var(--danger);
   border-color: color-mix(in srgb, var(--danger) 55%, transparent);
 }
+.laid-deload-hint {
+  margin: 0;
+  padding: 9px 11px;
+  border-radius: 10px;
+  border: 1px dashed var(--line-strong, var(--line));
+  background: var(--bg);
+  color: var(--text-soft);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
 .laid-suggest {
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 10px;
-  padding: 12px;
+  padding: 12px 14px;
   border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
-  border-radius: 10px;
+  border-radius: 12px;
   background: color-mix(in srgb, var(--accent) 6%, var(--bg));
   font-size: 0.875rem;
   line-height: 1.5;
@@ -117,17 +265,31 @@
   overflow-wrap: anywhere;
 }
 
-/* Окно создания */
+/* ───────────── Окно создания / обновления ───────────── */
+.laid-modal fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.laid-lead-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 .laid-lead {
   margin: 0;
-  font-size: 0.9rem;
-  line-height: 1.6;
+  font-size: 0.88rem;
+  line-height: 1.55;
   color: var(--text-soft);
 }
 .laid-fields {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 14px;
+  gap: 12px;
 }
 @media (min-width: 520px) {
   .laid-fields {
@@ -139,20 +301,66 @@
   flex-direction: column;
   gap: 6px;
   min-width: 0;
+  padding: 11px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  transition: border-color 0.18s ease;
+}
+.laid-field.is-valid {
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--line));
+}
+.laid-field.has-error {
+  border-color: color-mix(in srgb, var(--danger) 55%, var(--line));
+}
+.laid-field label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  font-weight: 600;
+  font-size: 0.86rem;
+}
+.laid-field-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 8px;
+}
+.laid-field-tag {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--muted);
 }
 .laid-input {
   position: relative;
   display: block;
 }
 .laid-input input {
+  width: 100%;
   min-height: 46px;
+  padding-right: 38px;
+  font-family: var(--font-mono, inherit);
+  font-size: 1rem;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
+}
+.laid-unit {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--muted);
+  pointer-events: none;
 }
 .laid-field-note {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 4px;
+  gap: 3px;
   min-width: 0;
 }
 .laid-error {
@@ -162,16 +370,24 @@
   color: var(--danger);
 }
 .laid-estimate {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   min-height: 44px;
-  padding: 6px 0;
+  min-width: 44px;
+  padding: 6px 2px;
   text-align: left;
   font-size: 0.8125rem;
+  font-weight: 600;
   color: var(--accent-hover, var(--accent));
   text-decoration: underline;
   text-underline-offset: 3px;
   overflow-wrap: anywhere;
 }
 .laid-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   min-width: 0;
 }
 .laid-choice {
@@ -185,26 +401,51 @@
   }
 }
 .laid-choice button {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 2px;
-  min-height: 52px;
+  justify-content: center;
+  min-height: 54px;
   padding: 10px 14px;
   text-align: left;
   border: 1px solid var(--line-strong, var(--line));
-  border-radius: 8px;
-  background: var(--line-soft);
-  font-size: 0.875rem;
+  border-radius: 10px;
+  background: var(--bg);
+  font-size: 0.86rem;
   line-height: 1.35;
+  overflow: hidden;
   overflow-wrap: anywhere;
-}
-.laid-choice button small {
-  color: var(--muted);
 }
 .laid-choice button.active {
   border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 10%, var(--bg));
+}
+.laid-choice-pill {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--accent) 11%, var(--bg));
+  pointer-events: none;
+}
+.laid-choice-body {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  pointer-events: none;
+}
+.laid-choice button small {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+/* Тумблеры настроек с пружинной анимацией */
+.laid-switches {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 .laid-switch {
   display: flex;
@@ -212,18 +453,18 @@
   justify-content: space-between;
   gap: 12px;
   width: 100%;
-  min-height: 52px;
-  padding: 10px 14px;
+  min-height: 56px;
+  padding: 11px 14px;
   text-align: left;
   border: 1px solid var(--line-strong, var(--line));
-  border-radius: 8px;
-  background: var(--line-soft);
+  border-radius: 11px;
+  background: var(--bg);
   font-size: 0.875rem;
   line-height: 1.4;
+  transition: border-color 0.18s ease;
 }
 .laid-switch[aria-checked="true"] {
   border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 10%, var(--bg));
 }
 .laid-switch-text {
   min-width: 0;
@@ -231,16 +472,24 @@
 }
 .laid-switch-text small {
   display: block;
-  margin-top: 2px;
+  margin-top: 3px;
   color: var(--muted);
   font-size: 0.78rem;
+}
+.laid-switch-control {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
 }
 .laid-switch-state {
   flex: none;
   padding: 2px 8px;
   border-radius: 6px;
   border: 1px solid var(--line-strong, var(--line));
-  font-size: 0.75rem;
+  background: var(--bg);
+  font-size: 0.74rem;
   font-weight: 650;
   color: var(--muted);
 }
@@ -248,6 +497,32 @@
   color: var(--accent-hover, var(--accent));
   border-color: color-mix(in srgb, var(--accent) 55%, transparent);
 }
+.laid-switch-track {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 36px;
+  height: 22px;
+  padding: 2px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong, var(--line));
+  background: var(--line-soft);
+}
+.laid-switch[aria-checked="true"] .laid-switch-track {
+  justify-content: flex-end;
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+  background: color-mix(in srgb, var(--accent) 22%, var(--bg));
+}
+.laid-switch-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.laid-switch[aria-checked="true"] .laid-switch-thumb {
+  background: var(--accent);
+}
+
 .laid-taken {
   margin: 0;
   padding: 10px 12px 10px 28px;
@@ -255,7 +530,32 @@
   line-height: 1.5;
   color: var(--text-soft);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+/* Живой предпросмотр первой недели */
+.laid-preview {
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 36%, var(--line));
+  background: var(--bg);
+}
+.laid-preview-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 10px;
+  margin-bottom: 8px;
+}
+.laid-preview-head .field-caption {
+  margin: 0;
+}
+.laid-preview-meta {
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
 }
 .laid-preview ul {
   display: flex;
@@ -264,21 +564,45 @@
 }
 .laid-preview li {
   display: flex;
-  flex-wrap: wrap;
-  gap: 2px 10px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding-top: 7px;
+  border-top: 1px solid var(--line-soft);
   font-size: 0.8125rem;
   font-variant-numeric: tabular-nums;
 }
-.laid-preview li b {
-  flex: none;
-  min-width: 4.2rem;
+@media (min-width: 480px) {
+  .laid-preview li {
+    display: grid;
+    grid-template-columns: 6.2rem minmax(0, 1fr);
+    align-items: baseline;
+    gap: 4px 12px;
+  }
 }
-.laid-preview li span {
+.laid-preview li:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+.laid-preview-day {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  flex: none;
+  min-width: 5.2rem;
+}
+.laid-preview-day small {
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+.laid-preview-line {
   min-width: 0;
+  font-family: var(--font-mono, inherit);
+  color: var(--text-soft);
   overflow-wrap: anywhere;
 }
 
-/* Расписание на 9 недель */
+/* ───────────── Расписание на 9 недель ───────────── */
 .laid-schedule {
   display: flex;
   flex-direction: column;
@@ -290,33 +614,105 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
+@media (min-width: 640px) {
+  .laid-maxes {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
 .laid-maxes li {
   display: flex;
   flex-direction: column;
   gap: 2px;
   min-width: 0;
-  padding: 8px 10px;
+  padding: 10px 12px;
   border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--line-soft);
+  border-radius: 10px;
+  background: var(--bg);
   font-variant-numeric: tabular-nums;
 }
 .laid-maxes li b {
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   color: var(--muted);
   font-weight: 600;
 }
+.laid-maxes li span {
+  font-size: 1rem;
+  font-weight: 700;
+  font-family: var(--font-mono, inherit);
+}
 .laid-maxes li small {
   color: var(--muted);
-  font-size: 0.75rem;
+  font-size: 0.74rem;
   overflow-wrap: anywhere;
 }
 .laid-explain {
   margin: 0;
-  font-size: 0.875rem;
-  line-height: 1.6;
+  font-size: 0.86rem;
+  line-height: 1.58;
   color: var(--text-soft);
 }
+
+/* Вкладки фильтра волн с общим layoutId индикатором */
+.laid-wave-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 4px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+}
+@media (min-width: 460px) {
+  .laid-wave-tabs {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+.laid-wave-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 6px 10px;
+  border-radius: 9px;
+  font-size: 0.82rem;
+  font-weight: 650;
+  color: var(--muted);
+  text-align: center;
+  overflow: hidden;
+}
+.laid-wave-tab.active {
+  color: var(--text);
+}
+.laid-wave-tab-pill {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--line));
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  pointer-events: none;
+}
+.laid-wave-tab-label {
+  position: relative;
+  z-index: 1;
+  pointer-events: none;
+}
+.laid-wave-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--line));
+  background: var(--bg);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+.laid-wave-banner span {
+  color: var(--muted);
+}
+
 .laid-weeks {
   list-style: none;
   margin: 0;
@@ -332,64 +728,179 @@
 }
 .laid-week-card {
   min-width: 0;
-  padding: 12px;
+  padding: 13px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 12px;
+  background: var(--bg);
   scroll-margin-top: 8px;
 }
 .laid-week-card.current {
   border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 6%, var(--bg));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 7%, transparent), transparent 46%),
+    var(--bg);
 }
 .laid-week-card h4 {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 10px;
-  margin: 0 0 8px;
-  font-size: 0.9rem;
+  gap: 4px 8px;
+  margin: 0 0 10px;
+  font-size: 0.92rem;
+}
+.laid-wave-tag {
+  font-size: 0.74rem;
+  font-weight: 500;
+  color: var(--muted);
 }
 .laid-now {
   flex: none;
+  margin-left: auto;
   padding: 2px 8px;
   border-radius: 6px;
   background: var(--accent);
-  color: var(--accent-soft);
+  color: var(--on-accent, var(--accent-soft));
   font-size: 0.72rem;
   font-weight: 700;
+  line-height: 1.4;
+  white-space: nowrap;
 }
 .laid-week-card ul {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 9px;
 }
 .laid-week-card li {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 2px 8px;
+  gap: 3px 8px;
   min-width: 0;
+  padding-top: 7px;
+  border-top: 1px solid var(--line-soft);
   font-size: 0.8125rem;
+}
+.laid-week-card li:first-child {
+  padding-top: 0;
+  border-top: 0;
 }
 .laid-week-card li b {
   flex: none;
   min-width: 3.6rem;
 }
+.laid-day-weekday {
+  flex: none;
+  font-size: 0.73rem;
+  font-family: var(--font-mono, inherit);
+  font-weight: 600;
+  color: var(--muted);
+}
+.laid-pct-tag {
+  flex: none;
+  font-size: 0.73rem;
+  font-family: var(--font-mono, inherit);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.laid-week-card li .laid-status {
+  margin-left: auto;
+}
 .laid-week-card li .laid-plan-line {
   flex: 1 1 100%;
   min-width: 0;
+  font-family: var(--font-mono, inherit);
   color: var(--text-soft);
 }
+.laid-wave-aux {
+  flex: 1 1 100%;
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+.laid-intensity-bar {
+  flex: 1 1 100%;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--line-soft);
+  overflow: hidden;
+}
+.laid-intensity-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  transform-origin: left center;
+  background: color-mix(in srgb, var(--accent) 68%, var(--line-strong));
+}
+.laid-intensity-fill.reps-1 {
+  background: var(--accent);
+}
+
+/* Состав дней и аудит упражнений */
+.laid-composition {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0 12px;
+  background: var(--bg);
+}
 .laid-composition summary {
-  min-height: 44px;
+  min-height: 46px;
   display: flex;
   align-items: center;
   cursor: pointer;
-  font-size: 0.875rem;
+  font-size: 0.88rem;
+  font-weight: 650;
+}
+.laid-composition-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 0 14px;
+  border-top: 1px solid var(--line-soft);
+}
+.laid-audit-card {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--line));
+  background: var(--surface);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--text-soft);
+}
+.laid-audit-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 6px;
+  color: var(--text);
+  font-size: 0.82rem;
+}
+.laid-audit-head svg {
+  color: var(--accent-hover, var(--accent));
+}
+.laid-audit-card ul {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.laid-audit-card li {
+  position: relative;
+  padding-left: 12px;
+  overflow-wrap: anywhere;
+}
+.laid-audit-card li::before {
+  content: "·";
+  position: absolute;
+  left: 2px;
+  color: var(--accent-hover, var(--accent));
+  font-weight: 700;
+}
+.laid-comp-day {
+  padding-top: 8px;
+  border-top: 1px solid var(--line-soft);
 }
 .laid-comp-day h4 {
-  margin: 10px 0 6px;
-  font-size: 0.875rem;
+  margin: 0 0 8px;
+  font-size: 0.88rem;
 }
 .laid-comp-day h4 small {
   color: var(--muted);
@@ -398,25 +909,43 @@
 .laid-comp-day ul {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 7px;
 }
 .laid-comp-day li {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 2px 8px;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
   font-size: 0.8125rem;
 }
-.laid-comp-day li > span:first-child {
+.laid-comp-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 3px 8px;
   min-width: 0;
+}
+.laid-comp-row > span:first-child {
+  min-width: 0;
+  font-weight: 550;
+  overflow-wrap: anywhere;
+}
+.laid-comp-meta {
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
 .laid-origin {
   flex: none;
-  padding: 1px 7px;
+  padding: 2px 7px;
   border-radius: 6px;
   border: 1px solid var(--line-strong, var(--line));
+  background: var(--bg);
   font-size: 0.72rem;
+  line-height: 1.4;
   white-space: nowrap;
   color: var(--muted);
 }
@@ -425,9 +954,16 @@
   border-color: color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
-/* QA-R10-05: подпись «ПРОГРАММА ЛЕЙДА» на фиолетовой теме — тот же светлый тон акцента, что у остального текста Лейда. */
-.laid-card .eyebrow {
-  color: var(--accent-hover, var(--accent));
+/* Активная тренировка: выделение плана Лейда и тяжёлого топ-сета */
+.progression-banner.laid-plan-banner {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--line));
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--accent) 10%, transparent), transparent 65%),
+    var(--bg);
+  font-variant-numeric: tabular-nums;
+}
+.set-row.laid-top-set:not(.done) {
+  border-left: 3px solid var(--accent);
 }
 
 /* QA-R10-08: основной лифт Лейда в редакторе — вместо плоских полей пояснение. */
@@ -495,4 +1031,355 @@
 .app-error-panel {
   width: min(100%, 520px);
   margin: 0 auto;
+}
+
+/* ───────────── Перестановка дней недели цикла Лейда (Пн–Вс) ───────────── */
+:root.laid-dragging,
+:root.laid-dragging * {
+  cursor: grabbing !important;
+}
+:root.laid-vt-active {
+  view-transition-name: none;
+}
+::view-transition {
+  pointer-events: none;
+}
+::view-transition-group(.laid-slot) {
+  animation-duration: 240ms;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+
+.laid-week-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.laid-week-editor {
+  --drop-marker-color: var(--accent);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.laid-week-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.laid-preset-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 6px 12px;
+  border-radius: 9px;
+  border: 1px solid var(--line-strong, var(--line));
+  background: var(--bg);
+  color: var(--text-soft);
+  font-size: 0.8rem;
+  font-weight: 600;
+  transition: border-color 150ms ease-out, background-color 150ms ease-out, scale 150ms ease-out;
+}
+.laid-preset-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.laid-preset-btn:active:not(:disabled) {
+  scale: 0.97;
+}
+.laid-preset-btn.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+  color: var(--text);
+}
+.laid-preset-reset {
+  margin-left: auto;
+  color: var(--muted);
+}
+
+.laid-week-editor-list {
+  position: relative;
+  list-style: none;
+  margin: 0;
+  padding: 4px 2px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+/* Drop-маркер: кольцо (::before) и линия (::after) в промежутке между строками. */
+.laid-week-editor-list[data-drop="active"]::before,
+.laid-week-editor-list[data-drop="active"]::after {
+  content: "";
+  position: fixed;
+  pointer-events: none;
+  z-index: 40;
+}
+.laid-week-editor-list[data-drop="active"]::before {
+  left: calc(var(--drop-x) - 3px);
+  top: calc(var(--drop-y) - 4px);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 2px solid var(--drop-marker-color);
+  background: var(--bg);
+}
+.laid-week-editor-list[data-drop="active"]::after {
+  left: calc(var(--drop-x) + 5px);
+  top: calc(var(--drop-y) - 1px);
+  width: max(0px, calc(var(--drop-w) - 5px));
+  height: var(--drop-h, 2px);
+  border-radius: 999px;
+  background: var(--drop-marker-color);
+}
+@media (forced-colors: active) {
+  .laid-week-editor-list[data-drop="active"]::before {
+    border-color: Highlight;
+  }
+  .laid-week-editor-list[data-drop="active"]::after {
+    background: Highlight;
+  }
+}
+
+.laid-week-slot {
+  position: relative;
+  display: grid;
+  grid-template-columns: 44px auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px;
+  border-radius: 11px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  scroll-margin: 14px;
+  view-transition-name: var(--laid-vt-name);
+  view-transition-class: laid-slot;
+  transition: border-color 150ms ease-out, background-color 150ms ease-out, box-shadow 150ms ease-out;
+}
+.laid-week-slot:last-child {
+  margin-bottom: 6px;
+}
+.laid-week-slot.is-rest {
+  border-style: dashed;
+  background: color-mix(in srgb, var(--surface) 55%, var(--bg));
+}
+.laid-week-slot.is-dragging {
+  z-index: 20;
+  scale: 1.015;
+  border-color: var(--accent);
+  box-shadow: 0 12px 28px rgb(0 0 0 / 0.42);
+  pointer-events: none;
+}
+.laid-week-slot.is-grabbed {
+  z-index: 15;
+  scale: 1.01;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.laid-week-slot:has(.laid-drag-handle:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.laid-drag-handle {
+  display: inline-grid;
+  place-items: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: grab;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  opacity: 0.78;
+  transition: background-color 140ms ease-out, color 140ms ease-out, opacity 140ms ease-out;
+}
+.laid-drag-handle:is(:hover, :focus-visible) {
+  opacity: 1;
+  color: var(--text);
+  background: var(--surface-2, var(--surface));
+  outline: none;
+}
+.laid-drag-handle[aria-pressed="true"] {
+  opacity: 1;
+  color: var(--accent-hover, var(--accent));
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg));
+}
+
+.laid-slot-day {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  min-width: 2.1rem;
+  padding: 4px 5px;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  font-family: var(--font-mono, inherit);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-soft);
+  font-variant-numeric: tabular-nums;
+}
+.laid-week-slot.is-rest .laid-slot-day {
+  color: var(--muted);
+}
+
+.laid-slot-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.laid-slot-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  font-size: 0.86rem;
+  line-height: 1.25;
+}
+.laid-slot-title b {
+  font-weight: 680;
+  overflow-wrap: anywhere;
+}
+.laid-week-slot.is-rest .laid-slot-title {
+  color: var(--muted);
+}
+.laid-slot-sub {
+  font-size: 0.73rem;
+  font-family: var(--font-mono, inherit);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.laid-slot-key-hint {
+  display: none;
+  font-size: 0.72rem;
+  color: var(--accent-hover, var(--accent));
+}
+.laid-week-slot:has(.laid-drag-handle:focus-visible) .laid-slot-key-hint,
+.laid-week-slot.is-grabbed .laid-slot-key-hint {
+  display: block;
+}
+
+.laid-slot-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+.laid-move-btn {
+  display: inline-grid;
+  place-items: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text-soft);
+  transition: border-color 140ms ease-out, background-color 140ms ease-out, scale 140ms ease-out;
+}
+.laid-move-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.laid-move-btn:active:not(:disabled) {
+  scale: 0.95;
+}
+.laid-move-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.laid-move-btn:disabled {
+  opacity: 0.34;
+}
+
+@media (max-width: 400px) {
+  .laid-week-slot {
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
+    gap: 2px 6px;
+  }
+  .laid-drag-handle {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+  }
+  .laid-slot-day {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: start;
+    padding: 2px 6px;
+    font-size: 0.7rem;
+  }
+  .laid-slot-body {
+    grid-column: 2;
+    grid-row: 2;
+  }
+  .laid-slot-controls {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+  }
+}
+
+.laid-week-hints {
+  list-style: none;
+  margin: 0;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px dashed var(--line-strong, var(--line));
+  background: var(--bg);
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.laid-custom-order {
+  margin-top: 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0 12px;
+  background: var(--bg);
+}
+.laid-custom-order summary {
+  min-height: 46px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 10px;
+  cursor: pointer;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+.laid-custom-badge {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  font-size: 0.72rem;
+  font-weight: 650;
+  color: var(--accent-hover, var(--accent));
+}
+.laid-custom-order-body {
+  padding: 6px 0 12px;
+  border-top: 1px solid var(--line-soft);
 }

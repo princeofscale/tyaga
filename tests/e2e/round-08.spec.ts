@@ -160,7 +160,7 @@ for (const size of SIZES) {
 
 // ───────────── REQ03: «Записать вес» на первом экране ─────────────
 async function openWeight(page: Page) {
-  await page.getByRole("button", { name: /^Инструменты/ }).last().click();
+  await page.getByRole("button", { name: "Ещё", exact: true }).last().click();
   await page.getByRole("button", { name: /Вес тела и тренд.*синхронизация/ }).click();
   const dialog = page.getByRole("dialog").last();
   await expect(dialog.getByLabel("Вес, кг", { exact: true })).toBeVisible();
@@ -317,7 +317,7 @@ for (const size of SIZES) {
     // подпись списка «К месяцу»
     const jump = page.getByLabel("Перейти к месяцу", { exact: true });
     await jump.scrollIntoViewIfNeeded();
-    const fit = await jump.evaluate((el) => ({ scroll: el.scrollWidth, client: el.clientWidth, text: (el as HTMLSelectElement).selectedOptions[0]?.text ?? "" }));
+    const fit = await jump.evaluate((el) => ({ scroll: el.scrollWidth, client: el.clientWidth, text: (el as unknown as HTMLSelectElement).selectedOptions[0]?.text ?? "" }));
     expect(fit.scroll).toBeLessThanOrEqual(fit.client + 1);
     expect(fit.text).toMatch(/месяцу/);
     expect(fit.text).not.toContain("…" + "…");

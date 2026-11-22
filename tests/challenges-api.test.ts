@@ -185,12 +185,15 @@ test("workout body mass accepts the same range as the weighing journal", async (
   }
 });
 
-test("curated release-3 machines require identity, while old backups retain an isolated unknown-machine marker", async () => {
+test("release-3 machines save without a station while legacy import keeps its unknown-machine marker", async () => {
   const { call, db } = await setup();
   try {
     const w = makeWorkout(["extension-v-pushdown"], [], "UTC");
     w.exercises[0].sets[0].done = true;
-    assert.equal((await call("a", "/api/workouts", "PUT", w)).status, 400);
+    const saved = await call<{ workout: typeof w }>("a", "/api/workouts", "PUT", w);
+    assert.equal(saved.status, 200);
+    assert.equal(saved.data.workout.exercises[0].equipmentNote, undefined);
+    assert.equal(saved.data.workout.exercises[0].machineInstanceId, undefined);
     const { WorkoutImport } = await import("../src/domain/WorkoutImport");
     const preview = new WorkoutImport({
       dateOrder: "dmy",
@@ -198,8 +201,9 @@ test("curated release-3 machines require identity, while old backups retain an i
       distanceUnit: "km",
       timeZone: "UTC",
     }).parse(JSON.stringify({ version: 3, workouts: [w] }), "tyaga");
+    // Import in a separate journal so content deduplication cannot mask the legacy path.
     const imported = await call<{ workouts: (typeof w)[] }>(
-      "a",
+      "b",
       "/api/import",
       "POST",
       { format: "tyaga", workouts: preview.workouts },

@@ -15,16 +15,17 @@ import { ImportOrigin } from "./domain/ImportOrigin";
 import { applyTheme, getCurrentTheme } from "./lib/theme";
 import { BodyweightProvider, useBodyweight } from "./state/BodyweightContext";
 import { BodyMass } from "./domain/BodyMass";
-import type { TrainingMeetup } from "./domain/TrainingMeetups";
 import { friendsApi } from "./services/FriendsApi";
 import { LiveBroadcastPolicy, LiveStateBuilder } from "./domain/LiveSession";
 import { WorkoutConflict } from "./domain/WorkoutConflict";
+import { LaidDupPlan, type LaidAutoUpdate } from "./domain/LaidDupPlan";
 import { LiveFinished } from "./lib/liveFinished";
 import { takeRoomInvite } from "./lib/invite";
 import { useLiveBroadcast } from "./lib/useLiveBroadcast";
 import { useDraftTabs } from "./lib/useDraftTabs";
 import { useLiveRoom } from "./components/LiveRoomProvider";
 import ProgressOverview from "./components/ProgressOverview";
+import "./styles/progress-redesign.css";
 import MovementBalance from "./components/MovementBalance";
 import ToolsHub from "./components/ToolsHub";
 import {
@@ -34,6 +35,7 @@ import {
   useMemo,
   useState,
   useRef,
+  type SetStateAction,
 } from "react";
 import {
   BarChart3,
@@ -41,7 +43,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
-  Clock3,
+  Pill,
   Download,
   Dumbbell,
   History,
@@ -53,10 +55,8 @@ import {
   Settings2,
   Sparkles,
   Target,
-  Trash2,
   TrendingUp,
   X,
-  Scale,
   BatteryCharging,
   Flame,
   Smartphone,
@@ -76,10 +76,7 @@ import {
   exerciseForEntry,
   entryName,
   entrySpec,
-  recordingLabel,
-  recordingNote,
   recordingSentence,
-  recordedLoad,
   progressKey,
   fmt,
   localDate,
@@ -90,7 +87,6 @@ import {
   repeatWorkout,
   muscleLoad,
   anatomicalLoad,
-  legacyMuscleLoad,
   volume,
   volumeSummary,
   weekStart,
@@ -108,12 +104,12 @@ import {
 import { VolumeChart, Sparkline } from "./components/Charts";
 import Modal from "./components/Modal";
 import Select from "./components/Select";
-import WorkoutView from "./components/WorkoutView";
 import HistoryList from "./components/HistoryList";
+import WorkoutView from "./components/WorkoutView";
 import { MuscleCoverage } from "./domain/MuscleCoverage";
 import { DateText } from "./domain/DateText";
-import TrainingPlate from "./components/TrainingPlate";
-import { AnimatePresence, m } from "motion/react";
+import TodayDashboard from "./components/TodayDashboard";
+import { AnimatePresence, LayoutGroup, m, useReducedMotion } from "motion/react";
 import {
   AnatomyExplorer,
   ExerciseLibrary,
@@ -121,8 +117,8 @@ import {
   FriendsScreen,
   PersonalExerciseEditor,
   HistoryImporter,
-  AppleHealthPanel,
   PoseAnalysisPanel,
+  WorkoutDetailModal,
 } from "./components/chunks";
 import PlateCalculator from "./components/PlateCalculator";
 import TabErrorBoundary from "./components/TabErrorBoundary";
@@ -135,10 +131,9 @@ import { VolumeLandmarksModal } from "./components/VolumeLandmarksModal";
 import StatsAnalytics from "./components/StatsAnalytics";
 import InteractiveStrengthChart from "./components/InteractiveStrengthChart";
 import ExerciseInfo from "./components/ExerciseInfo";
-import WeeklyActivityBar from "./components/WeeklyActivityBar";
+import SessionCard from "./components/SessionCard";
 import {
   readDraft,
-  persistDraft,
   checkpointDraft,
   elapsedMs,
   newDraft,
@@ -152,30 +147,33 @@ import { PendingWorkouts } from "./domain/PendingWorkouts";
 import { TimeZoneField } from "./components/TimeZoneField";
 import { DeloadPlan, type DeloadPlanRecord } from "./domain/DeloadPlan";
 import { DeloadEngine } from "./domain/DeloadEngine";
-import { PlanLine } from "./domain/PlanLine";
 import { BackdatedWorkout } from "./domain/BackdatedWorkout";
 import { DeloadHint } from "./domain/DeloadHint";
 import { usePendingWorkouts } from "./hooks/usePendingWorkouts";
 import { productService } from "./services/ProductService";
-import { TrainingProgram, nextScheduled } from "./domain/TrainingProgram";
+import { calendarWeekday, DAY_NAMES, TrainingProgram } from "./domain/TrainingProgram";
+import { TrainingCalendar, type ScheduledTraining } from "./domain/TrainingCalendar";
 import { useTrainingTools } from "./lib/webmcp";
 import { AccountProfileForm } from "./components/AccountProfileForm";
 import type { AccountProfile } from "./lib/account";
 import SessionInsights from "./components/SessionInsights";
+import SupplementsScreen from "./components/SupplementsScreen";
+import SmartCoachPanel from "./components/SmartCoachPanel";
+import { SupplementsStore, type SupplementsState } from "./domain/Supplements";
 import { saveFile } from "./lib/saveFile";
 import { ProgressSeries } from "./domain/ProgressSeries";
 import "./styles/progress.css";
 import type { Release } from "./device/appUpdate";
 
 type ProductView =
-  "overview" | "workout" | "history" | "library" | "progress" | "programs" | "friends";
+  "overview" | "workout" | "history" | "library" | "progress" | "programs" | "friends" | "supplements";
 const NAV = [
   { id: "overview", label: "Сегодня", icon: House },
-  { id: "programs", label: "Программы", icon: CalendarDays },
-  { id: "friends", label: "Друзья", icon: Users },
   { id: "history", label: "История", icon: History },
   { id: "progress", label: "Прогресс", icon: BarChart3 },
+  { id: "programs", label: "Программы", icon: CalendarDays },
   { id: "library", label: "Упражнения", icon: Dumbbell },
+  { id: "friends", label: "Друзья", icon: Users },
 ] as const;
 const EQ_OPTIONS = [
   { value: "gym", label: "Весь зал" },
@@ -190,6 +188,37 @@ const dateLabel = (date: string, long = false) =>
   });
 type AppProps = { account: AccountProfile; onAccountChange: (p: AccountProfile) => void; onLogout: () => void };
 export default function App(props:AppProps) {return <BodyweightProvider accountId={props.account.id} timeZone={props.account.timeZone}><JournalApp {...props}/></BodyweightProvider>;}
+
+function ResumePillClock({ draft, timeZone }: { draft: Draft; timeZone?: string }) {
+  const [now, setNow] = useState(() => Date.now());
+  const manual = BackdatedWorkout.manualDuration(draft, timeZone);
+  const running = !manual && draft.clock.runningSince !== null;
+  useEffect(() => {
+    if (!running) return;
+    const tick = () => setNow(Date.now());
+    const id = setInterval(tick, 1000);
+    const onVis = () => {
+      if (document.visibilityState === "visible") tick();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [running]);
+  if (manual) return <b>{draft.workout.duration} мин</b>;
+  const totalSec = Math.floor(elapsedMs(draft, now) / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  return (
+    <b>
+      {h > 0
+        ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+        : `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`}
+    </b>
+  );
+}
 
 function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
   const weights=useBodyweight();
@@ -217,13 +246,38 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
   const [offlineData, setOfflineData] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(() => readDraft(draftKey));
   useLiveBroadcast(draft, draftKey);
+  // Входы экранов: уважают «уменьшить движение» и не задерживают проверки скриншотов.
+  const reduceMotion = useReducedMotion();
+  const enter = (delay: number) =>
+    reduceMotion
+      ? {}
+      : {
+          initial: { opacity: 0.82, y: 4 },
+          animate: { opacity: 1, y: 0 },
+          transition: {
+            duration: 0.2,
+            delay: Math.min(delay, 0.08),
+            ease: [0.22, 1, 0.36, 1] as [number, number, number, number],
+          },
+        };
   const [legacyDraft, setLegacyDraft] = useState(() => readDraft(DRAFT_KEY));
   const [conflict, setConflict] = useState<{ current: Workout | null } | null>(
     null,
   );
   const [mapping, setMapping] = useState<"recorded" | "current">("recorded");
   const [hardSetsOnly, setHardSetsOnly] = useState(false);
-  const [progressTab, setProgressTab] = useState<"balance" | "analytics" | "strength" | "anatomy" | "bodyweight">("analytics");
+  const [progressTab, setProgressTab] = useState<"balance" | "analytics" | "coach" | "strength" | "anatomy" | "bodyweight">("analytics");
+  const [supplements, setSupplements] = useState<SupplementsState>(() => SupplementsStore.load(account.id));
+  useEffect(() => {
+    setSupplements(SupplementsStore.load(account.id));
+  }, [account.id]);
+  const updateSupplements = useCallback(
+    (next: SupplementsState) => {
+      setSupplements(next);
+      SupplementsStore.save(account.id, next);
+    },
+    [account.id],
+  );
   // Отказ («сначала заверши черновик») не должен выглядеть как успех: у уведомления два тона.
   const [notice, setNotice] = useState<{ text: string; tone: "ok" | "warn" }>({ text: "", tone: "ok" });
   const toast = notice.text;
@@ -423,23 +477,6 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
     window.addEventListener("tyaga:synced", reload);
     return () => window.removeEventListener("tyaga:synced", reload);
   }, [load]);
-  const hasDraft = !!draft;
-  useEffect(() => {
-    if (!hasDraft) return;
-    const checkpoint = () => setDraft((d) => (d ? checkpointDraft(d) : d));
-    const pause = () => {
-      if (document.visibilityState === "hidden")
-        setDraft((d) => (d ? checkpointDraft(d, Date.now(), true) : d));
-    };
-    const id = setInterval(checkpoint, 15000);
-    document.addEventListener("visibilitychange", pause);
-    window.addEventListener("pagehide", pause);
-    return () => {
-      clearInterval(id);
-      document.removeEventListener("visibilitychange", pause);
-      window.removeEventListener("pagehide", pause);
-    };
-  }, [hasDraft]);
   useEffect(() => {
     if (!toast) return;
     const id = setTimeout(() => setToast(""), 4500);
@@ -535,44 +572,69 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
   const deloadStore = useMemo(() => new DeloadPlan(undefined, account.id), [account.id]);
   const [deload, setDeload] = useState<DeloadPlanRecord | null>(null);
   useEffect(() => setDeload(deloadStore.read(today)), [deloadStore, today]);
-  /** Тренировка из программы: с действующей разгрузкой — с уменьшенным весом и числом подходов. */
-  const programWorkout = (r: Routine) => {
-    const program = new TrainingProgram(r);
-    const tz = settings.timeZone ?? browserTimeZone();
-    // QA-R06-02: при разгрузке вес программы берётся из неразгрузочных тренировок, а не из прошлой разгрузочной.
+  /**
+   * Максимумы программы Лейда обновляются сами: как только в журнале появляются подходы, дающие оценку 1ПМ
+   * на 5 % выше действующей, план переезжает на новые числа с текущей недели (прошлые недели не меняются —
+   * старая настройка уходит в историю). Срабатывает на любое изменение журнала: сохранение, правка, синхронизация.
+   */
+  const laidAutoBusy = useRef(false);
+  useEffect(() => {
+    // Без связи (открыта копия последнего ответа) программы не сохранить: не трогаем и не шумим — останется подсказка.
+    if (loading || demo || offlineData || laidAutoBusy.current) return;
+    const cycles = LaidDupPlan.cycles(product.routines);
+    if (!cycles.length) return;
+    const due: { cycle: Routine[]; update: LaidAutoUpdate }[] = [];
+    for (const cycle of cycles) {
+      const update = LaidDupPlan.autoMaxes(cycle[0].periodization!, workouts, today);
+      if (update) due.push({ cycle, update });
+    }
+    if (!due.length) return;
+    laidAutoBusy.current = true;
+    void (async () => {
+      try {
+        const saved: Routine[] = [];
+        for (const { cycle, update } of due)
+          for (const routine of cycle)
+            saved.push(
+              (await productService.saveRoutine({
+                ...routine,
+                periodization: LaidDupPlan.withMaxes(routine.periodization!, update.maxes, update.fromWeek),
+              })).routine,
+            );
+        setProduct((p) => ({
+          ...p,
+          routines: [...saved, ...p.routines.filter((r) => !saved.some((s) => s.id === r.id))],
+        }));
+        setNotice({ text: due.map((item) => LaidDupPlan.autoNotice(item.update)).join(" "), tone: "ok" });
+      } catch {
+        // Нет связи: подсказка «Можно обновить максимум» останется на карточке.
+        setNotice({ text: "Максимумы Лейда не обновились автоматически: проверь связь или обнови их вручную.", tone: "warn" });
+      } finally {
+        laidAutoBusy.current = false;
+      }
+    })();
+  }, [workouts, product.routines, loading, demo, offlineData, today]);
+  const timeZone = settings.timeZone ?? browserTimeZone();
+  const programWorkout = useCallback((routine: Routine, slot?: ScheduledTraining) => {
+    const program = new TrainingProgram(routine);
+    const date = slot?.date ?? today;
+    // Вес берём из обычной истории, даже если планируем разгрузку.
     const base = deload ? DeloadEngine.regular(workouts) : workouts;
-    return DeloadPlan.workout(program.start(base, tz), deload, program.isDeload(workouts, today));
-  };
-  const nextProgramDay = useMemo(() => nextScheduled(product.routines, today), [product.routines, today]);
-  const todayRoutine = product.routines.find((r) =>
-    new TrainingProgram(r).scheduled(today),
-  );
-  // Preview only; starting builds a fresh workout so ids never repeat.
-  const todayPlan = useMemo(
-    () =>
-      todayRoutine
-        ? DeloadPlan.workout(
-            new TrainingProgram(todayRoutine).start(deload ? DeloadEngine.regular(workouts) : workouts, settings.timeZone ?? browserTimeZone()),
-            deload,
-            new TrainingProgram(todayRoutine).isDeload(workouts, today),
-          )
-        : null,
-    [todayRoutine, workouts, settings.timeZone, deload, today],
-  );
-  const todaySources = useMemo(
-    () =>
-      todayRoutine
-        ? new TrainingProgram(todayRoutine).weightSources(
-            workouts,
-            settings.timeZone ?? browserTimeZone(),
-            today,
-          )
-        : [],
-    [todayRoutine, workouts, settings.timeZone, today],
-  );
+    return DeloadPlan.workout(
+      program.start(base, timeZone, date, slot?.originalDate),
+      deload,
+      program.isDeload(workouts, slot?.originalDate ?? date),
+    );
+  }, [deload, workouts, timeZone, today]);
+  const todaySlots = useMemo(() => TrainingCalendar.onDate(product.routines, today), [product.routines, today]);
+  const todaySlot = todaySlots.find((slot) => !TrainingCalendar.completed(slot, workouts));
+  const completedToday = !todaySlot && todaySlots.length ? TrainingCalendar.completed(todaySlots[0], workouts) : undefined;
+  const nextSlot = useMemo(() => TrainingCalendar.next(product.routines, today, workouts), [product.routines, today, workouts]);
+  // Начало пересобирает тренировку: идентификаторы предпросмотра не сохраняются.
+  const todayPlan = useMemo(() => todaySlot ? programWorkout(todaySlot.routine, todaySlot) : null, [todaySlot, programWorkout]);
+  const todaySources = useMemo(() => todaySlot ? new TrainingProgram(todaySlot.routine).weightSources(workouts, timeZone, today) : [], [todaySlot, workouts, timeZone, today]);
   const weekDone = currentLoads.reduce((n, m) => n + Math.min(m.total, m.goal), 0);
   const weekGoal = currentLoads.reduce((n, m) => n + m.goal, 0);
-  const weekNote = zoneCreditNote(weekDone, workingSets(currentWeek));
   const zonesNote = zoneCreditNote(
     loads.reduce((n, m) => n + Math.min(m.total, m.goal), 0),
     workingSets(weekWorkouts),
@@ -580,11 +642,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
   const currentLagging = [...currentLoads]
     .sort((a, b) => a.ratio - b.ratio)
     .filter((m) => m.ratio < 0.8);
-  const lagging = currentLagging.filter((m) => m.ratio < 0.5).slice(0, 3);
-  const monthWorkouts = displayed.filter((w) => {
-    const today = localDate(new Date(), settings.timeZone);
-    return w.date >= addCalendarDays(today, -27) && w.date <= today;
-  });
+  const monthWorkouts = displayed.filter((w) => w.date >= addCalendarDays(today, -27) && w.date <= today);
   const go = (v: ProductView) => {
     setView(v);
     window.scrollTo({ top: 0, behavior: "instant" });
@@ -597,9 +655,49 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
     accountId: account.id,
     notify: warn,
     onClosed: () => setView((v) => (v === "workout" ? "overview" : v)),
-    claimOnTouch: view === "workout",
   });
   const persistence = tabs.persistence;
+  const restoredLegacyId = useRef<string | null>(null);
+  useEffect(() => {
+    const id = restoredLegacyId.current;
+    if (!id || draft?.workout.id !== id || tabs.role !== "owner" || persistence !== "saved") return;
+    const saved = readDraft(draftKey);
+    if (saved?.workout.id !== id || saved.owner !== tabs.tab) return;
+    try {
+      if (readDraft(DRAFT_KEY)?.workout.id === id) localStorage.removeItem(DRAFT_KEY);
+    } catch { return; }
+    restoredLegacyId.current = null;
+    setLegacyDraft(null);
+  }, [draft?.workout.id, draftKey, tabs.role, tabs.tab, persistence]);
+  const canEditWorkout = tabs.canEdit;
+  const hasDraft = !!draft;
+  const workoutReadOnly = hasDraft && tabs.role !== "owner";
+  const workoutFrame = useRef<HTMLElement>(null);
+  const updateWorkoutDraft = useCallback((change: SetStateAction<Draft | null>) => {
+    if (canEditWorkout()) setDraft(change);
+  }, [canEditWorkout]);
+  useEffect(() => {
+    if (!hasDraft || workoutReadOnly) return;
+    // Сохраняем накопленное время на диск без принудительной паузы при смене вкладки/блокировке экрана.
+    const checkpoint = () => updateWorkoutDraft((d) => (d ? checkpointDraft(d, Date.now(), false) : d));
+    const onVisibility = () => {
+      updateWorkoutDraft((d) => (d ? checkpointDraft(d, Date.now(), false) : d));
+    };
+    const id = setInterval(checkpoint, 15000);
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", checkpoint);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", checkpoint);
+    };
+  }, [hasDraft, workoutReadOnly, updateWorkoutDraft]);
+  useEffect(() => {
+    if (view !== "workout" || !workoutReadOnly) return;
+    setModal((value) => value === "picker" || value === "personal" ? null : value);
+    setExerciseDetail(null);
+    setConflict(null);
+  }, [view, workoutReadOnly]);
   // Строка «это окно основное» уходит, когда человек ушёл с экрана тренировки: тогда вёрстка под пальцем не меняется.
   const dismissTabNote = tabs.dismissNote;
   useEffect(() => {
@@ -673,7 +771,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, []);
-  const restNotification=useRestNotifications(account.id,draft,setDraft,()=>go("workout"),view==="workout");
+  const restNotification = useRestNotifications(account.id, draft, updateWorkoutDraft, () => go("workout"), view === "workout" && !workoutReadOnly);
   const start = (ids: string[] = [], name?: string, template?: Workout, retro = false) => {
     if (draft) {
       go("workout");
@@ -702,6 +800,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
       start([id]);
       return;
     }
+    if (!canEditWorkout()) return;
     if (
       draft.workout.exercises.some((e) => e.exerciseId === id) ||
       draft.workout.exercises.length >= 30
@@ -773,21 +872,17 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
     setModal("personal");
   };
   const openPicker = () => {
-    if (!draft) start();
+    if (draft && !canEditWorkout()) return;
+    if (!draft) {
+      if (tabs.takeStored()) { go("workout"); return; }
+      start();
+    }
     setMuscleFilter("all");
     setModal("picker");
   };
-  const startMeetup = (meetup:TrainingMeetup) => {
-    if(draft){go("workout");warn("Сначала заверши или отмени текущую тренировку.");return;}
-    if(tabs.takeStored()){go("workout");return;}
-    const workout=makeWorkout([],workouts,settings.timeZone,true);workout.name=meetup.name;
-    const gym=meetup.participants.find(p=>p.id===account.id)?.gym ?? (meetup.hostId===account.id?meetup.gym:"");
-    setDraft({...newDraft(workout),meetupId:meetup.id,meetupGym:gym});go("workout");
-    void friendsApi.request("/api/friends/status","PUT",{inGym:true,gym,focus:meetup.name}).catch(()=>setToast("Тренировка начата. Статус зала не обновился — проверь связь."));
-  };
   // Новая тренировка без выполненных подходов закрывается сразу, с подходами спрашивает WorkoutView один раз.
   const discardDraft = () => {
-    setDraft(null);
+    if (!tabs.closeDraft()) return;
     setConflict(null);
     setSaveError("");
     setModal(null);
@@ -795,6 +890,8 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
   };
   const saveWorkout = async () => {
     if (!draft || saving) return;
+    const stillEditing = tabs.guardEdit();
+    if (!stillEditing) return;
     setSaving(true);
     setSaveError("");
     if (!new WorkoutSession(draft.workout).completedWorkingSets) {
@@ -820,10 +917,16 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
       try {
         result = await api<{ workout: Workout }>("/api/workouts", "PUT", workout);
       } catch (e) {
+        if (!stillEditing()) {
+          warn("Черновик изменился, пока сохранялась тренировка. Проверь подходы и нажми «Завершить» снова.");
+          return;
+        }
         if (PendingWorkouts.isRetryable(e) && pending.enqueue(workout)) {
           // Нет связи: тренировка не черновик и не потеряна — лежит в истории и уйдёт сама.
-          persistDraft(localStorage, null, draftKey, draft.workout.id); // сразу, не дожидаясь эффекта: перезагрузка не вернёт черновик
-          setDraft(null);
+          if (!tabs.closeDraft()) {
+            warn("Тренировка сохранена в очереди, но текущий черновик изменился в другом окне.");
+            return;
+          }
           setConflict(null);
           setSaveError("");
           go("history");
@@ -832,15 +935,21 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
         }
         throw e;
       }
-      pending.queue.remove(workout.id);
-      pending.sync();
-      persistDraft(localStorage, null, draftKey, draft.workout.id); // сразу: перезагрузка сразу после «Завершить» не вернёт готовую тренировку черновиком
+      // Не закрываем более свежий черновик после передачи управления.
+      const savedWhileEditing = stillEditing() && tabs.closeDraft();
+      if (savedWhileEditing) {
+        pending.queue.remove(workout.id);
+        pending.sync();
+      }
       setWorkouts((ws) =>
         [result.workout, ...ws.filter((w) => w.id !== result.workout.id)].sort(
           (a, b) => b.date.localeCompare(a.date),
         ),
       );
-      setDraft(null);
+      if (!savedWhileEditing) {
+        warn("Запись сохранена. Более свежий черновик не изменён.");
+        return;
+      }
       setConflict(null);
       setDemo(false);
       setJustSaved(result.workout);
@@ -883,7 +992,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
       warn("Тренировка ещё не отправлена. Править её можно после отправки.");
       return;
     }
-    if (draft) {
+    if (draft || tabs.takeStored()) {
       setDetail(null);
       go("workout");
       warn("Сначала заверши или отмени текущий черновик.");
@@ -1011,11 +1120,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
     workouts,
     loads: realLoads,
     settings,
-    stage: (workout) => {
-      setDraft(newDraft(workout));
-      setDemo(false);
-      setView("workout");
-    },
+    stage: (workout) => start([], undefined, workout),
   });
 
   const exerciseCards = (picker = false) => (
@@ -1045,106 +1150,105 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
     </Suspense>
   );
   const currentYear = localDate(new Date(), settings.timeZone).slice(0, 4);
-  const sessionItem = (w: Workout, expanded = false) => {
-    const tonnage = volumeSummary([w], "all");
-    return (
-    <button className="session-item" key={w.id} onClick={() => setDetail(w)}>
-      <div className="session-date">
-        <b>{new Date(w.date + "T12:00:00").getDate()}</b>
-        <span>
-          {DateText.monthShort(w.date)}
-        </span>
-        {w.date.slice(0, 4) !== currentYear ? <small className="session-year">{w.date.slice(0, 4)}</small> : null}
-      </div>
-      <div className="session-item-info">
-        <h3>{w.name}{pending.ids.has(w.id) ? <span className="pending-badge">Ждёт отправки</span> : null}</h3>
-        <p>
-          {w.exercises.length} упр. <span>·</span> {workingSets([w])} подх.{" "}
-          {expanded ? (
-            <>
-              <span>·</span>
-              {w.exercises
-                .slice(0, 2)
-                .map((e) => entryName(e))
-                .join(", ")}
-            </>
-          ) : null}
-        </p>
-      </div>
-      <div className="session-item-value">
-        <b
-          title={
-            tonnage.total > 0
-              ? "Только однозначно записанные свободные веса"
-              : VolumeLabel.reason(tonnage.omittedSets)
-          }
-        >
-          {VolumeLabel.short(tonnage.total)}
-        </b>
-        {VolumeLabel.caption(tonnage.total, tonnage.omittedSets) ? (
-          <small className="volume-none">
-            {VolumeLabel.caption(tonnage.total, tonnage.omittedSets)}
-          </small>
-        ) : null}
-        <span>
-          <Clock3 size={13} />
-          {w.duration} мин
-        </span>
-      </div>
-      <ChevronRight size={17} className="muted" />
-    </button>
-    );
-  };
+  const sessionItem = (w: Workout, expanded = false, index = 0) => (
+    <SessionCard
+      key={w.id}
+      workout={w}
+      expanded={expanded}
+      index={index}
+      currentYear={currentYear}
+      pendingIds={pending.ids}
+      enter={enter}
+      onOpen={setDetail}
+    />
+  );
+
+  const avatar = account.displayName.slice(0, 1).toUpperCase();
+  const brand = (
+    <>
+      <span className="brand-mark"><Dumbbell size={20} aria-hidden="true" /></span>
+      <span className="brand-type">Тяга</span>
+    </>
+  );
 
   return (
     <div className={`app-shell ${view === "workout" && draft ? "in-workout" : ""} ${draft && view !== "workout" && view !== "overview" ? "has-resume" : ""}`}>
-      <aside className="sidebar">
-        <a
-          className="brand"
-          href="#"
-          onClick={(e) => {
-            e.preventDefault();
-            go("overview");
-          }}
-        >
-          тяга<span className="brand-period">.</span>
-          <span className="brand-tagline">Силовой журнал</span>
+      <m.aside className="sidebar" layoutRoot layoutScroll>
+        <a className="brand" href="#" onClick={(event) => { event.preventDefault(); go("overview"); }}>
+          {brand}
         </a>
-        <nav aria-label="Основная навигация">
-          {NAV.map((n) => (
-            <button
-              className={`nav-item ${view === n.id ? "active" : ""}`}
-              key={n.id}
-              onClick={() => go(n.id)}
-              aria-current={view === n.id ? "page" : undefined}
-            >
-              <n.icon size={22} />
-              <span>{n.label}</span>
-            </button>
-          ))}
-        </nav>
+        <LayoutGroup id="journal-nav">
+          <m.nav aria-label="Основная навигация" layoutScroll>
+            {NAV.map((item) => (
+              <button
+                type="button"
+                className={`nav-item ${view === item.id ? "active" : ""}`}
+                key={item.id}
+                onClick={() => go(item.id)}
+                aria-current={view === item.id ? "page" : undefined}
+              >
+                {view === item.id && <m.span
+                  className="journal-tab-marker"
+                  aria-hidden="true"
+                  layoutId={reduceMotion ? undefined : "active-tab"}
+                  initial={false}
+                  transition={{ layout: { type: "spring", stiffness: 460, damping: 40, mass: 0.78 } }}
+                />}
+                <item.icon size={20} aria-hidden="true" />
+                <span>{item.label}</span>
+              </button>
+            ))}
+          </m.nav>
+        </LayoutGroup>
         <div className="sidebar-bottom">
-          <button className="nav-item" onClick={()=>setModal("tools")}>
-            <Settings2 size={19} />
-            Инструменты
+          <button
+            type="button"
+            className={`nav-item ${view === "supplements" ? "active" : ""}`}
+            aria-current={view === "supplements" ? "page" : undefined}
+            onClick={() => go("supplements")}
+          >
+            <Pill size={20} aria-hidden="true" />
+            <span>Добавки</span>
           </button>
-          <button className="profile-button" onClick={() => setModal("profile")}>
-            <span className="profile-avatar">{account.displayName.slice(0, 1).toUpperCase()}</span>
-            <span>
-              <b>{account.displayName}</b>
-              <small>Профиль</small>
-            </span>
+          <button type="button" className="nav-item" onClick={() => setModal("tools")}>
+            <Settings2 size={20} aria-hidden="true" />
+            <span>Ещё</span>
           </button>
         </div>
-      </aside>
+      </m.aside>
       <main className="main-content">
+        <header className="journal-topbar">
+          <div className="journal-topbar-inner">
+            <a className="brand mobile-brand" href="#" onClick={(event) => { event.preventDefault(); go("overview"); }}>
+              {brand}
+            </a>
+            <div className="journal-topbar-actions">
+              <button
+                type="button"
+                className={`button secondary journal-supplements${view === "supplements" ? " active" : ""}`}
+                aria-label="Добавки"
+                onClick={() => go("supplements")}
+              >
+                <Pill size={15} aria-hidden="true" />
+                <span>Добавки</span>
+              </button>
+              <button type="button" className="button secondary journal-more" aria-haspopup="dialog" onClick={() => setModal("tools")}>Ещё</button>
+              <button type="button" className="profile-button journal-profile" aria-label="Мой профиль" onClick={() => setModal("profile")}>
+                <span className="profile-avatar" aria-hidden="true">{avatar}</span>
+                <span className="journal-profile-name" aria-hidden="true">{account.displayName}</span>
+                <ChevronRight size={15} aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+        </header>
         <TabErrorBoundary resetKey={view}>
         <m.div
           className="page-content"
+          data-view={view}
           key={view}
-          initial={{ opacity: 0, y: 8 }}
+          initial={reduceMotion ? false : { opacity: 0.45, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
         >
           {update && view !== "workout" ? (
             <div className="update-banner" role="status">
@@ -1237,203 +1341,101 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                 </div>
               ) : null}
               {!draft && legacyDraft && <div className="intro-banner"><Dumbbell size={18} /><span>На устройстве есть черновик прежней версии.</span><button className="text-button" onClick={()=> {
-                setDraft(legacyDraft); setLegacyDraft(null); setDemo(false); go("workout");
-                try { if(persistDraft(localStorage,legacyDraft,draftKey) === "saved") localStorage.removeItem(DRAFT_KEY); } catch { /* The old draft remains available if storage is blocked. */ }
+                if (tabs.takeStored()) { go("workout"); return; }
+                restoredLegacyId.current = legacyDraft.workout.id;
+                setDraft(legacyDraft); setDemo(false); go("workout");
               }}>Продолжить старый черновик</button></div>}
               {view === "overview" ? (
                 <>
                   <header className="today-head">
-                    <div>
-                      <span className="today-date">
-                        {new Date().toLocaleDateString("ru-RU", {
-                          weekday: "long",
-                          day: "numeric",
-                          month: "long",
-                          timeZone: settings.timeZone,
-                        })}
-                      </span>
-                      <h1>Сегодня</h1>
-                    </div>
-                    <button
-                      className="avatar-button"
-                      aria-label="Мой профиль"
-                      onClick={() => setModal("profile")}
-                    >
-                      {account.displayName.slice(0, 1).toUpperCase()}
-                    </button>
+                    <h1>Сегодня</h1>
+                    <time className="today-date" dateTime={today}>
+                      <CalendarDays size={16} aria-hidden="true" />
+                      {new Date(today + "T12:00:00").toLocaleDateString("ru-RU", {
+                        weekday: "long", day: "numeric", month: "long",
+                      }).replace(/^./u, (letter) => letter.toLocaleUpperCase("ru-RU"))}
+                    </time>
                   </header>
-                  <div className="today-dashboard">
-                  <section className="plan-card training-hero" aria-labelledby="plan-title">
-                    <div className="plan-main">
-                    <span className="eyebrow">
-                      {draft
-                        ? "ТРЕНИРОВКА ИДЁТ"
-                        : todayPlan
-                          ? "СЕГОДНЯ ПО ПРОГРАММЕ"
-                          : product.routines.length
-                            ? "ПО ПРОГРАММЕ СЕГОДНЯ ОТДЫХ"
-                            : "ТРЕНИРОВКА"}
-                    </span>
-                    <h2 id="plan-title">
-                      {draft
-                        ? draft.workout.name
-                        : todayPlan
-                          ? todayPlan.name
-                          : displayed.length
-                            ? "Свободная тренировка"
-                            : "Первая тренировка"}
-                    </h2>
-                    <p className="plan-meta">
-                      {draft
-                        ? `${draft.workout.exercises.length} упр. · ${workingSets([draft.workout])} раб. подх. сделано`
-                        : todayPlan
-                          ? `${todayPlan.exercises.length} упр. · ${todayPlan.exercises.reduce((n, e) => n + e.sets.filter((s) => !s.warmup).length, 0)} подх.`
-                          : "Записывай подходы — веса и прогресс посчитаем сами."}
-                    </p>
-                    {!todayPlan && !draft && nextProgramDay ? (
-                      <button className="plan-next" onClick={() => go("programs")}>
-                        <span>Следующая:</span> {nextProgramDay.dayName} · {nextProgramDay.routine.name}
-                        <ChevronRight size={16} />
-                      </button>
-                    ) : null}
-                    {todayPlan && !draft ? (
-                      <ul className="plan-exercises">
-                        {todayPlan.exercises.slice(0, 4).map((e, i) => (
-                          <li key={e.exerciseId}>
-                            <span>{entryName(e)}</span>
-                            <b>
-                              {PlanLine.sets(e)}
-                              {e.sets.find((s) => !s.warmup)?.weight ? ` · ${fmt(e.sets.find((s) => !s.warmup)!.weight)} кг` : ""}
-                              {e.sets.find((s) => !s.warmup)?.weight ? (
-                                <small className="plan-source">
-                                  {todaySources[i] === "history" ? "вес из истории" : "по плану"}
-                                </small>
-                              ) : null}
-                            </b>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : null}
-                    <button
-                      className="button primary plan-start"
-                      onClick={() =>
-                        draft
-                          ? (tabs.claim(), go("workout"))
-                          : todayRoutine
-                            ? start(
-                                [],
-                                undefined,
-                                programWorkout(todayRoutine),
-                              )
-                            : start()
-                      }
-                    >
-                      <Play size={18} />
-                      {draft ? "Продолжить тренировку" : "Начать тренировку"}
-                    </button>
-                    <div className="plan-links">
-                      {todayRoutine && !draft ? (
-                        <button className="text-button" onClick={() => start()}>
-                          Пустая тренировка
-                        </button>
-                      ) : null}
-                      <button className="text-button" onClick={() => go("programs")}>
-                        Программы
-                      </button>
-                    </div>
-                    {!draft && DeloadHint.line(deload, today) ? <p className="deload-line">{DeloadHint.line(deload, today)}</p> : null}
-                    </div>
-                    <div className="plan-art" aria-hidden="true">
-                      <TrainingPlate />
-                    </div>
-                  </section>
-                  <WeeklyActivityBar workouts={workouts} timeZone={settings.timeZone} />
-                  <button className="week-summary" onClick={() => go("progress")}>
-                    <span className="week-summary-head">
-                      <b>Нагрузка за неделю</b>
-                      <span>
-                        <strong>{fmt(weekDone)}</strong> / {weekGoal} зачтено зонам
-                      </span>
-                    </span>
-                    {weekNote ? <span className="week-summary-note">{weekNote}</span> : null}
-                    <span className="meter" aria-hidden="true">
-                      <span style={{ width: `${weekGoal ? Math.min(100, (100 * weekDone) / weekGoal) : 0}%` }} />
-                    </span>
-                    <span className="week-summary-foot">
-                      {lagging.length
-                        ? `Ниже твоей цели: ${lagging.map((m) => m.short.toLowerCase()).join(", ")}`
-                        : "Все зоны в работе — так держать"}
-                      <ChevronRight size={18} />
-                    </span>
-                  </button>
-                  </div>
-                  <section className="daily-shortcuts" aria-label="Быстрые действия">
-                    <button onClick={()=>setModal("bodyweight")}><Scale size={21}/><span><b>Вес тела и тренд</b><small>Записать взвешивание</small></span><ChevronRight size={17}/></button>
-                    <button onClick={()=>setModal("tools")}><Settings2 size={21}/><span><b>Инструменты</b><small>Калькуляторы и настройки</small></span><ChevronRight size={17}/></button>
-                  </section>
-                  <section className="recent-panel" aria-labelledby="recent-title">
-                    <div className="section-head">
-                      <h2 id="recent-title">Последние тренировки</h2>
-                      {displayed.length ? (
-                        <button className="text-button" onClick={() => go("history")}>
-                          Все
-                        </button>
-                      ) : null}
-                    </div>
-                    {displayed.slice(0, 2).map((w) => sessionItem(w))}
-                    {!displayed.length ? (
-                      <p className="small-empty">Первый подход — начало истории.</p>
-                    ) : null}
-                  </section>
+                  <TodayDashboard
+                    timeZone={settings.timeZone}
+                    bodyMassKg={account.bodyMassKg}
+                    workouts={workouts}
+                    routines={product.routines}
+                    supplements={supplements}
+                    today={today}
+                    recent={displayed.slice(0, 2).map((workout, index) => sessionItem(workout, false, index))}
+                    hasRecent={displayed.length > 0}
+                    draft={draft?.workout}
+                    draftObj={draft}
+                    plan={todayPlan}
+                    completed={completedToday}
+                    sources={todaySources}
+                    hasPrograms={product.routines.length > 0}
+                    nextProgram={nextSlot ? `${DAY_NAMES[calendarWeekday(nextSlot.date)]} · ${nextSlot.routine.name}` : undefined}
+                    deloadLine={DeloadHint.line(deload, today)}
+                    load={{ done: weekDone, goal: weekGoal }}
+                    onStart={() => {
+                      if (draft) go("workout");
+                      else if (todaySlot) start([], undefined, programWorkout(todaySlot.routine, todaySlot));
+                      else start();
+                    }}
+                    onOpenWorkout={setDetail}
+                    onEmpty={() => start()}
+                    onPrograms={() => go("programs")}
+                    onProgress={() => { setProgressTab("balance"); setWeekOffset(0); go("progress"); }}
+                    onProgressOverview={() => { setProgressTab("analytics"); go("progress"); }}
+                    onOpenCoach={() => { setProgressTab("coach"); go("progress"); }}
+                    onOpenSupplements={() => go("supplements")}
+                    onHistory={() => go("history")}
+                    onQuickTool={(tool) => setModal(tool)}
+                  />
                 </>
+              ) : null}
+              {view === "supplements" ? (
+                <SupplementsScreen
+                  state={supplements}
+                  today={today}
+                  onChange={updateSupplements}
+                />
               ) : null}
               {view === "workout" ? (
                 <>
-                {draft && tabs.banner ? (
-                  <p className={`draft-follower ${tabs.banner === "follower" ? "is-follower" : "is-owner"}`} role="status">
-                    <span className="draft-follower-text">
-                      <span>
-                        {tabs.banner === "follower"
-                          ? "Эта тренировка открыта в другом окне — тут изменения не сохраняются"
-                          : tabs.banner === "pressed"
-                            ? "Это окно стало основным. Нажми ещё раз."
-                            : "Это окно основное — изменения сохраняются"}
+                  {draft && tabs.banner ? (
+                    <div className={`draft-follower ${workoutReadOnly ? "is-follower" : "is-owner"}`}>
+                      <span className="draft-follower-text" role="status">
+                        <span>{workoutReadOnly ? "Эта тренировка открыта в другом окне — здесь только просмотр." : "Это окно основное — изменения сохраняются"}</span>
                       </span>
-                    </span>
-                    <button
-                      type="button"
-                      className="button secondary"
-                      onClick={() => tabs.openHere()}
-                      aria-hidden={tabs.banner !== "follower"}
-                      tabIndex={tabs.banner === "follower" ? undefined : -1}
-                      disabled={tabs.banner !== "follower"}
-                    >
-                      Открыть здесь
-                    </button>
-                  </p>
-                ) : null}
-                <WorkoutView
-                  deloadMode={deload?.mode}
-                  deloadPlan={deload}
-                  focusRequest={restNotification.focus}
-                  notificationError={restNotification.error}
-                  draft={draft}
-                  update={setDraft}
-                  settings={settings}
-                  history={workouts}
-                  machines={product.machines ?? []}
-                  onMachines={()=>setModal("machines")}
-                  saving={saving}
-                  error={saveError}
-                  persistence={persistence}
-                  onExport={exportDraft}
-                  onPick={openPicker}
-                  onSave={() => void saveWorkout()}
-                  onDiscard={discardDraft}
-                  onMinimize={() => go("overview")}
-                  onOpenTogether={() => go("friends")}
-                  onToast={setToast}
-                />
+                      <div className="draft-follower-actions" inert={!workoutReadOnly}>
+                        <button type="button" className="button secondary" onClick={() => go("overview")}>К журналу</button>
+                        <button type="button" className="button primary" onClick={() => {
+                          if (tabs.openHere() === "claimed") requestAnimationFrame(() => workoutFrame.current?.focus({ preventScroll: true }));
+                        }}>Продолжить здесь</button>
+                      </div>
+                    </div>
+                  ) : null}
+                  <section className="workout-edit-frame" ref={workoutFrame} inert={workoutReadOnly} tabIndex={-1} aria-label="Редактор тренировки">
+                    <WorkoutView
+                      deloadMode={deload?.mode}
+                      deloadPlan={deload}
+                      focusRequest={restNotification.focus}
+                      notificationError={restNotification.error}
+                      draft={draft}
+                      readOnly={workoutReadOnly}
+                      update={updateWorkoutDraft}
+                      settings={settings}
+                      history={workouts}
+                      saving={saving}
+                      error={saveError}
+                      persistence={persistence}
+                      onExport={exportDraft}
+                      onPick={openPicker}
+                      onSave={() => void saveWorkout()}
+                      onDiscard={discardDraft}
+                      onMinimize={() => go("overview")}
+                      onOpenTogether={() => go("friends")}
+                      onToast={setToast}
+                    />
+                  </section>
                 </>
               ) : null}
               {view === "history" ? (
@@ -1554,7 +1556,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
               {view === "progress" ? (
                 <>
                   <header className="screen-head progress-screen-head">
-                    <div><span className="eyebrow">ТВОЯ РАБОТА В ЦИФРАХ</span><h1>Прогресс</h1><p>Нагрузка, сила и вес — каждый показатель на своём месте.</p></div>
+                    <h1>Прогресс</h1>
                     <div className="screen-actions">
                       <button
                         className="icon-button"
@@ -1576,30 +1578,46 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                     {(
                       [
                         ["analytics", "Обзор"],
+                        ["coach", "ИИ-анализ"],
                         ["strength", "Сила"],
                         ["balance", "Мышцы"],
                         ["bodyweight", "Вес тела"],
                       ] as const
-                    ).map(([id, label]) => (
-                      <button
-                        key={id}
-                        role="tab"
-                        aria-selected={progressTab === id || (id === "balance" && progressTab === "anatomy")}
-                        tabIndex={progressTab === id || (id === "balance" && progressTab === "anatomy") ? 0 : -1}
-                        className={progressTab === id ? "active" : ""}
-                        onClick={() => setProgressTab(id)}
-                        onKeyDown={(event) => {
-                          if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-                          event.preventDefault();
-                          const tabs = Array.from(event.currentTarget.parentElement!.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
-                          const current = tabs.indexOf(event.currentTarget);
-                          const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (current + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
-                          tabs[next].click(); tabs[next].focus();
-                        }}
-                      >
-                        {label}
-                      </button>
-                    ))}
+                    ).map(([id, label]) => {
+                      const selected = progressTab === id || (id === "balance" && progressTab === "anatomy");
+                      return (
+                        <button
+                          key={id}
+                          type="button"
+                          role="tab"
+                          aria-selected={selected}
+                          tabIndex={selected ? 0 : -1}
+                          className={selected ? "active" : ""}
+                          onClick={(event) => {
+                            setProgressTab(id);
+                            event.currentTarget.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+                          }}
+                          onKeyDown={(event) => {
+                            if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+                            event.preventDefault();
+                            const tabs = Array.from(event.currentTarget.parentElement!.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
+                            const current = tabs.indexOf(event.currentTarget);
+                            const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (current + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+                            tabs[next].click(); tabs[next].focus();
+                          }}
+                        >
+                          {selected ? (
+                            <m.span
+                              layoutId="progress-active-tab"
+                              className="progress-tab-pill"
+                              aria-hidden="true"
+                              transition={{ type: "spring", stiffness: 460, damping: 36 }}
+                            />
+                          ) : null}
+                          <span className="progress-tab-label">{label}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                   {(progressTab === "balance" || progressTab === "anatomy") && <div className="muscles-tabs" role="tablist" aria-label="Виды нагрузки"><button role="tab" aria-selected={progressTab==="balance"} onClick={()=>setProgressTab("balance")}>Нагрузка по зонам</button><button role="tab" aria-selected={progressTab==="anatomy"} onClick={()=>setProgressTab("anatomy")}>Карта мышц</button></div>}
                   {(progressTab === "balance" || progressTab === "anatomy") ? (
@@ -1626,10 +1644,19 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                     </div>
                   ) : null}
                   {progressTab === "bodyweight" && <BodyweightModal key={account.id} accountId={account.id} timeZone={settings.timeZone} />}
+                  {progressTab === "coach" ? (
+                    <SmartCoachPanel
+                      workouts={displayed}
+                      routines={product.routines}
+                      today={today}
+                      timeZone={settings.timeZone}
+                    />
+                  ) : null}
                   {progressTab === "analytics" ? (
                     <ProgressOverview
                       workouts={workouts}
                       settings={settings}
+                      bodyMassKg={weights.massAt(today, account.bodyMassKg)}
                       onStrength={(key) => {
                         setProgressExercise(key);
                         setProgressTab("strength");
@@ -1736,11 +1763,11 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                           <h2 id="planner-title">Закрыть пробелы</h2>
                           <p>
                             {currentLagging.length
-                              ? `Меньше прямых подходов, чем в твоих целях: ${currentLagging
+                              ? `Ниже цели: ${currentLagging
                                   .slice(0, 2)
                                   .map((m) => m.short.toLowerCase())
-                                  .join(" и ")}. Соберём короткую тренировку под твоё время.`
-                              : "Прямые подходы этой недели покрывают твои цели. Решение о дополнительной работе зависит от прогресса и самочувствия."}
+                                  .join(" и ")}.`
+                              : "Цели недели закрыты."}
                           </p>
                           {unmarkedNote}
                         </div>
@@ -1805,8 +1832,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                           ) : null}
                         </div>
                         <p className="tiny">
-                          Покрытие целей {plan.before}% → {plan.after}% после плана · около {plan.minutes} мин.
-                          Это не прогноз роста; вес подбери под себя.
+                          Покрытие {plan.before}% → {plan.after}% · ~{plan.minutes} мин
                         </p>
                         <button
                           className="button primary full-width"
@@ -1869,14 +1895,9 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                             }))}
                           />
                         </label>
-                        <p className="tiny">
-                          {recordingSentence(progressEntry)}{" "}
-                          {progressSpec.loadMode === "assisted_bodyweight"
-                            ? "Больше помощи — меньше сопротивления."
-                            : "Сравниваются только записи одной версии каталога и одного правила записи."}{" "}
-                          {progressSpec.e1rmEligible
-                            ? "Расчётный 1ПМ — по 1–12 повторениям записанного веса."
-                            : "Для этого правила записи расчётный 1ПМ отключён."}
+                        <p className="tiny strength-rule-pill">
+                          {recordingSentence(progressEntry)} ·{" "}
+                          {progressSpec.e1rmEligible ? "1ПМ: 1–12 повт." : "без 1ПМ"}
                         </p>
                       </div>
                       <div className="stats-grid progress-stats">
@@ -1905,7 +1926,6 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                         <div className="panel-header">
                           <div>
                             <h2>{entryName(progressEntry)}</h2>
-                            <p>Лучшее записанное значение в каждой тренировке</p>
                           </div>
                         </div>
                         {progressPoints.length ? (
@@ -1933,12 +1953,9 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                           </>
                         ) : (
                           <div className="empty-state">
-                            <TrendingUp size={34} />
-                            <h2>Прогрессу нужна точка отсчёта</h2>
-                            <p>
-                              Запиши {entryName(progressEntry).toLowerCase()} в
-                              тренировке, чтобы увидеть динамику.
-                            </p>
+                            <TrendingUp size={32} aria-hidden="true" />
+                            <h2>Нет записей</h2>
+                            <p>Добавь {entryName(progressEntry).toLowerCase()} в тренировку.</p>
                             <button
                               className="button primary"
                               onClick={() => start([progressEntry.exerciseId])}
@@ -1960,15 +1977,19 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                   {exerciseCards()}
                 </>
               ) : null}
-              {view === "friends" && <Suspense fallback={<p role="status">Открываем напарников…</p>}><FriendsScreen
+              {view === "friends" && <Suspense fallback={<p role="status">Открываем друзей…</p>}><FriendsScreen
                 onProfile={() => setModal("profile")}
                 workouts={workouts}
-                onStartMeetup={startMeetup}
+                routines={product.routines}
+                timeZone={settings.timeZone ?? browserTimeZone()}
                 roomInvite={roomInvite}
                 onRoomInviteHandled={() => setRoomInvite(null)}
                 onToast={setToast}
                 workoutActive={!!draft}
-                onWorkout={() => (draft ? (tabs.claim(), go("workout")) : start())}
+                onWorkout={() => (draft ? go("workout") : start())}
+                onSaveRoutine={saveRoutine}
+                onStartRoutine={(routine) => start([], undefined, programWorkout(routine))}
+                onOpenPrograms={() => go("programs")}
               /></Suspense>}
               {view === "programs" ? (
                 <>
@@ -1985,9 +2006,11 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                       onFavorite={(id) => void favoriteExercise(id)}
                       onSave={saveRoutine}
                       onDelete={deleteRoutine}
-                      onStart={(r) =>
-                        start([], undefined, programWorkout(r))
-                      }
+                      onStart={(routine, slot) => {
+                        const occurrence = slot ?? todaySlots.find((item) => item.routine.id === routine.id && !TrainingCalendar.completed(item, workouts));
+                        start([], undefined, programWorkout(routine, occurrence));
+                      }}
+                      onOpenWorkout={setDetail}
                       deload={deload}
                       onCancelDeload={() => {
                         deloadStore.cancel();
@@ -2016,11 +2039,11 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
             exit={{ opacity: 0, y: 24, transition: { duration: 0.18 } }}
             whileTap={{ scale: 0.97 }}
             transition={{ type: "spring", stiffness: 380, damping: 30 }}
-            onClick={() => { tabs.claim(); go("workout"); }}
+            onClick={() => go("workout")}
           >
             <span className="resume-dot" aria-hidden="true" />
             Вернуться к тренировке
-            <b>{BackdatedWorkout.manualDuration(draft, settings.timeZone) ? draft.workout.duration : Math.floor(elapsedMs(draft) / 60000)} мин</b>
+            <ResumePillClock draft={draft} timeZone={settings.timeZone} />
           </m.button>
         ) : null}
       </AnimatePresence>
@@ -2258,150 +2281,33 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
         </Modal>
       ) : null}
       {detail ? (
-        <Modal title={detail.name} onClose={() => setDetail(null)} wide>
-          <div className="workout-detail-meta">
-            <span>
-              <CalendarDays size={16} />
-              {dateLabel(detail.date, true)}
-            </span>
-            <span>
-              <Clock3 size={16} />
-              {detail.duration} мин
-            </span>
-            <span>
-              <Dumbbell size={16} />
-              {fmt(volumeSummary([detail], "all").total)} кг
-            </span>
-          </div>
-          {detail.exercises.map((e) => (
-            <div className="detail-exercise" key={e.exerciseId}>
-              <h3>{entryName(e)}</h3>
-              {(() => {
-                const sides = e.performedSides
-                  ? e.performedSides === "both" ? "обе стороны" : e.performedSides === "left" ? "левая сторона" : "правая сторона"
-                  : "";
-                const line = [
-                  recordingNote(e),
-                  e.machineSnapshot ? e.machineSnapshot.nickname : e.equipmentNote ?? "",
-                  sides,
-                ].filter(Boolean).join(" · ");
-                return line ? <p className="tiny">{line}</p> : null;
-              })()}
-              <div className="detail-sets">
-                {e.sets
-                  .filter((s) => s.done)
-                  .map((s) => (
-                    <span key={s.id}>
-                      {s.warmup ? "Разминка · " : ""}
-                      {s.performedSides ? `${s.performedSides === "both" ? "обе стороны" : s.performedSides === "left" ? "левая" : "правая"} · ` : ""}
-                      {s.execution?.rom ? `ROM: ${s.execution.rom} · ` : ""}
-                      <b>
-                        {exerciseForEntry(e)?.recording.type === "duration" ? (
-                          `${s.durationSeconds} с`
-                        ) : (
-                          <>
-                            {exerciseForEntry(e)?.recording.loadMode ===
-                            "bodyweight"
-                              ? "Без веса"
-                              : `${fmt(recordedLoad(e, s))} ${recordingLabel(e)}`}{" "}
-                            × {s.reps}
-                            {exerciseForEntry(e)?.recording.repsMode ===
-                            "per_side"
-                              ? " / сторону"
-                              : ""}
-                          </>
-                        )}
-                      </b>
-                      {exerciseForEntry(e)?.recording.type !== "duration" ? (
-                        <small>RIR {s.rir ?? "—"}</small>
-                      ) : s.distanceKm !== undefined ? (
-                        <small>{s.distanceKm} км</small>
-                      ) : null}
-                    </span>
-                  ))}
-              </div>
-            </div>
-          ))}
-          {detail.exercises.some((e) => (e.catalogRevision ?? 1) === 1) ? (
-            <details className="historical-calculation">
-              <summary>Архивный расчёт подходов · методика 1</summary>
-              <p>
-                Это прежняя эвристика 1 / 0,5 с RIR-множителем. Она сохранена
-                для проверки старых расчётов и не используется как измерение
-                роста.
-              </p>
-              {legacyMuscleLoad([detail])
-                .filter((m) => m.total > 0)
-                .map((m) => (
-                  <p key={m.id}>
-                    {m.name}: {fmt(m.direct)} прямых + {fmt(m.indirect)}{" "}
-                    условных косвенных
-                  </p>
-                ))}
-            </details>
-          ) : null}
-          {detail.notes ? <p className="detail-notes">{detail.notes}</p> : null}
-          <p className="history-value-note">
-            Внешний объём включает только свободные веса с известным правилом
-            записи. Тренажёры, масса тела и неопределённые старые записи
-            показаны по подходам.
-          </p>
-          <details className="detail-insights">
-            <summary>Итоги, мышцы и карточка для сторис</summary>
-            <SessionInsights
-              workout={detail}
-              settings={settings}
-              account={account}
-            />
-          </details>
-          <Suspense fallback={<p className="tiny">Открываем показатели часов…</p>}><AppleHealthPanel workout={detail} readOnly={demo} onSaved={saved => {
-            setDetail(saved); setWorkouts(ws => ws.map(w => w.id === saved.id ? saved : w));
-            setJustSaved(w => w?.id === saved.id ? saved : w); setToast("Показатели часов сохранены");
-          }} /></Suspense>
-          <div className="modal-actions">
-            {!demo ? (
-              <button
-                className="text-button danger-text"
-                onClick={() => setDeleteId(detail.id)}
-              >
-                <Trash2 size={15} />
-                Удалить
-              </button>
-            ) : (
-              <span className="tiny">Пример данных</span>
-            )}
-            <div className="button-group">
-              <button
-                className="button secondary"
-                onClick={() => {
-                  setInitialRoutine(TrainingProgram.fromWorkout(detail));
-                  setDetail(null);
-                  go("programs");
-                }}
-              >
-                В программу
-              </button>
-              <button
-                className="button secondary"
-                onClick={() => {
-                  const copy = repeatWorkout(detail, settings.timeZone);
-                  setDetail(null);
-                  start([], undefined, copy);
-                }}
-              >
-                Повторить
-              </button>
-              {!demo ? (
-                <button
-                  className="button primary"
-                  onClick={() => editWorkout(detail)}
-                >
-                  Редактировать
-                </button>
-              ) : null}
-            </div>
-          </div>
-        </Modal>
+          <Suspense fallback={<div className="loading-state" role="status"><span className="loader" />Загружаем экран…</div>}>
+        <WorkoutDetailModal
+          detail={detail}
+          settings={settings}
+          account={account}
+          demo={demo}
+          onClose={() => setDetail(null)}
+          onDelete={setDeleteId}
+          onCreateProgram={(workout) => {
+            setInitialRoutine(TrainingProgram.fromWorkout(workout));
+            setDetail(null);
+            go("programs");
+          }}
+          onRepeat={(workout) => {
+            const copy = repeatWorkout(workout, settings.timeZone);
+            setDetail(null);
+            start([], undefined, copy);
+          }}
+          onEdit={editWorkout}
+          onHealthSaved={(saved) => {
+            setDetail(saved);
+            setWorkouts((ws) => ws.map((w) => (w.id === saved.id ? saved : w)));
+            setJustSaved((w) => (w?.id === saved.id ? saved : w));
+            setToast("Показатели часов сохранены");
+          }}
+        />
+          </Suspense>
       ) : null}
       {deleteId ? (
         <Modal title="Удалить тренировку?" onClose={() => setDeleteId(null)}>
@@ -2587,7 +2493,19 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
         onSave={async (machine)=>{ const result=await productService.saveMachine(machine); setProduct((p)=>({...p,machines:[result.machine,...(p.machines ?? []).filter((m)=>m.id!==result.machine.id)]})); }}
         onArchive={async (machine)=>{ await productService.archiveMachine(machine); setProduct((p)=>({...p,machines:(p.machines ?? []).filter((m)=>m.id!==machine.id)})); }}
       /></Modal>}
-      {modal === "tools" && <Modal title="Инструменты и настройки" onClose={()=>setModal(null)}><ToolsHub onChoose={id=>id==="settings"?openSettings():setModal(id)}/></Modal>}
+      {modal === "tools" && (
+        <Modal title="Инструменты и настройки" onClose={() => setModal(null)}>
+          <ToolsHub
+            onChoose={(id) => {
+              if (id === "settings") openSettings();
+              else if (id === "supplements") {
+                setModal(null);
+                go("supplements");
+              } else setModal(id);
+            }}
+          />
+        </Modal>
+      )}
       {modal === "bodyweight" ? (
         <Modal title="Контроль массы тела" onClose={() => setModal(null)} wide>
           <BodyweightModal
@@ -2660,6 +2578,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
               <button
                 className="button primary"
                 onClick={() => {
+                  if (!canEditWorkout()) return;
                   setDraft((d) =>
                     d
                       ? {
@@ -2691,6 +2610,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                 <button
                   className="button secondary"
                   onClick={() => {
+                    if (!canEditWorkout()) return;
                     const current = conflict.current!;
                     setWorkouts((ws) => [
                       current,

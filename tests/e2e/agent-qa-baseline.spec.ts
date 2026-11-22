@@ -45,7 +45,7 @@ async function noOverflow(page: Page) {
   expect(Math.max(dimensions.document, dimensions.body)).toBeLessThanOrEqual(dimensions.viewport + 1);
 }
 async function tools(page: Page, name: string) {
-  await page.getByRole('button', { name: /^Инструменты/ }).first().click();
+  await page.getByRole('button', { name: "Ещё", exact: true }).first().click();
   await page.getByRole('dialog', { name: 'Инструменты и настройки', exact: true }).getByRole('button', { name: new RegExp(name) }).click();
 }
 

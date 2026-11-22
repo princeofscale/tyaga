@@ -1,6 +1,7 @@
 import { ExecutionProfile } from "../src/domain/ExecutionProfile";
 import { MachineRegistry } from "../src/domain/MachineRegistry";
-import type { LaidMaxes, MachineInstance, RoutinePeriodization, SetEntry } from "../src/lib/types";
+import type { MachineInstance, RoutineOccurrenceOverride, RoutinePeriodization, SetEntry } from "../src/lib/types";
+import { MAX_OCCURRENCE_OVERRIDES } from "../src/domain/TrainingCalendar";
 import { PeriodizationRules } from "../src/domain/PeriodizationRules";
 import { isCalendarDate } from "../src/lib/calendar";
 import {
@@ -49,6 +50,27 @@ function zone(v: unknown, fallback = "UTC") {
       "Укажите часовой пояс IANA, например Europe/Amsterdam",
     );
   return value;
+}
+/** Calendar metadata is date-only, including a move to today from a future plan date. */
+export function validProgramDate(value: unknown): string {
+  if (typeof value !== "string" || !isCalendarDate(value))
+    throw new InputError("Проверь дату тренировки по плану");
+  return value;
+}
+export function validOccurrenceOverrides(value: unknown): RoutineOccurrenceOverride[] {
+  if (!Array.isArray(value) || value.length > MAX_OCCURRENCE_OVERRIDES)
+    throw new InputError(`В программе должно быть не больше ${MAX_OCCURRENCE_OVERRIDES} разовых правок плана`);
+  const seen = new Set<string>();
+  const overrides: RoutineOccurrenceOverride[] = [];
+  for (const entry of value) {
+    const rule = object(entry);
+    const from = validProgramDate(rule.from);
+    const to = rule.to === null ? null : validProgramDate(rule.to);
+    if (seen.has(from)) throw new InputError("Для одной даты указано несколько правок плана");
+    seen.add(from);
+    if (from !== to) overrides.push({ from, to });
+  }
+  return overrides.sort((a, b) => a.from.localeCompare(b.from));
 }
 export function validWorkout(
   value: unknown,
@@ -147,21 +169,6 @@ export function validWorkout(
       metadata.repMin = repMin;
       metadata.repMax = num(e.repMax, repMin, 200, true);
     }
-    if (
-      (catalogRevision === 2 ||
-        (exercise.catalogRevision === 3 &&
-          !exercise.source &&
-          !exercise.custom) ||
-        exercise.source?.record.review) &&
-      ["machine_stack", "assisted_bodyweight"].includes(
-        exercise.recording.loadMode,
-      ) &&
-      !metadata.equipmentNote && !metadata.machineInstanceId &&
-      !options.allowIncomplete
-    )
-      throw new InputError(
-        `Укажи тренажёр для «${exercise.name}», чтобы не сравнивать разные машины`,
-      );
     if (exercise.recording.laterality === "unilateral") {
       if (!["both", "left", "right"].includes(String(e.performedSides)))
         throw new InputError("Укажи выполненные стороны");
@@ -314,6 +321,7 @@ export function validWorkout(
   if (w.analysisVersion !== undefined)
     result.analysisVersion = num(w.analysisVersion, 1, 2, true) as 1 | 2;
   if (w.routineId !== undefined) result.routineId = str(w.routineId, 80, 1);
+  if (w.programDate !== undefined) result.programDate = validProgramDate(w.programDate);
   if (w.restSeconds !== undefined)
     result.restSeconds = num(w.restSeconds, 15, 600, true);
   return result;
@@ -364,11 +372,13 @@ export function validRoutine(
   ).exercises;
   if (!exercises.some((e) => e.sets.some((s) => !s.warmup)))
     throw new InputError("Добавь хотя бы один рабочий подход в программу");
+  const overrides = v.occurrenceOverrides === undefined ? [] : validOccurrenceOverrides(v.occurrenceOverrides);
   return {
     id: str(v.id, 80, 1),
     name: str(v.name, 120, 1),
     notes: str(v.notes, 2000),
     days: v.days.map((d) => num(d, 0, 6, true)),
+    ...(overrides.length ? { occurrenceOverrides: overrides } : {}),
     exercises: exercises.map((e) => ({
       ...e,
       sets: e.sets.map((s) => ({ ...s, done: false })),

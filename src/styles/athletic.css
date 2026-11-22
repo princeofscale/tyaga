@@ -72,7 +72,7 @@ button, input { font-variant-numeric: tabular-nums; }
   .text-button { position: relative; }
   .text-button::after { content: ""; position: absolute; inset: -9px -8px; }
 }
-.panel, .stat-card, .library-card, .routine-card {
+.panel, .stat-card, .library-card {
   background: var(--surface);
   border-color: var(--line);
   box-shadow: 0 2px 0 rgba(0, 0, 0, .08);
@@ -272,11 +272,7 @@ button, input { font-variant-numeric: tabular-nums; }
 .tabs button.active { background: var(--accent); color: var(--on-accent); box-shadow: none; }
 .library-card { border-radius: 14px; }
 .library-card:hover { background: var(--surface-2); border-color: var(--line-strong); transform: none; box-shadow: none; }
-.library-card h3, .routine-card h3 { font-family: var(--font-body); letter-spacing: -.025em; }
-.routine-card { border-radius: 17px; }
-.program-day { border-color: var(--line); background: var(--bg); }
-.program-day.today { border-color: var(--accent-line); background: var(--accent-soft); }
-.program-day-label b { font-family: var(--font-display); font-size: 1.6rem; font-weight: 700; }
+.library-card h3 { font-family: var(--font-body); letter-spacing: -.025em; }
 .search-field { border-radius: 11px; background: var(--surface); border: 1px solid var(--line-strong); }
 .search-field:focus-within { border-color: var(--accent); }
 .search-field input { border: 0; background: transparent; }

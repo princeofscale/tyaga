@@ -755,7 +755,7 @@ export const CATALOG_V3: Exercise[] = [
     recording: added,
     variant:
       "Упор на параллельных брусьях, корпус слегка наклонён вперёд; ввод — только дополнительный груз (пояс или гантель между ног), масса тела записывается отдельно.",
-    jointActions: ["Горизонтальное приведение плеча", "Разгибание плеча", "Разгибание локтя"],
+    jointActions: ["Горизонтальное приведение плеча", "Сгибание плеча", "Разгибание локтя"],
     primary: ["pectoralis-major", "triceps-brachii"],
     assistant: ["deltoid-anterior"],
     stabilizer: ["serratus-anterior", "rectus-abdominis"],

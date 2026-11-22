@@ -1,0 +1,219 @@
+.program-planner {
+  --plan-pad: clamp(12px, 2cqi, 24px);
+  padding: var(--plan-pad);
+  border: 1px solid var(--line);
+  border-top-color: var(--line-strong);
+  border-radius: var(--r-card);
+  background: var(--surface);
+}
+.program-week-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+  margin-bottom: 16px;
+}
+.program-week-range { margin-top: 4px; color: var(--muted); font: 500 .8125rem/1.4 var(--font-mono); }
+.program-week-controls { display: flex; flex-wrap: wrap; gap: 4px; }
+.program-week-controls button,
+.calendar-adjust {
+  display: inline-grid;
+  place-items: center;
+  min-inline-size: 44px;
+  min-block-size: 44px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text-soft);
+}
+.program-week-controls button { padding: 5px 11px; background: var(--bg); font-size: .8rem; font-weight: 600; }
+.program-week-controls button:hover, .calendar-adjust:hover { background: var(--surface-2); color: var(--text); }
+.program-week-controls [aria-current] { color: var(--accent); }
+.program-week {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  margin: 0;
+  padding: 0;
+  border-block: 1px solid var(--line);
+  list-style: none;
+  font-variant-numeric: tabular-nums;
+}
+.program-day {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(2.5rem, 13%) minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-inline-size: 0;
+  padding: 6px;
+}
+.program-day + .program-day { border-top: 1px solid var(--line); }
+.program-day.today { background: var(--surface-2); }
+.program-day.today::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 2px; background: var(--accent); }
+.program-day-label { display: grid; justify-items: center; color: var(--muted); font: 550 .75rem/1.1 var(--font-mono); }
+.program-day-label b { color: var(--text); font: 720 clamp(1.45rem, 1.15rem + 1.2cqi, 2rem)/1 var(--font-display); }
+.program-day.is-rest .program-day-label b { color: var(--muted); }
+.program-day.today .program-day-label b { color: var(--accent); }
+.program-day-sessions { display: grid; min-inline-size: 0; gap: 4px; }
+.calendar-slot { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
+.calendar-slot.adjustable { grid-template-columns: minmax(0, 1fr) auto; }
+.calendar-adjust { padding: 0; align-self: center; color: var(--muted); border-color: transparent; }
+.day-session {
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  min-inline-size: 0;
+  min-block-size: 44px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  text-align: start;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.day-session b { font-size: .84rem; font-weight: 680; }
+.day-session b svg { margin-inline-end: 4px; vertical-align: -.1em; }
+.day-session small, .day-recorded { display: flex; align-items: baseline; gap: 4px; color: var(--muted); font-size: .72rem; }
+.day-session small svg, .day-recorded svg { align-self: center; }
+.day-session:hover { background: var(--bg); border-color: var(--line); }
+.day-session.is-start { background: var(--accent-soft); border-color: var(--accent-line); }
+.day-session.is-start svg, .day-session.completed svg, .day-recorded svg { color: var(--accent); }
+.calendar-adjusted { border-color: var(--line); border-style: dashed; }
+.rest-day { padding: 7px 8px; color: var(--muted); font-size: .76rem; }
+.day-recorded { padding: 5px 8px; overflow-wrap: anywhere; }
+.calendar-notice { margin: 0; color: var(--muted); font-size: .8rem; }
+.calendar-notice:not(:empty) { margin-top: 10px; }
+.program-week-upcoming {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin-top: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--bg);
+  font-size: .82rem;
+  color: var(--text-soft);
+}
+.program-week-upcoming b {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.program-week-jump {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: 44px;
+  min-block-size: 44px;
+  padding: 6px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 50%, var(--line));
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--accent-hover, var(--accent));
+  font-size: .8rem;
+  font-weight: 650;
+  transition: background-color 140ms ease-out, scale 140ms ease-out;
+}
+.program-week-jump:hover { background: var(--surface-2); }
+.program-week-jump:active { scale: 0.97; }
+
+@container programs-ledger (min-width: 55rem) {
+  .program-day {
+    grid-template-columns: minmax(0, 1fr);
+    align-content: start;
+    gap: 10px;
+    padding: 10px 6px;
+    min-block-size: 8.5rem;
+  }
+  .program-week { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  .program-day + .program-day { border-top: 0; border-inline-start: 1px solid var(--line); }
+  .program-day.today::before { inset: 0 0 auto; width: auto; height: 2px; }
+  .program-day-label { grid-template-columns: 1fr auto; align-items: center; justify-items: start; padding-inline: 7px; }
+  .day-session { padding-inline: 6px; }
+  .day-session b { font-size: .8rem; }
+  .calendar-adjust { align-self: start; }
+}
+
+.modal:has(.schedule-occurrence-form):modal {
+  overscroll-behavior: contain;
+}
+.modal:has(.schedule-occurrence-form)::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+.schedule-occurrence-form {
+  display: grid;
+  gap: 12px;
+  min-inline-size: 0;
+}
+.schedule-occurrence-form p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.schedule-week-quick {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(46px, 1fr));
+  gap: 6px;
+}
+.schedule-week-chip {
+  display: grid;
+  place-items: center;
+  gap: 1px;
+  min-inline-size: 44px;
+  min-block-size: 44px;
+  padding: 4px 2px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text-soft);
+  font-variant-numeric: tabular-nums;
+  transition: border-color 140ms ease-out, background-color 140ms ease-out, scale 140ms ease-out;
+}
+.schedule-week-chip span {
+  font-size: .7rem;
+  color: var(--muted);
+}
+.schedule-week-chip b {
+  font-size: .85rem;
+  font-family: var(--font-mono, inherit);
+}
+.schedule-week-chip:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.schedule-week-chip:active:not(:disabled) {
+  scale: 0.96;
+}
+.schedule-week-chip.is-current {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg));
+  color: var(--text);
+}
+.schedule-week-chip:disabled:not(.is-current) {
+  opacity: 0.36;
+}
+.schedule-occurrence-field {
+  display: grid;
+  gap: 4px;
+}
+.schedule-occurrence-field input {
+  box-sizing: border-box;
+  inline-size: 100%;
+  min-inline-size: 0;
+  min-block-size: 48px;
+  font-size: max(1rem, 1em);
+}
+.schedule-occurrence-form button {
+  min-block-size: 48px;
+  white-space: normal;
+}
+.schedule-occurrence-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.schedule-occurrence-actions:empty {
+  display: none;
+}

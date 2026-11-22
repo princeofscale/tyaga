@@ -306,7 +306,7 @@ test("R07-REQ04: обычная сегодняшняя тренировка — 
 });
 
 const openTool = async (page: Page, name: RegExp | string) => {
-  await page.getByRole("button", { name: /^Инструменты/ }).last().click();
+  await page.getByRole("button", { name: "Ещё", exact: true }).last().click();
   await page.getByRole("button", { name: typeof name === "string" ? new RegExp(name) : name }).click();
 };
 
