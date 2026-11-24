@@ -317,6 +317,7 @@ export default function ProgressScreen({
           routines={routines}
           today={today}
           timeZone={settings.timeZone}
+          accountId={accountId}
         />
       ) : null}
       {progressTab === "analytics" ? (

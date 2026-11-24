@@ -499,6 +499,11 @@ export class HistoryImportService {
       "SELECT state,result FROM workout_import_runs WHERE owner_id=? AND run_id=?",
     ).bind(this.owner, runId).first<{ state: string; result: string }>();
     if (committed?.state !== "committed") throw new InputError("Импорт ещё не завершён. Повтори ту же операцию.");
+    // После фиксации стейджинг и зависимости больше не нужны (откат идёт по workout_import_receipts).
+    await this.db.batch([
+      this.db.prepare("DELETE FROM workout_import_staging WHERE owner_id=? AND run_id=?").bind(this.owner, runId),
+      this.db.prepare("DELETE FROM workout_import_dependencies WHERE owner_id=? AND run_id=?").bind(this.owner, runId),
+    ]);
     return JSON.parse(committed.result);
   }
 

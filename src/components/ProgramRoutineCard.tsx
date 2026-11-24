@@ -24,7 +24,7 @@ export default function ProgramRoutineCard({ routine, workouts, timeZone, today,
   const reduceMotion = useReducedMotion();
   const program = new TrainingProgram(routine);
   const periodization = LaidDupPlan.periodizationOf(routine);
-  const laidLift = periodization && LaidDupPlan.LIFT_EXERCISE[LaidDupPlan.LIFT_OF[periodization.day]];
+  const laidLift = periodization && LaidDupPlan.liftExerciseId(LaidDupPlan.LIFT_OF[periodization.day], periodization.substitutions);
   const days = routine.days.length ? routine.days.map((day) => DAY_NAMES[day]).join(" · ") : "Без расписания";
   const remaining = routine.exercises.length - 4;
   return (

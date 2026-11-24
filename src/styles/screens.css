@@ -1,3 +1,4 @@
+@layer tokens, base, layout, components, screens, utilities;
 @layer screens {
     svg {
         flex-shrink: 0
@@ -37,10 +38,6 @@
     .panel-header p {
         color: var(--muted);
         margin-top: 6px
-    }
-    .brand {
-        align-items: center;
-        padding-left: 10px
     }
     .demo-banner {
         display: flex;
@@ -598,9 +595,6 @@
         }
     }
     @media (max-width: 1050px) {
-        .brand {
-            font-size: 2.1875rem
-        }
         .page-content {
             padding-left: 22px;
             padding-right: 22px
@@ -2107,9 +2101,6 @@
             top: calc(var(--sat) + 72px);
             bottom: auto
         }
-    }
-    .brand {
-        gap: 0
     }
     .cloud-panel {
         display: flex;
@@ -3880,6 +3871,137 @@
         flex-direction: column;
         gap: 14px
     }
+    .swap-scope-note {
+        margin: 0;
+        padding: 9px 12px;
+        border-radius: 10px;
+        border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+        background: color-mix(in srgb, var(--accent) 7%, var(--bg));
+        font-size: 0.82rem;
+        line-height: 1.45;
+        color: var(--text-soft)
+    }
+    .swap-reset-btn {
+        margin-top: 6px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-block-size: 44px;
+        min-inline-size: 44px;
+        padding: 4px 10px;
+        border-radius: 8px;
+        border: 1px solid var(--line-strong, var(--line));
+        background: var(--bg);
+        color: var(--text-soft);
+        font-size: 0.78rem;
+        font-weight: 600;
+        align-self: flex-start
+    }
+    .swap-reset-btn:hover {
+        border-color: var(--accent);
+        color: var(--text)
+    }
+    .swap-filter-pill.swap-filter-spine {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px
+    }
+    .swap-injury-bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px
+    }
+    .swap-injury-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: var(--muted);
+        margin-inline-end: 2px
+    }
+    .swap-disclaimer {
+        margin: -6px 0 0;
+        line-height: 1.4
+    }
+    .swap-scope-picker {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 10px 12px;
+        border-radius: 12px;
+        border: 1px solid var(--line);
+        background: var(--bg)
+    }
+    .swap-section-sub {
+        font-size: 0.76rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--muted)
+    }
+    .swap-scope-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px
+    }
+    @media (min-width: 560px) {
+        .swap-scope-grid {
+            grid-template-columns: repeat(4, minmax(0, 1fr))
+        }
+    }
+    .swap-scope-btn {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+        min-inline-size: 44px;
+        min-block-size: 48px;
+        padding: 8px 10px;
+        border-radius: 9px;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        color: var(--text-soft);
+        text-align: left;
+        font-size: 0.78rem
+    }
+    .swap-scope-btn b {
+        color: var(--text);
+        font-weight: 650
+    }
+    .swap-scope-btn small {
+        font-size: 0.7rem;
+        color: var(--muted);
+        line-height: 1.3
+    }
+    .swap-scope-btn.active {
+        border-color: var(--accent);
+        background: color-mix(in srgb, var(--accent) 12%, var(--surface))
+    }
+    .swap-avoid-reasons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        padding-top: 4px;
+        border-top: 1px solid var(--line-soft)
+    }
+    .swap-class-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 7px;
+        border-radius: 6px;
+        border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+        background: color-mix(in srgb, var(--accent) 10%, var(--bg));
+        color: var(--accent-hover, var(--accent));
+        font-size: 0.7rem;
+        font-weight: 650;
+        white-space: nowrap
+    }
+    .wake-lock-btn.active {
+        color: var(--accent-hover, var(--accent));
+        border-color: color-mix(in srgb, var(--accent) 55%, var(--line))
+    }
     .pose-analysis {
         display: flex;
         flex-direction: column;
@@ -3970,15 +4092,6 @@
     :where(.accent-glow, .streak-glow) {
         text-shadow: none;
         box-shadow: none
-    }
-    .brand {
-        display: block;
-        padding: 0 16px 42px;
-        font-family: var(--font-display);
-        font-size: 3.3rem;
-        font-weight: 700;
-        letter-spacing: -0.015em;
-        line-height: 1
     }
     .today-head, .screen-head {
         margin: 0 0 30px;
@@ -5749,6 +5862,11 @@
         .page-content {
             padding: 22px var(--journal-gutter) calc(var(--tabbar) + var(--sab) + 40px)
         }
+    }
+    .app-shell.has-resume .page-content {
+        padding-bottom: calc(var(--tabbar, 0px) + var(--sab, 0px) + 160px)
+    }
+    @media (max-width: 960px) {
         .journal-topbar-actions {
             display: flex;
             align-items: center;
@@ -7819,5 +7937,110 @@
         .exlib-toolbar {
             grid-template-columns: 1fr
         }
+    }
+    .settings-safety-toggle {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        margin-top: 16px;
+        padding: 12px 14px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--surface-2);
+        cursor: pointer;
+    }
+    .settings-safety-toggle input[type="checkbox"] {
+        width: 22px;
+        height: 22px;
+        min-width: 22px;
+        min-height: 22px;
+        margin-top: 2px;
+        accent-color: var(--accent);
+        cursor: pointer;
+    }
+    .settings-safety-toggle > span {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 0;
+    }
+    .settings-safety-toggle b {
+        font-size: 0.875rem;
+        color: var(--text);
+    }
+    .settings-safety-toggle small {
+        font-size: 0.78rem;
+        line-height: 1.5;
+        color: var(--muted);
+    }
+    .avoided-manager {
+        margin-top: 14px;
+        padding: 12px 14px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--surface);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    .avoided-manager-head {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 0.84rem;
+        color: var(--text);
+    }
+    .avoided-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    .avoided-list li {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 8px 10px;
+        border: 1px solid var(--line-soft, var(--line));
+        border-radius: 10px;
+        background: var(--surface-2);
+    }
+    .avoided-list li > div {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 0;
+    }
+    .avoided-list li b {
+        font-size: 0.84rem;
+        color: var(--text);
+        overflow-wrap: anywhere;
+    }
+    .avoided-list li small {
+        font-size: 0.74rem;
+        color: var(--muted);
+    }
+    .avoided-restore-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 44px;
+        min-width: 44px;
+        padding: 0 12px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--surface);
+        color: var(--text);
+        font-size: 0.78rem;
+        font-weight: 600;
+        cursor: pointer;
+        flex-shrink: 0;
+    }
+    .avoided-restore-btn:hover {
+        border-color: var(--accent);
+        color: var(--accent);
     }
 }

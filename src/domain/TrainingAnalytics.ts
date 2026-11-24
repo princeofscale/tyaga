@@ -50,7 +50,7 @@ export class TrainingAnalytics {
     return loads.map((m) => ({
       ...m,
       total: m.direct,
-      ratio: m.direct / m.goal,
+      ratio: m.goal > 0 ? m.direct / m.goal : 0,
     }));
   }
   anatomicalLoad() {

@@ -2,10 +2,14 @@ import { addCalendarDays } from "../lib/calendar";
 import type { Muscle, Routine, Workout } from "../lib/types";
 import { AnalyticsFacts } from "./AnalyticsFacts";
 import { BiomechanicsEngine, type LaidCycleAudit, type WeeklyBiomechanicsReport } from "./BiomechanicsEngine";
+import { DeloadEngine } from "./DeloadEngine";
 import { LaidDupPlan } from "./LaidDupPlan";
 import { MuscleReadiness, type MuscleReadinessItem } from "./MuscleReadiness";
 import { PersonalRecordsCalculator, type BalanceRatios } from "./PersonalRecords";
+import { ExerciseAvoidStore } from "./SubstitutionPolicy";
+import { TrainingCalendar } from "./TrainingCalendar";
 import { VolumeLandmarksCalculator } from "./VolumeLandmarks";
+import { exerciseById } from "../lib/model";
 
 export type CoachLoadStatus = "no_data" | "optimal" | "overloaded" | "underloaded" | "attention";
 export type CoachInsightCategory = "overload" | "underload" | "progress" | "balance";
@@ -28,6 +32,7 @@ export interface LiftTrend {
   priorE1rm: number;
   changePct: number;
   sessionsCount: number;
+  confidence: "high" | "moderate" | "low";
   status: "rising" | "plateau" | "dip";
 }
 
@@ -55,6 +60,12 @@ export interface SmartCoachReport {
   liftTrends: LiftTrend[];
   insights: CoachInsight[];
   nextSession: NextSessionSuggestion;
+  /** Выполнение запланированных тренировок по программам за последние 14 дней. */
+  planAdherence: { planned: number; done: number; pct: number } | null;
+  /** Сдвиг среднего RIR за последние 14 дн. vs предыдущие 15–42 дн. (отрицательный = те же веса даются тяжелее). */
+  rirDrift: number | null;
+  /** Упражнения, скрытые по причине дискомфорта/боли (до пересмотра) или помеченные painFlags. */
+  painFlagsSummary: { count: number; names: string[] };
   biomechanics: WeeklyBiomechanicsReport;
   readiness: MuscleReadinessItem[];
   ratios: BalanceRatios;
@@ -76,10 +87,48 @@ export class SmartCoach {
     today: string,
     timeZone?: string,
     now = new Date(),
+    accountId?: string,
   ): SmartCoachReport {
     const bio = BiomechanicsEngine.analyzeWeek(workouts, today, { timeZone, now });
     const readiness = MuscleReadiness.fromWorkouts(workouts, today, timeZone);
     const volumeWeek = VolumeLandmarksCalculator.assessWeek(workouts, today, { timeZone, now });
+    const deloadAssessment = DeloadEngine.assessFatigue(workouts, now, timeZone);
+    const rirDrift = deloadAssessment.rirDrift ?? null;
+
+    // Выполнение плана за последние 14 дней (decision metric #1)
+    let planned14 = 0;
+    let done14 = 0;
+    if (routines.length > 0) {
+      for (let d = 13; d >= 0; d--) {
+        const dayIso = addCalendarDays(today, -d);
+        const slots = TrainingCalendar.onDate(routines, dayIso);
+        for (const slot of slots) {
+          planned14++;
+          if (TrainingCalendar.completed(slot, workouts)) done14++;
+        }
+      }
+    }
+    const planAdherence =
+      planned14 > 0
+        ? { planned: planned14, done: done14, pct: Math.round((done14 / planned14) * 100) }
+        : null;
+
+    // Сводка ограничений по боли (avoid list + painFlags в циклах Лейда)
+    const painNameSet = new Set<string>();
+    if (accountId) {
+      for (const item of new ExerciseAvoidStore(accountId).read()) {
+        if (item.reason === "pain") painNameSet.add(exerciseById(item.exerciseId)?.name ?? item.exerciseId);
+      }
+    }
+    for (const r of routines) {
+      const p = LaidDupPlan.periodizationOf(r);
+      if (p?.painFlags?.length) {
+        for (const lift of p.painFlags) {
+          painNameSet.add(LaidDupPlan.liftLabel(lift, p.substitutions));
+        }
+      }
+    }
+    const painFlagsSummary = { count: painNameSet.size, names: [...painNameSet] };
 
     const start7 = addCalendarDays(today, -6);
     const start28 = addCalendarDays(today, -27);
@@ -103,11 +152,11 @@ export class SmartCoach {
 
     const ratios = new PersonalRecordsCalculator(recent28, now).calculateRatios(timeZone);
 
-    // Перегруженные (>20 экв. подх./нед) и недогруженные (<6 экв. подх./нед) мышцы
+    // Перегруженные (выше MRV своей зоны) и недогруженные (<6 экв. подх./нед) мышцы
     const overloadedMuscles = volumeWeek.assessments
-      .filter((a) => a.actualSets > 20)
-      .sort((a, b) => b.actualSets - a.actualSets)
-      .map((a) => ({ muscle: a.muscle, name: a.muscleName, sets: round1(a.actualSets) }));
+      .filter((a) => a.actualSets > a.bracket.mrv)
+      .sort((a, b) => (b.actualSets - b.bracket.mrv) - (a.actualSets - a.bracket.mrv))
+      .map((a) => ({ muscle: a.muscle, name: a.muscleName, sets: round1(a.actualSets), mrv: a.bracket.mrv }));
 
     const coreGroups: Muscle[] = ["chest", "back", "shoulders", "quads", "hamstrings", "glutes"];
     const underloadedMuscles =
@@ -142,6 +191,12 @@ export class SmartCoach {
       const changePct = round1(((pr.bestE1rm.e1rm - prior.bestE1rm.e1rm) / prior.bestE1rm.e1rm) * 100);
       const status: LiftTrend["status"] =
         changePct >= 2 ? "rising" : changePct <= -2.5 ? "dip" : "plateau";
+      const confidence: LiftTrend["confidence"] =
+        sessionsCount >= 6 && pr.bestE1rm.reps <= 5
+          ? "high"
+          : sessionsCount >= 4 && pr.bestE1rm.reps <= 10
+            ? "moderate"
+            : "low";
       liftTrends.push({
         exerciseId: pr.exerciseId,
         name: pr.name,
@@ -149,6 +204,7 @@ export class SmartCoach {
         priorE1rm: prior.bestE1rm.e1rm,
         changePct,
         sessionsCount,
+        confidence,
         status,
       });
     }
@@ -174,15 +230,16 @@ export class SmartCoach {
       });
     }
 
-    // 2. Перегруженные мышечные группы (>20 экв. подх./нед)
+    // 2. Перегруженные мышечные группы (выше индивидуального MRV зоны)
     if (overloadedMuscles.length > 0) {
-      const list = overloadedMuscles.slice(0, 3).map((m) => `${m.name} (${m.sets})`).join(", ");
+      const list = overloadedMuscles.slice(0, 3).map((m) => `${m.name} (${m.sets} при потолке ${m.mrv})`).join(", ");
+      const maxExcess = Math.max(...overloadedMuscles.map((m) => m.sets - m.mrv));
       insights.push({
         id: "muscle-overload",
         category: "overload",
-        severity: overloadedMuscles[0].sets >= 26 ? "critical" : "warn",
+        severity: maxExcess >= 4 ? "critical" : "warn",
         title: "Превышен недельный объём по мышцам",
-        detail: `${list} экв. подх./нед — выше общего потолка 20 подх. Отдача от дополнительных подходов падает, а локальная усталость копится.`,
+        detail: `${list} экв. подх./нед — выше максимального восстанавливаемого объёма (MRV). Отдача от дополнительных подходов падает, а локальная усталость копится.`,
         action: "Срежь 2–4 лишних подхода в этих зонах или проведи объёмную разгрузку на неделю.",
         metric: `${overloadedMuscles[0].sets} подх.`,
       });
@@ -430,6 +487,9 @@ export class SmartCoach {
       liftTrends,
       insights,
       nextSession,
+      planAdherence,
+      rirDrift,
+      painFlagsSummary,
       biomechanics: bio,
       readiness,
       ratios,

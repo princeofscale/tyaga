@@ -102,6 +102,11 @@ export default function HistoryList({
     [found],
   );
   const active = HistoryFilter.isActive(query) || range;
+  const [visibleMonths, setVisibleMonths] = useState(12);
+  const visibleGroups = useMemo(
+    () => (active || exact ? groups : groups.slice(0, visibleMonths)),
+    [active, exact, groups, visibleMonths],
+  );
   useEffect(() => {
     let frame = 0;
     const onScroll = () => {
@@ -237,7 +242,7 @@ export default function HistoryList({
         </div>
       ) : null}
       <div className={`panel history-panel${exact ? " history-exact" : ""}`}>
-        {groups.map((group) => (
+        {visibleGroups.map((group) => (
           <section className="history-month" key={group.key} id={`history-month-${group.key}`} aria-label={group.label}>
             <header className="history-month-head">
               <h2 className="history-month-title">
@@ -257,6 +262,17 @@ export default function HistoryList({
             </div>
           </section>
         ))}
+        {!active && groups.length > visibleMonths ? (
+          <div className="history-more">
+            <button
+              type="button"
+              className="button secondary"
+              onClick={() => setVisibleMonths((n) => n + 12)}
+            >
+              Показать ещё ({groups.length - visibleMonths} мес.)
+            </button>
+          </div>
+        ) : null}
         {!sorted.length ? empty : null}
         {sorted.length && !found.length ? (
           <div className="no-results">

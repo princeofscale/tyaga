@@ -26,20 +26,13 @@ import { SharedProgramRepository } from "./SharedProgramRepository";
 import { MeetupRepository } from "./MeetupRepository";
 import { LiveRoomService } from "./LiveRoomService";
 import { BodyweightRepository } from "./BodyweightRepository";
+import { BodyTooLargeError, json, readTextLimited } from "./http";
 export interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
   onSessionToken?: (token: string) => void;
 }
-const json = (data: unknown, status = 200) =>
-  new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      "Content-Type": "application/json; charset=utf-8",
-      "Cache-Control": "no-store",
-      "X-Content-Type-Options": "nosniff",
-    },
-  });
+const MAX_BODY_BYTES = 500_000;
 type WorkoutRow = { payload: string; revision: number; updated_at: string };
 const fromRow = (row: WorkoutRow): Workout => ({
   ...JSON.parse(row.payload),
@@ -47,8 +40,11 @@ const fromRow = (row: WorkoutRow): Workout => ({
   updatedAt: row.updated_at,
 });
 
-export async function handleApi(request: Request, env: Env) {
+export async function handleApi(request: Request, env: Env, preReadBody?: string) {
   const url = new URL(request.url);
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204 });
+  }
   const userId = request.headers.get("oai-authenticated-user-id");
   if (!userId)
     return json(
@@ -66,23 +62,26 @@ export async function handleApi(request: Request, env: Env) {
     )
       return json({ error: "Требуется JSON" }, 415);
   }
+  const readJson = () => readBody(request, preReadBody);
   try {
     const accounts = new AccountService(env.DB, userId, env.onSessionToken);
-    const authResponse = await accounts.handle(request);
+    const authResponse = await accounts.handle(request, preReadBody);
     if (authResponse) return authResponse;
     const activeAccount = await accounts.require(request);
     if(url.pathname==="/api/challenges"||url.pathname.startsWith("/api/challenges/")) {
       const challenges=new ChallengeRepository(env.DB,activeAccount);
       if(url.pathname==="/api/challenges"&&request.method==="GET")return json(await challenges.read());
-      if(url.pathname==="/api/challenges"&&request.method==="POST")return json(await challenges.create(await readBody(request)));
-      if(request.method==="PUT"&&url.pathname.startsWith("/api/challenges/")){await challenges.act(str(decodeURIComponent(url.pathname.slice("/api/challenges/".length)),80,1),await readBody(request));return json({ok:true});}
+      if(url.pathname==="/api/challenges"&&request.method==="POST")return json(await challenges.create(await readJson()));
+      if(request.method==="PUT"&&url.pathname.startsWith("/api/challenges/")){await challenges.act(str(decodeURIComponent(url.pathname.slice("/api/challenges/".length)),80,1),await readJson());return json({ok:true});}
       return json({error:"Не найдено"},404);
     }
     if (url.pathname === "/api/bodyweight" || url.pathname.startsWith("/api/bodyweight/")) {
       const weights = new BodyweightRepository(env.DB, userId, activeAccount.timeZone,activeAccount.id);
       if (request.method === "GET" && url.pathname === "/api/bodyweight") return json({...await weights.read(),accountId:activeAccount.id});
-      if (request.method === "PUT") {
-        const result=await weights.save(decodeURIComponent(url.pathname.slice("/api/bodyweight/".length)),await readBody(request));
+      if (request.method === "PUT" && url.pathname.startsWith("/api/bodyweight/")) {
+        const key = decodeURIComponent(url.pathname.slice("/api/bodyweight/".length));
+        if (!key) return json({ error: "Не найдено" }, 404);
+        const result=await weights.save(key,await readJson());
         return result.saved?json({document:result.saved}):json({error:"Замер изменён на другом устройстве. Выбери версию для сохранения.",document:result.current},409);
       }
       return json({error:"Не найдено"},404);
@@ -95,9 +94,9 @@ export async function handleApi(request: Request, env: Env) {
         case "POST /api/friends/live":
           return json({ room: await live.create() });
         case "POST /api/friends/live/join":
-          return json({ room: await live.join(await readBody(request)) });
+          return json({ room: await live.join(await readJson()) });
         case "PUT /api/friends/live/state":
-          return json({ room: await live.push(await readBody(request)) });
+          return json({ room: await live.push(await readJson()) });
         case "DELETE /api/friends/live":
           await live.leave();
           return json({ room: null });
@@ -110,7 +109,7 @@ export async function handleApi(request: Request, env: Env) {
       const meetups=new MeetupRepository(env.DB,activeAccount);
       const sharedPrograms = new SharedProgramRepository(env.DB, activeAccount);
       if(path === "/api/friends" && request.method === "GET") return json({...await friends.read(),meetups:await meetups.read(),sharedPrograms:await sharedPrograms.read()});
-      if(path === "/api/friends/programs" && request.method === "POST") return json(await sharedPrograms.create(object(await readBody(request))));
+      if(path === "/api/friends/programs" && request.method === "POST") return json(await sharedPrograms.create(object(await readJson())));
       if(path.startsWith("/api/friends/programs/")) {
         const rest = path.slice("/api/friends/programs/".length);
         if (rest.endsWith("/adopt") && request.method === "POST") {
@@ -124,15 +123,15 @@ export async function handleApi(request: Request, env: Env) {
         }
         return json({ error: "Не найдено" }, 404);
       }
-      if(path === "/api/friends/meetups" && request.method === "POST") return json(await meetups.create(await readBody(request)));
-      if(path.startsWith("/api/friends/meetups/") && request.method === "PUT") { await meetups.act(str(decodeURIComponent(path.slice("/api/friends/meetups/".length)),80,1),await readBody(request));return json({ok:true}); }
-      if(path === "/api/friends/goal" && request.method === "PUT") {await friends.goal(object(await readBody(request)).target);return json({ok:true});}
+      if(path === "/api/friends/meetups" && request.method === "POST") return json(await meetups.create(await readJson()));
+      if(path.startsWith("/api/friends/meetups/") && request.method === "PUT") { await meetups.act(str(decodeURIComponent(path.slice("/api/friends/meetups/".length)),80,1),await readJson());return json({ok:true}); }
+      if(path === "/api/friends/goal" && request.method === "PUT") {await friends.goal(object(await readJson()).target);return json({ok:true});}
       if (path === "/api/friends/requests" && request.method === "POST") {
-        await friends.request(object(await readBody(request)).code);
+        await friends.request(object(await readJson()).code);
         return json({ ok: true });
       }
       if (path === "/api/friends/status" && request.method === "PUT") {
-        await friends.status(object(await readBody(request)));
+        await friends.status(object(await readJson()));
         return json({ ok: true });
       }
       const match = path.match(/^\/api\/friends\/(connections|kudos)\/([^/]+)$/);
@@ -140,7 +139,7 @@ export async function handleApi(request: Request, env: Env) {
         const id = str(decodeURIComponent(match[2]), 80, 1);
         if (match[1] === "connections" && request.method === "PUT") await friends.accept(id);
         else if (match[1] === "connections" && request.method === "DELETE") await friends.remove(id);
-        else if (match[1] === "kudos" && request.method === "PUT") await friends.kudos(id, object(await readBody(request)).given);
+        else if (match[1] === "kudos" && request.method === "PUT") await friends.kudos(id, object(await readJson()).given);
         else return json({ error: "Не найдено" }, 404);
         return json({ ok: true });
       }
@@ -154,11 +153,11 @@ export async function handleApi(request: Request, env: Env) {
       return new Map([...wger, ...custom]);
     };
     if (request.method === "PUT" && url.pathname === "/api/machines") {
-      const result = await machines.save(validMachine(await readBody(request)));
+      const result = await machines.save(validMachine(await readJson()));
       return result.saved ? json({ machine: result.saved }) : json({ error: "Тренажёр изменён на другом устройстве", currentMachine: result.current }, 409);
     }
     if (request.method === "DELETE" && url.pathname.startsWith("/api/machines/")) {
-      const v = object(await readBody(request));
+      const v = object(await readJson());
       const archived = await machines.archive(str(decodeURIComponent(url.pathname.slice("/api/machines/".length)),80,1), validRevision(v.revision));
       return archived ? json({ ok: true }) : json({ error: "Тренажёр изменён на другом устройстве" }, 409);
     }
@@ -168,7 +167,7 @@ export async function handleApi(request: Request, env: Env) {
       request.method === "POST" &&
       url.pathname === "/api/exercises/resolve"
     ) {
-      const input = await readBody(request);
+      const input = await readJson();
       if (!Array.isArray(input.names) || input.names.length > 80)
         throw new InputError("Не больше 80 названий за запрос");
       return json({
@@ -180,22 +179,22 @@ export async function handleApi(request: Request, env: Env) {
     if (request.method === "POST" && url.pathname === "/api/import")
       return json(
         await new HistoryImportService(env.DB, userId).import(
-          await readBody(request),
+          await readJson(),
         ),
       );
     if (request.method === "POST" && url.pathname === "/api/import/undo")
-      return json(await new ImportReceiptService(env.DB, userId).undo(await readBody(request)));
+      return json(await new ImportReceiptService(env.DB, userId).undo(await readJson()));
     if (request.method === "GET" && url.pathname === "/api/import/runs")
       return json(await new ImportReceiptService(env.DB, userId).runs());
     if (request.method === "POST" && url.pathname === "/api/import/metadata")
       return json(
         await new BackupImportService(env.DB, userId).import(
-          await readBody(request),
+          await readJson(),
         ),
       );
     if (request.method === "PUT" && url.pathname === "/api/custom-exercises") {
       const exercise = await new PersonalExerciseFactory().create(
-        await readBody(request),
+        await readJson(),
       );
       return json({ exercise: await product.saveExercise(exercise) });
     }
@@ -212,7 +211,7 @@ export async function handleApi(request: Request, env: Env) {
       return json({ deleted: id });
     }
     if (request.method === "PUT" && url.pathname === "/api/favorites") {
-      const v = await readBody(request);
+      const v = await readJson();
       const id = str(v.exerciseId, 80, 1);
       if (typeof v.favorite !== "boolean")
         throw new InputError("Проверь отметку избранного");
@@ -222,7 +221,7 @@ export async function handleApi(request: Request, env: Env) {
       return json({ exerciseId: id, favorite: v.favorite });
     }
     if (request.method === "PUT" && url.pathname === "/api/routines") {
-      const input = await readBody(request);
+      const input = await readJson();
       const ids = Array.isArray(input.exercises)
         ? input.exercises.map((e: { exerciseId: string }) => e.exerciseId)
         : [];
@@ -249,7 +248,7 @@ export async function handleApi(request: Request, env: Env) {
           80,
           1,
         ),
-        body = await readBody(request);
+        body = await readJson();
       if (body.revision === undefined)
         throw new InputError("Для удаления нужна версия программы");
       const current = await product.removeRoutine(
@@ -277,7 +276,7 @@ export async function handleApi(request: Request, env: Env) {
         ),
       );
     if (request.method === "POST" && url.pathname === "/api/sync/apply")
-      return json(await new SyncService(env.DB, userId).apply(await readBody(request)));
+      return json(await new SyncService(env.DB, userId).apply(await readJson()));
     if (request.method === "GET" && url.pathname === "/api/exercises")
       return json(
         await new ExerciseRepository(env.DB).search(
@@ -286,7 +285,7 @@ export async function handleApi(request: Request, env: Env) {
             ? new Set(
                 (
                   await env.DB.prepare(
-                    "SELECT DISTINCT json_extract(e.value,'$.exerciseId') AS id FROM workouts w, json_each(w.payload,'$.exercises') e WHERE w.owner_id=?",
+                    "SELECT DISTINCT json_extract(e.value,'$.exerciseId') AS id FROM (SELECT payload FROM workouts WHERE owner_id=? ORDER BY date DESC LIMIT 300) w, json_each(w.payload,'$.exercises') e",
                   )
                     .bind(userId)
                     .all<{ id: string | null }>()
@@ -317,7 +316,7 @@ export async function handleApi(request: Request, env: Env) {
       });
     }
     if (request.method === "PUT" && url.pathname === "/api/settings") {
-      const value = validSettings(await readBody(request));
+      const value = validSettings(await readJson());
       const { revision = 0, ...content } = value;
       const payload = JSON.stringify(content);
       const saved = await env.DB.prepare(
@@ -358,7 +357,7 @@ export async function handleApi(request: Request, env: Env) {
       )
         .bind(userId)
         .first<{ payload: string }>();
-      const input = await readBody(request);
+      const input = await readJson();
       const externalIds = Array.isArray(input?.exercises)
         ? input.exercises.map((e: { exerciseId?: unknown }) =>
             typeof e?.exerciseId === "string" ? e.exerciseId : "",
@@ -415,7 +414,7 @@ export async function handleApi(request: Request, env: Env) {
         url.pathname.slice("/api/workouts/".length),
       );
       if (!id || id.length > 80) throw new InputError("Некорректный ID");
-      const body = (await readBody(request)) as { revision?: unknown };
+      const body = (await readJson()) as { revision?: unknown };
       if (!body || typeof body !== "object" || body.revision === undefined)
         throw new InputError("Для удаления нужна версия записи");
       const revision = validRevision(body.revision);
@@ -442,8 +441,10 @@ export async function handleApi(request: Request, env: Env) {
     }
     return json({ error: "Не найдено" }, 404);
   } catch (error) {
+    if (error instanceof BodyTooLargeError) return json({ error: error.message }, 413);
     if (error instanceof AuthError) return json({ error: error.message }, error.status);
     if (error instanceof InputError) return json({ error: error.message }, 400);
+    if (error instanceof URIError) return json({ error: "Некорректный адрес" }, 400);
     if (error instanceof SyntaxError)
       return json({ error: "Некорректный JSON" }, 400);
     console.error(
@@ -459,9 +460,10 @@ export async function handleApi(request: Request, env: Env) {
     );
   }
 }
-async function readBody(request: Request) {
-  const body = await request.text();
-  if (body.length > 500000) throw new InputError("Слишком большой запрос");
+async function readBody(request: Request, preReadBody?: string) {
+  const body = preReadBody ?? (await readTextLimited(request, MAX_BODY_BYTES));
+  if (new TextEncoder().encode(body).byteLength > MAX_BODY_BYTES)
+    throw new BodyTooLargeError("Слишком большой запрос");
   return JSON.parse(body);
 }
 export default {
@@ -469,6 +471,19 @@ export default {
     const url = new URL(request.url);
     if (url.pathname.startsWith("/api/")) return handleApi(request, env);
     const response = await env.ASSETS.fetch(request);
+    if (
+      url.pathname === "/tyaga.apk" &&
+      (response.headers.get("Content-Type") ?? "").includes("text/html")
+    ) {
+      return new Response("Android APK не опубликован", {
+        status: 404,
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "Cache-Control": "no-store",
+          "X-Content-Type-Options": "nosniff",
+        },
+      });
+    }
     const headers = new Headers(response.headers);
     headers.set("X-Content-Type-Options", "nosniff");
     headers.set("X-Frame-Options", "DENY");
@@ -476,10 +491,10 @@ export default {
     headers.set(
       "Content-Security-Policy",
       // connect-src: MediaPipe-модель анализа техники лежит на storage.googleapis.com
-      // (src/services/PoseVideoAnalysis.ts). Без явного хоста фича падает в проде,
-      // хотя в e2e на vite preview (без этого заголовка) проходит.
+      // (src/services/PoseVideoAnalysis.ts). media-src/img-src включают blob: для
+      // локального видео предпросмотра (PoseAnalysisPanel.tsx: URL.createObjectURL).
       // React style-атрибуты применяются через CSSOM и не требуют 'unsafe-inline'.
-      "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://storage.googleapis.com; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
+      "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://storage.googleapis.com; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
     );
     headers.set("Permissions-Policy", "geolocation=(), microphone=()");
     return new Response(response.body, { status: response.status, headers });

@@ -1,11 +1,20 @@
-import { useMemo, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
-import { Check, Sparkles } from "lucide-react";
+import { ArrowLeftRight, Check, RotateCcw, Sparkles } from "lucide-react";
 import { DAY_NAMES } from "../domain/TrainingProgram";
-import { LaidDupPlan, type LaidLift, type LaidWeekSlot } from "../domain/LaidDupPlan";
+import {
+  LaidDupPlan,
+  type LaidLift,
+  type LaidSlotInfo,
+  type LaidSubstitutions,
+  type LaidWeekSlot,
+} from "../domain/LaidDupPlan";
+import { ExerciseAvoidStore, SubstitutionPolicy } from "../domain/SubstitutionPolicy";
 import { dateLabel } from "../lib/calendar";
+import { exerciseById } from "../lib/model";
 import { setsWord } from "../lib/quantity";
-import type { LaidMaxes, Routine, Workout } from "../lib/types";
+import type { Exercise, LaidMaxes, Routine, Workout } from "../lib/types";
+import ExerciseSwapModal from "./ExerciseSwapModal";
 import LaidWeekOrderEditor from "./LaidWeekOrderEditor";
 import Modal from "./Modal";
 
@@ -19,6 +28,9 @@ type Props = {
   /** Лейд уже есть: окно создания сначала спрашивает, что делать. */
   existing?: boolean;
   workouts: Workout[];
+  personal?: Exercise[];
+  accountId?: string;
+  minorMode?: boolean;
   today: string;
   onSave: (routine: Routine) => Promise<Routine>;
   onClose: () => void;
@@ -45,26 +57,79 @@ const LIFT_DAYS: Record<LaidLift, string> = {
 const SPRING_PILL = { type: "spring" as const, stiffness: 460, damping: 35 };
 const SPRING_THUMB = { type: "spring" as const, stiffness: 520, damping: 32 };
 
-/** Окно «Дэвид Лейд · DUP»: четыре максимума, старт, ритм недели, добавки; то же окно обновляет максимумы и начинает новый цикл. */
+/** Окно «Дэвид Лейд · DUP»: четыре максимума с заменами упражнений, компактное расписание, параметры и живой расчёт объёма. */
 export default function LaidDupModal(props: Props) {
   const { mode, cycle, today } = props;
   const reduced = useReducedMotion();
+  const uid = useId();
   const base = cycle?.[0]?.periodization;
   const sets = useMemo(() => LaidDupPlan.weeklySets(), []);
-  const estimates = useMemo(() => LaidDupPlan.estimates(props.workouts, today), [props.workouts, today]);
   const [ask, setAsk] = useState(mode === "create" && !!props.existing);
   const [values, setValues] = useState<Record<LaidLift, string>>(() =>
     Object.fromEntries(LIFTS.map((l) => [l, base ? LaidDupPlan.kg(base.maxes[l]) : ""])) as Record<LaidLift, string>,
   );
+  const [substitutions, setSubstitutions] = useState<LaidSubstitutions>(() =>
+    base?.substitutions ? { ...base.substitutions } : {},
+  );
+  const [calibrationLifts, setCalibrationLifts] = useState<LaidLift[]>(() =>
+    base?.calibrationLifts ? [...base.calibrationLifts] : [],
+  );
+  const [painFlags, setPainFlags] = useState<LaidLift[]>(() =>
+    base?.painFlags ? [...base.painFlags] : [],
+  );
+  const [swapSlot, setSwapSlot] = useState<LaidSlotInfo | null>(null);
   const [appliedLift, setAppliedLift] = useState<LaidLift | null>(null);
   const [shown, setShown] = useState(false);
   const [start, setStart] = useState<"this" | "next">(() => LaidDupPlan.defaultStart(today));
   const [slots, setSlots] = useState<LaidWeekSlot[]>(() => LaidDupPlan.slotsForRhythm("6x1"));
   const [customOpen, setCustomOpen] = useState(false);
+  const [subsOpen, setSubsOpen] = useState(false);
   const [extras, setExtras] = useState(true);
-  const [light, setLight] = useState(false);
+  const [light, setLight] = useState(() => !!props.minorMode);
+  const avoidedIds = useMemo(
+    () => (props.accountId ? new ExerciseAvoidStore(props.accountId).ids() : undefined),
+    [props.accountId],
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const inputRefs = useRef<Partial<Record<LaidLift, HTMLInputElement | null>>>({});
+
+  const activeSubs = useMemo(
+    () => LaidDupPlan.normalizeSubstitutions(substitutions),
+    [substitutions],
+  );
+  const subCount = activeSubs ? Object.keys(activeSubs).length : 0;
+
+  const estimates = useMemo(
+    () => LaidDupPlan.estimates(props.workouts, today, activeSubs),
+    [props.workouts, today, activeSubs],
+  );
+  const estimateCount = useMemo(
+    () => LIFTS.filter((l) => estimates[l] !== null).length,
+    [estimates],
+  );
+  const allEstimatesApplied = useMemo(
+    () =>
+      estimateCount > 0 &&
+      LIFTS.every((l) => estimates[l] === null || values[l] === LaidDupPlan.kg(estimates[l]!)),
+    [estimateCount, estimates, values],
+  );
+
+  const catalogSlots = useMemo(
+    () => LaidDupPlan.catalogSlots(extras, activeSubs),
+    [extras, activeSubs],
+  );
+  const liftSlots = useMemo(() => catalogSlots.filter((s) => s.role === "lift"), [catalogSlots]);
+  const auxSlots = useMemo(() => catalogSlots.filter((s) => s.role !== "lift"), [catalogSlots]);
+
+  const volumeSummary = useMemo(
+    () => LaidDupPlan.weeklyMuscleVolume({ extras, substitutions: activeSubs }),
+    [extras, activeSubs],
+  );
+  const baselineVolume = useMemo(
+    () => LaidDupPlan.weeklyMuscleVolume({ extras }),
+    [extras],
+  );
 
   const rhythm = useMemo(() => LaidDupPlan.matchingRhythm(slots), [slots]);
   const weekdays = useMemo(() => LaidDupPlan.weekdaysFromSlots(slots), [slots]);
@@ -72,8 +137,15 @@ export default function LaidDupModal(props: Props) {
     () => (cycle?.length ? LaidDupPlan.weekdaysFromSlots(LaidDupPlan.slotsFromCycle(cycle)) : LaidDupPlan.WEEKDAY),
     [cycle],
   );
-  const checks = LIFTS.map((l) => ({ lift: l, ...LaidDupPlan.checkMax(values[l]) }));
+  const checks = LIFTS.map((l) => {
+    if (calibrationLifts.includes(l) || painFlags.includes(l)) {
+      const parsed = LaidDupPlan.checkMax(values[l]);
+      return { lift: l, value: parsed.value ?? 100, error: null };
+    }
+    return { lift: l, ...LaidDupPlan.checkMax(values[l]) };
+  });
   const valid = checks.every((c) => c.error === null);
+  const filledCount = checks.filter((c) => c.error === null).length;
   const maxes = valid ? (Object.fromEntries(checks.map((c) => [c.lift, c.value!])) as LaidMaxes) : null;
   const startMonday = LaidDupPlan.startMonday(today, start);
   const position = base ? LaidDupPlan.position(LaidDupPlan.weekOf(base.startMonday, today)) : null;
@@ -89,15 +161,77 @@ export default function LaidDupModal(props: Props) {
       });
   }, [mode, props.routines, weekdays]);
 
+  function applySubstitution(originalId: string, nextId: string | null) {
+    setSubstitutions((prev) => {
+      const next = { ...prev };
+      if (!nextId || nextId === originalId) {
+        delete next[originalId];
+      } else {
+        next[originalId] = nextId;
+      }
+      return next;
+    });
+    const lift = LIFTS.find((l) => LaidDupPlan.LIFT_EXERCISE[l] === originalId);
+    if (lift) {
+      if (!nextId || nextId === originalId) {
+        setCalibrationLifts((prev) => prev.filter((l) => l !== lift));
+      } else {
+        const ownSessions = LaidDupPlan.sessionsForExercise(props.workouts, nextId);
+        const compat = SubstitutionPolicy.classify(exerciseById(originalId), exerciseById(nextId), {
+          hasOwnHistory: ownSessions >= 2,
+          painFlag: painFlags.includes(lift),
+        });
+        if (compat.prescriptionMode !== "percent_1rm") {
+          setCalibrationLifts((prev) => (prev.includes(lift) ? prev : [...prev, lift]));
+        }
+      }
+    }
+  }
+
+  function toggleCalibration(lift: LaidLift) {
+    setCalibrationLifts((prev) =>
+      prev.includes(lift) ? prev.filter((l) => l !== lift) : [...prev, lift],
+    );
+  }
+
+  function togglePainFlag(lift: LaidLift) {
+    setPainFlags((prev) =>
+      prev.includes(lift) ? prev.filter((l) => l !== lift) : [...prev, lift],
+    );
+  }
+
+  function applyAllEstimates() {
+    setValues((prev) => {
+      const next = { ...prev };
+      for (const lift of LIFTS) {
+        if (estimates[lift] !== null) next[lift] = LaidDupPlan.kg(estimates[lift]!);
+      }
+      return next;
+    });
+  }
+
   async function submit() {
     setShown(true);
-    if (!maxes) return;
+    if (!maxes) {
+      const firstInvalid = checks.find((c) => c.error !== null);
+      if (firstInvalid) inputRefs.current[firstInvalid.lift]?.focus();
+      return;
+    }
     setBusy(true);
     setError("");
     let saved = 0;
     try {
       if (mode === "create") {
-        for (const r of LaidDupPlan.routines({ maxes, extras, light, startMonday, weekdays })) {
+        for (const r of LaidDupPlan.routines({
+          maxes,
+          extras,
+          light,
+          startMonday,
+          weekdays,
+          substitutions: activeSubs,
+          calibrationLifts,
+          painFlags,
+        })) {
           await props.onSave(r);
           saved++;
         }
@@ -110,7 +244,8 @@ export default function LaidDupModal(props: Props) {
               : restDay !== null
                 ? `свой порядок (выходной ${DAY_NAMES[restDay]})`
                 : "свой порядок";
-        props.onDone(`Программа Лейда создана: шесть дней, ${daysLabel}. Расписание — в «Программах».`);
+        const subText = subCount > 0 ? ` Замен упражнений: ${subCount}.` : "";
+        props.onDone(`Программа Лейда создана: шесть дней, ${daysLabel}.${subText} Расписание — в «Программах».`);
       } else {
         const week = position ? position.week : 0;
         for (const r of cycle ?? []) {
@@ -167,307 +302,626 @@ export default function LaidDupModal(props: Props) {
 
   const previewWeek = mode === "update" && position && !position.beforeStart ? position.week : 0;
   const previewWave = Math.floor(previewWeek / 3) + 1;
+  const swapCurrentEx = swapSlot ? exerciseById(swapSlot.resolvedId) ?? exerciseById(swapSlot.originalId) : null;
+  const swapOriginalEx = swapSlot ? exerciseById(swapSlot.originalId) : undefined;
+  const swapExcludeIds = swapSlot
+    ? LaidDupPlan.conflictingIdsForSubstitution(swapSlot.originalId, extras, activeSubs)
+    : [];
 
   return (
-    <Modal title={title} wide onClose={() => (busy ? false : props.onClose())}>
-      <form
-        className="product-form laid-modal"
-        noValidate
-        onSubmit={(e) => {
-          e.preventDefault();
-          void submit();
-        }}
-      >
-        <fieldset disabled={busy}>
-          <div className="laid-lead-box">
-            <p className="laid-lead">
-              1ПМ — максимум на одно повторение; вводи осторожное число. {LaidDupPlan.LOAD_NOTICE}
-            </p>
-            {mode === "restart" ? <p className="tiny laid-deload-hint">{LaidDupPlan.DELOAD_NOTICE}</p> : null}
-          </div>
+    <>
+      <Modal title={title} wide onClose={() => (busy ? false : props.onClose())}>
+        <form
+          className="product-form laid-modal laid-modal-v2"
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            void submit();
+          }}
+        >
+          <fieldset disabled={busy}>
+            {/* Compact program summary header */}
+            <div className="laid-hero-strip">
+              <div className="laid-hero-pills" aria-label="Параметры цикла">
+                <span className="laid-pill">9 недель</span>
+                <span className="laid-pill">6 дней/нед</span>
+                <span className="laid-pill">3 волны DUP</span>
+                {mode === "create" ? (
+                  <span className="laid-pill">{volumeSummary.totalSets} подх./нед</span>
+                ) : null}
+                {subCount > 0 ? (
+                  <span className="laid-pill is-accent">Замен: {subCount}</span>
+                ) : null}
+              </div>
+              <p className="laid-lead">
+                1ПМ — максимум на одно повторение; вводи осторожное число. {LaidDupPlan.LOAD_NOTICE}
+              </p>
+              {props.minorMode ? (
+                <p className="tiny laid-deload-hint">
+                  Включён безопасный режим (до 18 лет): облегчённый формат без синглов 95–97,5 % включён по умолчанию, автоэскалация 1ПМ отключена. Рекомендуется контроль техники с тренером.
+                </p>
+              ) : null}
+              {mode === "restart" ? <p className="tiny laid-deload-hint">{LaidDupPlan.DELOAD_NOTICE}</p> : null}
+            </div>
 
-          <div className="laid-fields">
-            {LIFTS.map((lift, i) => {
-              const c = checks[i];
-              const estimate = estimates[lift];
-              const message = shown && c.error ? c.error : "";
-              const isApplied = appliedLift === lift && values[lift] === (estimate !== null ? LaidDupPlan.kg(estimate) : "");
-              return (
-                <m.div
-                  className={`laid-field${message ? " has-error" : ""}${c.value ? " is-valid" : ""}`}
-                  key={lift}
-                  initial={reduced ? false : { opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.22, delay: reduced ? 0 : i * 0.035 }}
-                >
-                  <label>
-                    <span className="laid-field-head">
-                      <span>{LABEL[lift]}</span>
-                      <small className="laid-field-tag">{LIFT_DAYS[lift]}</small>
-                    </span>
-                    <span className="laid-input">
-                      <input
-                        inputMode="decimal"
-                        autoComplete="off"
-                        aria-invalid={message ? true : undefined}
-                        aria-describedby={`laid-${lift}-note`}
-                        data-autofocus={i === 0 ? "" : undefined}
-                        placeholder="0"
-                        value={values[lift]}
-                        onChange={(e) => setValues({ ...values, [lift]: e.target.value })}
-                      />
-                      <span className="laid-unit" aria-hidden="true">
-                        кг
-                      </span>
-                    </span>
-                  </label>
-                  <div id={`laid-${lift}-note`} className="laid-field-note">
-                    <AnimatePresence initial={false}>
-                      {message ? (
-                        <m.p
-                          key="err"
-                          className="laid-error"
-                          role="alert"
-                          initial={reduced ? false : { opacity: 0, y: -4 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -4 }}
-                          transition={{ duration: 0.16 }}
-                        >
-                          {message}
-                        </m.p>
-                      ) : null}
-                    </AnimatePresence>
-                    {estimate !== null ? (
-                      <m.button
-                        type="button"
-                        className={`laid-estimate${isApplied ? " applied" : ""}`}
-                        whileTap={reduced ? undefined : { scale: 0.97 }}
-                        onClick={() => {
-                          setValues({ ...values, [lift]: LaidDupPlan.kg(estimate) });
-                          setAppliedLift(lift);
-                        }}
-                      >
-                        {isApplied ? <Check size={13} aria-hidden="true" /> : <Sparkles size={13} aria-hidden="true" />}
-                        <span>по истории ≈ {LaidDupPlan.kg(estimate)} кг (Эпли)</span>
-                      </m.button>
-                    ) : null}
-                    {estimate !== null ? (
-                      <small className="laid-estimate-window">по подходам {LaidDupPlan.windowText(LaidDupPlan.ESTIMATE_DAYS)}</small>
-                    ) : null}
-                  </div>
-                </m.div>
-              );
-            })}
-          </div>
+            {/* Section 1: 1RM Inputs with inline lift replacement */}
+            <section className="laid-section" aria-labelledby={`${uid}-maxes-title`}>
+              <div className="laid-section-head">
+                <div className="laid-section-title-group">
+                  <h3 id={`${uid}-maxes-title`} className="laid-section-title">
+                    Рабочие максимумы (1ПМ)
+                  </h3>
+                  <span className="laid-section-counter" aria-live="polite">
+                    {filledCount}/4
+                  </span>
+                </div>
+                {estimateCount >= 2 && !allEstimatesApplied ? (
+                  <button type="button" className="laid-fill-all-btn" onClick={applyAllEstimates}>
+                    <Sparkles size={13} aria-hidden="true" />
+                    <span>Заполнить из истории</span>
+                  </button>
+                ) : null}
+              </div>
 
-          {mode !== "update" ? (
-            <div className="laid-group" role="group" aria-label="Неделя 1 начинается">
-              <p className="field-caption">Неделя 1 начинается</p>
-              <div className="laid-choice">
-                {(["this", "next"] as const).map((which) => {
-                  const active = start === which;
+              <div className="laid-fields">
+                {LIFTS.map((lift, i) => {
+                  const c = checks[i];
+                  const estimate = estimates[lift];
+                  const message = shown && c.error ? c.error : "";
+                  const isApplied = appliedLift === lift && values[lift] === (estimate !== null ? LaidDupPlan.kg(estimate) : "");
+                  const origId = LaidDupPlan.LIFT_EXERCISE[lift];
+                  const resolvedId = LaidDupPlan.liftExerciseId(lift, activeSubs);
+                  const isReplaced = resolvedId !== origId;
+                  const resolvedDef = exerciseById(resolvedId);
+                  const origDef = exerciseById(origId);
+                  const isCalibrating = calibrationLifts.includes(lift);
+                  const isPain = painFlags.includes(lift);
+                  const ownSessions = isReplaced ? LaidDupPlan.sessionsForExercise(props.workouts, resolvedId) : 2;
+                  const compat = isReplaced
+                    ? SubstitutionPolicy.classify(origDef, resolvedDef, { hasOwnHistory: ownSessions >= 2, painFlag: isPain })
+                    : null;
+                  const inputId = `${uid}-lift-${lift}`;
+                  const noteId = `${uid}-note-${lift}`;
+                  const unitText = resolvedDef?.recording.loadMode === "per_implement" ? "кг · 1 гант." : "кг";
+                  const matchingSlot = liftSlots.find((s) => s.lift === lift);
+
                   return (
-                    <button
-                      type="button"
-                      key={which}
-                      aria-pressed={active}
-                      className={active ? "active" : ""}
-                      onClick={() => setStart(which)}
+                    <div
+                      className={`laid-field${message ? " has-error" : ""}${c.value ? " is-valid" : ""}${isReplaced ? " is-replaced" : ""}`}
+                      key={lift}
                     >
-                      {active ? (
-                        <m.span
-                          layoutId="laid-start-pill"
-                          className="laid-choice-pill"
-                          aria-hidden="true"
-                          transition={reduced ? { duration: 0 } : SPRING_PILL}
-                        />
+                      <div className="laid-field-top">
+                        <label htmlFor={inputId} className="laid-field-label">
+                          <span className="laid-field-name">{LABEL[lift]}</span>
+                          <small className="laid-field-tag">{LIFT_DAYS[lift]}</small>
+                        </label>
+                        {mode === "create" && matchingSlot ? (
+                          <button
+                            type="button"
+                            className={`laid-lift-swap-btn${isReplaced ? " active" : ""}`}
+                            aria-label={`Заменить упражнение: ${resolvedDef?.name ?? LaidDupPlan.LIFT_LABEL[lift]}`}
+                            title={isReplaced ? "Изменить замену" : "Заменить упражнение (например, при травме)"}
+                            onClick={() => setSwapSlot(matchingSlot)}
+                          >
+                            <ArrowLeftRight size={14} aria-hidden="true" />
+                            <span>{isReplaced ? "Замена" : "Заменить"}</span>
+                          </button>
+                        ) : null}
+                      </div>
+
+                      {isReplaced ? (
+                        <div className="laid-replaced-banner">
+                          <div className="laid-replaced-copy">
+                            <span className="laid-replaced-name">{resolvedDef?.name ?? resolvedId}</span>
+                            {compat ? (
+                              <small className={`laid-compat-tag class-${compat.subClass.toLowerCase()}`}>
+                                {compat.badge}
+                              </small>
+                            ) : null}
+                          </div>
+                          {mode === "create" ? (
+                            <button
+                              type="button"
+                              className="laid-inline-reset"
+                              aria-label={`Вернуть ${LaidDupPlan.LIFT_LABEL[lift]}`}
+                              onClick={() => applySubstitution(origId, null)}
+                            >
+                              <RotateCcw size={12} aria-hidden="true" />
+                              <span>Вернуть</span>
+                            </button>
+                          ) : null}
+                        </div>
                       ) : null}
-                      <span className="laid-choice-body">
-                        <span>{which === "this" ? "с понедельника этой недели" : "со следующего понедельника"}</span>
-                        <small>{dateLabel(LaidDupPlan.startMonday(today, which))}</small>
+
+                      <span className="laid-input">
+                        <input
+                          id={inputId}
+                          ref={(node) => {
+                            inputRefs.current[lift] = node;
+                          }}
+                          inputMode="decimal"
+                          enterKeyHint={i < LIFTS.length - 1 ? "next" : "done"}
+                          autoComplete="off"
+                          aria-invalid={message ? true : undefined}
+                          aria-describedby={noteId}
+                          data-autofocus={i === 0 ? "" : undefined}
+                          placeholder={isCalibrating || isPain ? "Калибровка по RIR" : "0"}
+                          disabled={isCalibrating || isPain}
+                          value={isCalibrating || isPain ? "" : values[lift]}
+                          onChange={(e) => setValues({ ...values, [lift]: e.target.value })}
+                        />
+                        <span className="laid-unit" aria-hidden="true">
+                          {isCalibrating || isPain ? "RIR" : unitText}
+                        </span>
                       </span>
-                    </button>
+
+                      <div id={noteId} className="laid-field-note">
+                        <AnimatePresence initial={false}>
+                          {message ? (
+                            <m.p
+                              key="err"
+                              className="laid-error"
+                              role="alert"
+                              initial={reduced ? false : { opacity: 0, y: -4 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: -4 }}
+                              transition={{ duration: 0.16 }}
+                            >
+                              {message}
+                            </m.p>
+                          ) : null}
+                        </AnimatePresence>
+                        {estimate !== null && !isCalibrating && !isPain ? (
+                          <div className="laid-estimate-row">
+                            <m.button
+                              type="button"
+                              className={`laid-estimate${isApplied ? " applied" : ""}`}
+                              whileTap={reduced ? undefined : { scale: 0.97 }}
+                              onClick={() => {
+                                setValues({ ...values, [lift]: LaidDupPlan.kg(estimate) });
+                                setAppliedLift(lift);
+                              }}
+                            >
+                              {isApplied ? <Check size={13} aria-hidden="true" /> : <Sparkles size={13} aria-hidden="true" />}
+                              <span>по истории ≈ {LaidDupPlan.kg(estimate)} кг (Эпли)</span>
+                            </m.button>
+                            <small className="laid-estimate-window">
+                              {LaidDupPlan.windowText(LaidDupPlan.ESTIMATE_DAYS)}
+                            </small>
+                          </div>
+                        ) : null}
+                        {mode === "create" ? (
+                          <div className="laid-lift-mode-row">
+                            <button
+                              type="button"
+                              aria-pressed={isCalibrating}
+                              className={`laid-mode-chip${isCalibrating ? " active" : ""}`}
+                              onClick={() => toggleCalibration(lift)}
+                            >
+                              {isCalibrating ? "Калибровка: вкл" : "Не знаю 1ПМ"}
+                            </button>
+                            {isReplaced || isPain ? (
+                              <button
+                                type="button"
+                                aria-pressed={isPain}
+                                className={`laid-mode-chip is-pain${isPain ? " active" : ""}`}
+                                onClick={() => togglePainFlag(lift)}
+                              >
+                                {isPain ? "Щадяще (боль)" : "Травма / боль"}
+                              </button>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
                   );
                 })}
               </div>
-              <p className="tiny">Недели считаются от понедельника; дни до старта пропущенными не считаются.</p>
-            </div>
-          ) : (
-            <p className="tiny">
-              {position && !position.beforeStart
-                ? `Новые максимумы действуют с недели ${position.week + 1} (текущей); пройденные недели остаются на прежних числах.`
-                : "Цикл ещё не начался: новые максимумы действуют с первой недели."}
-            </p>
-          )}
+            </section>
 
-          {mode === "create" ? (
-            <>
-              <div className="laid-group" role="group" aria-label="Ритм недели">
-                <p className="field-caption">Распределение дней отдыха</p>
-                <div className="laid-choice">
-                  {(
-                    [
-                      {
-                        id: "6x1" as const,
-                        label: "Пн–Сб подряд · выходной Вс",
-                        sub: "Дни в порядке таблицы, без паузы внутри недели",
-                      },
-                      {
-                        id: "3x1x3" as const,
-                        label: "3 + 1 + 3 · выходной Чт",
-                        sub: "Отдых между Тягой 1 и приседом Ног 2",
-                      },
-                    ] as const
-                  ).map((opt) => {
-                    const active = rhythm === opt.id;
-                    return (
-                      <button
-                        type="button"
-                        key={opt.id}
-                        aria-pressed={active}
-                        className={active ? "active" : ""}
-                        onClick={() => setSlots(LaidDupPlan.slotsForRhythm(opt.id))}
-                      >
-                        {active ? (
-                          <m.span
-                            layoutId="laid-rhythm-pill"
-                            className="laid-choice-pill"
-                            aria-hidden="true"
-                            transition={reduced ? { duration: 0 } : SPRING_PILL}
-                          />
-                        ) : null}
-                        <span className="laid-choice-body">
-                          <span>{opt.label}</span>
-                          <small>{opt.sub}</small>
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-                <details
-                  className="laid-custom-order"
-                  open={customOpen}
-                  onToggle={(e) => setCustomOpen(e.currentTarget.open)}
-                >
-                  <summary>
-                    <span>Настроить порядок дней по неделе</span>
-                    {rhythm === "custom" ? <span className="laid-custom-badge">Свой порядок</span> : null}
-                  </summary>
-                  {customOpen ? (
-                    <div className="laid-custom-order-body">
-                      <LaidWeekOrderEditor slots={slots} onChange={setSlots} showPresets={false} disabled={busy} />
-                    </div>
-                  ) : null}
-                </details>
-              </div>
+            {/* Section 2: Unified Schedule Card */}
+            {mode !== "update" ? (
+              <section className="laid-section laid-card-surface" aria-labelledby={`${uid}-schedule-title`}>
+                <h3 id={`${uid}-schedule-title`} className="laid-section-title">
+                  Расписание
+                </h3>
 
-              <div className="laid-switches">
-                <button type="button" role="switch" aria-checked={extras} className="laid-switch" onClick={() => setExtras(!extras)}>
-                  <span className="laid-switch-text">
-                    Добавить к оригиналу: задняя дельта, отведения, икры, пресс
-                    <small>У Лейда нет задней дельты, икр и пресса, а махов в стороны — 6 подходов в неделю; добавленное помечено.</small>
-                    <small className="laid-switch-count">
-                      {extras ? `+${sets.added} ${setsWord(sets.added)} в неделю (${sets.base + sets.added} всего)` : `без добавок: ${sets.base} ${setsWord(sets.base)} в неделю`}
-                    </small>
-                  </span>
-                  <span className="laid-switch-control" aria-hidden="true">
-                    <span className="laid-switch-state">{extras ? "Вкл" : "Выкл"}</span>
-                    <span className="laid-switch-track">
-                      <m.span className="laid-switch-thumb" layout transition={reduced ? { duration: 0 } : SPRING_THUMB} />
-                    </span>
-                  </span>
-                </button>
-
-                <button type="button" role="switch" aria-checked={light} className="laid-switch" onClick={() => setLight(!light)}>
-                  <span className="laid-switch-text">
-                    Облегчённо: вместо одного повторения — три
-                    <small>Не по оригиналу. Синглы (95–97,5 %) заменяются тройками (90–92,5 %), двойки становой — на 4 × 4.</small>
-                  </span>
-                  <span className="laid-switch-control" aria-hidden="true">
-                    <span className="laid-switch-state">{light ? "Вкл" : "Выкл"}</span>
-                    <span className="laid-switch-track">
-                      <m.span className="laid-switch-thumb" layout transition={reduced ? { duration: 0 } : SPRING_THUMB} />
-                    </span>
-                  </span>
-                </button>
-              </div>
-
-              <AnimatePresence initial={false}>
-                {taken.length ? (
-                  <m.ul
-                    className="laid-taken"
-                    aria-label="Занятые дни"
-                    initial={reduced ? false : { opacity: 0, y: -4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -4 }}
-                    transition={{ duration: 0.18 }}
-                  >
-                    {taken.map((line) => (
-                      <li key={line}>{line}</li>
-                    ))}
-                  </m.ul>
-                ) : null}
-              </AnimatePresence>
-            </>
-          ) : null}
-
-          <AnimatePresence initial={false}>
-            {maxes ? (
-              <m.div
-                key="preview"
-                className="laid-preview"
-                aria-label={`Неделя ${previewWeek + 1} по этим максимумам`}
-                initial={reduced ? false : { opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 6 }}
-                transition={{ duration: 0.22 }}
-              >
-                <div className="laid-preview-head">
-                  <p className="field-caption">
-                    Неделя {previewWeek + 1} по этим максимумам · волна {previewWave}
-                  </p>
-                  <span className="laid-preview-meta">отдых 3:00</span>
-                </div>
-                <ul>
-                  {[...LaidDupPlan.DAYS]
-                    .sort((a, b) => (mode === "create" ? weekdays[a] - weekdays[b] : cycleWeekdays[a] - cycleWeekdays[b]))
-                    .map((day) => {
-                      const plan = LaidDupPlan.day(day, previewWeek, maxes, { light: mode === "create" ? light : (base?.light ?? false) });
-                      const weekday = mode === "create" ? weekdays[day] : cycleWeekdays[day];
+                <div className="laid-group" role="group" aria-label="Неделя 1 начинается">
+                  <p className="laid-subcaption">Неделя 1 начинается</p>
+                  <div className="laid-choice">
+                    {(["this", "next"] as const).map((which) => {
+                      const active = start === which;
                       return (
-                        <li key={day}>
-                          <span className="laid-preview-day">
-                            <b>{LaidDupPlan.SHORT[day]}</b>
-                            <small>{DAY_NAMES[weekday]}</small>
+                        <button
+                          type="button"
+                          key={which}
+                          aria-pressed={active}
+                          className={active ? "active" : ""}
+                          onClick={() => setStart(which)}
+                        >
+                          {active ? (
+                            <m.span
+                              layoutId="laid-start-pill"
+                              className="laid-choice-pill"
+                              aria-hidden="true"
+                              transition={reduced ? { duration: 0 } : SPRING_PILL}
+                            />
+                          ) : null}
+                          <span className="laid-choice-body">
+                            <span>{which === "this" ? "с понедельника этой недели" : "со следующего понедельника"}</span>
+                            <small>{dateLabel(LaidDupPlan.startMonday(today, which))}</small>
                           </span>
-                          <span className="laid-preview-line">{LaidDupPlan.line(plan)}</span>
-                        </li>
+                        </button>
                       );
                     })}
-                </ul>
-              </m.div>
-            ) : null}
-          </AnimatePresence>
+                  </div>
+                </div>
 
-          <p className="tiny">{LaidDupPlan.NOTICE}</p>
-          {error ? (
-            <p className="error-banner" role="alert">
-              {error}
-            </p>
-          ) : null}
-          <div className="laid-actions">
-            <button type="submit" className="button primary" disabled={busy}>
-              {busy ? "Сохраняем…" : mode === "create" ? "Создать программу" : mode === "restart" ? "Начать новый цикл" : "Обновить максимумы"}
-            </button>
-            <button type="button" className="button secondary" onClick={props.onClose} disabled={busy}>
-              Отмена
-            </button>
-          </div>
-        </fieldset>
-      </form>
-    </Modal>
+                {mode === "create" ? (
+                  <div className="laid-group" role="group" aria-label="Ритм недели">
+                    <p className="laid-subcaption">Распределение дней отдыха</p>
+                    <div className="laid-choice">
+                      {(
+                        [
+                          {
+                            id: "6x1" as const,
+                            label: "Пн–Сб подряд · выходной Вс",
+                            sub: "Без паузы внутри недели",
+                          },
+                          {
+                            id: "3x1x3" as const,
+                            label: "3 + 1 + 3 · выходной Чт",
+                            sub: "Отдых перед Ногами 2",
+                          },
+                        ] as const
+                      ).map((opt) => {
+                        const active = rhythm === opt.id;
+                        return (
+                          <button
+                            type="button"
+                            key={opt.id}
+                            aria-pressed={active}
+                            className={active ? "active" : ""}
+                            onClick={() => setSlots(LaidDupPlan.slotsForRhythm(opt.id))}
+                          >
+                            {active ? (
+                              <m.span
+                                layoutId="laid-rhythm-pill"
+                                className="laid-choice-pill"
+                                aria-hidden="true"
+                                transition={reduced ? { duration: 0 } : SPRING_PILL}
+                              />
+                            ) : null}
+                            <span className="laid-choice-body">
+                              <span>{opt.label}</span>
+                              <small>{opt.sub}</small>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <details
+                      className="laid-disclosure laid-custom-order"
+                      open={customOpen}
+                      onToggle={(e) => setCustomOpen(e.currentTarget.open)}
+                    >
+                      <summary>
+                        <span>Настроить порядок дней по неделе</span>
+                        {rhythm === "custom" ? <span className="laid-custom-badge">Свой порядок</span> : null}
+                      </summary>
+                      <div className="laid-custom-order-body">
+                        {customOpen ? (
+                          <LaidWeekOrderEditor slots={slots} onChange={setSlots} showPresets={false} disabled={busy} />
+                        ) : null}
+                      </div>
+                    </details>
+                  </div>
+                ) : null}
+
+                <p className="tiny laid-quiet-note">
+                  Недели считаются от понедельника; дни до старта пропущенными не считаются.
+                </p>
+              </section>
+            ) : (
+              <p className="tiny laid-quiet-note">
+                {position && !position.beforeStart
+                  ? `Новые максимумы действуют с недели ${position.week + 1} (текущей); пройденные недели остаются на прежних числах.`
+                  : "Цикл ещё не начался: новые максимумы действуют с первой недели."}
+              </p>
+            )}
+
+            {/* Section 3: Program Options (clean grouped list) & Exercise Substitutions */}
+            {mode === "create" ? (
+              <>
+                <section className="laid-section laid-settings-card" aria-labelledby={`${uid}-opts-title`}>
+                  <h3 id={`${uid}-opts-title`} className="laid-section-title">
+                    Параметры
+                  </h3>
+                  <div className="laid-switches-grouped">
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={extras}
+                      className="laid-switch laid-switch-row"
+                      onClick={() => setExtras(!extras)}
+                    >
+                      <span className="laid-switch-text">
+                        Добавить к оригиналу: задняя дельта, отведения, икры, пресс
+                        <small>
+                          {extras
+                            ? `+${sets.added} ${setsWord(sets.added)} в неделю (${sets.base + sets.added} всего); добавленное помечено.`
+                            : `Без добавок: ${sets.base} ${setsWord(sets.base)} в неделю.`}
+                        </small>
+                      </span>
+                      <span className="laid-switch-control" aria-hidden="true">
+                        <span className="laid-switch-state">{extras ? "Вкл" : "Выкл"}</span>
+                        <span className="laid-switch-track">
+                          <m.span className="laid-switch-thumb" layout transition={reduced ? { duration: 0 } : SPRING_THUMB} />
+                        </span>
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={light}
+                      className="laid-switch laid-switch-row"
+                      onClick={() => setLight(!light)}
+                    >
+                      <span className="laid-switch-text">
+                        Облегчённо: вместо одного повторения — три
+                        <small>Синглы (95–97,5 %) → тройки (90–92,5 %), двойки тяги → 4 × 4.</small>
+                      </span>
+                      <span className="laid-switch-control" aria-hidden="true">
+                        <span className="laid-switch-state">{light ? "Вкл" : "Выкл"}</span>
+                        <span className="laid-switch-track">
+                          <m.span className="laid-switch-thumb" layout transition={reduced ? { duration: 0 } : SPRING_THUMB} />
+                        </span>
+                      </span>
+                    </button>
+                  </div>
+                </section>
+
+                {/* Section 4: Exercise Substitutions Disclosure (injuries / gym adaptation) */}
+                <details
+                  className="laid-disclosure laid-subs-disclosure"
+                  open={subsOpen}
+                  onToggle={(e) => setSubsOpen(e.currentTarget.open)}
+                >
+                  <summary>
+                    <span className="laid-disclosure-label">
+                      <span>Заменить упражнения на весь цикл</span>
+                      <small>При травмах или под оборудование — периодизация и объём сохраняются</small>
+                    </span>
+                    <span className={`laid-custom-badge${subCount > 0 ? " is-filled" : ""}`}>
+                      {subCount > 0 ? `Замен: ${subCount}` : "Все 6 дней"}
+                    </span>
+                  </summary>
+                  {subsOpen ? (
+                    <div className="laid-subs-body">
+                      <div className="laid-volume-strip" aria-label="Плановый объём цикла">
+                      <div className="laid-volume-strip-head">
+                        <span>Плановый объём в неделю</span>
+                        <span className="laid-volume-axial">
+                          Осевая нагрузка: <b>{volumeSummary.axialSets}</b> подх.
+                          {volumeSummary.axialSets !== baselineVolume.axialSets ? (
+                            <small>
+                              {" "}
+                              ({volumeSummary.axialSets - baselineVolume.axialSets > 0 ? "+" : ""}
+                              {volumeSummary.axialSets - baselineVolume.axialSets})
+                            </small>
+                          ) : null}
+                        </span>
+                      </div>
+                      <div className="laid-volume-chips">
+                        {volumeSummary.muscles.map((mItem) => {
+                          const baseSets = baselineVolume.muscles.find((b) => b.id === mItem.id)?.sets ?? 0;
+                          const delta = Math.round((mItem.sets - baseSets) * 10) / 10;
+                          return (
+                            <span key={mItem.id} className={`laid-vol-chip${delta !== 0 ? " changed" : ""}`}>
+                              <span>{mItem.name}</span>
+                              <b>{LaidDupPlan.kg(mItem.sets)}</b>
+                              {delta !== 0 ? (
+                                <small>{delta > 0 ? `+${LaidDupPlan.kg(delta)}` : LaidDupPlan.kg(delta)}</small>
+                              ) : null}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="laid-subs-group">
+                      <p className="laid-subcaption">Базовые движения (волновая периодизация DUP)</p>
+                      <ul className="laid-subs-list">
+                        {liftSlots.map((slot) => {
+                          const origName = exerciseById(slot.originalId)?.name ?? slot.originalId;
+                          const curName = exerciseById(slot.resolvedId)?.name ?? slot.resolvedId;
+                          return (
+                            <li key={slot.originalId} className={`laid-subs-item${slot.replaced ? " is-replaced" : ""}`}>
+                              <div className="laid-subs-item-info">
+                                <b>{curName}</b>
+                                <small>
+                                  {slot.days.map((d) => LaidDupPlan.SHORT[d]).join(" · ")} · {slot.weeklySets} подх./нед
+                                  {slot.replaced ? ` · вместо «${origName}»` : ""}
+                                </small>
+                              </div>
+                              <div className="laid-subs-item-actions">
+                                {slot.replaced ? (
+                                  <button
+                                    type="button"
+                                    className="laid-subs-reset-btn"
+                                    aria-label={`Вернуть ${origName}`}
+                                    onClick={() => applySubstitution(slot.originalId, null)}
+                                  >
+                                    <RotateCcw size={14} aria-hidden="true" />
+                                  </button>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  className="laid-subs-swap-btn"
+                                  onClick={() => setSwapSlot(slot)}
+                                >
+                                  <ArrowLeftRight size={14} aria-hidden="true" />
+                                  <span>Заменить</span>
+                                </button>
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+
+                    <div className="laid-subs-group">
+                      <p className="laid-subcaption">Подсобные упражнения</p>
+                      <ul className="laid-subs-list">
+                        {auxSlots.map((slot) => {
+                          const origName = exerciseById(slot.originalId)?.name ?? slot.originalId;
+                          const curName = exerciseById(slot.resolvedId)?.name ?? slot.resolvedId;
+                          return (
+                            <li key={slot.originalId} className={`laid-subs-item${slot.replaced ? " is-replaced" : ""}`}>
+                              <div className="laid-subs-item-info">
+                                <b>{curName}</b>
+                                <small>
+                                  {slot.days.map((d) => LaidDupPlan.SHORT[d]).join(" · ")} · {slot.weeklySets} подх./нед
+                                  {slot.role === "wave-aux" ? " · волна повт." : ""}
+                                  {slot.replaced ? ` · вместо «${origName}»` : ""}
+                                </small>
+                              </div>
+                              <div className="laid-subs-item-actions">
+                                {slot.replaced ? (
+                                  <button
+                                    type="button"
+                                    className="laid-subs-reset-btn"
+                                    aria-label={`Вернуть ${origName}`}
+                                    onClick={() => applySubstitution(slot.originalId, null)}
+                                  >
+                                    <RotateCcw size={14} aria-hidden="true" />
+                                  </button>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  className="laid-subs-swap-btn"
+                                  onClick={() => setSwapSlot(slot)}
+                                >
+                                  <ArrowLeftRight size={14} aria-hidden="true" />
+                                  <span>Заменить</span>
+                                </button>
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  </div>
+                  ) : null}
+                </details>
+
+                <AnimatePresence initial={false}>
+                  {taken.length ? (
+                    <m.ul
+                      className="laid-taken"
+                      aria-label="Занятые дни"
+                      initial={reduced ? false : { opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -4 }}
+                      transition={{ duration: 0.18 }}
+                    >
+                      {taken.map((line) => (
+                        <li key={line}>{line}</li>
+                      ))}
+                    </m.ul>
+                  ) : null}
+                </AnimatePresence>
+              </>
+            ) : null}
+
+            {/* Section 5: Compact Preview */}
+            <AnimatePresence initial={false}>
+              {maxes ? (
+                <m.div
+                  key="preview"
+                  className="laid-preview"
+                  aria-label={`Неделя ${previewWeek + 1} по этим максимумам`}
+                  initial={reduced ? false : { opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 6 }}
+                  transition={{ duration: 0.22 }}
+                >
+                  <div className="laid-preview-head">
+                    <p className="field-caption">
+                      Неделя {previewWeek + 1} по этим максимумам · волна {previewWave}
+                    </p>
+                    <span className="laid-preview-meta">отдых 3:00</span>
+                  </div>
+                  <ul className="laid-preview-grid">
+                    {[...LaidDupPlan.DAYS]
+                      .sort((a, b) => (mode === "create" ? weekdays[a] - weekdays[b] : cycleWeekdays[a] - cycleWeekdays[b]))
+                      .map((day) => {
+                        const plan = LaidDupPlan.day(day, previewWeek, maxes, {
+                          light: mode === "create" ? light : (base?.light ?? false),
+                          substitutions: mode === "create" ? activeSubs : base?.substitutions,
+                          calibrationLifts: mode === "create" ? calibrationLifts : base?.calibrationLifts,
+                          painFlags: mode === "create" ? painFlags : base?.painFlags,
+                        });
+                        const weekday = mode === "create" ? weekdays[day] : cycleWeekdays[day];
+                        const replacedLiftName =
+                          plan.liftExerciseId !== plan.originalLiftExerciseId
+                            ? exerciseById(plan.liftExerciseId)?.name
+                            : null;
+                        return (
+                          <li key={day}>
+                            <span className="laid-preview-day">
+                              <b>{LaidDupPlan.SHORT[day]}</b>
+                              <small>{DAY_NAMES[weekday]}</small>
+                            </span>
+                            <span className="laid-preview-detail">
+                              {replacedLiftName ? <small className="laid-preview-sub-lift">{replacedLiftName}</small> : null}
+                              <span className="laid-preview-line">{LaidDupPlan.line(plan)}</span>
+                            </span>
+                          </li>
+                        );
+                      })}
+                  </ul>
+                </m.div>
+              ) : null}
+            </AnimatePresence>
+
+            <p className="tiny laid-quiet-note">{LaidDupPlan.NOTICE}</p>
+            {error ? (
+              <p className="error-banner" role="alert">
+                {error}
+              </p>
+            ) : null}
+
+            <div className="laid-actions laid-sticky-footer">
+              <button type="submit" className="button primary" disabled={busy}>
+                {busy ? "Сохраняем…" : mode === "create" ? "Создать программу" : mode === "restart" ? "Начать новый цикл" : "Обновить максимумы"}
+              </button>
+              <button type="button" className="button secondary" onClick={props.onClose} disabled={busy}>
+                Отмена
+              </button>
+            </div>
+          </fieldset>
+        </form>
+      </Modal>
+
+      {swapSlot && swapCurrentEx ? (
+        <ExerciseSwapModal
+          title={swapSlot.role === "lift" ? "Заменить базовое движение" : "Заменить упражнение в цикле"}
+          subtitle={`Замена применится на всех 9 неделях цикла (${swapSlot.days.map((d) => LaidDupPlan.SHORT[d]).join(" · ")}). Объём по мышцам и периодизация пересчитаются автоматически.`}
+          currentExercise={swapCurrentEx}
+          originalExercise={swapOriginalEx}
+          showCompatibilityFor={swapSlot.role === "lift" ? swapOriginalEx : undefined}
+          personal={props.personal}
+          avoidedIds={avoidedIds}
+          excludeIds={swapExcludeIds}
+          requireWeighted={swapSlot.role === "lift"}
+          onSwap={(nextEx) => applySubstitution(swapSlot.originalId, nextEx.id)}
+          onReset={() => applySubstitution(swapSlot.originalId, null)}
+          onClose={() => setSwapSlot(null)}
+        />
+      ) : null}
+    </>
   );
 }
-
-/** Понедельник недели `week` (0-based) от старта — для подписей. */
-

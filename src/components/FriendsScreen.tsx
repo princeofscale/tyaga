@@ -495,10 +495,30 @@ export default function FriendsScreen({
         </div>
       ) : (
         <>
-          <div className="friends-tabs" role="tablist" aria-label="Разделы друзей">
+          <div
+            className="friends-tabs"
+            role="tablist"
+            aria-label="Разделы друзей"
+            onKeyDown={(e) => {
+              const order: FriendsTab[] = ["friends", "together", "programs"];
+              const idx = order.indexOf(tab);
+              let nextIdx: number;
+              if (e.key === "ArrowRight") nextIdx = (idx + 1) % order.length;
+              else if (e.key === "ArrowLeft") nextIdx = (idx - 1 + order.length) % order.length;
+              else if (e.key === "Home") nextIdx = 0;
+              else if (e.key === "End") nextIdx = order.length - 1;
+              else return;
+              e.preventDefault();
+              const next = order[nextIdx];
+              setTab(next);
+              document.getElementById(`friends-tab-${next}`)?.focus();
+            }}
+          >
             <button
+              id="friends-tab-friends"
               type="button"
               role="tab"
+              tabIndex={tab === "friends" ? 0 : -1}
               aria-selected={tab === "friends"}
               onClick={() => setTab("friends")}
             >
@@ -506,8 +526,10 @@ export default function FriendsScreen({
               <b className="friends-tab-count">{data.friends.length}</b>
             </button>
             <button
+              id="friends-tab-together"
               type="button"
               role="tab"
+              tabIndex={tab === "together" ? 0 : -1}
               aria-selected={tab === "together"}
               onClick={() => setTab("together")}
             >
@@ -515,8 +537,10 @@ export default function FriendsScreen({
               {room ? <i className="friends-tab-live-dot" aria-label="Активная комната" /> : null}
             </button>
             <button
+              id="friends-tab-programs"
               type="button"
               role="tab"
+              tabIndex={tab === "programs" ? 0 : -1}
               aria-selected={tab === "programs"}
               onClick={() => setTab("programs")}
             >
@@ -595,7 +619,7 @@ export default function FriendsScreen({
           )}
 
           {tab === "friends" && (
-            <div className="friends-tab-body" role="tabpanel" aria-label="Друзья">
+            <div className="friends-tab-body" role="tabpanel" aria-labelledby="friends-tab-friends">
               <section className="friends-add-card" aria-label="Добавить друга">
                 <form className="friends-add-form" onSubmit={sendFriendRequest}>
                   <label className="sr-only" htmlFor="friend-code-input">
@@ -705,7 +729,7 @@ export default function FriendsScreen({
           )}
 
           {tab === "together" && (
-            <div className="friends-tab-body" role="tabpanel" aria-label="Вместе">
+            <div className="friends-tab-body" role="tabpanel" aria-labelledby="friends-tab-together">
               {roomInvite && (
                 <RoomInvite
                   code={roomInvite}
@@ -723,7 +747,7 @@ export default function FriendsScreen({
           )}
 
           {tab === "programs" && (
-            <div className="friends-tab-body" role="tabpanel" aria-label="Общие программы">
+            <div className="friends-tab-body" role="tabpanel" aria-labelledby="friends-tab-programs">
               <div className="shared-programs-toolbar">
                 <button
                   type="button"

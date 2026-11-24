@@ -1,6 +1,6 @@
 import { build } from "esbuild";
 import { existsSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const hasFullCatalog =
@@ -40,29 +40,6 @@ await build({
   minify: true,
   plugins: [wgerCatalogPlugin],
 });
-await writeFile(
-  "dist/server/wrangler.json",
-  JSON.stringify(
-    {
-      name: "tyaga",
-      main: "index.js",
-      compatibility_date: "2025-09-27",
-      assets: {
-        directory: "../client",
-        binding: "ASSETS",
-        not_found_handling: "single-page-application",
-        run_worker_first: ["/api/*"],
-      },
-      d1_databases: [
-        {
-          binding: "DB",
-          database_name: "tyaga",
-          database_id: "local-tyaga",
-          migrations_dir: "../../drizzle",
-        },
-      ],
-    },
-    null,
-    2,
-  ),
-);
+// Не генерируем deployable wrangler.json на bare server/index.ts (без cloud.ts/local.ts):
+// прод деплоится через wrangler.production.jsonc (server/cloud.ts), dev — через wrangler.jsonc (server/local.ts).
+await rm("dist/server/wrangler.json", { force: true });

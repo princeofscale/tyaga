@@ -1,7 +1,7 @@
 import { useBodyweight } from "../state/bodyweightStore";
 import { JournalBackup, type ProfileBackup } from "../domain/JournalBackup";
 import type { ThemeId } from "../lib/theme";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { FileUp, Import, ShieldCheck } from "lucide-react";
 import {
   WorkoutImport,
@@ -92,7 +92,9 @@ export default function HistoryImporter({
     setError("");
     setProgress(null);
   };
+  const fileGen = useRef(0);
   async function file(file: File | undefined) {
+    const gen = ++fileGen.current;
     reset();
     if (!file) return;
     if (file.size > 10 * 1024 * 1024) {
@@ -105,6 +107,7 @@ export default function HistoryImporter({
     }
     try {
       const content = await file.text();
+      if (gen !== fileGen.current) return;
       setText(content);
       setFileName(file.name);
       setFormat(
@@ -117,6 +120,7 @@ export default function HistoryImporter({
               : "fitnotes",
       );
     } catch {
+      if (gen !== fileGen.current) return;
       setError("Не удалось прочитать файл.");
     }
   }

@@ -21,8 +21,14 @@ export default function Modal({ title, children, onClose, wide = false }: { titl
   const finish = useCallback(() => {
     if (finished.current) return;
     finished.current = true;
-    // `false` — родитель оставил окно открытым (например, спросил про несохранённые правки): им можно пользоваться дальше.
-    if (callback.current() === false) { finished.current = false; setClosing(false); }
+    // `false` — родитель оставил окно открытым (например, спросил про несохранённые правки или идёт запрос): им можно пользоваться дальше.
+    if (callback.current() === false) {
+      finished.current = false;
+      setClosing(false);
+      return;
+    }
+    // Страховка от soft-lock: если родитель по ошибке не размонтировал окно, закрываем нативный <dialog>.
+    if (ref.current?.open) ref.current.close();
   }, []);
   const requestClose = useCallback(() => {
     if (finished.current) return;

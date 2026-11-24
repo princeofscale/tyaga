@@ -403,7 +403,7 @@ export class SupplementsStore {
     }
   }
 
-  static save(accountId: string, state: SupplementsState): void {
+  static save(accountId: string, state: SupplementsState): boolean {
     try {
       const dates = Object.keys(state.logs).sort().slice(-120);
       const trimmed: Record<string, string[]> = {};
@@ -414,8 +414,9 @@ export class SupplementsStore {
         this.key(accountId),
         JSON.stringify({ version: 1, stack: state.stack, logs: trimmed }),
       );
+      return true;
     } catch {
-      // ignore quota/private mode errors
+      return false;
     }
   }
 

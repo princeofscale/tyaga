@@ -1,3 +1,4 @@
+@layer tokens, base, layout, components, screens, utilities;
 @layer screens {
     .routine-editor-exercises {
         display: flex;
@@ -1007,6 +1008,11 @@
         color: var(--accent-hover, var(--accent));
         border-color: color-mix(in srgb, var(--accent) 55%, transparent)
     }
+    .laid-origin.replaced {
+        color: var(--accent-hover, var(--accent));
+        border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+        background: color-mix(in srgb, var(--accent) 10%, var(--bg))
+    }
     .progression-banner.laid-plan-banner {
         border-color: color-mix(in srgb, var(--accent) 48%, var(--line));
         background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 10%, transparent), transparent 65%),
@@ -1907,5 +1913,602 @@
     }
     .schedule-occurrence-actions:empty {
         display: none
+    }
+    /* ───────────── Laid DUP v2: calm hierarchy, sticky footer, cycle substitutions ───────────── */
+    dialog.modal:has(.laid-sticky-footer) {
+        scroll-padding-block-end: 84px
+    }
+    .laid-modal-v2 fieldset {
+        gap: 16px
+    }
+    .laid-hero-strip {
+        display: flex;
+        flex-direction: column;
+        gap: 8px
+    }
+    .laid-hero-pills {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px
+    }
+    .laid-pill {
+        display: inline-flex;
+        align-items: center;
+        padding: 3px 9px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: var(--bg);
+        color: var(--text-soft);
+        font-size: 0.74rem;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        line-height: 1.35
+    }
+    .laid-pill.is-accent {
+        border-color: color-mix(in srgb, var(--accent) 50%, var(--line));
+        background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+        color: var(--accent-hover, var(--accent))
+    }
+    .laid-modal-v2 .laid-lead {
+        font-size: 0.83rem;
+        line-height: 1.5;
+        color: var(--muted)
+    }
+    .laid-section {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        min-inline-size: 0
+    }
+    .laid-section-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 6px 10px
+    }
+    .laid-section-title-group {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px
+    }
+    .laid-section-title {
+        margin: 0;
+        font-size: 0.78rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--muted)
+    }
+    .laid-section-counter {
+        padding: 2px 7px;
+        border-radius: 999px;
+        background: var(--bg);
+        border: 1px solid var(--line);
+        font-size: 0.72rem;
+        font-family: var(--font-mono, inherit);
+        font-variant-numeric: tabular-nums;
+        color: var(--text-soft)
+    }
+    .laid-fill-all-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-block-size: 44px;
+        min-inline-size: 44px;
+        padding: 4px 10px;
+        border-radius: 9px;
+        border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--line));
+        background: color-mix(in srgb, var(--accent) 10%, var(--bg));
+        color: var(--accent-hover, var(--accent));
+        font-size: 0.78rem;
+        font-weight: 650;
+        transition: border-color 140ms ease-out, background-color 140ms ease-out
+    }
+    .laid-fill-all-btn:hover {
+        border-color: var(--accent);
+        background: color-mix(in srgb, var(--accent) 16%, var(--bg))
+    }
+    .laid-modal-v2 .laid-fields {
+        gap: 10px
+    }
+    .laid-modal-v2 .laid-field {
+        gap: 8px;
+        padding: 12px 13px;
+        border-radius: 13px;
+        border: 1px solid var(--line);
+        background: var(--bg)
+    }
+    .laid-modal-v2 .laid-field:focus-within {
+        border-color: color-mix(in srgb, var(--accent) 55%, var(--line))
+    }
+    .laid-modal-v2 .laid-field.is-replaced {
+        border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+        background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 6%, var(--bg)), var(--bg) 60%)
+    }
+    .laid-field-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 6px;
+        min-inline-size: 0
+    }
+    .laid-field-label {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        min-inline-size: 0;
+        flex: 1 1 auto;
+        cursor: pointer
+    }
+    .laid-field-name {
+        font-size: 0.85rem;
+        font-weight: 650;
+        color: var(--text);
+        overflow-wrap: anywhere
+    }
+    .laid-lift-swap-btn {
+        flex: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        min-inline-size: 44px;
+        min-block-size: 44px;
+        padding: 0 10px;
+        border-radius: 9px;
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--muted);
+        font-size: 0.76rem;
+        font-weight: 600;
+        transition: color 140ms ease-out, border-color 140ms ease-out, background-color 140ms ease-out
+    }
+    .laid-lift-swap-btn:hover {
+        color: var(--text);
+        border-color: var(--line);
+        background: var(--surface)
+    }
+    .laid-lift-swap-btn.active {
+        color: var(--accent-hover, var(--accent));
+        border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+        background: color-mix(in srgb, var(--accent) 10%, var(--bg))
+    }
+    .laid-replaced-banner {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 4px 8px;
+        padding: 4px 8px;
+        border-radius: 8px;
+        background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+        border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line))
+    }
+    .laid-replaced-copy {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-inline-size: 0;
+        flex: 1 1 8rem
+    }
+    .laid-compat-tag {
+        font-size: 0.7rem;
+        font-weight: 650;
+        color: var(--accent-hover, var(--accent))
+    }
+    .laid-lift-mode-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        inline-size: 100%
+    }
+    .laid-mode-chip {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-inline-size: 44px;
+        min-block-size: 44px;
+        padding: 4px 10px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        color: var(--muted);
+        font-size: 0.74rem;
+        font-weight: 600;
+        transition: border-color 140ms ease-out, color 140ms ease-out, background-color 140ms ease-out
+    }
+    .laid-mode-chip:hover {
+        border-color: var(--line-strong, var(--line));
+        color: var(--text)
+    }
+    .laid-mode-chip.active {
+        border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+        background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+        color: var(--accent-hover, var(--accent))
+    }
+    .laid-mode-chip.is-pain.active {
+        border-color: color-mix(in srgb, var(--danger) 55%, var(--line));
+        background: color-mix(in srgb, var(--danger) 10%, var(--bg));
+        color: var(--danger)
+    }
+    .laid-replaced-name {
+        font-size: 0.78rem;
+        font-weight: 650;
+        color: var(--text);
+        overflow-wrap: anywhere;
+        flex: 1 1 8rem
+    }
+    .laid-inline-reset {
+        flex: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        min-inline-size: 44px;
+        min-block-size: 44px;
+        padding: 0 8px;
+        border-radius: 7px;
+        border: 0;
+        background: transparent;
+        color: var(--text-soft);
+        font-size: 0.74rem;
+        font-weight: 600
+    }
+    .laid-inline-reset:hover {
+        color: var(--text);
+        background: var(--bg)
+    }
+    .laid-modal-v2 .laid-input input {
+        min-block-size: 48px;
+        font-size: max(1rem, 1.05em);
+        padding-inline-end: 66px
+    }
+    .laid-estimate-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 2px 8px;
+        inline-size: 100%
+    }
+    .laid-card-surface, .laid-settings-card {
+        padding: 14px;
+        border-radius: 14px;
+        border: 1px solid var(--line);
+        background: var(--bg)
+    }
+    .laid-subcaption {
+        margin: 0;
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: var(--text-soft)
+    }
+    .laid-quiet-note {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.45
+    }
+    .laid-modal-v2 .laid-choice {
+        padding: 4px;
+        border-radius: 11px;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        gap: 4px
+    }
+    .laid-modal-v2 .laid-choice button {
+        min-block-size: 48px;
+        padding: 8px 12px;
+        border-radius: 8px;
+        border: 1px solid transparent;
+        background: transparent
+    }
+    .laid-modal-v2 .laid-choice button.active {
+        border-color: color-mix(in srgb, var(--accent) 55%, var(--line))
+    }
+    .laid-modal-v2 .laid-choice-pill {
+        background: color-mix(in srgb, var(--accent) 13%, var(--bg))
+    }
+    .laid-switches-grouped {
+        display: flex;
+        flex-direction: column;
+        gap: 0
+    }
+    .laid-switch-row {
+        border: 0;
+        border-radius: 10px;
+        padding: 10px 4px;
+        background: transparent
+    }
+    .laid-switch-row + .laid-switch-row {
+        border-top: 1px solid var(--line-soft);
+        border-top-left-radius: 0;
+        border-top-right-radius: 0;
+        padding-top: 12px;
+        margin-top: 2px
+    }
+    .laid-switch-row[aria-checked="true"] {
+        border-color: var(--line-soft)
+    }
+    .laid-disclosure {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 0 13px;
+        background: var(--bg)
+    }
+    .laid-disclosure > summary {
+        list-style: none;
+        min-block-size: 48px;
+        padding: 8px 0;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px 10px;
+        cursor: pointer;
+        font-size: 0.85rem;
+        font-weight: 650;
+        color: var(--text)
+    }
+    .laid-disclosure > summary::-webkit-details-marker {
+        display: none
+    }
+    .laid-disclosure > summary::before {
+        content: "";
+        flex: none;
+        inline-size: 0.52rem;
+        block-size: 0.52rem;
+        border-inline-end: 2px solid currentColor;
+        border-block-end: 2px solid currentColor;
+        transform: rotate(-45deg);
+        opacity: 0.72;
+        margin-inline-end: 2px
+    }
+    .laid-disclosure[open] > summary::before {
+        transform: rotate(45deg)
+    }
+    @media (prefers-reduced-motion: no-preference) {
+        .laid-disclosure > summary::before {
+            transition: transform 0.2s ease
+        }
+        .laid-disclosure::details-content {
+            interpolate-size: allow-keywords;
+            overflow: clip;
+            contain: layout;
+            transition: block-size 0.24s ease, content-visibility 0.24s allow-discrete
+        }
+        .laid-disclosure:not([open])::details-content {
+            block-size: 0
+        }
+    }
+    .laid-disclosure-label {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        flex: 1 1 12rem;
+        min-inline-size: 0
+    }
+    .laid-disclosure-label small {
+        font-size: 0.75rem;
+        font-weight: 450;
+        color: var(--muted)
+    }
+    .laid-disclosure > summary .laid-custom-badge {
+        margin-inline-start: auto
+    }
+    .laid-custom-badge.is-filled {
+        background: color-mix(in srgb, var(--accent) 14%, var(--bg))
+    }
+    .laid-subs-body, .laid-subs-modal {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        min-inline-size: 0
+    }
+    .laid-subs-body {
+        padding: 10px 0 14px;
+        border-top: 1px solid var(--line-soft)
+    }
+    .laid-volume-strip {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 10px 12px;
+        border-radius: 11px;
+        border: 1px solid var(--line);
+        background: var(--surface)
+    }
+    .laid-volume-strip-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 4px 10px;
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: var(--text-soft)
+    }
+    .laid-volume-axial {
+        font-variant-numeric: tabular-nums;
+        color: var(--muted)
+    }
+    .laid-volume-axial b {
+        color: var(--text);
+        font-family: var(--font-mono, inherit)
+    }
+    .laid-volume-axial small {
+        color: var(--accent-hover, var(--accent));
+        font-weight: 650
+    }
+    .laid-volume-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px
+    }
+    .laid-vol-chip {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 5px;
+        padding: 3px 8px;
+        border-radius: 7px;
+        border: 1px solid var(--line);
+        background: var(--bg);
+        font-size: 0.73rem;
+        font-variant-numeric: tabular-nums;
+        color: var(--text-soft)
+    }
+    .laid-vol-chip b {
+        font-family: var(--font-mono, inherit);
+        color: var(--text)
+    }
+    .laid-vol-chip.changed {
+        border-color: color-mix(in srgb, var(--accent) 50%, var(--line));
+        background: color-mix(in srgb, var(--accent) 10%, var(--bg))
+    }
+    .laid-vol-chip small {
+        color: var(--accent-hover, var(--accent));
+        font-weight: 700
+    }
+    .laid-subs-group {
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
+        min-inline-size: 0
+    }
+    .laid-subs-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 6px
+    }
+    .laid-subs-item {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px 10px;
+        padding: 9px 11px;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        min-inline-size: 0
+    }
+    .laid-subs-lift-item {
+        flex-direction: column;
+        align-items: stretch
+    }
+    .laid-subs-item-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px 10px;
+        min-inline-size: 0
+    }
+    .laid-subs-item.is-replaced {
+        border-color: color-mix(in srgb, var(--accent) 48%, var(--line));
+        background: color-mix(in srgb, var(--accent) 6%, var(--surface))
+    }
+    .laid-subs-item-info {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        flex: 1 1 11rem;
+        min-inline-size: 0
+    }
+    .laid-subs-item-info b {
+        font-size: 0.84rem;
+        font-weight: 650;
+        color: var(--text);
+        overflow-wrap: anywhere
+    }
+    .laid-subs-item-info small {
+        font-size: 0.74rem;
+        color: var(--muted);
+        overflow-wrap: anywhere
+    }
+    .laid-subs-item-actions {
+        flex: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px
+    }
+    .laid-subs-swap-btn, .laid-subs-reset-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        min-inline-size: 44px;
+        min-block-size: 44px;
+        padding: 0 11px;
+        border-radius: 9px;
+        border: 1px solid var(--line-strong, var(--line));
+        background: var(--bg);
+        color: var(--text-soft);
+        font-size: 0.78rem;
+        font-weight: 600;
+        transition: border-color 140ms ease-out, color 140ms ease-out
+    }
+    .laid-subs-reset-btn {
+        padding: 0
+    }
+    .laid-subs-swap-btn:hover, .laid-subs-reset-btn:hover {
+        border-color: var(--accent);
+        color: var(--text)
+    }
+    .laid-subs-max-row {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding-top: 8px;
+        border-top: 1px solid var(--line-soft)
+    }
+    .laid-subs-max-label {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: var(--text-soft)
+    }
+    .laid-mini-max.is-replaced {
+        border-color: color-mix(in srgb, var(--accent) 42%, var(--line))
+    }
+    .laid-preview-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 6px
+    }
+    @media (min-width: 580px) {
+        .laid-preview-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px 14px
+        }
+        .laid-preview-grid li:nth-child(2) {
+            padding-top: 0;
+            border-top: 0
+        }
+    }
+    .laid-preview-detail {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        min-inline-size: 0
+    }
+    .laid-preview-sub-lift {
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: var(--accent-hover, var(--accent));
+        overflow-wrap: anywhere
+    }
+    .laid-sticky-footer {
+        position: sticky;
+        bottom: 0;
+        z-index: 5;
+        padding: 12px 0 2px;
+        margin-top: 2px;
+        border-top: 1px solid var(--line);
+        background: var(--surface)
     }
 }

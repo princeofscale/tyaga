@@ -1,4 +1,4 @@
-import { useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { AnimatePresence, Reorder, m, useDragControls, useReducedMotion } from "motion/react";
 import {
   AlarmClock,
@@ -70,8 +70,15 @@ function DoseInput({
 }) {
   const inputId = useId();
   const errorId = `${inputId}-err`;
+  const inputRef = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState(String(amount));
   const [touched, setTouched] = useState(false);
+
+  useEffect(() => {
+    if (document.activeElement !== inputRef.current) {
+      setDraft(String(amount));
+    }
+  }, [amount]);
 
   const parsed = SupplementsStore.validateDoseAmount(draft);
   const invalid = touched && parsed === null;
@@ -80,6 +87,7 @@ function DoseInput({
     <div className="sup-dose-field">
       <div className="sup-dose-inputs">
         <input
+          ref={inputRef}
           id={inputId}
           type="number"
           inputMode="decimal"
@@ -316,7 +324,7 @@ function DraggableSupplementCard({
             <div className="sup-edit-col">
               <span className="sup-edit-label">Дозировка</span>
               <DoseInput
-                key={`${item.id}-${doseParts.amount}-${doseParts.unit}`}
+                key={item.id}
                 amount={doseParts.amount}
                 unit={doseParts.unit}
                 label={`Дозировка для ${item.name}`}
@@ -409,6 +417,13 @@ export default function SupplementsScreen({
   const reduced = useReducedMotion();
   const [planTab, setPlanTab] = useState<PlanTab>("stack");
   const [activeDate, setActiveDate] = useState(today);
+  const prevTodayRef = useRef(today);
+  useEffect(() => {
+    if (prevTodayRef.current !== today) {
+      setActiveDate((cur) => (cur === prevTodayRef.current ? today : cur));
+      prevTodayRef.current = today;
+    }
+  }, [today]);
   const [category, setCategory] = useState<"all" | SupplementCategory>("all");
   const [showCustom, setShowCustom] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -764,10 +779,30 @@ export default function SupplementsScreen({
       )}
 
       {/* Переключатель режимов: Мой стек / План на день / План на неделю */}
-      <div className="sup-mode-tabs" role="tablist" aria-label="Режим планирования добавок">
+      <div
+        className="sup-mode-tabs"
+        role="tablist"
+        aria-label="Режим планирования добавок"
+        onKeyDown={(e) => {
+          const order: PlanTab[] = ["stack", "day", "week"];
+          const idx = order.indexOf(planTab);
+          let nextIdx: number;
+          if (e.key === "ArrowRight") nextIdx = (idx + 1) % order.length;
+          else if (e.key === "ArrowLeft") nextIdx = (idx - 1 + order.length) % order.length;
+          else if (e.key === "Home") nextIdx = 0;
+          else if (e.key === "End") nextIdx = order.length - 1;
+          else return;
+          e.preventDefault();
+          const next = order[nextIdx];
+          setPlanTab(next);
+          document.getElementById(`sup-tab-${next}`)?.focus();
+        }}
+      >
         <button
+          id="sup-tab-stack"
           type="button"
           role="tab"
+          tabIndex={planTab === "stack" ? 0 : -1}
           aria-selected={planTab === "stack"}
           className={`sup-mode-tab${planTab === "stack" ? " active" : ""}`}
           onClick={() => setPlanTab("stack")}
@@ -776,8 +811,10 @@ export default function SupplementsScreen({
           Мой стек ({ordered.length})
         </button>
         <button
+          id="sup-tab-day"
           type="button"
           role="tab"
+          tabIndex={planTab === "day" ? 0 : -1}
           aria-selected={planTab === "day"}
           className={`sup-mode-tab${planTab === "day" ? " active" : ""}`}
           onClick={() => setPlanTab("day")}
@@ -786,8 +823,10 @@ export default function SupplementsScreen({
           План на день
         </button>
         <button
+          id="sup-tab-week"
           type="button"
           role="tab"
+          tabIndex={planTab === "week" ? 0 : -1}
           aria-selected={planTab === "week"}
           className={`sup-mode-tab${planTab === "week" ? " active" : ""}`}
           onClick={() => setPlanTab("week")}
@@ -799,7 +838,7 @@ export default function SupplementsScreen({
 
       {/* Вкладка 1: Переработанный «Мой стек» с плавным drag-and-drop */}
       {planTab === "stack" && (
-        <section className="sup-stack-panel" aria-label="Мой стек на сегодня">
+        <section className="sup-stack-panel" role="tabpanel" aria-labelledby="sup-tab-stack">
           <div className="sup-stack-header">
             <div className="sup-stack-title-group">
               <h2>Мой стек</h2>
@@ -867,7 +906,7 @@ export default function SupplementsScreen({
 
       {/* Вкладка 2: План на день по слотам времени */}
       {planTab === "day" && (
-        <section className="sup-stack-panel" aria-label="План приёма на день">
+        <section className="sup-stack-panel" role="tabpanel" aria-labelledby="sup-tab-day">
           <div className="sup-stack-header">
             <div className="sup-stack-title-group">
               <h2>Расписание на {activeDate === today ? "сегодня" : activeDate}</h2>
@@ -938,7 +977,7 @@ export default function SupplementsScreen({
 
       {/* Вкладка 3: План на неделю (матрица Пн–Вс) */}
       {planTab === "week" && (
-        <section className="sup-stack-panel" aria-label="План приёма на неделю">
+        <section className="sup-stack-panel" role="tabpanel" aria-labelledby="sup-tab-week">
           <div className="sup-stack-header">
             <div className="sup-stack-title-group">
               <h2>План на неделю</h2>

@@ -52,33 +52,3 @@ export function VolumeChart({
     </div>
   );
 }
-export function Sparkline({
-  values,
-  color = "#c8f36b",
-}: {
-  values: number[];
-  color?: string;
-}) {
-  const min = Math.min(...values, 0);
-  const max = Math.max(...values, 1);
-  const delta = max - min || 1;
-  const points = values
-    .map(
-      (v, i) =>
-        `${(i / Math.max(values.length - 1, 1)) * 200},${57 - ((v - min) / delta) * 48}`,
-    )
-    .join(" ");
-  return (
-    <svg className="sparkline" viewBox="0 0 200 65" aria-hidden="true">
-      <polyline
-        points={points}
-        fill="none"
-        stroke={color}
-        strokeWidth="2.5"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-        vectorEffect="non-scaling-stroke"
-      />
-    </svg>
-  );
-}

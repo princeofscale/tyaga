@@ -398,6 +398,8 @@ export function validSettings(value: unknown): Settings {
   const goals = object(v.goals);
   if (!["gym", "dumbbells", "bodyweight"].includes(String(v.equipment)))
     throw new InputError("Проверьте оборудование");
+  if (v.minorMode !== undefined && typeof v.minorMode !== "boolean")
+    throw new InputError("Проверьте режим безопасности");
   return {
     goals: Object.fromEntries(
       MUSCLES.map((m) => [m.id, num(goals[m.id], 1, 40, true)]),
@@ -406,6 +408,7 @@ export function validSettings(value: unknown): Settings {
     restSeconds: num(v.restSeconds, 15, 600, true),
     revision: validRevision(v.revision),
     ...(v.timeZone !== undefined ? { timeZone: zone(v.timeZone) } : {}),
+    ...(v.minorMode === true ? { minorMode: true } : {}),
   };
 }
 

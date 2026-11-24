@@ -233,10 +233,10 @@ test("R04-REQ09: сервер по-прежнему держит «Присед�
     }
     const names: string[] = result.exercises.map((e: any) => e.name);
     assert.ok(names.slice(0, 5).includes("Приседания"), "первые пять: " + names.slice(0, 8).join(" | "));
-    const pull = await (await request("/api/exercises?q=" + encodeURIComponent("тяга"))).json();
+    const pull = (await (await request("/api/exercises?q=" + encodeURIComponent("тяга"))).json()) as any;
     const pullNames: string[] = pull.exercises.slice(0, 5).map((e: any) => e.name);
     assert.ok(pullNames.includes("Становая тяга") && pullNames.includes("Тяга штанги в наклоне"), "тяга: " + pullNames.join(" | "));
-    const press = await (await request("/api/exercises?q=" + encodeURIComponent("жим лёжа"))).json();
+    const press = (await (await request("/api/exercises?q=" + encodeURIComponent("жим лёжа"))).json()) as any;
     assert.ok(press.exercises.slice(0, 2).some((e: any) => e.name === "Жим штанги лёжа"));
   } finally {
     await mf.dispose();

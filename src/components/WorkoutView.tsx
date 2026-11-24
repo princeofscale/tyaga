@@ -26,6 +26,7 @@ import {
   Clock,
   Volume2,
   VolumeX,
+  Sun,
   Flame,
   RotateCcw,
   TrendingUp,
@@ -69,6 +70,8 @@ import { WarmupPlanner } from "../domain/WarmupPlanner";
 import { BackdatedWorkout } from "../domain/BackdatedWorkout";
 import { DeloadHint } from "../domain/DeloadHint";
 import { ExerciseSwap } from "../domain/ExerciseSwap";
+import { ExerciseAvoidStore, type AvoidReason, type SwapScope } from "../domain/SubstitutionPolicy";
+import { useWakeLock } from "../hooks/useWakeLock";
 import { setsWord } from "../lib/quantity";
 import type { DeloadPlanRecord } from "../domain/DeloadPlan";
 import WorkoutGym from "./WorkoutGym";
@@ -93,6 +96,10 @@ type Props = {
   onOpenTogether: () => void;
   /** Короткое уведомление (комната, поделиться). */
   onToast?: (text: string) => void;
+  /** ID текущего аккаунта (для списка «Не предлагать» при заменах). */
+  accountId?: string;
+  /** Применить замену упражнения к программе/циклу, когда выбран scope `block` / `program` / `avoid`. */
+  onSwapInProgram?: (routineId: string, oldExerciseId: string, newExercise: Exercise, scope: SwapScope, avoidReason?: AvoidReason) => void;
   /** Режим действующей разгрузки (R06-REQ02): быстрые кнопки «прошлое» не возвращают вес выше разгрузочного. */
   deloadMode?: DeloadMode;
   /** Действующая разгрузка: строка и «Подставить 85 %» на свободной тренировке (R07-REQ05). */
@@ -415,9 +422,24 @@ export default function WorkoutView({
   onMinimize,
   onOpenTogether,
   onToast,
+  accountId = "local",
+  onSwapInProgram,
   deloadMode,
   deloadPlan,
 }: Props) {
+  const [keepAwake, setKeepAwake] = useState(() => {
+    try {
+      return localStorage.getItem("tyaga-wake-lock") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const wakeLock = useWakeLock(keepAwake && !readOnly && !!draft);
+  const avoidStore = useMemo(() => new ExerciseAvoidStore(accountId), [accountId]);
+  const [avoidedIds, setAvoidedIds] = useState<Set<string>>(() => avoidStore.ids());
+  useEffect(() => {
+    setAvoidedIds(avoidStore.ids());
+  }, [avoidStore]);
   const [undoError,setUndoError] = useState("");
   const reducedMotion = useReducedMotion();
   const [announcement, setAnnouncement] = useState("");
@@ -428,6 +450,11 @@ export default function WorkoutView({
   const [swapTarget, setSwapTarget] = useState<{ ei: number; exercise: Exercise } | null>(null);
   const [activeSetKey, setActiveSetKey] = useState<string | null>(null);
   const workoutId = draft?.workout.id;
+  const [readinessChoice, setReadinessChoice] = useState<{
+    workoutId: string;
+    level: "normal" | "worse" | "hard";
+  } | null>(null);
+  const readiness = readinessChoice && readinessChoice.workoutId === workoutId ? readinessChoice.level : null;
   const [preferGym, setPreferGym] = useState(savedGymMode);
   const [gymSelection, setGymSelection] = useState<{ workoutId: string; setId: string | null } | null>(null);
   // View state belongs to this tab, not to the shared workout draft.
@@ -935,8 +962,17 @@ export default function WorkoutView({
         <div
           data-exercise-id={entry.exerciseId}
           data-set-id={set.id}
+          data-testid={gym ? undefined : "set-row"}
+          tabIndex={gym ? undefined : 0}
+          aria-expanded={gym ? undefined : isActive}
           className={gym ? "gym-set-row" : `set-row ${set.done ? "done" : ""} ${isActive ? "row-active" : ""}${isLaidTopSet ? " laid-top-set" : ""}`}
           onClick={gym ? undefined : () => setActiveSetKey(isActive ? null : set.id)}
+          onKeyDown={gym ? undefined : (event) => {
+            if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
+              event.preventDefault();
+              setActiveSetKey(isActive ? null : set.id);
+            }
+          }}
         >
           {!gym && (
             <button
@@ -1092,6 +1128,28 @@ export default function WorkoutView({
             >
               {soundEnabled ? <Volume2 size={19} aria-hidden="true" /> : <VolumeX size={19} aria-hidden="true" />}
             </button>
+            {wakeLock.supported ? (
+              <button
+                type="button"
+                className={`icon-button wake-lock-btn${keepAwake ? " active" : ""}`}
+                aria-label={keepAwake ? "Разрешить гасить экран" : "Не гасить экран во время тренировки"}
+                aria-pressed={keepAwake}
+                title={keepAwake ? "Экран не гаснет" : "Не гасить экран"}
+                onClick={() =>
+                  setKeepAwake((v) => {
+                    const next = !v;
+                    try {
+                      localStorage.setItem("tyaga-wake-lock", next ? "1" : "0");
+                    } catch {
+                      /* ignore */
+                    }
+                    return next;
+                  })
+                }
+              >
+                <Sun size={18} aria-hidden="true" />
+              </button>
+            ) : null}
             {!retroLabel && (
               <button
                 type="button"
@@ -1116,6 +1174,43 @@ export default function WorkoutView({
             </button>
           </div>
         </div>
+        {!readOnly && !draft.editing && !gymMode && workoutId ? (
+          <div className="workout-readiness-bar" role="group" aria-label="Самочувствие перед тренировкой">
+            <span className="readiness-label">Самочувствие</span>
+            <div className="readiness-chips">
+              {(
+                [
+                  { id: "normal", label: "Нормально" },
+                  { id: "worse", label: "Хуже обычного" },
+                  { id: "hard", label: "Тяжело сегодня" },
+                ] as const
+              ).map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  className={`readiness-chip${readiness === opt.id ? " active" : ""}${opt.id !== "normal" ? " is-caution" : ""}`}
+                  aria-pressed={readiness === opt.id}
+                  onClick={() =>
+                    setReadinessChoice((cur) =>
+                      cur?.workoutId === workoutId && cur.level === opt.id
+                        ? null
+                        : { workoutId, level: opt.id },
+                    )
+                  }
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            {readiness === "worse" || readiness === "hard" ? (
+              <p className="readiness-hint" role="status">
+                {readiness === "worse"
+                  ? "Держи RIR 2–3, не гонись за рекордом и при необходимости срежь 1 рабочий подход."
+                  : "Сегодня в приоритете техника и RIR 2–4: снизь вес на 5–10 % или оставь 1–2 подхода в запасе."}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         {deloadLine ? (
           <div className="deload-hint" role="status">
             <span>{deloadLine}</span>
@@ -1428,10 +1523,15 @@ export default function WorkoutView({
                       } else {
                         const prevSS = w.exercises[ei - 1]?.supersetId;
                         const targetSS = prevSS || `ss-${ei + 1}`;
-                        patchExercise(ei, { supersetId: targetSS });
-                        if (!prevSS && ei > 0) {
-                          patchExercise(ei - 1, { supersetId: targetSS });
-                        }
+                        const pairPrev = !prevSS && ei > 0;
+                        setWorkout({
+                          ...w,
+                          exercises: w.exercises.map((item, idx) =>
+                            idx === ei || (pairPrev && idx === ei - 1)
+                              ? { ...item, supersetId: targetSS }
+                              : item,
+                          ),
+                        });
                       }
                     }}
                   >
@@ -1737,10 +1837,16 @@ export default function WorkoutView({
       {!readOnly && swapTarget && (
         <ExerciseSwapModal
           currentExercise={swapTarget.exercise}
+          avoidedIds={avoidedIds}
+          excludeIds={w.exercises.filter((_, i) => i !== swapTarget.ei).map((e) => e.exerciseId)}
+          showScopePicker
+          defaultScope="today"
           onClose={() => setSwapTarget(null)}
-          onSwap={(newEx) => {
+          onSwap={() => {}}
+          onSwapWithScope={(newEx, scope, avoidReason) => {
             const targetEi = swapTarget.ei;
             const target = w.exercises[targetEi];
+            const oldExerciseId = target.exerciseId;
             const oldSpec = exerciseForEntry(target)?.recording;
             const renamed: WorkoutExercise = {
               ...target,
@@ -1762,7 +1868,21 @@ export default function WorkoutView({
                 i === targetEi ? { ...ExerciseSwap.entry(renamed, swapped.carried), sets: swapped.sets } : e,
               ),
             });
-            if (!swapped.carried) onToast?.("Заменено: вес и отметки не перенесены — другое упражнение");
+            if (scope === "avoid") {
+              avoidStore.add(oldExerciseId, avoidReason ?? "pain");
+              setAvoidedIds(avoidStore.ids());
+            }
+            if ((scope === "block" || scope === "program" || scope === "avoid") && w.routineId && onSwapInProgram) {
+              onSwapInProgram(w.routineId, oldExerciseId, newEx, scope, avoidReason);
+            } else if (!swapped.carried) {
+              onToast?.(
+                scope === "avoid"
+                  ? "Заменено и скрыто из рекомендаций (до пересмотра)"
+                  : "Заменено: вес и отметки не перенесены — другое упражнение",
+              );
+            } else if (scope === "avoid") {
+              onToast?.("Заменено: прежнее упражнение скрыто из рекомендаций");
+            }
             setSwapTarget(null);
           }}
         />

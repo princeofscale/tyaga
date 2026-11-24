@@ -1,5 +1,6 @@
-import { Suspense, type Dispatch, type ReactNode, type SetStateAction } from "react";
-import { Download, Sparkles } from "lucide-react";
+import { Suspense, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
+import { Download, RotateCcw, Shield, Sparkles } from "lucide-react";
+import { AVOID_REASON_LABELS, ExerciseAvoidStore } from "../../domain/SubstitutionPolicy";
 import {
   DEFAULT_SETTINGS,
   MUSCLES,
@@ -83,6 +84,42 @@ const ModalFallback = () => (
     Загружаем…
   </div>
 );
+
+function AvoidedExercisesManager({ accountId }: { accountId: string }) {
+  const [items, setItems] = useState(() => new ExerciseAvoidStore(accountId).read());
+  if (!items.length) return null;
+  return (
+    <div className="avoided-manager">
+      <div className="avoided-manager-head">
+        <Shield size={14} aria-hidden="true" />
+        <b>Скрытые упражнения ({items.length})</b>
+      </div>
+      <ul className="avoided-list">
+        {items.map((item) => {
+          const ex = exerciseById(item.exerciseId);
+          return (
+            <li key={item.exerciseId}>
+              <div>
+                <b>{ex?.name ?? item.exerciseId}</b>
+                <small>
+                  {AVOID_REASON_LABELS[item.reason]} · с {item.addedAt}
+                </small>
+              </div>
+              <button
+                type="button"
+                className="avoided-restore-btn"
+                onClick={() => setItems(new ExerciseAvoidStore(accountId).remove(item.exerciseId))}
+              >
+                <RotateCcw size={13} aria-hidden="true" />
+                <span>Вернуть</span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
 
 export interface AppModalsProps {
   account: AccountProfile;
@@ -299,6 +336,25 @@ export function AppModals({
               />
             </label>
           </div>
+          <label className="settings-safety-toggle">
+            <input
+              type="checkbox"
+              checked={!!settingsDraft.minorMode}
+              onChange={(e) =>
+                setSettingsDraft((s) => ({
+                  ...s,
+                  minorMode: e.target.checked ? true : undefined,
+                }))
+              }
+            />
+            <span>
+              <b>Безопасный режим (до 18 лет)</b>
+              <small>
+                Отключает автоматические тяжёлые синглы 95–97,5 % и автоэскалацию 1ПМ в DUP; фокус на технике и контроле наставника (рекомендации AAP).
+              </small>
+            </span>
+          </label>
+          <AvoidedExercisesManager accountId={account.id} />
           {saveError ? (
             <div className="inline-error" role="alert">
               {saveError}
@@ -481,7 +537,8 @@ export function AppModals({
           title={modal === "restore" ? "Восстановление из копии" : "Импорт истории"}
           wide
           onClose={() => {
-            if (!importBusy) setModal(null);
+            if (importBusy) return false;
+            setModal(null);
           }}
         >
           <Suspense fallback={<p>Открываем импорт…</p>}>

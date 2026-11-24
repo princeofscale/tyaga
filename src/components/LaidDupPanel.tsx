@@ -1,13 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
-import { ArrowUpDown, CalendarDays, ShieldCheck } from "lucide-react";
-import { LaidDupPlan, LAID_WEEKS, type LaidDay, type LaidWeekSlot } from "../domain/LaidDupPlan";
+import { ArrowLeftRight, ArrowUpDown, CalendarDays, RotateCcw, ShieldCheck, Sparkles } from "lucide-react";
+import {
+  LaidDupPlan,
+  LAID_WEEKS,
+  type LaidDay,
+  type LaidLift,
+  type LaidSlotInfo,
+  type LaidSubstitutions,
+  type LaidWeekSlot,
+} from "../domain/LaidDupPlan";
 import { BiomechanicsEngine } from "../domain/BiomechanicsEngine";
+import { ExerciseAvoidStore, SubstitutionPolicy } from "../domain/SubstitutionPolicy";
 import { DAY_NAMES } from "../domain/TrainingProgram";
 import { dateLabel } from "../lib/calendar";
-import { entryName } from "../lib/model";
+import { entryName, exerciseById } from "../lib/model";
 import { quantity } from "../lib/quantity";
-import type { Routine, Workout } from "../lib/types";
+import type { Exercise, LaidMaxes, Routine, Workout } from "../lib/types";
+import ExerciseSwapModal from "./ExerciseSwapModal";
 import LaidWeekOrderEditor from "./LaidWeekOrderEditor";
 import Modal from "./Modal";
 
@@ -29,15 +39,18 @@ type CardProps = {
   busy: boolean;
   onSchedule: () => void;
   onEditDays: () => void;
+  onEditSubstitutions?: () => void;
   onUpdate: () => void;
   /** Подсказка «Можно обновить максимум»: пересчитать план с текущей недели. */
   onRecalc: () => void;
 };
 
 /** Карточка программы Лейда на экране «Программы»: прогресс волн, максимумы, дни недели с весами, подсказка про максимум. */
-export function LaidDupCard({ cycle, workouts, today, busy, onSchedule, onEditDays, onUpdate, onRecalc }: CardProps) {
+export function LaidDupCard({ cycle, workouts, today, busy, onSchedule, onEditDays, onEditSubstitutions, onUpdate, onRecalc }: CardProps) {
   const reduced = useReducedMotion();
   const first = cycle[0].periodization!;
+  const subs = first.substitutions;
+  const subCount = subs ? Object.keys(subs).length : 0;
   const rawWeek = LaidDupPlan.weekOf(first.startMonday, today);
   const position = LaidDupPlan.position(rawWeek);
   const activeMaxes = useMemo(() => LaidDupPlan.maxesFor(first, position.week), [first, position.week]);
@@ -104,8 +117,8 @@ export function LaidDupCard({ cycle, workouts, today, busy, onSchedule, onEditDa
 
       <div className="laid-card-maxes" aria-label="Рабочие максимумы цикла">
         {(["squat", "bench", "deadlift", "ohp"] as const).map((lift) => (
-          <span key={lift} className="laid-mini-max">
-            <small>{LaidDupPlan.LIFT_LABEL[lift]}</small>
+          <span key={lift} className={`laid-mini-max${LaidDupPlan.isLiftSubstituted(lift, subs) ? " is-replaced" : ""}`}>
+            <small>{LaidDupPlan.liftLabel(lift, subs)}</small>
             <b>{LaidDupPlan.kg(activeMaxes[lift])} кг</b>
           </span>
         ))}
@@ -115,7 +128,7 @@ export function LaidDupCard({ cycle, workouts, today, busy, onSchedule, onEditDa
         {cycle.map((r, idx) => {
           const p = r.periodization!;
           const status = statuses[idx];
-          const dayPlan = LaidDupPlan.day(p.day, rawWeek, activeMaxes, { light: p.light });
+          const dayPlan = LaidDupPlan.day(p.day, rawWeek, activeMaxes, { light: p.light, substitutions: p.substitutions });
           return (
             <m.li
               key={r.id}
@@ -152,7 +165,7 @@ export function LaidDupCard({ cycle, workouts, today, busy, onSchedule, onEditDa
           >
             <p>
               <b>Можно обновить максимум:</b>{" "}
-              {suggestion.map((s) => `${LaidDupPlan.LIFT_LABEL[s.lift]} ${LaidDupPlan.kg(s.from)} → ${LaidDupPlan.kg(s.to)} кг`).join("; ")}.
+              {suggestion.map((s) => `${LaidDupPlan.liftLabel(s.lift, subs)} ${LaidDupPlan.kg(s.from)} → ${LaidDupPlan.kg(s.to)} кг`).join("; ")}.
             </p>
             <button type="button" className="button secondary" disabled={busy} onClick={onRecalc}>
               Пересчитать с недели {position.beforeStart ? 1 : position.week + 1}
@@ -181,6 +194,17 @@ export function LaidDupCard({ cycle, workouts, today, busy, onSchedule, onEditDa
           <ArrowUpDown size={16} aria-hidden="true" />
           Дни недели
         </m.button>
+        {onEditSubstitutions ? (
+          <m.button
+            type="button"
+            className="button secondary"
+            whileTap={reduced ? undefined : { scale: 0.985 }}
+            onClick={onEditSubstitutions}
+          >
+            <ArrowLeftRight size={16} aria-hidden="true" />
+            {subCount > 0 ? `Замены (${subCount})` : "Замены"}
+          </m.button>
+        ) : null}
         <m.button
           type="button"
           className="button secondary"
@@ -204,6 +228,7 @@ type ScheduleProps = {
   busy: boolean;
   onClose: () => void;
   onEditDays?: () => void;
+  onEditSubstitutions?: () => void;
   onUpdate: () => void;
   onRecalc: () => void;
 };
@@ -224,12 +249,13 @@ const AUDIT_POINTS = [
 ];
 
 /** «Расписание на 9 недель»: максимумы, фильтр по волнам с анимацией Motion, карточки недель, разбор упражнений и периодизации. */
-export function LaidDupSchedule({ cycle, workouts, today, busy, onClose, onEditDays, onUpdate, onRecalc }: ScheduleProps) {
+export function LaidDupSchedule({ cycle, workouts, today, busy, onClose, onEditDays, onEditSubstitutions, onUpdate, onRecalc }: ScheduleProps) {
   const reduced = useReducedMotion();
   const first = cycle[0].periodization!;
+  const subs = first.substitutions;
   const position = LaidDupPlan.position(LaidDupPlan.weekOf(first.startMonday, today));
   const activeMaxes = useMemo(() => LaidDupPlan.maxesFor(first, position.week), [first, position.week]);
-  const estimates = useMemo(() => LaidDupPlan.estimates(workouts, today), [workouts, today]);
+  const estimates = useMemo(() => LaidDupPlan.estimates(workouts, today, subs), [workouts, today, subs]);
   const suggestion = useMemo(() => LaidDupPlan.suggestion(first, workouts, today), [first, workouts, today]);
   const bioAudit = useMemo(() => BiomechanicsEngine.auditLaidCycle(cycle, workouts, today), [cycle, workouts, today]);
   const [waveFilter, setWaveFilter] = useState<"all" | 1 | 2 | 3>("all");
@@ -273,7 +299,7 @@ export function LaidDupSchedule({ cycle, workouts, today, busy, onClose, onEditD
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.2, delay: reduced ? 0 : i * 0.03 }}
             >
-              <b>{LaidDupPlan.LIFT_LABEL[lift]}</b>
+              <b>{LaidDupPlan.liftLabel(lift, subs)}</b>
               <span>{LaidDupPlan.kg(activeMaxes[lift])} кг</span>
               <small>{estimates[lift] !== null ? `по истории ≈ ${LaidDupPlan.kg(estimates[lift]!)} кг` : "истории нет"}</small>
             </m.li>
@@ -294,7 +320,7 @@ export function LaidDupSchedule({ cycle, workouts, today, busy, onClose, onEditD
             >
               <p>
                 <b>Можно обновить максимум:</b>{" "}
-                {suggestion.map((s) => `${LaidDupPlan.LIFT_LABEL[s.lift]} ${LaidDupPlan.kg(s.from)} → ${LaidDupPlan.kg(s.to)} кг`).join("; ")}.
+                {suggestion.map((s) => `${LaidDupPlan.liftLabel(s.lift, subs)} ${LaidDupPlan.kg(s.from)} → ${LaidDupPlan.kg(s.to)} кг`).join("; ")}.
               </p>
               <button type="button" className="button secondary" disabled={busy} onClick={onRecalc}>
                 Пересчитать с недели {position.beforeStart ? 1 : position.week + 1}
@@ -396,8 +422,8 @@ export function LaidDupSchedule({ cycle, workouts, today, busy, onClose, onEditD
                   <ul>
                     {cycle.map((r) => {
                       const p = r.periodization!;
-                      const plan = LaidDupPlan.day(p.day, week, maxes, { light: p.light });
-                      const waveAux = LaidDupPlan.waveAuxSummary(p.day, inWave);
+                      const plan = LaidDupPlan.day(p.day, week, maxes, { light: p.light, substitutions: p.substitutions });
+                      const waveAux = LaidDupPlan.waveAuxSummary(p.day, inWave, p.substitutions);
                       const meterRatio = Math.min(1, Math.max(0.25, (plan.heavy.percent - 80) / 20));
                       return (
                         <li key={r.id}>
@@ -450,6 +476,7 @@ export function LaidDupSchedule({ cycle, workouts, today, busy, onClose, onEditD
 
             {cycle.map((r) => {
               const day = r.periodization!.day;
+              const daySubs = r.periodization!.substitutions;
               return (
                 <div key={r.id} className="laid-comp-day">
                   <h4>
@@ -457,17 +484,19 @@ export function LaidDupSchedule({ cycle, workouts, today, busy, onClose, onEditD
                   </h4>
                   <ul>
                     {r.exercises.map((e) => {
-                      const spec = LaidDupPlan.exerciseSpec(day, e.exerciseId);
+                      const spec = LaidDupPlan.exerciseSpec(day, e.exerciseId, daySubs);
+                      const replacedName = spec.replacedFrom ? exerciseById(spec.replacedFrom)?.name ?? spec.replacedFrom : null;
                       return (
                         <li key={e.exerciseId}>
                           <div className="laid-comp-row">
                             <span>{entryName(e)}</span>
-                            <span className={`laid-origin ${spec.added ? "added" : "original"}`}>
-                              {spec.added ? "добавлено" : "оригинал"}
+                            <span className={`laid-origin ${spec.replacedFrom ? "replaced" : spec.added ? "added" : "original"}`}>
+                              {spec.replacedFrom ? "заменено" : spec.added ? "добавлено" : "оригинал"}
                             </span>
                           </div>
                           <small className="laid-comp-meta">
                             {spec.setsLabel} · {spec.intensityLabel}
+                            {replacedName ? ` · вместо «${replacedName}»` : ""}
                             {spec.note ? ` — ${spec.note}` : ""}
                           </small>
                         </li>
@@ -485,6 +514,12 @@ export function LaidDupSchedule({ cycle, workouts, today, busy, onClose, onEditD
             <button type="button" className="button secondary" onClick={onEditDays}>
               <ArrowUpDown size={16} aria-hidden="true" />
               Дни недели
+            </button>
+          ) : null}
+          {onEditSubstitutions ? (
+            <button type="button" className="button secondary" onClick={onEditSubstitutions}>
+              <ArrowLeftRight size={16} aria-hidden="true" />
+              Замены
             </button>
           ) : null}
           <button type="button" className="button secondary" onClick={onUpdate}>
@@ -526,7 +561,7 @@ export function LaidWeekScheduleModal({ cycle, allRoutines, today, onSave, onClo
     const cnt: Partial<Record<LaidDay, string>> = {};
     for (const r of cycle) {
       const p = r.periodization!;
-      const plan = LaidDupPlan.day(p.day, rawWeek, activeMaxes, { light: p.light });
+      const plan = LaidDupPlan.day(p.day, rawWeek, activeMaxes, { light: p.light, substitutions: p.substitutions });
       sum[p.day] = LaidDupPlan.compactLine(plan);
       cnt[p.day] = quantity(r.exercises.length, "упражнение", "упражнения", "упражнений");
     }
@@ -598,5 +633,373 @@ export function LaidRoutineLine({ routine, workouts, today }: { routine: Routine
       </p>
       <p className="laid-plan-line">{LaidDupPlan.line(plan)}</p>
     </div>
+  );
+}
+
+type SubstitutionsModalProps = {
+  cycle: Routine[];
+  workouts: Workout[];
+  personal?: Exercise[];
+  accountId?: string;
+  minorMode?: boolean;
+  today: string;
+  onSave: (
+    substitutions: LaidSubstitutions | undefined,
+    maxes: LaidMaxes,
+    options?: { calibrationLifts?: LaidLift[]; painFlags?: LaidLift[] },
+  ) => Promise<void>;
+  onClose: () => void;
+};
+
+const SUB_LIFTS: LaidLift[] = ["squat", "bench", "deadlift", "ohp"];
+
+/** Модальное окно «Замены упражнений · Дэвид Лейд»: замена любого базового или подсобного упражнения на весь 9-недельный цикл. */
+export function LaidSubstitutionsModal({ cycle, workouts, personal, accountId, today, onSave, onClose }: SubstitutionsModalProps) {
+  const first = cycle[0].periodization!;
+  const avoidedIds = useMemo(
+    () => (accountId ? new ExerciseAvoidStore(accountId).ids() : undefined),
+    [accountId],
+  );
+  const initialSubs = useMemo(() => first.substitutions ?? {}, [first.substitutions]);
+  const [subs, setSubs] = useState<LaidSubstitutions>(() => ({ ...initialSubs }));
+  const [calibrationLifts, setCalibrationLifts] = useState<LaidLift[]>(() =>
+    first.calibrationLifts ? [...first.calibrationLifts] : [],
+  );
+  const [painFlags, setPainFlags] = useState<LaidLift[]>(() =>
+    first.painFlags ? [...first.painFlags] : [],
+  );
+  const [maxValues, setMaxValues] = useState<Record<LaidLift, string>>(() =>
+    Object.fromEntries(SUB_LIFTS.map((l) => [l, LaidDupPlan.kg(first.maxes[l])])) as Record<LaidLift, string>,
+  );
+  const [swapSlot, setSwapSlot] = useState<LaidSlotInfo | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [shown, setShown] = useState(false);
+
+  const activeSubs = useMemo(() => LaidDupPlan.normalizeSubstitutions(subs), [subs]);
+  const normalizedInitial = useMemo(() => LaidDupPlan.normalizeSubstitutions(initialSubs), [initialSubs]);
+
+  const catalogSlots = useMemo(
+    () => LaidDupPlan.catalogSlots(first.extras, activeSubs),
+    [first.extras, activeSubs],
+  );
+  const liftSlots = useMemo(() => catalogSlots.filter((s) => s.role === "lift"), [catalogSlots]);
+  const auxSlots = useMemo(() => catalogSlots.filter((s) => s.role !== "lift"), [catalogSlots]);
+
+  const estimates = useMemo(
+    () => LaidDupPlan.estimates(workouts, today, activeSubs),
+    [workouts, today, activeSubs],
+  );
+
+  const currentVolume = useMemo(() => LaidDupPlan.cycleMuscleVolume(cycle), [cycle]);
+  const nextVolume = useMemo(
+    () =>
+      LaidDupPlan.cycleMuscleVolume(
+        LaidDupPlan.withSubstitutions(cycle, activeSubs),
+      ),
+    [cycle, activeSubs],
+  );
+
+  const checks = SUB_LIFTS.map((lift) => ({ lift, ...LaidDupPlan.checkMax(maxValues[lift]) }));
+  const validMaxes = checks.every((c) => c.error === null);
+  const parsedMaxes = validMaxes
+    ? (Object.fromEntries(checks.map((c) => [c.lift, c.value!])) as LaidMaxes)
+    : null;
+
+  const subsChanged = JSON.stringify(activeSubs ?? {}) !== JSON.stringify(normalizedInitial ?? {});
+  const calChanged =
+    JSON.stringify([...calibrationLifts].sort()) !== JSON.stringify([...(first.calibrationLifts ?? [])].sort());
+  const painChanged =
+    JSON.stringify([...painFlags].sort()) !== JSON.stringify([...(first.painFlags ?? [])].sort());
+  const maxesChanged = !!parsedMaxes && SUB_LIFTS.some((l) => parsedMaxes[l] !== first.maxes[l]);
+  const changed = subsChanged || maxesChanged || calChanged || painChanged;
+
+  function applySub(originalId: string, nextId: string | null) {
+    const nextMap = { ...subs };
+    if (!nextId || nextId === originalId) {
+      delete nextMap[originalId];
+    } else {
+      nextMap[originalId] = nextId;
+    }
+    setSubs(nextMap);
+
+    // Если заменён базовый лифт: проверяем класс A/B/C и наличие ≥2 собственных тренировок
+    const lift = SUB_LIFTS.find((l) => LaidDupPlan.LIFT_EXERCISE[l] === originalId);
+    if (lift) {
+      if (!nextId || nextId === originalId) {
+        setCalibrationLifts((prev) => prev.filter((l) => l !== lift));
+      } else {
+        const ownSessions = LaidDupPlan.sessionsForExercise(workouts, nextId);
+        const compat = SubstitutionPolicy.classify(exerciseById(originalId), exerciseById(nextId), {
+          hasOwnHistory: ownSessions >= 2,
+          painFlag: painFlags.includes(lift),
+        });
+        if (compat.prescriptionMode !== "percent_1rm") {
+          setCalibrationLifts((prev) => (prev.includes(lift) ? prev : [...prev, lift]));
+        }
+        const nextEst = LaidDupPlan.estimates(workouts, today, LaidDupPlan.normalizeSubstitutions(nextMap))[lift];
+        if (nextEst !== null) {
+          setMaxValues((prev) => ({ ...prev, [lift]: LaidDupPlan.kg(nextEst) }));
+        }
+      }
+    }
+  }
+
+  async function handleSave() {
+    setShown(true);
+    if (!parsedMaxes) return;
+    setBusy(true);
+    setError("");
+    try {
+      await onSave(activeSubs, parsedMaxes, { calibrationLifts, painFlags });
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось сохранить замены");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const swapCurrentEx = swapSlot ? exerciseById(swapSlot.resolvedId) ?? exerciseById(swapSlot.originalId) : null;
+  const swapOriginalEx = swapSlot ? exerciseById(swapSlot.originalId) : undefined;
+  const swapExcludeIds = swapSlot
+    ? LaidDupPlan.conflictingIdsForSubstitution(swapSlot.originalId, first.extras, activeSubs)
+    : [];
+
+  return (
+    <>
+      <Modal title="Замены упражнений · Дэвид Лейд" wide onClose={() => (busy ? false : onClose())}>
+        <div className="laid-subs-modal">
+          <p className="laid-lead">
+            Замени любое упражнение на весь цикл (например, при травме спины или под инвентарь). Периодизация, проценты волн и объём по мышцам пересчитаются автоматически, а история тренировок сохранится.
+          </p>
+
+          <div className="laid-volume-strip" aria-label="Плановый объём цикла">
+            <div className="laid-volume-strip-head">
+              <span>Недельный объём цикла</span>
+              <span className="laid-volume-axial">
+                Осевая нагрузка: <b>{nextVolume.axialSets}</b> подх.
+                {nextVolume.axialSets !== currentVolume.axialSets ? (
+                  <small>
+                    {" "}
+                    ({nextVolume.axialSets - currentVolume.axialSets > 0 ? "+" : ""}
+                    {nextVolume.axialSets - currentVolume.axialSets})
+                  </small>
+                ) : null}
+              </span>
+            </div>
+            <div className="laid-volume-chips">
+              {nextVolume.muscles.map((mItem) => {
+                const prevSets = currentVolume.muscles.find((b) => b.id === mItem.id)?.sets ?? 0;
+                const delta = Math.round((mItem.sets - prevSets) * 10) / 10;
+                return (
+                  <span key={mItem.id} className={`laid-vol-chip${delta !== 0 ? " changed" : ""}`}>
+                    <span>{mItem.name}</span>
+                    <b>{LaidDupPlan.kg(mItem.sets)}</b>
+                    {delta !== 0 ? (
+                      <small>{delta > 0 ? `+${LaidDupPlan.kg(delta)}` : LaidDupPlan.kg(delta)}</small>
+                    ) : null}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="laid-subs-group">
+            <p className="laid-subcaption">Базовые движения (волновая периодизация DUP)</p>
+            <ul className="laid-subs-list">
+              {liftSlots.map((slot) => {
+                const lift = slot.lift!;
+                const origName = exerciseById(slot.originalId)?.name ?? slot.originalId;
+                const curDef = exerciseById(slot.resolvedId);
+                const curName = curDef?.name ?? slot.resolvedId;
+                const check = checks.find((c) => c.lift === lift)!;
+                const liftErr = shown && check.error ? check.error : "";
+                const est = estimates[lift];
+                const changedThisLift = slot.resolvedId !== LaidDupPlan.liftExerciseId(lift, normalizedInitial);
+                return (
+                  <li key={slot.originalId} className={`laid-subs-item laid-subs-lift-item${slot.replaced ? " is-replaced" : ""}`}>
+                    <div className="laid-subs-item-row">
+                      <div className="laid-subs-item-info">
+                        <b>{curName}</b>
+                        <small>
+                          {slot.days.map((d) => LaidDupPlan.SHORT[d]).join(" · ")} · {slot.weeklySets} подх./нед
+                          {slot.replaced ? ` · вместо «${origName}»` : ""}
+                        </small>
+                      </div>
+                      <div className="laid-subs-item-actions">
+                        {slot.replaced ? (
+                          <button
+                            type="button"
+                            className="laid-subs-reset-btn"
+                            aria-label={`Вернуть ${origName}`}
+                            onClick={() => applySub(slot.originalId, null)}
+                          >
+                            <RotateCcw size={14} aria-hidden="true" />
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          className="laid-subs-swap-btn"
+                          onClick={() => setSwapSlot(slot)}
+                        >
+                          <ArrowLeftRight size={14} aria-hidden="true" />
+                          <span>Заменить</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {slot.replaced || changedThisLift || calibrationLifts.includes(lift) || painFlags.includes(lift) ? (
+                      <div className="laid-subs-max-row">
+                        <div className="laid-lift-mode-row">
+                          <button
+                            type="button"
+                            aria-pressed={calibrationLifts.includes(lift)}
+                            className={`laid-mode-chip${calibrationLifts.includes(lift) ? " active" : ""}`}
+                            onClick={() =>
+                              setCalibrationLifts((prev) =>
+                                prev.includes(lift) ? prev.filter((l) => l !== lift) : [...prev, lift],
+                              )
+                            }
+                          >
+                            {calibrationLifts.includes(lift) ? "Калибровка по RIR: вкл" : "Режим калибровки"}
+                          </button>
+                          <button
+                            type="button"
+                            aria-pressed={painFlags.includes(lift)}
+                            className={`laid-mode-chip is-pain${painFlags.includes(lift) ? " active" : ""}`}
+                            onClick={() =>
+                              setPainFlags((prev) =>
+                                prev.includes(lift) ? prev.filter((l) => l !== lift) : [...prev, lift],
+                              )
+                            }
+                          >
+                            {painFlags.includes(lift) ? "Щадяще (боль): вкл" : "Травма / боль"}
+                          </button>
+                        </div>
+                        {!calibrationLifts.includes(lift) && !painFlags.includes(lift) ? (
+                          <>
+                            <label className="laid-subs-max-label">
+                              <span>1ПМ для {curName}</span>
+                              <span className="laid-input">
+                                <input
+                                  inputMode="decimal"
+                                  value={maxValues[lift]}
+                                  aria-invalid={liftErr ? true : undefined}
+                                  onChange={(e) => setMaxValues({ ...maxValues, [lift]: e.target.value })}
+                                />
+                                <span className="laid-unit" aria-hidden="true">
+                                  {curDef?.recording.loadMode === "per_implement" ? "кг · 1 гант." : "кг"}
+                                </span>
+                              </span>
+                            </label>
+                            {est !== null && maxValues[lift] !== LaidDupPlan.kg(est) ? (
+                              <button
+                                type="button"
+                                className="laid-estimate"
+                                onClick={() => setMaxValues({ ...maxValues, [lift]: LaidDupPlan.kg(est) })}
+                              >
+                                <Sparkles size={13} aria-hidden="true" />
+                                <span>по истории ≈ {LaidDupPlan.kg(est)} кг</span>
+                              </button>
+                            ) : null}
+                            {liftErr ? <p className="laid-error" role="alert">{liftErr}</p> : null}
+                          </>
+                        ) : (
+                          <p className="tiny laid-quiet-note">
+                            {painFlags.includes(lift)
+                              ? "Синглы 95 % и автоповышение веса отключены — работа по переносимому весу (RIR 2–3)."
+                              : "1-я неделя в режиме калибровки по RIR без фиктивных % от старого 1ПМ."}
+                          </p>
+                        )}
+                      </div>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+
+          <div className="laid-subs-group">
+            <p className="laid-subcaption">Подсобные упражнения</p>
+            <ul className="laid-subs-list">
+              {auxSlots.map((slot) => {
+                const origName = exerciseById(slot.originalId)?.name ?? slot.originalId;
+                const curName = exerciseById(slot.resolvedId)?.name ?? slot.resolvedId;
+                return (
+                  <li key={slot.originalId} className={`laid-subs-item${slot.replaced ? " is-replaced" : ""}`}>
+                    <div className="laid-subs-item-info">
+                      <b>{curName}</b>
+                      <small>
+                        {slot.days.map((d) => LaidDupPlan.SHORT[d]).join(" · ")} · {slot.weeklySets} подх./нед
+                        {slot.role === "wave-aux" ? " · волна повт." : ""}
+                        {slot.replaced ? ` · вместо «${origName}»` : ""}
+                      </small>
+                    </div>
+                    <div className="laid-subs-item-actions">
+                      {slot.replaced ? (
+                        <button
+                          type="button"
+                          className="laid-subs-reset-btn"
+                          aria-label={`Вернуть ${origName}`}
+                          onClick={() => applySub(slot.originalId, null)}
+                        >
+                          <RotateCcw size={14} aria-hidden="true" />
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="laid-subs-swap-btn"
+                        onClick={() => setSwapSlot(slot)}
+                      >
+                        <ArrowLeftRight size={14} aria-hidden="true" />
+                        <span>Заменить</span>
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+
+          {error ? (
+            <p className="error-banner" role="alert">
+              {error}
+            </p>
+          ) : null}
+
+          <div className="laid-actions laid-sticky-footer">
+            <button
+              type="button"
+              className="button primary"
+              disabled={busy || !changed}
+              onClick={() => void handleSave()}
+            >
+              {busy ? "Сохраняем…" : "Сохранить замены"}
+            </button>
+            <button type="button" className="button secondary" disabled={busy} onClick={onClose}>
+              Отмена
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {swapSlot && swapCurrentEx ? (
+        <ExerciseSwapModal
+          title={swapSlot.role === "lift" ? "Заменить базовое движение" : "Заменить упражнение в цикле"}
+          subtitle={`Замена применится на всех 9 неделях цикла (${swapSlot.days.map((d) => LaidDupPlan.SHORT[d]).join(" · ")}). Объём по мышцам и периодизация пересчитаются автоматически.`}
+          currentExercise={swapCurrentEx}
+          originalExercise={swapOriginalEx}
+          showCompatibilityFor={swapSlot.role === "lift" ? swapOriginalEx : undefined}
+          personal={personal}
+          avoidedIds={avoidedIds}
+          excludeIds={swapExcludeIds}
+          requireWeighted={swapSlot.role === "lift"}
+          onSwap={(nextEx) => applySub(swapSlot.originalId, nextEx.id)}
+          onReset={() => applySub(swapSlot.originalId, null)}
+          onClose={() => setSwapSlot(null)}
+        />
+      ) : null}
+    </>
   );
 }

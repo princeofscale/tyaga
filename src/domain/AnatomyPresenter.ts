@@ -208,7 +208,7 @@ export class AnatomyPresenter {
       else if (role === "stabilizer") result.stabilizing += count;
     }
     const goal = this.loads.find((l) => l.id === part.zone)?.goal ?? 1;
-    return { ...result, goal, ratio: result.direct / goal };
+    return { ...result, goal, ratio: goal > 0 ? result.direct / goal : 0 };
   }
   exerciseRole(part: AnatomyPart, exercise: Exercise) {
     const role = MuscleParticipation.role(exercise, part.muscles);

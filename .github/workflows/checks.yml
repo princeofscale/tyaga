@@ -5,9 +5,13 @@ on:
   pull_request:
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   static:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -22,6 +26,7 @@ jobs:
       - run: npm run build
   tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -32,6 +37,7 @@ jobs:
       - run: npm test
   e2e:
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -40,12 +46,25 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      - uses: actions/cache@v4
+        with:
+          path: artifacts/models
+          key: pose-test-model-${{ hashFiles('scripts/fetch-pose-test-model.mjs') }}
       # Hosted Ubuntu includes Chromium libraries; application fonts are bundled.
       - run: npx playwright install chromium
       - run: npm run test:e2e:prepare
       - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-e2e-artifacts
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
   android:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -61,7 +80,8 @@ jobs:
         with:
           cmdline-tools-version: "13114758"
           packages: platform-tools
-          log-accepted-android-sdk-licenses: "false"
+          log-accepted-android-sdk-licenses: "true"
+      - run: yes | sdkmanager --licenses >/dev/null || true
       - run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
       - run: npm ci
       - run: npm run build:android

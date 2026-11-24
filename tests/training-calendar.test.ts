@@ -152,7 +152,7 @@ test("native backup and local device sync retain adjustments and the workout occ
     const destination = "2024-11-02";
     const plan = TrainingCalendar.withOverride(routine(calendarWeekday(source)), source, destination, []);
     const workout = saved(plan, destination, source);
-    const backup = new WorkoutImport({ dateOrder: "dmy", timeZone: "UTC" }).parse(
+    const backup = new WorkoutImport({ dateOrder: "dmy", timeZone: "UTC", weightUnit: "kg", distanceUnit: "km" }).parse(
       JSON.stringify({ format: "tyaga-backup", version: 5, workouts: [workout], routines: [plan] }), "tyaga",
     );
     assert.equal(backup.workouts[0].programDate, source);

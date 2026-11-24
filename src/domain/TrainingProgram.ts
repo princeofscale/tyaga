@@ -215,8 +215,9 @@ export class TrainingProgram {
       routineId: r.id,
       ...(programDate !== undefined ? { programDate } : {}),
       restSeconds: r.restSeconds,
-      exercises: r.exercises.map((plan) => {
-        const definition = exerciseForEntry(plan)!;
+      exercises: r.exercises.flatMap((plan) => {
+        const definition = exerciseForEntry(plan);
+        if (!definition) return [];
         const range = this.range(plan);
         const previous = this.reference(
           history,
@@ -237,24 +238,31 @@ export class TrainingProgram {
           work.length > 0 &&
           work.every((s) => s.reps >= range.max && s.weight > 0) &&
           work.every((s) => s.weight === work[0].weight);
+        // Equipment-aware DDP guardrail: если минимальный шаг веса > 12% от текущего веса (например, махи гантелями 10 → 12.5 кг = +25%),
+        // не форсируем резкий скачок — предлагаем сперва добавить повторения с тем же весом.
+        const relativeJump = canIncrease && work[0].weight > 0 ? r.incrementKg / work[0].weight : 0;
+        const jumpTooLarge = canIncrease && relativeJump > 0.12;
+        const shouldRaiseWeight = canIncrease && !jumpTooLarge;
         let index = 0;
         const sets = deload && cycle ? this.deloadSets(plan, cycle) : plan.sets;
-        return {
+        return [{
           ...structuredClone(plan),
           ...(r.progression === "double"
-            ? { repMin: range.min, repMax: range.max }
+            ? { repMin: range.min, repMax: jumpTooLarge ? Math.min(200, range.max + 2) : range.max }
             : !work.length && plan.repMin === undefined && plan.sets.some((s) => !s.warmup && s.reps > 0)
               ? { repMin: plan.sets.find((s) => !s.warmup)!.reps, repMax: plan.sets.find((s) => !s.warmup)!.reps }
               : {}),
           progressionNote: deload
             ? undefined
-            : r.progression === "double" && progressive && canIncrease
+            : r.progression === "double" && progressive && shouldRaiseWeight
               ? `Все рабочие подходы прошлого раза достигли ${range.max} повторений. Предложен шаг +${r.incrementKg} кг; диапазон ${range.min}–${range.max}. Измени вес по самочувствию.`
-              : undefined,
+              : r.progression === "double" && progressive && jumpTooLarge
+                ? `Шаг +${r.incrementKg} кг — это +${Math.round(relativeJump * 100)}% от ${work[0].weight} кг (слишком резкий скачок). Сначала добавь 1–2 повторения с тем же весом или возьми меньший шаг.`
+                : undefined,
           sets: sets.map((s) => {
             const ref = s.warmup ? undefined : (work[index++] ?? work.at(-1));
             const raised =
-              canIncrease && !s.warmup
+              shouldRaiseWeight && !s.warmup
                 ? work[0].weight + r.incrementKg
                 : undefined;
             const base = raised ?? (ref ? ref.weight : s.weight);
@@ -287,7 +295,7 @@ export class TrainingProgram {
                 : {}),
             };
           }),
-        };
+        }];
       }),
     };
     return laid ? this.withLaid(built, laid) : built;
@@ -297,7 +305,9 @@ export class TrainingProgram {
    * (вес из «Прошлого» его не подменяет), у вспомогательных — повторения недели и пометка «добавлено»; в заметке — неделя.
    */
   private withLaid(workout: Workout, plan: LaidDayPlan): Workout {
-    const day = this.routine.periodization!.day;
+    const p = this.routine.periodization!;
+    const day = p.day;
+    const subs = p.substitutions;
     const week = LaidDupPlan.weekLabel(plan.position);
     return {
       ...workout,
@@ -305,7 +315,7 @@ export class TrainingProgram {
       exercises: workout.exercises.map((entry) => {
         if (entry.exerciseId === plan.liftExerciseId)
           return { ...entry, sets: LaidDupPlan.liftSets(plan), repMin: undefined, repMax: undefined, progressionNote: LaidDupPlan.describe(plan) };
-        const reps = LaidDupPlan.auxReps(day, entry.exerciseId, plan.position.inWave);
+        const reps = LaidDupPlan.auxReps(day, entry.exerciseId, plan.position.inWave, subs);
         if (reps !== null) {
           // Волновая подсобка (push press 4/8/12, наклонный жим 12/4/8): если подходы взялись из истории
           // с другим числом повторений, подстраиваем повторы под текущую неделю волны, а пустые (без истории) не выдумываем.
@@ -323,7 +333,7 @@ export class TrainingProgram {
         }
         return {
           ...entry,
-          progressionNote: LaidDupPlan.isAdded(day, entry.exerciseId) ? "Добавлено к оригиналу Лейда: в его таблице этого нет." : undefined,
+          progressionNote: LaidDupPlan.isAdded(day, entry.exerciseId, subs) ? "Добавлено к оригиналу Лейда: в его таблице этого нет." : undefined,
         };
       }),
     };
@@ -539,7 +549,7 @@ export class TrainingProgram {
         name: "Ноги и икры",
         days: [5],
         notes:
-          "Суббота программы v2: 25 подходов. Квадрицепсы 13, бицепс бедра и ягодицы 8, икры 4.",
+          "Суббота программы v2: 25 подходов. Квадрицепсы 13, бицепс бедра 6, ягодицы 10, икры 4.",
         items: [
           ["squat", 4, 6, 10],
           ["rdl", 3, 8, 10],

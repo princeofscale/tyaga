@@ -48,6 +48,15 @@ export interface WeeklyBiomechanicsReport {
   endDate: string;
   workingSets: number;
   effectiveSetsTotal: number;
+  /** Отдельный слой: подходы по честным диапазонам RIR (0–2 / 3–4 / 5+ / без RIR). */
+  rirBands: {
+    high: number;
+    moderate: number;
+    light: number;
+    unknown: number;
+  };
+  /** Отдельный слой усталости: подходы со значимой осевой / стабилизирующей нагрузкой на корпус (не смешивается с гипертрофией). */
+  structuralLoadSets: number;
   hardSets: number;
   failureSets: number;
   junkSets: number;
@@ -148,7 +157,7 @@ export class BiomechanicsEngine {
       fatigueCost,
       sfr,
       repZone: effort.repZone,
-      isHard: set.rir !== null && set.rir <= 3,
+      isHard: AnalyticsFacts.isHard(set),
       isFailure: set.rir !== null && set.rir === 0,
       isJunk: set.rir !== null && set.rir >= 5,
       rirAdjustedE1rm: rirAdjustedE1rm === null ? null : OneRepMaxFormulas.round(rirAdjustedE1rm),
@@ -209,6 +218,7 @@ export class BiomechanicsEngine {
     };
     const calvesSplit = { gastrocnemius: 0, soleus: 0 };
     const repZones = { strength: 0, hypertrophy: 0, endurance: 0 };
+    const rirBands = { high: 0, moderate: 0, light: 0, unknown: 0 };
 
     let effectiveSetsTotal = 0;
     let hardSets = 0;
@@ -218,6 +228,7 @@ export class BiomechanicsEngine {
     let rirSumAll = 0;
     let rirCountAll = 0;
     let axialHardSets = 0;
+    let structuralLoadSets = 0;
     let sfrSum = 0;
 
     for (const fact of facts) {
@@ -234,12 +245,19 @@ export class BiomechanicsEngine {
       if (profile.isJunk) junkSets += 1;
       if (fact.set.rir === null) {
         unknownRirSets += 1;
+        rirBands.unknown += 1;
       } else {
         rirSumAll += fact.set.rir;
         rirCountAll += 1;
+        if (fact.set.rir <= 2) rirBands.high += 1;
+        else if (fact.set.rir <= 4) rirBands.moderate += 1;
+        else rirBands.light += 1;
       }
-      if (profile.loadClass === "axial_compound" && (fact.set.rir === null || fact.set.rir <= 3)) {
-        axialHardSets += 1;
+      if (profile.loadClass === "axial_compound") {
+        structuralLoadSets += 1;
+        if (profile.isHard) axialHardSets += 1;
+      } else if (exercise?.muscles.some((m) => m.muscleId === "erector-spinae" && m.role === "stabilizer")) {
+        structuralLoadSets += 0.5;
       }
 
       if (!exercise) continue;
@@ -329,8 +347,8 @@ export class BiomechanicsEngine {
         signals.push({
           id: "junk-volume",
           severity: "info",
-          title: "Часть объёма слишком лёгкая (RIR 5+)",
-          detail: `${junkSets} подх. с запасом 5+ повторений дают слабый стимул для роста. Если это не разгрузка — добавь вес или 2–3 повтора.`,
+          title: "Много лёгких подходов (RIR 5+)",
+          detail: `${junkSets} подх. с запасом 5+ повторений дают более низкий стимул в среднем, чем RIR 0–3. Если это не разгрузка и не техническая работа — добавь вес или 2–3 повтора.`,
         });
       }
       if (axialHardSets >= 18) {
@@ -383,6 +401,8 @@ export class BiomechanicsEngine {
       endDate,
       workingSets,
       effectiveSetsTotal: round1(effectiveSetsTotal),
+      rirBands,
+      structuralLoadSets: round1(structuralLoadSets),
       hardSets,
       failureSets,
       junkSets,
@@ -478,12 +498,24 @@ export class BiomechanicsEngine {
       }
     }
 
-    if (pullBeforeLegsPairs.length > 0) {
+    const pullHasAxialHinge = cycle
+      .filter((r) => {
+        const d = LaidDupPlan.periodizationOf(r)?.day;
+        return d ? pullDays.has(d) : false;
+      })
+      .some((r) =>
+        r.exercises.some((e) => {
+          const def = exerciseForEntry(e) ?? exerciseById(e.exerciseId);
+          return this.loadClass(def) === "axial_compound" && def?.familyId === "hip-hinge";
+        }),
+      );
+
+    if (pullBeforeLegsPairs.length > 0 && pullHasAxialHinge) {
       topSetFeedback.push({
         id: "laid-pull-before-legs",
         severity: "info",
         title: "Тяга сразу перед ногами",
-        detail: `${pullBeforeLegsPairs.join(", ")}: становая + тяга на прямых ногах грузят поясницу и бицепс бедра за день до тяжёлого приседа. Если спина не успевает остывать — выбери ритм 3+1+3 или переставь дни.`,
+        detail: `${pullBeforeLegsPairs.join(", ")}: тяговые движения с осевой нагрузкой грузят поясницу и бицепс бедра за день до приседа. Если спина не успевает остывать — выбери ритм 3+1+3 или переставь дни.`,
       });
     }
 

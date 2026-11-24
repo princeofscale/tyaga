@@ -2,8 +2,11 @@
 // platform's identity header, people sign in with email and password: web pages
 // carry the session cookie, the Android app sends the same token as Bearer.
 import worker, { handleApi, type Env } from "./index";
+import { BodyTooLargeError, json, readTextLimited } from "./http";
 
 const SESSION_MS = 30 * 86400000;
+const MAX_BODY_BYTES = 500_000;
+const MAX_AUTH_BODY_BYTES = 12_000;
 const TOKEN = /^[a-f0-9]{64}$/;
 const AUTH_POSTS = ["/api/auth/register", "/api/auth/login", "/api/auth/recover"];
 // No credentials ever cross origins: the app authenticates with a Bearer token,
@@ -14,19 +17,33 @@ const CORS: Record<string, string> = {
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
   "Access-Control-Expose-Headers": "X-Tyaga-Session",
   "Access-Control-Max-Age": "86400",
+  Vary: "Origin",
 };
 const hex = (bytes: ArrayBuffer) => [...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, "0")).join("");
 const sha256 = async (value: string) => hex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)));
-const json = (data: unknown, status: number) =>
-  new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json; charset=utf-8" } });
 
-function sessionToken(request: Request) {
+function withCors(response: Response, exposeToken = false): Response {
+  const out = new Response(response.body, response);
+  for (const [name, value] of Object.entries(CORS)) out.headers.set(name, value);
+  if (exposeToken) {
+    // The app keeps the token itself; "" after logout.
+    const token = response.headers.get("Set-Cookie")?.match(/tyaga_session=([a-f0-9]*)/)?.[1];
+    out.headers.delete("Set-Cookie");
+    if (token !== undefined) out.headers.set("X-Tyaga-Session", token);
+  }
+  return out;
+}
+
+function sessionToken(request: Request, url: URL) {
   const bearer = request.headers.get("Authorization")?.match(/^Bearer ([a-f0-9]{64})$/)?.[1];
   if (bearer) return { token: bearer, bearer: true };
+  const allowed = url.protocol === "https:"
+    ? new Set(["__Host-tyaga_session", "__Host-tyaga_embedded"])
+    : new Set(["__Host-tyaga_session", "tyaga_session"]);
   const cookie = (request.headers.get("Cookie") ?? "")
     .split(";")
     .map((s) => s.trim().split("="))
-    .find(([name]) => name === "__Host-tyaga_session" || name === "tyaga_session");
+    .find(([name]) => allowed.has(name));
   return cookie && TOKEN.test(cookie[1] ?? "") ? { token: cookie[1], bearer: false } : null;
 }
 
@@ -45,15 +62,16 @@ async function ipFailures(env: Env, request: Request) {
 }
 async function noteIpFailure(env: Env, request: Request) {
   const now = Date.now();
-  await env.DB.prepare(
-    "INSERT INTO auth_limits (platform_id,attempts,window_start) VALUES (?,1,?) ON CONFLICT(platform_id) DO UPDATE SET attempts = CASE WHEN auth_limits.window_start < ? THEN 1 ELSE auth_limits.attempts + 1 END, window_start = CASE WHEN auth_limits.window_start < ? THEN excluded.window_start ELSE auth_limits.window_start END",
-  )
-    .bind(ipKey(request), now, now - 900000, now - 900000)
-    .run();
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM auth_limits WHERE window_start < ?").bind(now - 86_400_000),
+    env.DB.prepare(
+      "INSERT INTO auth_limits (platform_id,attempts,window_start) VALUES (?,1,?) ON CONFLICT(platform_id) DO UPDATE SET attempts = CASE WHEN auth_limits.window_start < ? THEN 1 ELSE auth_limits.attempts + 1 END, window_start = CASE WHEN auth_limits.window_start < ? THEN excluded.window_start ELSE auth_limits.window_start END",
+    ).bind(ipKey(request), now, now - 900000, now - 900000),
+  ]);
 }
 
 async function api(request: Request, env: Env, url: URL) {
-  const auth = sessionToken(request);
+  const auth = sessionToken(request, url);
   let platformId: string | undefined;
   if (auth) {
     const hash = await sha256(auth.token);
@@ -70,7 +88,15 @@ async function api(request: Request, env: Env, url: URL) {
     }
   }
   const authPost = request.method === "POST" && AUTH_POSTS.includes(url.pathname);
-  const body = ["GET", "HEAD"].includes(request.method) ? undefined : await request.text();
+  let body: string | undefined;
+  if (!["GET", "HEAD", "OPTIONS"].includes(request.method)) {
+    try {
+      body = await readTextLimited(request, authPost ? MAX_AUTH_BODY_BYTES : MAX_BODY_BYTES);
+    } catch (error) {
+      if (error instanceof BodyTooLargeError) return json({ error: error.message }, 413);
+      throw error;
+    }
+  }
   if (authPost) {
     if ((await ipFailures(env, request)) > 30)
       return json({ error: "Слишком много попыток. Попробуй через 15 минут." }, 429);
@@ -99,7 +125,7 @@ async function api(request: Request, env: Env, url: URL) {
     if (auth) headers.set("Cookie", `__Host-tyaga_session=${auth.token}; tyaga_session=${auth.token}`);
     else headers.delete("Cookie");
   }
-  const response = await handleApi(new Request(request.url, { method: request.method, headers, body }), env);
+  const response = await handleApi(new Request(request.url, { method: request.method, headers }), env, body);
   // 401 — неверные учётные данные; 409 «почта занята» попыткой не считается.
   if (authPost && response.status === 401) await noteIpFailure(env, request);
   return response;
@@ -109,16 +135,10 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (!url.pathname.startsWith("/api/")) return worker.fetch(request, env);
+    if (request.method === "OPTIONS") return withCors(new Response(null, { status: 204 }));
     const origin = request.headers.get("Origin");
-    if (!origin || origin === url.origin) return api(request, env, url);
-    if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
     const response = await api(request, env, url);
-    const out = new Response(response.body, response);
-    for (const [name, value] of Object.entries(CORS)) out.headers.set(name, value);
-    // The app keeps the token itself; "" after logout.
-    const token = response.headers.get("Set-Cookie")?.match(/tyaga_session=([a-f0-9]*)/)?.[1];
-    out.headers.delete("Set-Cookie");
-    if (token !== undefined) out.headers.set("X-Tyaga-Session", token);
-    return out;
+    if (!origin || origin === url.origin) return response;
+    return withCors(response, true);
   },
 };

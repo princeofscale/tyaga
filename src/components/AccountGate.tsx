@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState, type FormEvent } from "react";
 import { AlertCircle, Dumbbell, Eye, EyeOff, LoaderCircle } from "lucide-react";
 import { m, useReducedMotion } from "motion/react";
-import App from "../App";
 import AppErrorBoundary from "./AppErrorBoundary";
 import RecoveryCodeModal from "./RecoveryCodeModal";
 import { LiveRoomProvider } from "./LiveRoomProvider";
@@ -10,7 +9,11 @@ import { offlineSnapshot } from "../lib/offlineSnapshot";
 import { deviceAccountData } from "../lib/deviceAccountData";
 import { DEFAULT_SETTINGS } from "../lib/model";
 import { browserTimeZone } from "../lib/calendar";
+import { useAndroidApkAvailable } from "../lib/androidApk";
+import { disconnectCloud } from "../device/cloudSync";
 import type { AccountProfile, AccountState } from "../lib/account";
+
+const App = lazy(() => import("../App"));
 
 export default function AccountGate() {
   const [state, setState] = useState<AccountState | null>(null);
@@ -30,8 +33,9 @@ export default function AccountGate() {
       else setError(e instanceof Error ? e.message : "Не удалось открыть аккаунт");
     }
   }, []);
-  // Выход: на устройстве не остаётся ничего личного (черновик, журнал веса, офлайн-копия). Повтор — после размонтирования приложения.
+  // Выход: на устройстве не остаётся ничего личного (черновик, журнал веса, офлайн-копия, облачный токен).
   const logout = useCallback(() => {
+    disconnectCloud();
     deviceAccountData.wipe();
     setState({ registered: true, profile: null });
     setTimeout(() => deviceAccountData.wipe(), 0);
@@ -48,9 +52,15 @@ export default function AccountGate() {
     </main>
   );
   return <>
-    {state.profile ? <AppErrorBoundary key={state.profile.id} onLogout={logout}><LiveRoomProvider key={state.profile.id}><App account={state.profile}
+    {state.profile ? <AppErrorBoundary key={state.profile.id} onLogout={logout}><LiveRoomProvider key={state.profile.id}><Suspense fallback={
+      <main className="account-loading auth-loading steel-auth-loading">
+        <span className="auth-loading-mark" aria-hidden="true"><Dumbbell size={28} /></span>
+        <h1>Тяга</h1>
+        <p role="status">Открываем твой журнал…</p>
+      </main>
+    }><App account={state.profile}
       onAccountChange={profile => { offlineSnapshot.saveSession(profile); setState({ registered: true, profile }); }}
-      onLogout={logout} /></LiveRoomProvider></AppErrorBoundary>
+      onLogout={logout} /></Suspense></LiveRoomProvider></AppErrorBoundary>
       : <SignIn registered={state.registered} onSignedIn={(profile, recoveryCode, fresh) => {
         // Офлайн-запуск должен работать сразу после первого входа, а не после второй онлайн-загрузки.
         deviceAccountData.purgeOthers(profile.id);
@@ -62,6 +72,7 @@ export default function AccountGate() {
   </>;
 }
 function SignIn({ registered, onSignedIn }: { registered: boolean; onSignedIn: (profile: AccountProfile, code?: string, fresh?: boolean) => void }) {
+  const apkAvailable = useAndroidApkAvailable();
   const [mode, setMode] = useState(() => location.hash.includes("recover") ? "recover" : location.hash.includes("register") ? "register" : registered ? "login" : "register");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -166,7 +177,7 @@ function SignIn({ registered, onSignedIn }: { registered: boolean; onSignedIn: (
       {mode === "login" && <p className="account-assurance">Вход запоминается на 30 дней.</p>}
     </section>
 
-    {import.meta.env.MODE !== "device" && (
+    {import.meta.env.MODE !== "device" && apkAvailable && (
       <footer className="auth-bottom">
         <a className="button secondary android-download" href="/tyaga.apk" download>
           Скачать приложение для Android

@@ -1,4 +1,4 @@
-import { addCalendarDays } from "../lib/calendar";
+import { addCalendarDays, daysBetween } from "../lib/calendar";
 export type ChallengeWeek = {
   start: string;
   end: string;
@@ -31,8 +31,12 @@ export class TeamChallengeProgress {
     today: string,
     target: number,
     counts: { date: string; n: number }[],
+    endDate?: string,
   ): ChallengeWeek[] {
-    return Array.from({ length: 4 }, (_, i) => {
+    const countWeeks = endDate
+      ? Math.max(1, Math.ceil((daysBetween(start, endDate) + 1) / 7))
+      : 4;
+    return Array.from({ length: countWeeks }, (_, i) => {
       const from = addCalendarDays(start, i * 7),
         end = addCalendarDays(from, 6);
       const count = counts
@@ -86,6 +90,7 @@ export class TeamChallengeProgress {
           })[c]!,
       );
     const result = this.summary([me]);
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="960" height="640" viewBox="0 0 960 640"><rect width="960" height="640" rx="32" fill="#111512"/><g font-family="Arial,sans-serif" fill="#eef2e7"><text x="56" y="90" fill="#cafa64" font-size="38" font-weight="700">ТЯГА · 4 НЕДЕЛИ</text><text x="56" y="160" font-size="32">${escape(challenge.name.slice(0, 48))}</text><text x="56" y="205" font-size="22" fill="#a5ae9b">${challenge.startDate} — ${challenge.endDate}</text><text x="56" y="270" font-size="28">${escape(me.displayName)}</text><text x="56" y="355" font-size="64" fill="#cafa64">${result.done} / ${result.target}</text><text x="56" y="400" font-size="24">Недельных целей выполнено: ${result.fulfilled} / 4</text>${(me.weeks ?? []).map((w, i) => `<g transform="translate(${56 + i * 216},450)"><rect width="198" height="104" rx="16" fill="#1c241d"/><text x="18" y="34" font-size="18" fill="#a5ae9b">Неделя ${i + 1}</text><text x="18" y="78" font-size="30" fill="${w.fulfilled ? "#cafa64" : "#eef2e7"}">${w.count} / ${w.target}</text></g>`).join("")}</g></svg>`;
+    const totalWeeks = Math.max(1, result.weekGoals || Math.ceil((daysBetween(challenge.startDate, challenge.endDate) + 1) / 7));
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="960" height="640" viewBox="0 0 960 640"><rect width="960" height="640" rx="32" fill="#111512"/><g font-family="Arial,sans-serif" fill="#eef2e7"><text x="56" y="90" fill="#cafa64" font-size="38" font-weight="700">ТЯГА · ${totalWeeks} НЕДЕЛИ</text><text x="56" y="160" font-size="32">${escape(challenge.name.slice(0, 48))}</text><text x="56" y="205" font-size="22" fill="#a5ae9b">${challenge.startDate} — ${challenge.endDate}</text><text x="56" y="270" font-size="28">${escape(me.displayName)}</text><text x="56" y="355" font-size="64" fill="#cafa64">${result.done} / ${result.target}</text><text x="56" y="400" font-size="24">Недельных целей выполнено: ${result.fulfilled} / ${totalWeeks}</text>${(me.weeks ?? []).map((w, i) => `<g transform="translate(${56 + i * 216},450)"><rect width="198" height="104" rx="16" fill="#1c241d"/><text x="18" y="34" font-size="18" fill="#a5ae9b">Неделя ${i + 1}</text><text x="18" y="78" font-size="30" fill="${w.fulfilled ? "#cafa64" : "#eef2e7"}">${w.count} / ${w.target}</text></g>`).join("")}</g></svg>`;
   }
 }

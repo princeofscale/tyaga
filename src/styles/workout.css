@@ -1,3 +1,4 @@
+@layer tokens, base, layout, components, screens, utilities;
 @layer screens {
     .exercise-card {
         margin-bottom: 16px
@@ -3192,5 +3193,61 @@
         .workout-screen .sets-table {
             padding-inline: 2px
         }
+    }
+    .workout-screen .workout-readiness-bar {
+        grid-column: 1 / -1;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px 12px;
+        margin-top: 8px;
+        padding: 8px 12px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--surface);
+    }
+    .workout-screen .readiness-label {
+        font-size: 0.75rem;
+        font-weight: 650;
+        color: var(--muted);
+        white-space: nowrap;
+    }
+    .workout-screen .readiness-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    .workout-screen .readiness-chip {
+        min-height: 44px;
+        min-width: 44px;
+        padding: 0 12px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--surface-2);
+        color: var(--text-soft, var(--text));
+        font-size: 0.8rem;
+        font-weight: 600;
+        cursor: pointer;
+    }
+    .workout-screen .readiness-chip:hover {
+        border-color: var(--line-strong);
+        color: var(--text);
+    }
+    .workout-screen .readiness-chip.active {
+        border-color: var(--accent);
+        background: var(--accent-soft);
+        color: var(--accent);
+    }
+    .workout-screen .readiness-chip.is-caution.active {
+        border-color: var(--over);
+        background: color-mix(in srgb, var(--over) 14%, var(--surface));
+        color: var(--over);
+    }
+    .workout-screen .readiness-hint {
+        flex: 1 0 100%;
+        margin: 2px 0 0;
+        font-size: 0.8rem;
+        line-height: 1.5;
+        color: var(--text-soft, var(--muted));
     }
 }

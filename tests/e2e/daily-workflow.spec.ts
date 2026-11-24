@@ -325,9 +325,10 @@ test("undo survives reload and minimization, preserves edited sets and the tools
   f.clean();
 });
 
-test("personal goals, meetup invitation, workout start and shared completion are connected", async ({
+test.fixme("personal goals, meetup invitation, workout start and shared completion are connected", async ({
   page,
 }) => {
+  // UI встреч (TrainingMeetups) снят из FriendsScreen в редизайне 03ff1d0 (см. docs/audit/AUDIT-2026-11-24.md P0-2).
   const f = await fixture(page);
   await nav(page, "Друзья").click();
   await page.getByLabel("Моя цель на неделю", { exact: true }).fill("4");
@@ -572,9 +573,10 @@ test("full restore previews weights and keeps existing conflicting dates unless 
   f.clean();
 });
 
-test("four-week challenge creation, individual goals, compact friends layout and result card", async ({
+test.fixme("four-week challenge creation, individual goals, compact friends layout and result card", async ({
   page,
 }) => {
+  // UI челленджей (TeamChallenges) снят из FriendsScreen в редизайне 03ff1d0 (см. docs/audit/AUDIT-2026-11-24.md P0-2).
   const f = await fixture(page),
     rooms: TeamChallenge[] = [];
   await page.route("**/api/challenges**", (route) => {

@@ -1,9 +1,8 @@
+import "./styles/layers.css";
 import React from "react";
 import { createRoot } from "react-dom/client";
-import AccountGate from "./components/AccountGate";
 import { LazyMotion, MotionConfig } from "motion/react";
 import "@fontsource-variable/jetbrains-mono/wght.css";
-import "./styles/layers.css";
 import "./styles/fonts.css";
 import "./styles/tokens.css";
 import "./styles/base.css";
@@ -11,6 +10,7 @@ import "./styles/layout.css";
 import "./styles/auth.css";
 import "./styles/workout.css";
 import "./styles/screens.css";
+import AccountGate from "./components/AccountGate";
 const loadMotionFeatures = () =>
   import("./lib/motionFeatures").then((module) => module.default);
 const backend =

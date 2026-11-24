@@ -11,6 +11,8 @@ const migrations = import.meta.glob("../../drizzle/*.sql", {
   eager: true,
 }) as Record<string, string>;
 
+const PERSIST_DEBOUNCE_MS = 250;
+
 const store = <T>(mode: IDBTransactionMode, run: (files: IDBObjectStore) => IDBRequest) =>
   new Promise<T>((resolve, reject) => {
     const open = indexedDB.open("tyaga-device", 1);
@@ -42,21 +44,55 @@ export async function installLocalBackend() {
     const name = path.split("/").pop()!;
     if (scalar(db, "SELECT 1 FROM device_migrations WHERE name = ?", [name])) continue;
     db.exec("BEGIN");
-    db.exec(sql);
-    db.run("INSERT INTO device_migrations (name) VALUES (?)", [name]);
-    db.exec("COMMIT");
+    try {
+      db.exec(sql);
+      db.run("INSERT INTO device_migrations (name) VALUES (?)", [name]);
+      db.exec("COMMIT");
+    } catch (error) {
+      try { db.exec("ROLLBACK"); } catch { /* already rolled back */ }
+      console.error(`Local device migration failed: ${name}`, error);
+      throw new Error(`Не удалось обновить локальную базу (${name})`, { cause: error });
+    }
   }
   const getState = (key: string) => scalar(db, "SELECT value FROM device_state WHERE key = ?", [key]) as string | null;
   const setState = (key: string, value: string) =>
     db.run("INSERT INTO device_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", [key, value]);
-  const persist = async () => {
+  const deleteState = (key: string) =>
+    db.run("DELETE FROM device_state WHERE key = ?", [key]);
+
+  let persistTimer: ReturnType<typeof setTimeout> | undefined;
+  let dirty = false;
+  let writing: Promise<void> = Promise.resolve();
+  const persistNow = () => {
+    clearTimeout(persistTimer);
+    persistTimer = undefined;
+    if (!dirty) return writing;
+    dirty = false;
     // export() reopens the database, which resets pragmas.
     const bytes = db.export();
     pragmas();
-    await store("readwrite", (f) => f.put(bytes, "db"));
+    writing = writing
+      .then(() => store("readwrite", (f) => f.put(bytes, "db")))
+      .then(() => undefined)
+      .catch((e) => {
+        console.error("Failed to persist device database", e);
+      });
+    return writing;
   };
-  await persist();
+  const schedulePersist = () => {
+    dirty = true;
+    clearTimeout(persistTimer);
+    persistTimer = setTimeout(() => { void persistNow(); }, PERSIST_DEBOUNCE_MS);
+  };
+  dirty = true;
+  await persistNow();
   void navigator.storage?.persist?.();
+  if (typeof window !== "undefined") {
+    window.addEventListener("pagehide", () => { void persistNow(); });
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") void persistNow();
+    });
+  }
 
   const env = {
     DB: new LocalD1(db),
@@ -74,9 +110,9 @@ export async function installLocalBackend() {
       const body = ["GET", "HEAD"].includes(request.method) ? "" : await request.text();
       const local = { url: request.url, method: request.method, headers, text: async () => body } as unknown as Request;
       const before = scalar(db, "SELECT total_changes()");
-      const response = await handleApi(local, env);
+      const response = await handleApi(local, env, body || undefined);
       if (scalar(db, "SELECT total_changes()") !== before) {
-        await persist();
+        schedulePersist();
         window.dispatchEvent(new Event("tyaga:local-change")); // cloud sync listens
       }
       return response;
@@ -101,19 +137,31 @@ export async function installLocalBackend() {
       body: JSON.stringify(body),
     })).json();
   const session = (await call("/api/auth/session")) as { registered: boolean; profile: unknown };
-  if (session.profile) return;
-  let credentials = JSON.parse(getState("credentials") ?? "null");
-  if (!session.registered || !credentials) {
-    if (session.registered) return; // Unknown password: AccountGate shows the normal sign-in.
-    credentials = {
+  if (session.profile) {
+    // Очищаем устаревший plaintext-пароль от прошлых версий: сессия держится по токену.
+    if (getState("credentials")) {
+      deleteState("credentials");
+      dirty = true;
+      await persistNow();
+    }
+    return;
+  }
+  const legacyCredentials = JSON.parse(getState("credentials") ?? "null") as { email: string; password: string } | null;
+  if (!session.registered) {
+    const generated = {
       email: "me@tyaga.app",
       password: [...crypto.getRandomValues(new Uint8Array(24))].map((b) => b.toString(16).padStart(2, "0")).join(""),
     };
-    setState("credentials", JSON.stringify(credentials));
     await call("/api/auth/register", {
-      ...credentials,
+      ...generated,
       displayName: "Атлет",
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
     });
-  } else await call("/api/auth/login", credentials);
+    await persistNow();
+  } else if (legacyCredentials) {
+    await call("/api/auth/login", legacyCredentials);
+    deleteState("credentials");
+    dirty = true;
+    await persistNow();
+  }
 }

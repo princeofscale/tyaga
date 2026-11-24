@@ -20,6 +20,7 @@ tyaga/
 │   │   ├── StatsAnalytics.tsx      # Зал рекордов и аналитика силы
 │   │   └── WorkoutView.tsx         # Экран активной тренировки
 │   ├── data/               # Статические справочники (мышцы, каталог упражнений)
+│   ├── device/             # Android-сборка: LocalD1, localBackend, cloudSync, appUpdate
 │   ├── domain/             # Чистая ООП бизнес-логика (без React-хуков)
 │   │   ├── AnatomyPresenter.ts       # Анатомические зоны, роли и пучки мышц
 │   │   ├── BodyweightTracker.ts      # Экспоненциальное сглаживание веса тела (EMA)
@@ -30,9 +31,12 @@ tyaga/
 │   │   ├── TextFitter.ts             # Подбор кегля под ширину (карточка для сторис)
 │   │   ├── TrainingAnalytics.ts      # Аналитика объёма и нагрузок
 │   │   └── WarmupLadderCalculator.ts # Алгоритм пирамиды разминки и раскладки блинов
-│   ├── lib/                # Вспомогательные утилиты, календарь, черновики, типы
-│   ├── services/           # ApiClient, ProductService, Sync
-│   └── styles.css          # Дизайн-система на CSS-токенах
+│   ├── features/           # Экраны-секции (history, modals, navigation, progress)
+│   ├── hooks/              # Хуки состояния (useDraftTabs, usePendingWorkouts, useRestNotifications)
+│   ├── lib/                # Вспомогательные утилиты, календарь, черновики, офлайн-очередь, типы
+│   ├── services/           # ApiClient, ProductService, FriendsApi, LiveRoomApi, PoseVideoAnalysis
+│   ├── state/              # Контексты состояния (bodyweightStore)
+│   └── styles/             # Слоистая дизайн-система (13 CSS-модулей: layers, tokens, base, layout, screens…)
 ├── server/                 # Cloudflare Worker API & D1 SQLite (LiveRoomService.ts — комнаты «Вместе»)
 ├── tests/                  # Модульные и интеграционные тесты (Node.js test runner)
 └── tests/e2e/              # Playwright сквозные E2E тесты
@@ -43,7 +47,7 @@ tyaga/
 ## 2. Критические ограничения (НЕ НАРУШАТЬ)
 
 ### 2.1. Строгая совместимость с E2E-тестами (`tests/e2e/workout.spec.ts`)
-Тест проверяет сценарий входа, редактирования профиля и выхода из аккаунта (строки 120–135):
+Тест `account registration or login, profile, logout and repeat login use an account session` проверяет сценарий входа, редактирования профиля и выхода из аккаунта:
 - Кнопка вызова профиля: `aria-label="Мой профиль"`
 - Модальное окно: `title="Мой профиль"`
 - Поля формы профиля **ОБЯЗАНЫ** быть доступны сразу при открытии окна (вкладка по умолчанию):

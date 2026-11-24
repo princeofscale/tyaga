@@ -7,6 +7,7 @@ import type { AccountProfile } from "../lib/account";
 
 export const CLOUD_URL = (import.meta.env.VITE_CLOUD_URL ?? "").replace(/\/$/, "");
 export type CloudState = {
+  accountId?: string;
   email: string;
   token: string;
   localCursor: number;
@@ -24,9 +25,13 @@ export function cloudState(): CloudState | null {
   }
 }
 function store(state: CloudState | null) {
-  if (state) localStorage.setItem(KEY, JSON.stringify(state));
-  else localStorage.removeItem(KEY);
-  window.dispatchEvent(new Event("tyaga:cloud"));
+  try {
+    if (state) localStorage.setItem(KEY, JSON.stringify(state));
+    else localStorage.removeItem(KEY);
+  } catch {
+    /* localStorage недоступен */
+  }
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("tyaga:cloud"));
 }
 
 class CloudError extends Error {
@@ -67,20 +72,24 @@ export async function connectCloud(
     { email, password, displayName, timeZone: browserTimeZone() },
   );
   if (!token) throw new Error("Облако не выдало сессию. Попробуй ещё раз.");
-  store({ email: data.profile.email, token, localCursor: 0, cloudCursor: 0 });
+  let localAccountId: string | undefined;
   try {
-    // The phone takes the cloud account's name, time zone and body mass.
-    const me = await api<{ profile: AccountProfile }>("/api/auth/session");
-    await api("/api/auth/profile", "PUT", {
-      displayName: data.profile.displayName,
-      timeZone: data.profile.timeZone,
-      bodyMassKg: data.profile.bodyMassKg,
-      revision: me.profile.revision,
-    });
-    window.dispatchEvent(new Event("tyaga:auth-expired")); // AccountGate re-reads it
+    const me = await api<{ profile: AccountProfile | null }>("/api/auth/session");
+    localAccountId = me.profile?.id;
+    if (me.profile) {
+      // The phone takes the cloud account's name, time zone and body mass.
+      await api("/api/auth/profile", "PUT", {
+        displayName: data.profile.displayName,
+        timeZone: data.profile.timeZone,
+        bodyMassKg: data.profile.bodyMassKg,
+        revision: me.profile.revision,
+      });
+      window.dispatchEvent(new Event("tyaga:auth-expired")); // AccountGate re-reads it
+    }
   } catch {
     /* Keeping the local name is fine. */
   }
+  store({ accountId: localAccountId, email: data.profile.email, token, localCursor: 0, cloudCursor: 0 });
   await syncCloud();
   return data.recoveryCode;
 }
@@ -95,6 +104,17 @@ export const syncCloud = () => (running ??= run().finally(() => (running = null)
 async function run() {
   const start = cloudState();
   if (!CLOUD_URL || !start) return;
+  // Проверяем, что локальный аккаунт на устройстве совпадает с владельцем токена облака.
+  try {
+    const session = await api<{ profile: AccountProfile | null }>("/api/auth/session");
+    if (!session.profile) return;
+    if (start.accountId && session.profile.id !== start.accountId) {
+      disconnectCloud();
+      return;
+    }
+  } catch {
+    return;
+  }
   let state = start;
   const keep = (patch: Partial<CloudState>) => {
     if (cloudState()?.token !== start.token) throw new Error("Облако отключено");

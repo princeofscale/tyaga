@@ -33,6 +33,8 @@
 
 ## 4. ESLint
 
+> Историческая запись: механизм `.lint-baseline.json` и `scripts/lint-baseline.mjs` удалён в `aef5f82`; актуальная документация линтера — в [docs/linting.md](linting.md) (`npm run lint` работает без baseline с `--max-warnings=0`).
+
 Пакеты: `eslint@10.15.0`, `@eslint/js@10.0.1`, `typescript-eslint@8.73.0`, `eslint-plugin-react-hooks@7.1.1`, `eslint-plugin-react-refresh@0.5.8`, `globals@17.14.0` — точные версии, без install-скриптов (проверено `npm view … hasInstallScript`).
 
 - `eslint.config.js` — плоский конфиг: JS recommended, TS без типовой информации, классические правила хуков.

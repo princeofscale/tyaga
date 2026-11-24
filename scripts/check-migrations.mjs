@@ -1,5 +1,5 @@
-import { readdirSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 
 /**
  * Historical exception: 0010_live_rooms.sql and 0010_machines.sql were already
@@ -41,6 +41,23 @@ export function checkMigrations(dir = resolve("drizzle")) {
       errors.push(
         `Разрыв нумерации миграций: после ${String(numbers[i - 1]).padStart(4, "0")} идёт ${String(numbers[i]).padStart(4, "0")}`,
       );
+    }
+  }
+
+  // Проверяем соответствие meta/_journal.json: зафиксированный порядок (в т.ч. 0010_live_rooms → 0010_machines)
+  // и наличие каждого упомянутого SQL-файла.
+  const journalPath = join(dir, "meta", "_journal.json");
+  if (existsSync(journalPath)) {
+    const journal = JSON.parse(readFileSync(journalPath, "utf8"));
+    const entries = Array.isArray(journal.entries) ? journal.entries : [];
+    const fileSet = new Set(files);
+    for (let i = 0; i < entries.length; i++) {
+      const expected = `${entries[i].tag}.sql`;
+      if (!fileSet.has(expected)) {
+        errors.push(`Запись журнала ${entries[i].tag} не имеет SQL-файла ${expected}`);
+      } else if (files[i] !== expected) {
+        errors.push(`Порядок миграций разошёлся с _journal.json на позиции ${i}: файл ${files[i]}, журнал ${expected}`);
+      }
     }
   }
 

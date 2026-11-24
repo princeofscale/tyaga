@@ -16,6 +16,7 @@ test("literal unknown-load import remains unknown in progress overview and has a
     ...workout.exercises[0],
     externalDefinition: {
       id: "custom:literal:deadlift",
+      familyId: "custom:literal:deadlift",
       name: "Deadlift (Barbell)", nameEn: "Deadlift (Barbell)", aliases: [], tip: "",
       equipment: "gym", recording: { type: "reps", loadMode: "legacy_unspecified", implementCount: 1, laterality: "bilateral", repsMode: "total", e1rmEligible: false },
       primary: [], secondary: [], variant: "", jointActions: [], muscles: [], evidence: [], limitations: "",

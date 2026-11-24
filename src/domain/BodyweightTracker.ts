@@ -198,6 +198,7 @@ export class BodyweightTracker {
   public getTrend(alpha = 0.25): BodyweightTrendPoint[] {
     const entries = this.getEntries();
     if (!entries.length) return [];
+    const safeAlpha = Number.isFinite(alpha) ? Math.min(1, Math.max(0.01, alpha)) : 0.25;
 
     const result: BodyweightTrendPoint[] = [];
     let prevEma = entries[0].weightKg;
@@ -209,7 +210,7 @@ export class BodyweightTracker {
       } else {
         const days =
           (Date.parse(e.date) - Date.parse(entries[i - 1].date)) / 86400000;
-        const effectiveAlpha = 1 - Math.pow(1 - alpha, Math.max(1, days));
+        const effectiveAlpha = 1 - Math.pow(1 - safeAlpha, Math.max(1, days));
         prevEma = effectiveAlpha * e.weightKg + (1 - effectiveAlpha) * prevEma;
       }
 

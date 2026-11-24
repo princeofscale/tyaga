@@ -4,7 +4,9 @@ import {
   restTimerService,
   type RestTimerState,
 } from "../services/RestTimerService";
+import { useAndroidApkAvailable } from "../lib/androidApk";
 export default function RestNotificationSettings() {
+  const apkAvailable = useAndroidApkAvailable();
   const [state, setState] = useState<RestTimerState | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
@@ -45,9 +47,11 @@ export default function RestNotificationSettings() {
             Фоновые уведомления отдыха доступны в приложении для Android. В
             браузере таймер работает, пока открыт экран тренировки.
           </p>
-          <a className="button primary" href="/tyaga.apk" download>
-            Скачать приложение для Android
-          </a>
+          {apkAvailable ? (
+            <a className="button primary" href="/tyaga.apk" download>
+              Скачать приложение для Android
+            </a>
+          ) : null}
         </>
       ) : (
         <>

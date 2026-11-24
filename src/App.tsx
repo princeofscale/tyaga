@@ -169,7 +169,9 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
   const updateSupplements = useCallback(
     (next: SupplementsState) => {
       setSupplements(next);
-      SupplementsStore.save(account.id, next);
+      if (!SupplementsStore.save(account.id, next)) {
+        setNotice({ text: "Не удалось сохранить план добавок на этом устройстве", tone: "warn" });
+      }
     },
     [account.id],
   );
@@ -198,10 +200,26 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
   const pendingError = pending.items.find((i) => i.error)?.error ?? "";
   const mutationQueue = useMemo(() => new OfflineMutationQueue(account.id), [account.id]);
   const [queuedMutations, setQueuedMutations] = useState(() => mutationQueue.read().length);
+  const hasLoadedRef = useRef(false);
+  const loadRef = useRef<(signal?: AbortSignal, options?: { background?: boolean }) => Promise<void>>(async () => {});
   const flushMutations = useCallback(async () => {
-    const res = await mutationQueue.flush((path, method, body) => api(path, method, body));
+    const res = await mutationQueue.flush((path, method, body, meta) =>
+      api(path, method, body, undefined, meta?.opId ? { "X-Tyaga-Op-Id": meta.opId } : undefined),
+    );
     setQueuedMutations(res.remaining);
-    if (res.sent > 0) setNotice({ text: "Офлайн-изменения синхронизированы", tone: "ok" });
+    if (res.storageError) {
+      setNotice({ text: "Не удалось обновить офлайн-очередь на устройстве", tone: "warn" });
+    } else if (res.conflicts > 0) {
+      setNotice({ text: "Часть офлайн-изменений конфликтует с сервером — обновляем журнал", tone: "warn" });
+      void loadRef.current(undefined, { background: true });
+    } else if (res.failed > 0) {
+      setNotice({
+        text: res.dropped[0]?.message || "Часть офлайн-изменений не удалось применить",
+        tone: "warn",
+      });
+    } else if (res.sent > 0) {
+      setNotice({ text: "Офлайн-изменения синхронизированы", tone: "ok" });
+    }
     return res;
   }, [mutationQueue]);
   const workouts = useMemo(
@@ -212,16 +230,22 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
 
   // Докачиваем частые экраны в фоне, пока есть связь, чтобы они открылись и в офлайне.
   useEffect(() => {
-    const idle = (window as { requestIdleCallback?: (f: () => void, o?: { timeout: number }) => void })
-      .requestIdleCallback;
+    const win = window as {
+      requestIdleCallback?: (f: () => void, o?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
     const warm = () => {
       ExerciseLibrary.preload();
       ProgramsScreen.preload();
       HistoryScreen.preload();
       ProgressScreen.preload();
     };
-    if (idle) idle.call(window, warm, { timeout: 2000 });
-    else setTimeout(warm, 1500);
+    if (win.requestIdleCallback) {
+      const id = win.requestIdleCallback(warm, { timeout: 2000 });
+      return () => win.cancelIdleCallback?.(id);
+    }
+    const id = window.setTimeout(warm, 1500);
+    return () => window.clearTimeout(id);
   }, []);
 
   const importUndo = useMemo(
@@ -248,8 +272,9 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
   const [exerciseDetail, setExerciseDetail] = useState<string | null>(null);
 
   const load = useCallback(
-    async (signal?: AbortSignal) => {
-      setLoading(true);
+    async (signal?: AbortSignal, options?: { background?: boolean }) => {
+      const background = options?.background ?? hasLoadedRef.current;
+      if (!background) setLoading(true);
       setLoadError("");
       try {
         const [data, productData] = await Promise.all([
@@ -257,6 +282,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
           productService.read(signal),
         ]);
         if (signal?.aborted) return;
+        hasLoadedRef.current = true;
         exerciseCatalog.register([
           ...productData.customExercises,
           ...(productData.favoriteDefinitions ?? []),
@@ -296,6 +322,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
           const copy =
             e instanceof ApiError || signal?.aborted ? null : offlineSnapshot.data(account.id);
           if (copy) {
+            hasLoadedRef.current = true;
             exerciseCatalog.register([
               ...copy.product.customExercises,
               ...(copy.product.favoriteDefinitions ?? []),
@@ -311,11 +338,12 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
           } else setLoadError(e.message);
         }
       } finally {
-        if (!signal?.aborted) setLoading(false);
+        if (!signal?.aborted && !background) setLoading(false);
       }
     },
     [account.id],
   );
+  loadRef.current = load;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -374,12 +402,13 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
     if (import.meta.env.MODE !== "device") return;
     setUpdateProgress(0);
     void import("./device/appUpdate")
-      .then((m) => m.installUpdate(setUpdateProgress))
+      .then((m) => m.installUpdate(setUpdateProgress, update?.sha256))
+      .catch((e) => warn(e instanceof Error ? e.message : "Не удалось установить обновление"))
       .finally(() => setUpdateProgress(null));
   };
 
   useEffect(() => {
-    const reload = () => void load();
+    const reload = () => void load(undefined, { background: true });
     window.addEventListener("tyaga:synced", reload);
     return () => window.removeEventListener("tyaga:synced", reload);
   }, [load]);
@@ -443,7 +472,10 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
     if (!cycles.length) return;
     const due: { cycle: Routine[]; update: LaidAutoUpdate }[] = [];
     for (const cycle of cycles) {
-      const next = LaidDupPlan.autoMaxes(cycle[0].periodization!, workouts, today);
+      const next = LaidDupPlan.autoMaxes(cycle[0].periodization!, workouts, today, {
+        maxJumpFactor: 1.05,
+        minorMode: settings.minorMode,
+      });
       if (next) due.push({ cycle, update: next });
     }
     if (!due.length) return;
@@ -470,7 +502,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
           routines: [...saved, ...p.routines.filter((r) => !saved.some((s) => s.id === r.id))],
         }));
         setNotice({
-          text: due.map((item) => LaidDupPlan.autoNotice(item.update)).join(" "),
+          text: due.map((item) => LaidDupPlan.autoNotice(item.update, item.cycle[0]?.periodization?.substitutions)).join(" "),
           tone: "ok",
         });
       } catch {
@@ -482,7 +514,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
         laidAutoBusy.current = false;
       }
     })();
-  }, [workouts, product.routines, loading, demo, offlineData, today]);
+  }, [workouts, product.routines, loading, demo, offlineData, today, settings.minorMode]);
 
   const timeZone = settings.timeZone ?? browserTimeZone();
   const programWorkout = useCallback(
@@ -637,11 +669,17 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
     view !== "overview" ||
     !!(modal || detail || exerciseDetail || deleteId || (conflict && draft));
   const backEntry = useRef(false);
+  const ignoringPop = useRef(false);
   const [backPops, setBackPops] = useState(0);
   useEffect(() => {
-    if (!layered || backEntry.current) return;
-    history.pushState({ tyagaBack: true }, "");
-    backEntry.current = true;
+    if (layered && !backEntry.current) {
+      history.pushState({ tyagaBack: true }, "");
+      backEntry.current = true;
+    } else if (!layered && backEntry.current) {
+      backEntry.current = false;
+      ignoringPop.current = true;
+      history.back();
+    }
   }, [layered, backPops]);
   const closeTop = useRef(() => {});
   closeTop.current = () => {
@@ -654,6 +692,10 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
   };
   useEffect(() => {
     const onPop = () => {
+      if (ignoringPop.current) {
+        ignoringPop.current = false;
+        return;
+      }
       backEntry.current = false;
       closeTop.current();
       setBackPops((n) => n + 1);
@@ -1442,6 +1484,78 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                         onMinimize={() => go("overview")}
                         onOpenTogether={() => go("friends")}
                         onToast={setToast}
+                        accountId={account.id}
+                        onSwapInProgram={(routineId, oldExerciseId, newExercise, scope, avoidReason) => {
+                          const targetRoutine = product.routines.find((r) => r.id === routineId);
+                          if (!targetRoutine) return;
+                          const p = LaidDupPlan.periodizationOf(targetRoutine);
+                          if (p) {
+                            const cycle = LaidDupPlan.cycleOf(product.routines, targetRoutine);
+                            if (!cycle.length) return;
+                            const curSubs = { ...(p.substitutions ?? {}) };
+                            // Находим исходный слот (если упражнение уже было заменой)
+                            const origSlot =
+                              Object.entries(curSubs).find(([, v]) => v === oldExerciseId)?.[0] ?? oldExerciseId;
+                            curSubs[origSlot] = newExercise.id;
+                            const lift = (["squat", "bench", "deadlift", "ohp"] as const).find(
+                              (l) => LaidDupPlan.LIFT_EXERCISE[l] === origSlot,
+                            );
+                            const painFlags =
+                              lift && avoidReason === "pain"
+                                ? [...new Set([...(p.painFlags ?? []), lift])]
+                                : p.painFlags;
+                            const pos = LaidDupPlan.position(LaidDupPlan.weekOf(p.startMonday, today));
+                            const updated = LaidDupPlan.withSubstitutions(cycle, curSubs, {
+                              fromWeek: pos.beforeStart ? 0 : pos.week,
+                              painFlags,
+                            });
+                            void (async () => {
+                              try {
+                                const saved: Routine[] = [];
+                                for (const r of updated) saved.push((await productService.saveRoutine(r)).routine);
+                                setProduct((prev) => ({
+                                  ...prev,
+                                  routines: [...saved, ...prev.routines.filter((r) => !saved.some((s) => s.id === r.id))],
+                                }));
+                                setToast(
+                                  scope === "avoid"
+                                    ? "Заменено во всём цикле Лейда и скрыто из рекомендаций"
+                                    : "Замена применена ко всем дням цикла Лейда",
+                                );
+                              } catch {
+                                setToast("В текущей тренировке заменено; не удалось обновить программу");
+                              }
+                            })();
+                          } else {
+                            const nextRoutine: Routine = {
+                              ...targetRoutine,
+                              exercises: targetRoutine.exercises.map((e) =>
+                                e.exerciseId === oldExerciseId
+                                  ? {
+                                      ...makeExerciseEntry(newExercise.id),
+                                      sets: e.sets.map((s) => ({ ...s, id: crypto.randomUUID(), weight: 0, done: false })),
+                                      repMin: e.repMin,
+                                      repMax: e.repMax,
+                                    }
+                                  : e,
+                              ),
+                            };
+                            void productService
+                              .saveRoutine(nextRoutine)
+                              .then((res) => {
+                                setProduct((prev) => ({
+                                  ...prev,
+                                  routines: prev.routines.map((r) => (r.id === res.routine.id ? res.routine : r)),
+                                }));
+                                setToast(
+                                  scope === "avoid"
+                                    ? "Заменено в программе и скрыто из рекомендаций"
+                                    : "Замена сохранена в программе",
+                                );
+                              })
+                              .catch(() => setToast("В текущей тренировке заменено; не удалось обновить программу"));
+                          }
+                        }}
                       />
                     </section>
                   </>
@@ -1542,6 +1656,8 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                         routines={product.routines}
                         workouts={workouts}
                         timeZone={settings.timeZone ?? browserTimeZone()}
+                        accountId={account.id}
+                        minorMode={settings.minorMode}
                         personal={product.customExercises}
                         favorites={product.favorites}
                         onFavorite={(id) => void favoriteExercise(id)}

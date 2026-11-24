@@ -37,7 +37,7 @@ test("R03-REQ01: пустые строки не уходят в журнал, а
   assert.equal(workout.exercises[0].sets.length, 1, "пустая невыполненная строка отброшена");
   assert.equal(workout.exercises[0].sets.filter((s) => s.done && !s.warmup).length, 1);
   assert.equal(new WorkoutSession(workout).completedWorkingSets, 1);
-  assert.equal(Math.round(estimatedOneRepMax(w.exercises[0].sets[0], w.exercises[0]) * 10) / 10, 126.7);
+  assert.equal(Math.round(estimatedOneRepMax(w.exercises[0].sets[0], w.exercises[0])! * 10) / 10, 126.7);
 });
 
 test("R03-REQ02: живое упражнение без истории пустое, с историей — подход N из прошлого", () => {
@@ -165,12 +165,12 @@ test("R03-REQ08: /api/exercises по слову «присед» отдаёт б
     const names: string[] = result.exercises.map((e: any) => e.name);
     assert.ok(names.slice(0, 5).includes("Приседания"), "простое «Приседания» в первых пяти строках: " + names.slice(0, 5).join(" | "));
     assert.notEqual(names[0], "Присед на ящик одной ногой");
-    const pull = await (await request("/api/exercises?q=" + encodeURIComponent("тяга"))).json();
+    const pull = (await (await request("/api/exercises?q=" + encodeURIComponent("тяга"))).json()) as any;
     const pullNames: string[] = pull.exercises.slice(0, 5).map((e: any) => e.name);
     assert.ok(pullNames.includes("Становая тяга") && pullNames.includes("Тяга штанги в наклоне"), "QA-R03-05, первые пять: " + pullNames.join(" | "));
-    const generic = await (await request("/api/exercises?q=" + encodeURIComponent("жим"))).json();
+    const generic = (await (await request("/api/exercises?q=" + encodeURIComponent("жим"))).json()) as any;
     assert.ok(generic.exercises.length > 0);
-    const press = await (await request("/api/exercises?q=" + encodeURIComponent("жим лёжа"))).json();
+    const press = (await (await request("/api/exercises?q=" + encodeURIComponent("жим лёжа"))).json()) as any;
     assert.ok(press.exercises.slice(0, 2).some((e: any) => e.name === "Жим штанги лёжа"), "«жим лёжа» по-прежнему ставит «Жим штанги лёжа» в первые две строки");
   } finally {
     await mf.dispose();
@@ -229,7 +229,7 @@ const memoryStore = () => {
 const finished = (date = "2026-11-10") => {
   const w = makeWorkout(["bench"], [], "UTC", true);
   w.date = date;
-  w.exercises[0].sets = [{ ...makeSets(bench(), 1)[0], weight: 60, reps: 8, done: true }];
+  w.exercises[0].sets = [{ ...makeSets(1, 60, 8)[0], done: true }];
   return w;
 };
 

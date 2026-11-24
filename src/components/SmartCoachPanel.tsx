@@ -30,18 +30,20 @@ export default function SmartCoachPanel({
   routines,
   today,
   timeZone,
+  accountId,
 }: {
   workouts: Workout[];
   routines: Routine[];
   today: string;
   timeZone?: string;
+  accountId?: string;
 }) {
   const reduced = useReducedMotion();
   const [filter, setFilter] = useState<"all" | CoachInsightCategory>("all");
 
   const report = useMemo(
-    () => SmartCoach.analyze(workouts, routines, today, timeZone),
-    [workouts, routines, today, timeZone],
+    () => SmartCoach.analyze(workouts, routines, today, timeZone, undefined, accountId),
+    [workouts, routines, today, timeZone, accountId],
   );
 
   const visibleInsights = useMemo(
@@ -108,11 +110,19 @@ export default function SmartCoachPanel({
         >
           <span className="coach-metric-label">
             <Activity size={13} aria-hidden="true" />
-            Нагрузка (ACWR)
+            {report.planAdherence ? "План (14 дн.)" : "Нагрузка (ACWR)"}
           </span>
-          <b className="coach-metric-val">{report.acwr !== null ? fmt(report.acwr) : "—"}</b>
+          <b className="coach-metric-val">
+            {report.planAdherence
+              ? `${report.planAdherence.pct}%`
+              : report.acwr !== null
+                ? fmt(report.acwr)
+                : "—"}
+          </b>
           <span className="coach-metric-sub">
-            {report.acwrLabel} · {report.acuteSets} / {fmt(report.chronicWeeklyAvg)} подх.
+            {report.planAdherence
+              ? `${report.planAdherence.done} из ${report.planAdherence.planned} тр.${report.acwr !== null ? ` · ACWR ${fmt(report.acwr)}` : ""}`
+              : `${report.acwrLabel} · ${report.acuteSets} / ${fmt(report.chronicWeeklyAvg)} подх.`}
           </span>
         </m.article>
 
@@ -124,15 +134,14 @@ export default function SmartCoachPanel({
         >
           <span className="coach-metric-label">
             <Flame size={13} aria-hidden="true" />
-            Стимул (7 дн.)
+            Зоны RIR и дрейф
           </span>
           <b className="coach-metric-val">
-            {fmt(report.biomechanics.effectiveSetsTotal)}
+            {report.biomechanics.rirBands.high} / {report.biomechanics.workingSets}
           </b>
           <span className="coach-metric-sub">
-            {report.biomechanics.avgRir !== null
-              ? `Средний RIR ${fmt(report.biomechanics.avgRir)} · ${report.biomechanics.failureSets} в отказ`
-              : `${report.biomechanics.workingSets} рабочих подходов`}
+            0–2: {report.biomechanics.rirBands.high} · 3–4: {report.biomechanics.rirBands.moderate} · 5+: {report.biomechanics.rirBands.light}
+            {report.rirDrift !== null ? ` · дрейф ${report.rirDrift > 0 ? `+${fmt(report.rirDrift)}` : fmt(report.rirDrift)}` : ""}
           </span>
         </m.article>
 
@@ -144,11 +153,13 @@ export default function SmartCoachPanel({
         >
           <span className="coach-metric-label">
             <ShieldAlert size={13} aria-hidden="true" />
-            Осевая нагрузка
+            Осевая / корпус
           </span>
-          <b className="coach-metric-val">{report.biomechanics.axialHardSets}</b>
+          <b className="coach-metric-val">{fmt(report.biomechanics.structuralLoadSets)}</b>
           <span className="coach-metric-sub">
-            тяжёлых осевых подх. за 7 дн.
+            {report.painFlagsSummary.count > 0
+              ? `На паузе (боль): ${report.painFlagsSummary.count}`
+              : `тяжёлых осевых: ${report.biomechanics.axialHardSets}`}
           </span>
         </m.article>
 
@@ -176,6 +187,16 @@ export default function SmartCoachPanel({
           </span>
         </m.article>
       </section>
+
+      {report.painFlagsSummary.count > 0 && (
+        <div className="coach-pain-banner" role="status">
+          <ShieldAlert size={15} aria-hidden="true" />
+          <span>
+            <b>Ограничения (боль / до пересмотра):</b> {report.painFlagsSummary.names.slice(0, 4).join(", ")}
+            {report.painFlagsSummary.count > 4 ? ` и ещё ${report.painFlagsSummary.count - 4}` : ""}. Автоповышение нагрузки для них отключено.
+          </span>
+        </div>
+      )}
 
       {/* Фильтр и лента выводов ИИ */}
       {report.insights.length > 0 && (
@@ -251,7 +272,8 @@ export default function SmartCoachPanel({
                 <div className="coach-trend-name">
                   <b>{t.name}</b>
                   <small>
-                    e1RM: {fmt(t.priorE1rm)} → {fmt(t.recentE1rm)} кг · {t.sessionsCount} тр.
+                    e1RM: {fmt(t.priorE1rm)} → {fmt(t.recentE1rm)} кг · {t.sessionsCount} тр. ·{" "}
+                    {t.confidence === "high" ? "высокая точность" : t.confidence === "moderate" ? "средняя точность" : "ориентир"}
                   </small>
                 </div>
                 <span className={`coach-trend-badge ${t.status}`}>

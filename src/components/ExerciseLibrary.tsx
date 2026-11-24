@@ -187,45 +187,49 @@ function LibraryContent({
     page,
   });
 
-  const local =
-    source === "personal"
-      ? personal
-      : favorites
-          .map((id) => exerciseCatalog.find(id))
-          .filter((e): e is Exercise => !!e);
+  const filteredLocal = useMemo(() => {
+    const local =
+      source === "personal"
+        ? personal
+        : favorites
+            .map((id) => exerciseCatalog.find(id))
+            .filter((e): e is Exercise => !!e);
+    return local.filter(
+      (e) =>
+        matchesSearch(`${e.name} ${e.nameEn} ${(e.aliases ?? []).join(" ")}`, search) &&
+        (muscle === "all" ||
+          e.custom?.declaredZones.includes(muscle as never) ||
+          e.primary.includes(muscle as never)) &&
+        (equipment === "all" || e.equipment === equipment),
+    );
+  }, [source, personal, favorites, search, muscle, equipment]);
 
-  const filteredLocal = local.filter(
-    (e) =>
-      matchesSearch(`${e.name} ${e.nameEn} ${(e.aliases ?? []).join(" ")}`, search) &&
-      (muscle === "all" ||
-        e.custom?.declaredZones.includes(muscle as never) ||
-        e.primary.includes(muscle as never)) &&
-      (equipment === "all" || e.equipment === equipment),
-  );
-
-  const baseExercises =
-    source === "tyaga"
-      ? exerciseCatalog.search({ text: search, zone: muscle, equipment })
-      : source === "wger"
-        ? ExerciseSearchRank.withCoreFirst(
-            (query.data?.exercises ?? []).filter((e) => e.source?.record.loggable !== false),
-            page === 1
-              ? exerciseCatalog.search({ text: debounced, zone: muscle, equipment })
-              : [],
-            debounced,
-            normalizeSearch,
-          )
-        : filteredLocal;
-
-  const exercises =
-    subheadFilter !== "all"
+  const exercises = useMemo(() => {
+    const baseExercises =
+      source === "tyaga"
+        ? exerciseCatalog.search({ text: search, zone: muscle, equipment })
+        : source === "wger"
+          ? ExerciseSearchRank.withCoreFirst(
+              (query.data?.exercises ?? []).filter((e) => e.source?.record.loggable !== false),
+              page === 1
+                ? exerciseCatalog.search({ text: debounced, zone: muscle, equipment })
+                : [],
+              debounced,
+              normalizeSearch,
+            )
+          : filteredLocal;
+    return subheadFilter !== "all"
       ? baseExercises.filter((e) => MuscleParticipation.headRole(subheadFilter, e) !== undefined)
       : baseExercises;
+  }, [source, search, muscle, equipment, query.data?.exercises, page, debounced, filteredLocal, subheadFilter]);
 
   const unmarked = useMemo(() => MuscleCoverage.unmarkedPersonal(personal), [personal]);
   const togglePicked = (id: string) =>
     setPicked((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
-  const gapsShown = catalogGaps.filter((e) => matchesSearch(`${e.name} ${e.nameEn}`, search));
+  const gapsShown = useMemo(
+    () => catalogGaps.filter((e) => matchesSearch(`${e.name} ${e.nameEn}`, search)),
+    [catalogGaps, search],
+  );
 
   function requestMarking(patch: Marking) {
     const chosen = personal.filter((e) => picked.includes(e.id));

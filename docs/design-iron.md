@@ -1,8 +1,6 @@
-# «IRON» — визуальный слой 2.0
+# «IRON» — визуальный слой 2.0 (историческая спецификация)
 
-Слой `src/styles/design-iron.css` импортируется последним в `src/main.tsx` и
-перекрывает `styles.css` и `round-*.css`. DOM не переставляется: имена классов,
-aria-атрибуты и тексты остаются прежними, поэтому e2e-контракты не меняются.
+> Актуальные стили консолидированы в `src/styles/` (13 модулей с явным порядком `@layer` в `src/styles/layers.css`). Компонент `useHeroStage.ts` и файл `steel-plate.webp` удалены. DOM и e2e-контракты сохранены.
 
 ## Что переработано
 
@@ -53,11 +51,11 @@ aria-атрибуты и тексты остаются прежними, поэ�
 ## Как проверять визуально
 
 ```bash
-npx vite build
-npx playwright test -c playwright.visual.config.ts tests/e2e/design.spec.ts tests/e2e/visual-extra.spec.ts
+npm run build
+npm run test:e2e:visual
 ```
 
-`playwright.visual.config.ts` поднимает только `vite preview` (воркер и D1 не нужны):
+Режим `TYAGA_PLAYWRIGHT_MODE=visual` в `playwright.config.ts` поднимает только `vite preview` (воркер и D1 не нужны):
 все запросы `/api/**` замоканы внутри спек. Скриншоты: `artifacts/design/`
-(базовый набор) и `artifacts/design-iron/` (окна, живая анимация, 320 px,
+(базовый набор) и `artifacts/design-quiet/` (окна, живая анимация, 320 px,
 история и программы).

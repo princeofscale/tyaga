@@ -55,7 +55,7 @@ test("R11-REQ02: перед записью — не воскрешаем зак�
   assert.equal(DraftTabs.beforeWrite({ ...ctx(mine, { observed: null }), mine }, null), "write");
   // своя и безымянная записи — пишем
   assert.equal(DraftTabs.beforeWrite({ ...ctx(DraftTabs.stamp(mine, "P1", 5)), mine }, raw(mine, "P1", 5)), "write");
-  assert.equal(DraftTabs.beforeWrite({ ...ctx(mine, { claim: 5 }), mine }, raw(mine)), "write");
+  assert.equal(DraftTabs.beforeWrite({ ...ctx(mine), mine }, raw(mine)), "write");
   const local = { ...ctx(DraftTabs.stamp(mine, "P1", 12)), mine };
   assert.equal((DraftTabs.beforeWrite(local, raw(mine, "P2", 9)) as { kind: string }).kind, "adopt");
   assert.equal((DraftTabs.beforeWrite(local, raw(mine, "P1", 13)) as { kind: string }).kind, "adopt");
@@ -268,7 +268,7 @@ test("R11-REQ02: P1 заканчивает X и начинает Y, P2 со ст
   sim.end("P1");
   assert.equal(sim.tabs.P2.mine, null, "P2 закрыла X");
   sim.start("P1", "Y");
-  assert.equal(sim.tabs.P2.mine?.workout.id, "Y", "Y видна и во второй вкладке");
+  assert.equal((sim.tabs.P2.mine as Draft | null)?.workout.id, "Y", "Y видна и во второй вкладке");
   assert.equal(JSON.parse(sim.key!).workout.id, "Y");
 });
 

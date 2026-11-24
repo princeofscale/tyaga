@@ -160,6 +160,12 @@ export type RoutinePeriodization = {
   extras: boolean;
   /** «Облегчённо»: вместо одного повторения — три (не по оригиналу). */
   light: boolean;
+  /** Замены упражнений на весь цикл: исходный exerciseId → новый exerciseId (например, при травме). */
+  substitutions?: Record<string, string>;
+  /** Базовые лифты в режиме калибровки (без фиктивных % 1ПМ до накопления собственной истории). */
+  calibrationLifts?: (keyof LaidMaxes)[];
+  /** Базовые лифты с пометкой дискомфорта/боли: блокирует автоповышение 1ПМ и синглы 95%. */
+  painFlags?: (keyof LaidMaxes)[];
 };
 /** One adjustment to the recurring schedule. A null destination skips that occurrence. */
 export type RoutineOccurrenceOverride = { from: string; to: string | null };
@@ -193,6 +199,8 @@ export type Settings = {
   restSeconds: number;
   timeZone?: string;
   revision?: number;
+  /** Безопасный подростковый режим (до 18 лет): отключает авто-синглы 95–97,5% и автоэскалацию 1ПМ. */
+  minorMode?: boolean;
 };
 export type MuscleLoad = {
   id: Muscle;

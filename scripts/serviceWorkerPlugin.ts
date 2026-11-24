@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readdirSync, statSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import type { Plugin } from "vite";
 
@@ -11,6 +11,18 @@ function walk(dir: string, root: string): string[] {
     const full = join(dir, name);
     return statSync(full).isDirectory() ? walk(full, root) : [relative(root, full).split("\\").join("/")];
   });
+}
+
+/** Хэш строится по пути И содержимому каждого файла, чтобы правки un-hashed файлов (manifest, иконки, html) меняли версию SW. */
+export function computeBundleVersion(root: string, files: string[]): string {
+  const hash = createHash("sha256");
+  for (const file of [...files].sort()) {
+    hash.update(file);
+    hash.update("\0");
+    hash.update(readFileSync(join(root, file)));
+    hash.update("\0");
+  }
+  return hash.digest("hex").slice(0, 12);
 }
 
 /**
@@ -26,25 +38,36 @@ export function serviceWorkerPlugin(outDir: string): Plugin {
     enforce: "post",
     closeBundle() {
       const root = resolve(outDir);
-      const files = walk(root, root).filter((f) => f !== "sw.js" && !f.startsWith("licenses/"));
+      const files = walk(root, root).filter((f) => f !== "sw.js" && !f.startsWith("licenses/") && f !== "tyaga.apk");
       const precache = ["/", ...files.filter((f) => !heavy.test(f)).map((f) => `/${f}`)];
-      const version = createHash("sha256").update(files.sort().join("|")).digest("hex").slice(0, 12);
-      writeFileSync(join(root, "sw.js"), source(version, precache));
+      const version = computeBundleVersion(root, files);
+      writeFileSync(join(root, "sw.js"), buildServiceWorkerSource(version, precache));
     },
   };
 }
 
-function source(version: string, precache: string[]) {
-  return `// Сгенерировано vite-плагином serviceWorkerPlugin. Версия = хэш состава сборки.
+export function buildServiceWorkerSource(version: string, precache: string[]) {
+  return `// Сгенерировано vite-плагином serviceWorkerPlugin. Версия = хэш содержимого сборки.
 const VERSION = ${JSON.stringify(version)};
 const CACHE = "tyaga-shell-" + VERSION;
 const CATALOG_CACHE = "tyaga-catalog-" + VERSION;
 const PRECACHE = ${JSON.stringify(precache)};
 const NAVIGATION_TIMEOUT_MS = 1500;
+const MAX_CATALOG_ENTRIES = 30;
 
 self.addEventListener("install", (event) => {
+  // Неатомарный precache: единичный сетевой сбой не срывает установку SW целиком.
+  // skipWaiting() намеренно НЕ вызываем, чтобы открытые вкладки со старым JS не теряли свои ленивые чанки.
   event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(PRECACHE.map((url) => new Request(url, { cache: "reload" })))).then(() => self.skipWaiting()),
+    caches.open(CACHE).then((cache) =>
+      Promise.allSettled(
+        PRECACHE.map((url) =>
+          fetch(new Request(url, { cache: "reload" }))
+            .then((res) => (res.ok ? cache.put(url, res) : undefined))
+            .catch(() => undefined),
+        ),
+      ),
+    ),
   );
 });
 
@@ -69,12 +92,12 @@ function withTimeout(promise, ms) {
   });
 }
 
-async function navigate(request) {
+async function navigate(request, event) {
   const cache = await caches.open(CACHE);
   const cached = await cache.match("/", { ignoreVary: true });
   const network = fetch(request).then((response) => {
     if (response.ok && (response.headers.get("content-type") || "").includes("text/html")) {
-      cache.put("/", response.clone());
+      event.waitUntil(cache.put("/", response.clone()).catch(() => {}));
     }
     return response;
   });
@@ -93,31 +116,55 @@ async function navigate(request) {
   }
 }
 
-async function assetFirst(request) {
+async function assetFirst(request, event) {
   const cache = await caches.open(CACHE);
   // Скрипты с crossorigin уходят с заголовком Origin, а предзагрузка — без него: Vary в сравнении лишний.
   const hit = await cache.match(request.url, { ignoreVary: true });
   if (hit) return hit;
   const response = await fetch(request);
-  if (response.ok && response.status === 200) cache.put(request, response.clone());
+  const contentType = (response.headers.get("content-type") || "").toLowerCase();
+  // Защита от отравления кэша: SPA-fallback отдаёт text/html с 200 на пропавший чанк /assets/*.
+  const isHtmlFallback = new URL(request.url).pathname.startsWith("/assets/") && contentType.includes("text/html");
+  if (response.ok && response.status === 200 && !isHtmlFallback) {
+    event.waitUntil(cache.put(request, response.clone()).catch(() => {}));
+  }
   return response;
 }
 
-async function catalogStaleWhileRevalidate(request) {
+async function trimCatalogCache(cache) {
+  const keys = await cache.keys();
+  if (keys.length <= MAX_CATALOG_ENTRIES) return;
+  await Promise.all(keys.slice(0, keys.length - MAX_CATALOG_ENTRIES).map((k) => cache.delete(k)));
+}
+
+async function catalogStaleWhileRevalidate(request, event) {
   const cache = await caches.open(CATALOG_CACHE);
   const hit = await cache.match(request.url, { ignoreVary: true });
   const network = fetch(request)
     .then((response) => {
-      if (response.ok && response.status === 200) {
-        cache.put(request.url, response.clone());
+      if (response.ok && response.status === 200 && (response.headers.get("content-type") || "").includes("application/json")) {
+        const clone = response.clone();
+        event.waitUntil(cache.put(request.url, clone).then(() => trimCatalogCache(cache)).catch(() => {}));
       }
       return response;
     })
     .catch(() => null);
-  if (hit) return hit;
+  if (hit) {
+    event.waitUntil(network);
+    return hit;
+  }
   const fresh = await network;
   return fresh || Response.error();
 }
+
+const STATIC_ROOT_FILES = new Set([
+  "/favicon.svg",
+  "/manifest.webmanifest",
+  "/apple-touch-icon.png",
+  "/icon-192.png",
+  "/icon-512.png",
+  "/icon-512-maskable.png",
+]);
 
 self.addEventListener("fetch", (event) => {
   const request = event.request;
@@ -125,11 +172,11 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
   if (url.pathname === "/sw.js") return;
-  if (url.pathname === "/api/exercises") return event.respondWith(catalogStaleWhileRevalidate(request));
+  if (url.pathname === "/api/exercises") return event.respondWith(catalogStaleWhileRevalidate(request, event));
   if (url.pathname.startsWith("/api/")) return;
-  if (request.mode === "navigate") return event.respondWith(navigate(request));
-  if (url.pathname.startsWith("/assets/") || url.pathname === "/favicon.svg" || url.pathname === "/manifest.webmanifest")
-    return event.respondWith(assetFirst(request));
+  if (request.mode === "navigate") return event.respondWith(navigate(request, event));
+  if (url.pathname.startsWith("/assets/") || STATIC_ROOT_FILES.has(url.pathname))
+    return event.respondWith(assetFirst(request, event));
 });
 `;
 }

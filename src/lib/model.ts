@@ -84,7 +84,7 @@ export function legacyMuscleLoad(
   return loads.map((m) => ({
     ...m,
     total: m.direct + m.indirect,
-    ratio: (m.direct + m.indirect) / m.goal,
+    ratio: m.goal > 0 ? (m.direct + m.indirect) / m.goal : 0,
   }));
 }
 export const balanceScore = (loads: MuscleLoad[]) =>
@@ -258,7 +258,7 @@ export function buildBalancePlan(
   const projected = loads.map((m) => {
     const direct =
       m.direct + picks.reduce((s, p) => s + (p.gains[m.id] ?? 0), 0);
-    return { ...m, direct, total: direct, ratio: direct / m.goal };
+    return { ...m, direct, total: direct, ratio: m.goal > 0 ? direct / m.goal : 0 };
   });
   return {
     picks,

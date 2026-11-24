@@ -1,3 +1,4 @@
+import { isCalendarDate } from "../src/lib/calendar";
 import { InputError, object, str, num, validPeriodization, validOccurrenceOverrides, validProgramDate } from "./validation";
 
 // Device ↔ cloud replication. Triggers (drizzle/0006_sync.sql) record every
@@ -62,12 +63,28 @@ const TABLES: Record<SyncKind, { columns: Column[]; key: string; read: string; u
   },
 };
 const VERSION = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
+const MAX_DOC_PAYLOAD_CHARS = 100_000;
 const SINGLE_PK_OWNER_CHECKS: Partial<Record<SyncKind, string>> = {
   workout: "SELECT owner_id FROM workouts WHERE id = ?",
   routine: "SELECT owner_id FROM routines WHERE id = ?",
   custom_exercise: "SELECT owner_id FROM custom_exercises WHERE id = ?",
 };
 type VersionRow = { seq: number; kind: SyncKind; doc_id: string; version_at: string; deleted: number };
+
+function canonicalVersionAt(raw: string): string {
+  if (!VERSION.test(raw)) throw new InputError("Некорректная версия документа");
+  const ms = Date.parse(raw);
+  if (!Number.isFinite(ms)) throw new InputError("Некорректная версия документа");
+  return new Date(ms).toISOString();
+}
+
+function isNewerVersion(incoming: string, current: string | undefined): boolean {
+  if (!current) return true;
+  const inMs = Date.parse(incoming);
+  const curMs = Date.parse(current);
+  if (Number.isFinite(inMs) && Number.isFinite(curMs)) return inMs > curMs;
+  return incoming > current;
+}
 
 export class SyncService {
   constructor(private db: D1Database, private ownerId: string) {}
@@ -97,7 +114,15 @@ export class SyncService {
   async apply(input: unknown) {
     const list = object(input).docs;
     if (!Array.isArray(list) || list.length > 100) throw new InputError("Не больше 100 документов за раз");
-    const docs = list.map(parseDoc);
+    const rawDocs = list.map(parseDoc);
+    // Идемпотентная дедупликация внутри одного батча: при повторе одного (kind, id) побеждает самая свежая versionAt.
+    const dedup = new Map<string, SyncDoc>();
+    for (const d of rawDocs) {
+      const k = `${d.kind}:${d.id}`;
+      const prev = dedup.get(k);
+      if (!prev || isNewerVersion(d.versionAt, prev.versionAt)) dedup.set(k, d);
+    }
+    const docs = [...dedup.values()];
     const local = docs.length
       ? await this.db.batch(docs.map((d) => this.db
         .prepare("SELECT version_at FROM sync_versions WHERE owner_id = ? AND kind = ? AND doc_id = ?")
@@ -120,18 +145,19 @@ export class SyncService {
       const existingOwner = (existingOwners[i].results[0] as { owner_id: string } | undefined)?.owner_id;
       if (existingOwner && existingOwner !== this.ownerId) return false;
       const current = (local[i].results[0] as { version_at: string } | undefined)?.version_at;
-      return !current || d.versionAt > current;
+      return isNewerVersion(d.versionAt, current);
     });
     const statements = newer.flatMap((d) => {
       const table = TABLES[d.kind];
+      const idx = docs.indexOf(d);
       const prior = d.kind === "workout"
-        ? (currentWorkouts[docs.indexOf(d)].results[0] as { date: string; payload: string; revision: number } | undefined)
+        ? (currentWorkouts[idx].results[0] as { date: string; payload: string; revision: number } | undefined)
         : undefined;
       const localVersion = d.kind === "workout"
-        ? (local[docs.indexOf(d)].results[0] as { version_at: string } | undefined)?.version_at
+        ? (local[idx].results[0] as { version_at: string } | undefined)?.version_at
         : undefined;
       const preserveLocal = !!prior && !!localVersion &&
-        (!d.deleted ? d.versionAt > localVersion && String(d.row?.payload) !== prior.payload : d.versionAt > localVersion);
+        (!d.deleted ? isNewerVersion(d.versionAt, localVersion) && String(d.row?.payload) !== prior.payload : isNewerVersion(d.versionAt, localVersion));
       const recovery = preserveLocal ? [this.db.prepare(
         `INSERT INTO workout_sync_recovery(owner_id,workout_id,version_at,date,payload,revision,received_at)
          VALUES(?,?,?,?,?,?,?) ON CONFLICT(owner_id,workout_id,version_at,payload) DO NOTHING`,
@@ -150,7 +176,7 @@ export class SyncService {
       ];
     });
     if (statements.length) await this.db.batch(statements);
-    return { applied: newer.length, skipped: docs.length - newer.length };
+    return { applied: newer.length, skipped: rawDocs.length - newer.length };
   }
 
   async recovery() {
@@ -161,36 +187,77 @@ export class SyncService {
   }
 }
 
+function validateWorkoutSyncPayload(id: string, rowDate: string, payload: Record<string, unknown>) {
+  if (!isCalendarDate(rowDate)) throw new InputError("Некорректная дата тренировки");
+  if (payload.id !== undefined && str(payload.id, 80, 1) !== id)
+    throw new InputError("ID тренировки не совпадает с документом");
+  if (payload.date !== undefined && !isCalendarDate(str(payload.date, 10, 10)))
+    throw new InputError("Некорректная дата в данных тренировки");
+  str(payload.name, 120, 1);
+  if (payload.duration !== undefined) num(payload.duration, 0, 1440);
+  if (payload.notes !== undefined) str(payload.notes, 2000);
+  if (payload.programDate !== undefined) validProgramDate(payload.programDate);
+  if (!Array.isArray(payload.exercises) || !payload.exercises.length || payload.exercises.length > 30)
+    throw new InputError("В синхронизируемой тренировке должен быть список упражнений");
+  for (const rawEx of payload.exercises) {
+    const ex = object(rawEx);
+    str(ex.exerciseId, 80, 1);
+    if (!Array.isArray(ex.sets) || !ex.sets.length || ex.sets.length > 30)
+      throw new InputError("В упражнении тренировки должен быть список подходов");
+    for (const rawSet of ex.sets) {
+      const s = object(rawSet);
+      str(s.id, 80, 1);
+      num(s.weight, 0, 1000);
+      num(s.reps, 0, 200, true);
+      if (s.rir !== null && s.rir !== undefined) num(s.rir, 0, 10);
+    }
+  }
+}
+
+function validateRoutineSyncPayload(id: string, payload: Record<string, unknown>) {
+  if (payload.id !== undefined && str(payload.id, 80, 1) !== id)
+    throw new InputError("ID программы не совпадает с документом");
+  str(payload.name, 120, 1);
+  if (payload.notes !== undefined) str(payload.notes, 2000);
+  if (!Array.isArray(payload.exercises) || payload.exercises.length > 30)
+    throw new InputError("Некорректный список упражнений программы");
+  for (const rawEx of payload.exercises) {
+    const ex = object(rawEx);
+    str(ex.exerciseId, 80, 1);
+  }
+  if (payload.periodization !== undefined) validPeriodization(payload.periodization);
+  if (payload.occurrenceOverrides !== undefined) {
+    const overrides = validOccurrenceOverrides(payload.occurrenceOverrides);
+    if (overrides.length) payload.occurrenceOverrides = overrides;
+    else delete payload.occurrenceOverrides;
+  }
+}
+
 function parseDoc(value: unknown): SyncDoc {
   const v = object(value);
   if (typeof v.kind !== "string" || !(v.kind in TABLES)) throw new InputError("Неизвестный тип документа");
   const kind = v.kind as SyncKind;
   const table = TABLES[kind];
   const id = str(v.id, 200, 1);
-  const versionAt = str(v.versionAt, 40, 1);
-  if (!VERSION.test(versionAt)) throw new InputError("Некорректная версия документа");
+  const versionAt = canonicalVersionAt(str(v.versionAt, 40, 1));
   if (kind === "settings" && id !== "settings") throw new InputError("Некорректный документ настроек");
   if (v.deleted === true) return { kind, id, versionAt, deleted: true };
   const source = object(v.row);
   const row: Record<string, string | number> = {};
   for (const [name, type] of table.columns)
-    row[name] = type === "int" ? num(source[name], 0, 2147483646, true) : str(source[name], 400000);
+    row[name] = type === "int" ? num(source[name], 0, 2147483646, true) : str(source[name], name === "payload" ? MAX_DOC_PAYLOAD_CHARS : 200);
   if (table.key && row[table.key] !== id) throw new InputError("Документ не совпадает с ключом");
   if ("payload" in row) {
     let payload: Record<string, unknown>;
     try { payload = object(JSON.parse(String(row.payload))); }
     catch { throw new InputError("Повреждённые данные документа"); }
-    // Периодизация программы проверяется той же функцией, что и при PUT /api/routines: битое поле не записывается.
     if (kind === "routine") {
-      if (payload.periodization !== undefined) validPeriodization(payload.periodization);
-      if (payload.occurrenceOverrides !== undefined) {
-        const overrides = validOccurrenceOverrides(payload.occurrenceOverrides);
-        if (overrides.length) payload.occurrenceOverrides = overrides;
-        else delete payload.occurrenceOverrides;
-        row.payload = JSON.stringify(payload);
-      }
+      validateRoutineSyncPayload(id, payload);
+      row.payload = JSON.stringify(payload);
     }
-    if (kind === "workout" && payload.programDate !== undefined) validProgramDate(payload.programDate);
+    if (kind === "workout") {
+      validateWorkoutSyncPayload(id, String(row.date), payload);
+    }
   }
   return { kind, id, versionAt, deleted: false, row };
 }

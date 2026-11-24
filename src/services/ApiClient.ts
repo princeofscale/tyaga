@@ -22,16 +22,21 @@ export class ApiClient {
     method = "GET",
     body?: unknown,
     signal?: AbortSignal,
+    extraHeaders?: Record<string, string>,
   ): Promise<T> {
     const requestSignal = signal
       ? AbortSignal.any([signal, AbortSignal.timeout(15000)])
       : AbortSignal.timeout(15000);
     let response: Response;
     try {
+      const headers: Record<string, string> = {
+        ...(method === "GET" ? {} : { "Content-Type": "application/json" }),
+        ...(extraHeaders ?? {}),
+      };
       response = await this.transport(path, {
         method,
         signal: requestSignal,
-        headers: method === "GET" ? {} : { "Content-Type": "application/json" },
+        headers,
         body: body === undefined ? undefined : JSON.stringify(body),
       });
     } catch (error) {
@@ -68,4 +73,5 @@ export const api = <T>(
   method = "GET",
   body?: unknown,
   signal?: AbortSignal,
-) => apiClient.request<T>(path, method, body, signal);
+  extraHeaders?: Record<string, string>,
+) => apiClient.request<T>(path, method, body, signal, extraHeaders);

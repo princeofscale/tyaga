@@ -172,7 +172,7 @@ export default function HistoryScreen({
       <HistoryList
         workouts={displayed}
         entryName={entryName}
-        renderItem={(w, records) => renderSession(w, records)}
+        renderItem={renderSession}
         actions={
           <>
             {workouts.length ? (

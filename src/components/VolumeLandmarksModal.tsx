@@ -53,16 +53,15 @@ export function VolumeLandmarksModal({ workouts, today, mapping, timeZone }: {
         {bio.workingSets > 0 && (
           <div className="rp-bio-strip" aria-label="Биомеханика недели">
             <span>
-              <Activity size={13} aria-hidden="true" /> Стимул (с учётом RIR и повторов): <b>{fmt(bio.effectiveSetsTotal)}</b> из {bio.workingSets} подх.
+              <Activity size={13} aria-hidden="true" /> Зоны RIR: <b>{bio.rirBands.high}</b> (0–2) · <b>{bio.rirBands.moderate}</b> (3–4) · <b>{bio.rirBands.light}</b> (5+)
             </span>
             <span>
               Диапазоны: <b>{bio.repZones.strength}</b> сила (1–5) · <b>{bio.repZones.hypertrophy}</b> гип. (6–15) · <b>{bio.repZones.endurance}</b> 16+
             </span>
-            {bio.avgRir !== null && (
-              <span>
-                Средний RIR: <b>{fmt(bio.avgRir)}</b> · осевые: <b>{bio.axialHardSets}</b> подх.
-              </span>
-            )}
+            <span>
+              {bio.avgRir !== null ? <>Средний RIR: <b>{fmt(bio.avgRir)}</b> · </> : null}
+              Осевая / стабилизация: <b>{fmt(bio.structuralLoadSets)}</b> подх.
+            </span>
           </div>
         )}
         {bio.signals.length > 0 && (

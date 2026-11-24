@@ -1,3 +1,4 @@
+import { AnalyticsFacts, type FactsOptions } from "./AnalyticsFacts";
 import { ExecutionIdentity } from "./ExecutionIdentity";
 import { progressKey } from "../lib/catalog";
 import type { Workout, WorkoutExercise } from "../lib/types";
@@ -10,9 +11,10 @@ export type StrengthOption = { key: string; we: WorkoutExercise; lastDate: strin
  * (progressKey), поэтому записи с разными правилами остаются разными рядами.
  */
 export class StrengthExercises {
-  static list(workouts: Workout[]): StrengthOption[] {
+  static list(workouts: Workout[], options: FactsOptions = {}): StrengthOption[] {
     const rows = new Map<string, StrengthOption>();
-    for (const workout of workouts)
+    const clean = new AnalyticsFacts(workouts, { ...options, setKind: "working", completedOnly: true }).workouts();
+    for (const workout of clean)
       for (const entry of workout.exercises)
         for (const part of ExecutionIdentity.split(entry)) {
           if (!part.sets.some((set) => set.done && !set.warmup)) continue;

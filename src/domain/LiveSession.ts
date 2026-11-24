@@ -171,7 +171,10 @@ export class LivePresenter {
   static headline(seen: Pick<LiveMember, "state" | "updatedAt">, now: number): string {
     const state = seen.state;
     if (!state) return "Ждёт старта";
-    if (state.phase === "done") return `Закончил · ${fmt(state.tonnageKg / 1000)} т`;
+    if (state.phase === "done") {
+      if (state.tonnageKg >= 100) return `Закончил · ${fmt(state.tonnageKg / 1000)} т`;
+      return state.setsDone > 0 ? `Закончил · ${state.setsDone} подх.` : "Закончил";
+    }
     if (LivePresenter.isAway(seen, now)) return "Нет связи";
     const count = `${state.setsDone}/${state.setsTotal}`;
     const rest = LivePresenter.restLeft(state, now);

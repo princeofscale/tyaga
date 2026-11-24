@@ -8,7 +8,7 @@ import type { Exercise, Workout } from "../src/lib/types";
 type ImportResponse = { imported: number; skipped: number; replaced: number; kept: number; runId: string; addedIds: string[]; workouts: Workout[]; exercises: Exercise[]; exerciseIdMap: Record<string, string> };
 type SyncDoc = { kind: string; id: string; versionAt: string; deleted: boolean; row: Record<string, string | number> };
 const ownRun = () => crypto.randomUUID();
-const asJson = async <T>(response: Response) => (await response.json()) as T;
+const asJson = async <T = any>(response: { json(): Promise<unknown> }) => (await response.json()) as T;
 
 /** Re-importing the same file: replace what is still as imported, keep what was edited. */
 async function sandbox() {
@@ -198,7 +198,13 @@ test("failed replace leaves the previous mapped file and receipt set visible wit
     const shortHash = (value: string) => createHash("sha256").update(value).digest("hex").slice(0, 24);
     const targetId = `import:${shortHash("owner")}:${shortHash("strong|replace-8")}`;
     await db.prepare(`CREATE TRIGGER qa_replace_failure BEFORE INSERT ON workouts WHEN NEW.id='${targetId}' BEGIN SELECT RAISE(ABORT,'simulated failed replacement'); END`).run();
-    const literal = sessions.map((w) => ({ ...w, exercises: w.exercises.map(({ exerciseId: _id, catalogRevision: _rev, ...e }) => e) }));
+    const literal = sessions.map((w) => ({
+      ...w,
+      exercises: w.exercises.map((ex) => {
+        const { exerciseId: _id, catalogRevision: _rev, ...e } = ex as Record<string, unknown>;
+        return e;
+      }),
+    }));
     const replaceRun = ownRun();
     const failed = await request("/api/import", "POST", { format: "strong", workouts: literal, replace: true, runId: replaceRun });
     assert.equal(failed.status, 503);

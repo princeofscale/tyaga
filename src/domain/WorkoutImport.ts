@@ -149,8 +149,14 @@ function day(value: string, order: "dmy" | "mdy") {
       `Не удалось прочитать дату «${value}». Выбери порядок дня и месяца или используй ГГГГ-ММ-ДД.`,
     );
   const result = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-  if (new Date(result + "T12:00:00Z").toISOString().slice(0, 10) !== result)
+  if (new Date(result + "T12:00:00Z").toISOString().slice(0, 10) !== result) {
+    if (european && m > 12 && d >= 1 && d <= 12) {
+      throw new Error(
+        `Некорректная дата «${value}»: похоже, в файле сначала ${order === "dmy" ? "месяц (ММ/ДД)" : "день (ДД/ММ)"} — переключи порядок дат.`,
+      );
+    }
     throw new Error(`Некорректная дата «${value}».`);
+  }
   return result;
 }
 function numeric(value: string, fallback = 0) {
@@ -217,9 +223,10 @@ export class CsvTable {
     row.push(cell);
     if (row.some((v) => v.trim())) rows.push(row);
     if (rows.length < 2) throw new Error("В CSV нет записей тренировок.");
-    if (rows.some((r) => r.length !== rows[0].length))
+    const badRowIndex = rows.findIndex((r) => r.length !== rows[0].length);
+    if (badRowIndex !== -1)
       throw new Error(
-        "В строках CSV различается число столбцов. Проверь файл экспорта.",
+        `В строке ${badRowIndex + 1} CSV отличается число столбцов (${rows[badRowIndex].length} вместо ${rows[0].length}). Проверь файл экспорта.`,
       );
     if (rows.length > 20001)
       throw new Error("В одном файле поддерживается до 20 000 подходов.");

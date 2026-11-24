@@ -4,11 +4,13 @@ import { BodyweightTracker } from "../domain/BodyweightTracker";
 import { localDate } from "../lib/calendar";
 import { Suspense, useState, useEffect, useCallback, type FormEvent } from "react";
 import { CloudSyncPanel } from "./chunks";
+import Modal from "./Modal";
 import RecoveryCodeModal from "./RecoveryCodeModal";
 import { TimeZoneField } from "./TimeZoneField";
-import { Laptop, LogOut, Smartphone, UserRound, Sparkles } from "lucide-react";
+import { Laptop, LogOut, Smartphone, Trash2, UserRound, Sparkles } from "lucide-react";
 import { api } from "../services/ApiClient";
 import { signOutAccount } from "../services/signOut";
+import { useAndroidApkAvailable } from "../lib/androidApk";
 import type { AccountProfile, SessionDevice } from "../lib/account";
 import { cloudState } from "../device/cloudSync";
 import {
@@ -38,8 +40,12 @@ export function AccountProfileForm({
   queued?: number;
 }) {
   const journal = useBodyweight();
+  const apkAvailable = useAndroidApkAvailable();
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [confirmLogoutAll, setConfirmLogoutAll] = useState(false);
+  const [confirmDeleteAccount, setConfirmDeleteAccount] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteError, setDeleteError] = useState("");
   const [sessions, setSessions] = useState<SessionDevice[] | null>(null);
   const [sessionsBusy, setSessionsBusy] = useState(false);
   const loadSessions = useCallback(async () => {
@@ -456,7 +462,13 @@ export function AccountProfileForm({
               </button>
             </div>
             {confirmLogoutAll ? (
-              <div className="account-logout-confirm" role="alertdialog" aria-label="Выйти со всех устройств?">
+              <Modal
+                title="Выйти со всех устройств?"
+                onClose={() => {
+                  if (busy) return false;
+                  setConfirmLogoutAll(false);
+                }}
+              >
                 <p>
                   Завершить все активные сессии, включая это устройство?
                   {hasDraft || queued ? " Несохранённая тренировка на этом устройстве пропадёт." : ""}
@@ -465,21 +477,23 @@ export function AccountProfileForm({
                   <button type="button" className="button danger" disabled={busy} onClick={() => void revokeAll()}>
                     Выйти везде
                   </button>
-                  <button type="button" className="button secondary" disabled={busy} autoFocus onClick={() => setConfirmLogoutAll(false)}>
+                  <button type="button" className="button secondary" disabled={busy} data-autofocus onClick={() => setConfirmLogoutAll(false)}>
                     Отмена
                   </button>
                 </div>
-              </div>
+              </Modal>
             ) : null}
           </details>
-          <a
-            className="button secondary android-download"
-            href="/tyaga.apk"
-            download
-          >
-            <Smartphone size={18} />
-            Приложение для Android
-          </a>
+          {apkAvailable ? (
+            <a
+              className="button secondary android-download"
+              href="/tyaga.apk"
+              download
+            >
+              <Smartphone size={18} />
+              Приложение для Android
+            </a>
+          ) : null}
           <button
             className="button secondary account-logout"
             disabled={busy}
@@ -487,21 +501,92 @@ export function AccountProfileForm({
           >
             Выйти из аккаунта
           </button>
+          <button
+            type="button"
+            className="text-button danger"
+            disabled={busy}
+            onClick={() => {
+              setDeletePassword("");
+              setDeleteError("");
+              setConfirmDeleteAccount(true);
+            }}
+          >
+            <Trash2 size={15} aria-hidden="true" />
+            Удалить аккаунт и данные
+          </button>
           {confirmLogout && (hasDraft || queued) ? (
-            <div className="account-logout-confirm" role="alertdialog" aria-label="Выйти из аккаунта?">
+            <Modal
+              title="Выйти из аккаунта?"
+              onClose={() => {
+                if (busy) return false;
+                setConfirmLogout(false);
+              }}
+            >
               <p>
                 Выйти? Несохранённая тренировка на этом устройстве пропадёт
                 {queued ? ` (ждёт отправки: ${queued})` : ""}.
               </p>
               <div className="actions">
-                <button className="button danger" disabled={busy} onClick={() => void signOut()}>
+                <button type="button" className="button danger" disabled={busy} onClick={() => void signOut()}>
                   Выйти
                 </button>
-                <button className="button secondary" disabled={busy} autoFocus onClick={() => setConfirmLogout(false)}>
+                <button type="button" className="button secondary" disabled={busy} data-autofocus onClick={() => setConfirmLogout(false)}>
                   Остаться
                 </button>
               </div>
-            </div>
+            </Modal>
+          ) : null}
+          {confirmDeleteAccount ? (
+            <Modal
+              title="Удалить аккаунт навсегда?"
+              onClose={() => {
+                if (busy) return false;
+                setConfirmDeleteAccount(false);
+              }}
+            >
+              <p>
+                Будут безвозвратно удалены твой профиль, все тренировки, программы, личные упражнения, замеры веса и сессии.
+                Перед удалением можно скачать полную резервную копию в разделе «История».
+              </p>
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (busy) return;
+                  setBusy(true);
+                  setDeleteError("");
+                  try {
+                    await api("/api/auth/account", "DELETE", { currentPassword: deletePassword });
+                    onLogout();
+                  } catch (err) {
+                    setDeleteError(err instanceof Error ? err.message : "Не удалось удалить аккаунт");
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                <label>
+                  Текущий пароль для подтверждения
+                  <input
+                    type="password"
+                    autoComplete="current-password"
+                    minLength={10}
+                    maxLength={128}
+                    required
+                    value={deletePassword}
+                    onChange={(e) => setDeletePassword(e.target.value)}
+                  />
+                </label>
+                {deleteError ? <p className="form-error" role="alert">{deleteError}</p> : null}
+                <div className="actions">
+                  <button type="submit" className="button danger" disabled={busy}>
+                    Удалить навсегда
+                  </button>
+                  <button type="button" className="button secondary" disabled={busy} data-autofocus onClick={() => setConfirmDeleteAccount(false)}>
+                    Отмена
+                  </button>
+                </div>
+              </form>
+            </Modal>
           ) : null}
         </>
       )}

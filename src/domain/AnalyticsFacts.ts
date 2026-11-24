@@ -1,3 +1,4 @@
+import { ExecutionIdentity } from "./ExecutionIdentity";
 import { ExecutionProfile } from "./ExecutionProfile";
 import { exerciseForEntry } from "../lib/catalog";
 import { isCalendarDate, localDate } from "../lib/calendar";
@@ -141,20 +142,26 @@ export class AnalyticsFacts {
     return this.read().sets;
   }
 
+  /** Единое правило «тяжёлого» подхода во всех аналитических модулях (RIR=null = неизвестно, не тяжело). */
+  static isHard(set: Pick<SetEntry, "rir">): boolean {
+    return set.rir !== null && set.rir <= 3;
+  }
+
   /** Copies only eligible sets; source records and catalog snapshots stay untouched. */
   workouts(): Workout[] {
     const result = new Map<string, Workout>();
+    const byEntryKey = new Map<string, WorkoutExercise>();
     for (const fact of this.sets()) {
       let workout = result.get(fact.workout.id);
       if (!workout) {
         workout = { ...fact.workout, exercises: [] };
         result.set(workout.id, workout);
       }
-      let entry = workout.exercises.find(
-        (e) => e === fact.entry || e.exerciseId === fact.entry.exerciseId,
-      );
+      const entryKey = `${fact.workout.id}\u0000${ExecutionIdentity.key(fact.entry)}`;
+      let entry = byEntryKey.get(entryKey);
       if (!entry) {
         entry = { ...fact.entry, sets: [] };
+        byEntryKey.set(entryKey, entry);
         workout.exercises.push(entry);
       }
       entry.sets.push(fact.set);

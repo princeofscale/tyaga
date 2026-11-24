@@ -1,4 +1,5 @@
 import { InputError, object, str, num } from "./validation";
+import { readTextLimited } from "./http";
 import type { AccountProfile, SessionDevice } from "../src/lib/account";
 
 type AccountRow = {
@@ -167,8 +168,11 @@ export class AccountService {
   }
   private async noteFailure() {
     const now = Date.now();
-    await this.db.prepare("INSERT INTO auth_limits (platform_id,attempts,window_start) VALUES (?,1,?) ON CONFLICT(platform_id) DO UPDATE SET attempts = CASE WHEN auth_limits.window_start < ? THEN 1 ELSE auth_limits.attempts + 1 END, window_start = CASE WHEN auth_limits.window_start < ? THEN excluded.window_start ELSE auth_limits.window_start END")
-      .bind(this.platformId, now, now - 900000, now - 900000).run();
+    await this.db.batch([
+      this.db.prepare("DELETE FROM auth_limits WHERE window_start < ?").bind(now - 86_400_000),
+      this.db.prepare("INSERT INTO auth_limits (platform_id,attempts,window_start) VALUES (?,1,?) ON CONFLICT(platform_id) DO UPDATE SET attempts = CASE WHEN auth_limits.window_start < ? THEN 1 ELSE auth_limits.attempts + 1 END, window_start = CASE WHEN auth_limits.window_start < ? THEN excluded.window_start ELSE auth_limits.window_start END")
+        .bind(this.platformId, now, now - 900000, now - 900000),
+    ]);
   }
   private async clearFailures() {
     await this.db.prepare("DELETE FROM auth_limits WHERE platform_id = ?").bind(this.platformId).run();
@@ -184,9 +188,65 @@ export class AccountService {
   private async emailTaken(address: string) {
     return !!(await this.db.prepare("SELECT 1 AS taken FROM accounts WHERE email = ?").bind(address).first());
   }
-  async handle(request: Request): Promise<Response | null> {
+  async deleteAccount(request: Request, rawBody?: string): Promise<Response> {
+    const current = await this.require(request);
+    const raw = rawBody ?? await readTextLimited(request, 12_000);
+    if (new TextEncoder().encode(raw).byteLength > 12_000) throw new InputError("Слишком большой запрос");
+    const v = object(JSON.parse(raw || "{}"));
+    await this.guard();
+    const row = (await this.account())!;
+    if (!(await verifyPassword(password(v.currentPassword), row.salt, row.password_hash)).ok) {
+      await this.noteFailure();
+      throw new AuthError("Текущий пароль не подошёл.");
+    }
+    const accountId = current.id;
+    const ownerId = this.platformId;
+    await this.db.batch([
+      this.db.prepare("DELETE FROM live_members WHERE account_id = ?").bind(accountId),
+      this.db.prepare("DELETE FROM challenge_participants WHERE account_id = ? OR challenge_id IN (SELECT id FROM team_challenges WHERE host_id = ?)").bind(accountId, accountId),
+      this.db.prepare("DELETE FROM team_challenges WHERE host_id = ?").bind(accountId),
+      this.db.prepare("DELETE FROM meetup_participants WHERE account_id = ? OR meetup_id IN (SELECT id FROM training_meetups WHERE host_id = ?)").bind(accountId, accountId),
+      this.db.prepare("DELETE FROM training_meetups WHERE host_id = ?").bind(accountId),
+      this.db.prepare("DELETE FROM workout_kudos WHERE account_id = ?").bind(accountId),
+      this.db.prepare("DELETE FROM friendships WHERE low_id = ? OR high_id = ?").bind(accountId, accountId),
+      this.db.prepare("DELETE FROM social_profiles WHERE account_id = ?").bind(accountId),
+      this.db.prepare("DELETE FROM sessions WHERE account_id = ?").bind(accountId),
+      this.db.prepare("DELETE FROM workout_import_staging WHERE owner_id = ?").bind(ownerId),
+      this.db.prepare("DELETE FROM workout_import_dependencies WHERE owner_id = ?").bind(ownerId),
+      this.db.prepare("DELETE FROM workout_import_receipts WHERE owner_id = ?").bind(ownerId),
+      this.db.prepare("DELETE FROM workout_import_runs WHERE owner_id = ?").bind(ownerId),
+      this.db.prepare("DELETE FROM workout_sync_recovery WHERE owner_id = ?").bind(ownerId),
+      this.db.prepare("DELETE FROM sync_versions WHERE owner_id = ?").bind(ownerId),
+      this.db.prepare("DELETE FROM bodyweight_documents WHERE owner_id = ?").bind(ownerId),
+      this.db.prepare("DELETE FROM machine_instances WHERE owner_id = ?").bind(ownerId),
+      this.db.prepare("DELETE FROM machine_models WHERE owner_id = ?").bind(ownerId),
+      this.db.prepare("DELETE FROM favorite_exercises WHERE owner_id = ?").bind(ownerId),
+      this.db.prepare("DELETE FROM custom_exercises WHERE owner_id = ?").bind(ownerId),
+      this.db.prepare("DELETE FROM routines WHERE owner_id = ?").bind(ownerId),
+      this.db.prepare("DELETE FROM settings WHERE owner_id = ?").bind(ownerId),
+      this.db.prepare("DELETE FROM workouts WHERE owner_id = ?").bind(ownerId),
+      this.db.prepare("DELETE FROM auth_limits WHERE platform_id = ? OR platform_id = ?").bind(ownerId, `live_join:${accountId}`),
+      this.db.prepare("DELETE FROM accounts WHERE id = ?").bind(accountId),
+    ]);
+    return this.reply({ deleted: true }, request, "");
+  }
+  async handle(request: Request, rawBody?: string): Promise<Response | null> {
     const path = new URL(request.url).pathname;
+    if (path === "/api/account" && request.method === "DELETE") {
+      return this.deleteAccount(request, rawBody);
+    }
     if (!path.startsWith("/api/auth/")) return null;
+    if (path === "/api/auth/logout" && request.method === "POST") {
+      // Идемпотентный выход: повторный запрос после истёкшей/удалённой сессии возвращает 200 и чистит cookie.
+      const token = this.token(request);
+      if (token) {
+        await this.db.prepare("DELETE FROM sessions WHERE token_hash = ?").bind(await hash(token)).run();
+      }
+      return this.reply({ loggedOut: true }, request, "");
+    }
+    if (path === "/api/auth/account" && request.method === "DELETE") {
+      return this.deleteAccount(request, rawBody);
+    }
     if (path === "/api/auth/session" && request.method === "GET")
       return this.reply({ registered: !!(await this.account()), profile: await this.authenticated(request) }, request);
     if (path === "/api/auth/sessions" && request.method === "GET") {
@@ -229,8 +289,8 @@ export class AccountService {
       const isCurrent = equal(matchedHash, currentHash);
       return this.reply({ revoked: true, current: isCurrent }, request, isCurrent ? "" : undefined);
     }
-    const raw = await request.text();
-    if (raw.length > 12000) throw new InputError("Слишком большой запрос");
+    const raw = rawBody ?? await readTextLimited(request, 12_000);
+    if (new TextEncoder().encode(raw).byteLength > 12_000) throw new InputError("Слишком большой запрос");
     const v = object(JSON.parse(raw || "{}"));
     if (["/api/auth/register", "/api/auth/login", "/api/auth/recover"].includes(path) && request.method === "POST") {
       await this.guard();
@@ -289,11 +349,6 @@ export class AccountService {
       return this.reply({ profile: profile(row) }, request, await this.newSession(row.id, request));
     }
     const current = await this.require(request);
-    if (path === "/api/auth/logout" && request.method === "POST") {
-      const token = this.token(request)!;
-      await this.db.prepare("DELETE FROM sessions WHERE token_hash = ?").bind(await hash(token)).run();
-      return this.reply({ loggedOut: true }, request, "");
-    }
     if (path === "/api/auth/sessions/revoke-others" && request.method === "POST") {
       const currentHash = await hash(this.token(request)!);
       const result = await this.db.prepare("DELETE FROM sessions WHERE account_id = ? AND token_hash != ?")

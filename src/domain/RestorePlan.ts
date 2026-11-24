@@ -7,9 +7,59 @@ import { LaidDupPlan } from "./LaidDupPlan";
 export type ExistingData = { workouts: Workout[]; routines: Routine[]; customExercises: Exercise[]; favorites: string[] };
 export type Tally = { total: number; added: number; same: number; differs: number };
 
-type Shape = { name: string; date: string; exercises: { exerciseId?: string; sets: { weight?: number; reps?: number | null }[] }[] };
+type Shape = {
+  name: string;
+  date: string;
+  duration?: number;
+  notes?: string;
+  restSeconds?: number;
+  exercises: {
+    exerciseId?: string;
+    bodyMassKg?: number;
+    equipmentNote?: string;
+    machineInstanceId?: string;
+    execution?: unknown;
+    sets: {
+      weight?: number;
+      reps?: number | null;
+      rir?: number | null;
+      warmup?: boolean;
+      done?: boolean;
+      kind?: string;
+      assistanceKg?: number;
+      durationSeconds?: number;
+      distanceKm?: number;
+      execution?: unknown;
+    }[];
+  }[];
+};
 const signature = (w: Shape) =>
-  JSON.stringify([w.name, w.date, w.exercises.map((e) => [e.exerciseId ?? "", e.sets.map((s) => [s.weight ?? 0, s.reps ?? 0])])]);
+  JSON.stringify([
+    w.name,
+    w.date,
+    w.duration ?? 0,
+    (w.notes ?? "").trim(),
+    w.restSeconds ?? null,
+    w.exercises.map((e) => [
+      e.exerciseId ?? "",
+      e.bodyMassKg ?? null,
+      e.equipmentNote ?? "",
+      e.machineInstanceId ?? "",
+      e.execution ?? null,
+      e.sets.map((s) => [
+        s.weight ?? 0,
+        s.reps ?? 0,
+        s.rir ?? null,
+        Boolean(s.warmup),
+        s.done ?? true,
+        s.kind ?? (s.warmup ? "warmup" : "normal"),
+        s.assistanceKg ?? null,
+        s.durationSeconds ?? null,
+        s.distanceKm ?? null,
+        s.execution ?? null,
+      ]),
+    ]),
+  ]);
 
 /**
  * Что сделает восстановление из копии, словами: сколько тренировок, программ, своих упражнений и избранного

@@ -5,12 +5,14 @@ import {
   type BodyweightEntry,
 } from "../src/domain/BodyweightTracker";
 
-beforeEach((context) =>
-  context.mock.timers.enable({
-    apis: ["Date"],
-    now: new Date("2026-11-10T12:00:00Z"),
-  }),
-);
+beforeEach((context) => {
+  if ("mock" in context) {
+    context.mock.timers.enable({
+      apis: ["Date"],
+      now: new Date("2026-11-10T12:00:00Z"),
+    });
+  }
+});
 
 const originalStorage = Object.getOwnPropertyDescriptor(
   globalThis,

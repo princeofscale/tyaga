@@ -1,4 +1,5 @@
 import { AnalyticsFacts } from "./AnalyticsFacts";
+import { OneRepMaxFormulas } from "./OneRepMaxFormulas";
 import { workingSets as workingSetsText } from "../lib/quantity";
 /**
  * DeloadEngine
@@ -63,6 +64,12 @@ export interface FatigueAssessment {
   recentWorkoutsCount: number;
   recentSetsCount: number;
   recentFailureSetsCount: number;
+  /** Наблюдаемые паттерны из дневника (последние 14 дн. против предыдущих 15–42 дн.): число упражнений со спадом e1RM ≥3%. */
+  performanceDips?: number;
+  /** Сдвиг среднего RIR за 14 дн. против предыдущего окна (отрицательный = те же тренировки даются тяжелее). */
+  rirDrift?: number | null;
+  /** Честная формулировка без «диагноза ЦНС». */
+  observedPatternNote?: string;
 }
 
 export class DeloadEngine {
@@ -101,18 +108,75 @@ export class DeloadEngine {
       }
     }
 
+    // Multi-session observed performance trend (14d vs prior 15–42d) & RIR drift
+    const recent14Start = addCalendarDays(today, -13);
+    const priorEnd = addCalendarDays(today, -14);
+    const priorStart = addCalendarDays(today, -41);
+    const recent14 = new AnalyticsFacts(workouts, { from: recent14Start, through: today, now, timeZone }).workouts();
+    const prior28 = new AnalyticsFacts(workouts, { from: priorStart, through: priorEnd, now, timeZone }).workouts();
+
+    const collectWindow = (list: Workout[]) => {
+      const bestByEx = new Map<string, number>();
+      let rirSum = 0;
+      let rirCount = 0;
+      for (const w of list) {
+        if (DeloadEngine.isDeloadName(w.name)) continue;
+        for (const e of w.exercises) {
+          const def = exerciseForEntry(e);
+          for (const s of e.sets) {
+            if (!s.done || s.warmup) continue;
+            if (s.rir !== null && Number.isFinite(s.rir)) {
+              rirSum += s.rir;
+              rirCount++;
+            }
+            if (def?.recording.e1rmEligible && s.weight > 0 && s.reps >= 1 && s.reps <= 10) {
+              const est = OneRepMaxFormulas.epley(s.weight, s.reps);
+              const prev = bestByEx.get(e.exerciseId) ?? 0;
+              if (est > prev) bestByEx.set(e.exerciseId, est);
+            }
+          }
+        }
+      }
+      return { bestByEx, avgRir: rirCount >= 4 ? rirSum / rirCount : null };
+    };
+
+    const curWin = collectWindow(recent14);
+    const prevWin = collectWindow(prior28);
+    let performanceDips = 0;
+    for (const [exId, curBest] of curWin.bestByEx) {
+      const prevBest = prevWin.bestByEx.get(exId);
+      if (prevBest && prevBest > 0 && (curBest - prevBest) / prevBest <= -0.03) {
+        performanceDips++;
+      }
+    }
+    const rirDrift =
+      curWin.avgRir !== null && prevWin.avgRir !== null
+        ? Math.round((curWin.avgRir - prevWin.avgRir) * 10) / 10
+        : null;
+
+    const observedParts: string[] = [];
+    if (performanceDips >= 2) observedParts.push(`спад e1RM ≥3% в ${performanceDips} упр.`);
+    if (rirDrift !== null && rirDrift <= -0.6) observedParts.push(`средний RIR стал тяжелее на ${Math.abs(rirDrift)}`);
+    const observedPatternNote = observedParts.length
+      ? `Паттерн совместим с накопленной усталостью (${observedParts.join("; ")}).`
+      : undefined;
+
     // Heuristics:
     // Workouts count > 14 in 30 days (+20)
     // Working sets > 120 in 30 days (+30)
     // Failure sets > 20 in 30 days (+30)
+    // Multi-session performance dip / negative RIR drift (+15)
     let score = totalWorkingSets ? 15 : 0;
     if (recent.length >= 12) score += 20;
     if (recent.length >= 18) score += 15;
     if (totalWorkingSets >= 100) score += 25;
     if (totalWorkingSets >= 160) score += 15;
     if (failureSets >= 15) score += 25;
+    if (performanceDips >= 2) score += 15;
+    if (rirDrift !== null && rirDrift <= -0.6) score += 10;
 
     score = Math.min(100, score);
+    const trendFields = { performanceDips, rirDrift, ...(observedPatternNote ? { observedPatternNote } : {}) };
 
     if (score >= 75) {
       return {
@@ -124,6 +188,7 @@ export class DeloadEngine {
         recentWorkoutsCount: recent.length,
         recentSetsCount: totalWorkingSets,
         recentFailureSetsCount: failureSets,
+        ...trendFields,
       };
     } else if (score >= 50) {
       return {
@@ -135,6 +200,7 @@ export class DeloadEngine {
         recentWorkoutsCount: recent.length,
         recentSetsCount: totalWorkingSets,
         recentFailureSetsCount: failureSets,
+        ...trendFields,
       };
     } else if (score >= 30) {
       return {
@@ -146,6 +212,7 @@ export class DeloadEngine {
         recentWorkoutsCount: recent.length,
         recentSetsCount: totalWorkingSets,
         recentFailureSetsCount: failureSets,
+        ...trendFields,
       };
     } else {
       return {
@@ -157,6 +224,7 @@ export class DeloadEngine {
         recentWorkoutsCount: recent.length,
         recentSetsCount: totalWorkingSets,
         recentFailureSetsCount: failureSets,
+        ...trendFields,
       };
     }
   }
@@ -167,7 +235,7 @@ export class DeloadEngine {
   /** Название программы с пометкой разгрузки: «Ноги А [Разгрузка]». */
   static readonly SUFFIX = " [Разгрузка]";
   static isDeloadName(name: string) {
-    return name.includes("[Разгрузка]");
+    return DeloadEngine.baseName(name) !== name.trim();
   }
   /** Тренировки без разгрузочных: база для веса следующей разгрузки (иначе вес снижается второй раз). */
   static regular<T extends { name: string }>(workouts: T[]) {
@@ -175,7 +243,8 @@ export class DeloadEngine {
   }
   /** Тип тренировки без пометки разгрузки: «Ноги А [Разгрузка]» → «Ноги А». */
   static baseName(name: string) {
-    return name.replace(/\s*\[Разгрузка\]\s*$/, "").trim() || name;
+    const cleaned = name.replace(/\s*\[Разгрузка\]\s*/g, " ").replace(/\s+/g, " ").trim();
+    return cleaned || name.trim();
   }
   /** Вес подхода в разгрузке: не выше прошлого, с шагом 2,5; веса без внешней нагрузки не меняются. */
   static isScalable(loadMode: string | undefined) {

@@ -12,9 +12,7 @@
 
 ## Стили
 
-- `steel.css` — токены, навигация и главная.
-- `steel-workout.css`, `steel-screens.css` и `steel-auth.css` — отдельные разделы. Карточки «Программ» оформлены в `programs.css`, календарь и окно переноса — в `training-calendar.css`.
-- Старый слой `design-iron.css` больше не импортируется; предшествующие функциональные стили из `round-*.css` остаются.
+- Стили консолидированы в `src/styles/` (13 модулей с каскадными слоями `@layer tokens, base, layout, components, screens, utilities` в `src/styles/layers.css`).
 - Переходы короткие, без фонового параллакса и бесконечной анимации на главной. `MotionConfig reducedMotion="user"` учитывает системную настройку уменьшения движения.
 
 ## Типографика и движение
@@ -30,7 +28,7 @@ npm run typecheck
 npm run lint
 npm test
 npm run build
-npx playwright test -c playwright.visual.config.ts tests/e2e/design.spec.ts tests/e2e/visual-extra.spec.ts
+npm run test:e2e:visual
 ~~~
 
-Визуальный конфиг использует порт 5686 только на loopback. Данные подставляются браузерными фикстурами, поэтому сервер и пользовательская база для этих сценариев не нужны. Кадры: `artifacts/design/` и `artifacts/design-quiet/`.
+Визуальный режим (`TYAGA_PLAYWRIGHT_MODE=visual` в `playwright.config.ts`) использует порт 5686 только на loopback. Данные подставляются браузерными фикстурами, поэтому сервер и пользовательская база для этих сценариев не нужны. Кадры: `artifacts/design/` и `artifacts/design-quiet/`.

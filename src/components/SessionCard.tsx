@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { ChevronRight, Clock3, Trophy } from "lucide-react";
 import { m } from "motion/react";
 import { DateText } from "../domain/DateText";
@@ -26,7 +27,7 @@ type Props = {
 };
 
 /** Строка тренировки в списках «Последние» и «История». */
-export default function SessionCard({
+const SessionCard = memo(function SessionCard({
   workout: w,
   expanded = false,
   index = 0,
@@ -42,6 +43,7 @@ export default function SessionCard({
   return (
     <m.button
       type="button"
+      data-testid="session-item"
       className={`session-item${expanded ? " session-item-rich" : ""}${records.length ? " has-record" : ""}`}
       onClick={() => onOpen(w)}
       {...enter(0.34 + index * 0.06)}
@@ -79,7 +81,7 @@ export default function SessionCard({
         <b
           title={
             tonnage.total > 0
-              ? "Только однозначно записанные свободные веса"
+              ? "Только однозначно записанные свободные веса (включая разминку)"
               : VolumeLabel.reason(tonnage.omittedSets)
           }
         >
@@ -94,4 +96,6 @@ export default function SessionCard({
       <ChevronRight size={17} className="muted session-chevron" aria-hidden="true" />
     </m.button>
   );
-}
+});
+
+export default SessionCard;

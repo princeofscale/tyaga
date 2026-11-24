@@ -117,7 +117,7 @@ test("legacy records migrate once with IDs/notes intact; original keys remain a 
   await journal.sync();
   assert.equal(journal.error, "");
   assert.equal(journal.pendingCount, 0);
-  assert.equal(server.docs.get("weight:2026-11-01")?.value?.id, "legacy-id");
+  assert.equal((server.docs.get("weight:2026-11-01")?.value as { id?: string } | undefined)?.id, "legacy-id");
   assert.equal(
     storage.getItem("tyaga-bodyweight:user"),
     JSON.stringify([entry]),

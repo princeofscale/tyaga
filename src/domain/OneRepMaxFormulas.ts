@@ -30,6 +30,28 @@ export class OneRepMaxFormulas {
     return OneRepMaxFormulas.epley(weight, effectiveReps);
   }
   /**
+   * Расчётный 1ПМ с уровнем уверенности по диапазону эффективных повторений (reps + RIR):
+   * - 1–5 повт.: high (наименьшая погрешность, подходит для автообновления ТМ)
+   * - 6–10 повт.: moderate (ошибка растёт)
+   * - 11–15 повт.: low (сильное влияние силовой выносливости — не использовать как триггер ТМ)
+   * - >15 повт.: null
+   */
+  static e1rmWithConfidence(
+    weight: number,
+    reps: number,
+    rir: number | null = null,
+  ): { value: number; confidence: "high" | "moderate" | "low"; effectiveReps: number } | null {
+    if (!Number.isFinite(weight) || weight <= 0 || !Number.isFinite(reps) || reps < 1) return null;
+    const hasRir = rir !== null && Number.isFinite(rir) && rir >= 0;
+    if (hasRir && rir! > 6) return null;
+    const effectiveReps = hasRir ? reps + rir! : reps;
+    if (effectiveReps > 15) return null;
+    const value = OneRepMaxFormulas.round(OneRepMaxFormulas.epley(weight, effectiveReps));
+    const confidence: "high" | "moderate" | "low" =
+      effectiveReps <= 5 ? "high" : effectiveReps <= 10 ? "moderate" : "low";
+    return { value, confidence, effectiveReps };
+  }
+  /**
    * Вклад одного рабочего подхода в гипертрофический стимул и локальную/системную усталость
    * в зависимости от повторений и запаса до отказа (RIR).
    * - RIR 0..2: полный стимул (0,95–1,0), но RIR 0 стоит на 35% больше усталости (хуже SFR).

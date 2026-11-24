@@ -1,14 +1,13 @@
 type Store = Pick<Storage, "getItem" | "setItem" | "removeItem" | "key" | "length">;
 
 /**
- * Всё личное, что приложение держит в браузере (localStorage): черновик тренировки, кэш журнала веса,
- * сведения о последнем импорте, ключи операций импорта, офлайн-копия профиля и данных. Всё это
- * начинается с `tyaga-`. Настройки оформления и звука (`tyaga_theme_accent`, `tyaga_sound_muted`)
- * личными не считаются и остаются. `tyaga-cloud` — ключ синхронизации Android-сборки, не веб-аккаунта.
+ * Всё личное, что приложение держит в браузере (localStorage) и локальной базе устройства (IndexedDB):
+ * черновик тренировки, кэш журнала веса, сведения о последнем импорте, ключи операций импорта,
+ * офлайн-копия профиля и данных, а также `tyaga-cloud` (токен облачной синхронизации).
+ * Настройки оформления и звука (`tyaga_theme_accent`, `tyaga_sound_muted`) личными не считаются и остаются.
  * Cache Storage личного не содержит: туда попадают только файлы оболочки приложения (service worker).
  */
 export class DeviceAccountData {
-  private static readonly kept = new Set(["tyaga-cloud"]);
   /** Ключи, у которых после префикса стоит id аккаунта. */
   private static readonly perAccount = [
     "tyaga-draft-account:", "tyaga-bodyweight-sync:", "tyaga-bodyweight-bound:", "tyaga-bodyweight-goal:",
@@ -29,9 +28,17 @@ export class DeviceAccountData {
     return keys;
   }
 
-  /** Выход из аккаунта: на устройстве не остаётся ничего личного. Возвращает стёртые ключи. */
+  /** Выход из аккаунта: стирает всё личное в localStorage (включая tyaga-cloud) и базу IndexedDB tyaga-device. */
   wipe() {
-    return this.remove(this.keys().filter((k) => k.startsWith("tyaga-") && !DeviceAccountData.kept.has(k)));
+    const removed = this.remove(this.keys().filter((k) => k.startsWith("tyaga-")));
+    try {
+      if (typeof indexedDB !== "undefined" && typeof indexedDB.deleteDatabase === "function") {
+        indexedDB.deleteDatabase("tyaga-device");
+      }
+    } catch {
+      /* IndexedDB недоступна в приватном режиме или тестовом окружении */
+    }
+    return removed;
   }
 
   /**

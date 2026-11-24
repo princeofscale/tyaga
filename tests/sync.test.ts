@@ -5,6 +5,7 @@ import initSqlJs from "sql.js";
 import { LocalD1 } from "../src/device/LocalD1";
 import { handleApi, type Env } from "../server/index";
 import cloud from "../server/cloud";
+import type { SyncDoc } from "../server/SyncService";
 import { replicate, type SyncPage } from "../src/lib/replicate";
 import { makeWorkout, type Workout } from "../src/lib/model";
 
@@ -169,7 +170,7 @@ test("cross-account UPSERT conflict leaves original owner intact and never poiso
   };
   assert.equal((await remote("/api/routines", { method: "PUT", token: tokenA, body: routineA })).status, 200);
 
-  const changesA = (await remote("/api/sync/changes?since=0", { token: tokenA })).data as SyncPage;
+  const changesA = (await remote("/api/sync/changes?since=0", { token: tokenA })).data as { docs: SyncDoc[] };
   const workoutDocA = changesA.docs.find((d) => d.kind === "workout" && d.id === workoutA.id)!;
   const routineDocA = changesA.docs.find((d) => d.kind === "routine" && d.id === routineA.id)!;
   assert.ok(workoutDocA && routineDocA);

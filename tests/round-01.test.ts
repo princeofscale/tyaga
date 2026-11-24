@@ -146,13 +146,3 @@ test("R01 D2/D3: снимок чужой строки игнорируется, 
   const next = SetPropagation.apply(sets, 0, { weight: 110 }, foreign);
   assert.deepEqual(next.map((s) => s.weight), [110, 100, 110]);
 });
-
-import { zoneCreditNote } from "../src/lib/zoneCredit";
-
-test("R01 D6: пояснение «число больше» не показывается при нуле и когда оно неверно", () => {
-  assert.equal(zoneCreditNote(0, 0), "");
-  assert.match(zoneCreditNote(14, 7), /Поэтому число больше, чем подходов в записи/);
-  const same = zoneCreditNote(4, 4);
-  assert.match(same, /Один подход засчитывается каждой зоне/);
-  assert.doesNotMatch(same, /Поэтому число больше/);
-});

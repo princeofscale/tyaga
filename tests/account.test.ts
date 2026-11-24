@@ -15,7 +15,7 @@ async function setup() {
   return {mf,db,call};
 }
 const credentials = { email:"athlete@example.test", password:"strong test passphrase", displayName:"Атлет", timeZone:"Europe/Amsterdam" };
-const cookieOf = (r:Response) => r.headers.get("Set-Cookie")!.split(";")[0];
+const cookieOf = (r: { headers: { get(name: string): string | null } }) => r.headers.get("Set-Cookie")!.split(";")[0];
 test("real account adopts existing history; cookies, profiles, revocation, recovery and owner isolation work",async()=> {
   const {mf,db,call} = await setup();
   try {

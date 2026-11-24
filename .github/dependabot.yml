@@ -8,6 +8,13 @@ updates:
       time: "06:00"
       timezone: "Europe/Moscow"
     open-pull-requests-limit: 5
+    ignore:
+      # @mediapipe/tasks-vision pinned to 0.10.35 due to internal wasm ?url imports and FilesetResolver.isSimdSupported().
+      - dependency-name: "@mediapipe/tasks-vision"
+        update-types: ["version-update:semver-major"]
+      # typescript-eslint v8 supports TypeScript <6.1.0; hold TS 7+ until typescript-eslint supports it.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
     groups:
       dev-dependencies:
         dependency-type: "development"
@@ -27,3 +34,7 @@ updates:
       time: "06:00"
       timezone: "Europe/Moscow"
     open-pull-requests-limit: 3
+    groups:
+      github-actions:
+        patterns:
+          - "*"

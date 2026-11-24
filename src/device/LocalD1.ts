@@ -51,7 +51,11 @@ export class LocalD1 {
   async batch(statements: Statement[]) {
     this.db.exec("BEGIN");
     try {
-      const results = statements.map((s) => ({ results: s.rows(), success: true, meta: {} }));
+      const results = statements.map((s) => ({
+        results: s.rows(),
+        success: true,
+        meta: { changes: this.db.getRowsModified() },
+      }));
       this.db.exec("COMMIT");
       return results;
     } catch (error) {

@@ -19,10 +19,25 @@ android {
     testOptions {
         unitTests.includeAndroidResources = true
     }
+    signingConfigs {
+        release {
+            def keystorePath = System.getenv("TYAGA_KEYSTORE_FILE") ?: project.findProperty("TYAGA_KEYSTORE_FILE")
+            if (keystorePath) {
+                storeFile file(keystorePath)
+                storePassword System.getenv("TYAGA_KEYSTORE_PASSWORD") ?: project.findProperty("TYAGA_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("TYAGA_KEY_ALIAS") ?: project.findProperty("TYAGA_KEY_ALIAS")
+                keyPassword System.getenv("TYAGA_KEY_PASSWORD") ?: project.findProperty("TYAGA_KEY_PASSWORD")
+            }
+        }
+    }
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled true
+            shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (signingConfigs.release.storeFile != null) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }

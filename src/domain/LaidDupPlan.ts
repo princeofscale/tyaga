@@ -1,10 +1,13 @@
 import { addCalendarDays } from "../lib/calendar";
+import { MUSCLES } from "../data/muscles";
 import { PeriodizationRules } from "./PeriodizationRules";
-import { estimatedOneRepMax, makeExerciseEntry, makeSets } from "../lib/model";
+import { SubstitutionPolicy, type PrescriptionMode, type SubstitutionClass } from "./SubstitutionPolicy";
+import { estimatedOneRepMax, exerciseById, exerciseForEntry, makeExerciseEntry, makeSets } from "../lib/model";
 import { quantity } from "../lib/quantity";
 import type {
   LaidDay,
   LaidMaxes,
+  Muscle,
   Routine,
   RoutinePeriodization,
   SetEntry,
@@ -15,12 +18,35 @@ import type {
 export type { LaidDay };
 export type LaidLift = keyof LaidMaxes;
 export type LaidRhythm = "6x1" | "3x1x3";
+export type LaidSubstitutions = Record<string, string>;
 /** Слот недели (0 — Пн … 6 — Вс): один из шести дней цикла или выходной (`null`). */
 export type LaidWeekSlot = LaidDay | null;
 export const LAID_WEEKS = 9;
 /** Недель в одной волне: три волны по три недели. */
 const WAVE_WEEKS = 3;
 const MAX_KG = PeriodizationRules.MAX_KG;
+
+const AXIAL_FAMILIES = new Set([
+  "squat",
+  "hip-hinge",
+  "overhead-press",
+  "horizontal-row-free",
+  "horizontal-row",
+  "loaded-carry",
+]);
+
+function isAxialExercise(exerciseId: string): boolean {
+  const def = exerciseById(exerciseId);
+  if (!def) return false;
+  if (def.recording.loadMode === "machine_stack" || def.recording.loadMode === "bodyweight" || def.recording.loadMode === "assisted_bodyweight")
+    return false;
+  if (def.id.includes("chest-supported") || def.id.includes("seal") || def.id.includes("legpress") || def.id.includes("hip-thrust") || def.id.includes("belt-squat"))
+    return false;
+  if (AXIAL_FAMILIES.has(def.familyId)) {
+    return def.equipment === "gym" || def.recording.loadMode === "total_external";
+  }
+  return false;
+}
 
 /** Позиция недели в цикле: `raw` — номер недели от старта (0 — первая; < 0 до старта, ≥ 9 после цикла). */
 export type LaidPosition = {
@@ -45,6 +71,10 @@ export type LaidDayPlan = {
   position: LaidPosition;
   lift: LaidLift;
   liftExerciseId: string;
+  originalLiftExerciseId: string;
+  prescriptionMode: PrescriptionMode;
+  subClass: SubstitutionClass;
+  painFlag: boolean;
   maxKg: number;
   heavy: LaidPlanSet & { light: boolean };
   work: LaidPlanSet & { sets: number; light?: boolean };
@@ -64,6 +94,23 @@ export type LaidExerciseSpec = {
   intensityLabel: string;
   note?: string;
   added: boolean;
+  replacedFrom?: string;
+};
+
+export type LaidSlotInfo = {
+  originalId: string;
+  resolvedId: string;
+  role: "lift" | "wave-aux" | "aux" | "added";
+  lift?: LaidLift;
+  days: LaidDay[];
+  weeklySets: number;
+  replaced: boolean;
+};
+
+export type LaidVolumeSummary = {
+  totalSets: number;
+  axialSets: number;
+  muscles: { id: Muscle; name: string; sets: number }[];
 };
 
 type Aux = {
@@ -441,6 +488,43 @@ export class LaidDupPlan {
     return chosen;
   }
 
+  /** Нормализовать карту замен: убрать пустые и самозамены; вернуть undefined, если замен нет. */
+  static normalizeSubstitutions(substitutions?: LaidSubstitutions): LaidSubstitutions | undefined {
+    if (!substitutions) return undefined;
+    const cleaned: LaidSubstitutions = {};
+    for (const [orig, repl] of Object.entries(substitutions)) {
+      const from = orig.trim();
+      const to = typeof repl === "string" ? repl.trim() : "";
+      if (from && to && from !== to) cleaned[from] = to;
+    }
+    return Object.keys(cleaned).length ? cleaned : undefined;
+  }
+
+  /** Итоговый exerciseId с учётом замен цикла. */
+  static resolveExerciseId(originalId: string, substitutions?: LaidSubstitutions): string {
+    return substitutions?.[originalId] || originalId;
+  }
+
+  /** Итоговый exerciseId базового лифта с учётом замен цикла. */
+  static liftExerciseId(lift: LaidLift, substitutions?: LaidSubstitutions): string {
+    return LaidDupPlan.resolveExerciseId(LaidDupPlan.LIFT_EXERCISE[lift], substitutions);
+  }
+
+  /** Заменён ли базовый лифт на другое упражнение. */
+  static isLiftSubstituted(lift: LaidLift, substitutions?: LaidSubstitutions): boolean {
+    const orig = LaidDupPlan.LIFT_EXERCISE[lift];
+    return !!substitutions?.[orig] && substitutions[orig] !== orig;
+  }
+
+  /** Человеческое название базового лифта: исходное («становая») или имя замены. */
+  static liftLabel(lift: LaidLift, substitutions?: LaidSubstitutions): string {
+    if (LaidDupPlan.isLiftSubstituted(lift, substitutions)) {
+      const id = LaidDupPlan.liftExerciseId(lift, substitutions);
+      return exerciseById(id)?.name ?? LaidDupPlan.LIFT_LABEL[lift];
+    }
+    return LaidDupPlan.LIFT_LABEL[lift];
+  }
+
   /**
    * План одного дня: тяжёлый подход и четыре рабочих с весами, округлёнными до 2,5 кг.
    * В режиме `light` синглы (1 повтор, 95–97,5 %) заменяются тройками (90–92,5 %), а парные двойки становой (4 × 2 @ 92,5–93,5 %)
@@ -450,53 +534,113 @@ export class LaidDupPlan {
     day: LaidDay,
     raw: number,
     maxes: LaidMaxes,
-    options: { light?: boolean } = {},
+    options: {
+      light?: boolean;
+      substitutions?: LaidSubstitutions;
+      calibrationLifts?: readonly LaidLift[];
+      painFlags?: readonly LaidLift[];
+    } = {},
   ): LaidDayPlan {
     const position = LaidDupPlan.position(raw);
     const lift = LaidDupPlan.LIFT_OF[day];
     const maxKg = maxes[lift];
     const scheme = LaidDupPlan.SCHEME[day];
-    const light = !!options.light && scheme.heavy[position.inWave] === 1;
-    const heavyScheme: HeavyScheme = light ? 3 : scheme.heavy[position.inWave];
+    const originalLiftExerciseId = LaidDupPlan.LIFT_EXERCISE[lift];
+    const liftExerciseId = LaidDupPlan.resolveExerciseId(originalLiftExerciseId, options.substitutions);
+    const isReplaced = liftExerciseId !== originalLiftExerciseId;
+    const isCalibration = !!options.calibrationLifts?.includes(lift);
+    const painFlag = !!options.painFlags?.includes(lift);
+
+    const compat = isReplaced
+      ? SubstitutionPolicy.classify(exerciseById(originalLiftExerciseId), exerciseById(liftExerciseId), {
+          hasOwnHistory: !isCalibration,
+          painFlag,
+        })
+      : {
+          subClass: "A" as SubstitutionClass,
+          prescriptionMode: (painFlag ? "rir_range" : isCalibration ? "calibration" : "percent_1rm") as PrescriptionMode,
+          badge: "",
+          summary: "",
+          allowHeavySingles: !painFlag && !isCalibration,
+        };
+
+    const prescriptionMode: PrescriptionMode = painFlag
+      ? "rir_range"
+      : isCalibration
+        ? "calibration"
+        : compat.prescriptionMode;
+    const noPercent = prescriptionMode !== "percent_1rm";
+    const blockSingles = !!options.light || !compat.allowHeavySingles || noPercent;
+
+    const light = blockSingles && scheme.heavy[position.inWave] === 1;
+    const heavyScheme: HeavyScheme =
+      prescriptionMode === "rir_range"
+        ? 5
+        : light
+          ? 3
+          : scheme.heavy[position.inWave];
     const wave = position.wave - 1;
     const heavyPercent = LaidDupPlan.HEAVY_PCT[heavyScheme][wave];
     const rawWorkReps = scheme.work[position.inWave];
-    const workLight = light && rawWorkReps === 2;
-    const workReps: WorkReps = workLight ? 4 : rawWorkReps;
+    const workLight = (light && rawWorkReps === 2) || (prescriptionMode === "rir_range" && rawWorkReps < 6);
+    const workReps: WorkReps =
+      prescriptionMode === "rir_range" && rawWorkReps < 6
+        ? 8
+        : light && rawWorkReps === 2
+          ? 4
+          : rawWorkReps;
     const workPercent = LaidDupPlan.WORK_PCT[workReps][wave];
     return {
       day,
       position,
       lift,
-      liftExerciseId: LaidDupPlan.LIFT_EXERCISE[lift],
+      liftExerciseId,
+      originalLiftExerciseId,
+      prescriptionMode,
+      subClass: compat.subClass,
+      painFlag,
       maxKg,
-      heavy: { reps: heavyScheme, percent: heavyPercent, weightKg: LaidDupPlan.weight(maxKg, heavyPercent), light },
+      heavy: {
+        reps: heavyScheme,
+        percent: noPercent ? 0 : heavyPercent,
+        weightKg: noPercent ? 0 : LaidDupPlan.weight(maxKg, heavyPercent),
+        light: !!options.light && scheme.heavy[position.inWave] === 1,
+      },
       work: {
         sets: 4,
         reps: workReps,
-        percent: workPercent,
-        weightKg: LaidDupPlan.weight(maxKg, workPercent),
-        ...(workLight ? { light: true } : {}),
+        percent: noPercent ? 0 : workPercent,
+        weightKg: noPercent ? 0 : LaidDupPlan.weight(maxKg, workPercent),
+        ...(workLight && !!options.light ? { light: true } : {}),
       },
     };
   }
 
   /** Недельные повторения вспомогательного (push press, наклонный жим): для остальных — null. */
-  static auxReps(day: LaidDay, exerciseId: string, inWave: 0 | 1 | 2): number | null {
-    const found = LaidDupPlan.LAYOUT[day].aux.find((x) => x.exerciseId === exerciseId);
+  static auxReps(day: LaidDay, exerciseId: string, inWave: 0 | 1 | 2, substitutions?: LaidSubstitutions): number | null {
+    const found = LaidDupPlan.LAYOUT[day].aux.find(
+      (x) => LaidDupPlan.resolveExerciseId(x.exerciseId, substitutions) === exerciseId,
+    );
     return found?.byWave ? found.byWave[inWave] : null;
   }
   /** Волновую подсобку дня на конкретной неделе (Push 1 — push press, Push 2 — наклонный жим), если есть. */
-  static waveAuxSummary(day: LaidDay, inWave: 0 | 1 | 2): string | null {
+  static waveAuxSummary(day: LaidDay, inWave: 0 | 1 | 2, substitutions?: LaidSubstitutions): string | null {
     const found = LaidDupPlan.LAYOUT[day].aux.find((x) => x.byWave);
     if (!found?.byWave) return null;
-    const label = found.exerciseId === "push-press" ? "Push press" : "Наклонный жим";
+    const resolvedId = LaidDupPlan.resolveExerciseId(found.exerciseId, substitutions);
+    const label =
+      resolvedId !== found.exerciseId
+        ? (exerciseById(resolvedId)?.name ?? resolvedId)
+        : found.exerciseId === "push-press"
+          ? "Push press"
+          : "Наклонный жим";
     return `${label} ${found.sets} × ${found.byWave[inWave]}`;
   }
   /** Подробная спецификация упражнения дня для расписания и разбора состава. */
-  static exerciseSpec(day: LaidDay, exerciseId: string): LaidExerciseSpec {
-    const liftId = LaidDupPlan.LIFT_EXERCISE[LaidDupPlan.LIFT_OF[day]];
-    if (exerciseId === liftId) {
+  static exerciseSpec(day: LaidDay, exerciseId: string, substitutions?: LaidSubstitutions): LaidExerciseSpec {
+    const originalLiftId = LaidDupPlan.LIFT_EXERCISE[LaidDupPlan.LIFT_OF[day]];
+    const resolvedLiftId = LaidDupPlan.resolveExerciseId(originalLiftId, substitutions);
+    if (exerciseId === resolvedLiftId) {
       const s = LaidDupPlan.SCHEME[day];
       return {
         exerciseId,
@@ -505,10 +649,11 @@ export class LaidDupPlan {
         intensityLabel: "85–97,5 % от 1ПМ · отдых 3–4 мин",
         note: "Вес и повторения меняются каждую неделю по волне DUP",
         added: false,
+        ...(resolvedLiftId !== originalLiftId ? { replacedFrom: originalLiftId } : {}),
       };
     }
     const layout = LaidDupPlan.LAYOUT[day];
-    const aux = layout.aux.find((x) => x.exerciseId === exerciseId);
+    const aux = layout.aux.find((x) => LaidDupPlan.resolveExerciseId(x.exerciseId, substitutions) === exerciseId);
     if (aux) {
       const repsText = aux.byWave
         ? `${aux.byWave.join(" / ")} по неделе волны`
@@ -520,35 +665,53 @@ export class LaidDupPlan {
         role: aux.byWave ? "wave-aux" : "aux",
         setsLabel: `${aux.sets} × ${repsText}`,
         intensityLabel: "RPE 8–9 · запас 1–2 повт.",
-        note: aux.note,
+        note: aux.exerciseId === exerciseId ? aux.note : undefined,
         added: false,
+        ...(aux.exerciseId !== exerciseId ? { replacedFrom: aux.exerciseId } : {}),
       };
     }
-    const extra = layout.extras.find((x) => x.exerciseId === exerciseId);
+    const extra = layout.extras.find((x) => LaidDupPlan.resolveExerciseId(x.exerciseId, substitutions) === exerciseId);
     const repsText = extra ? (extra.repMin === extra.repMax ? String(extra.repMin) : `${extra.repMin}–${extra.repMax}`) : "12–15";
     return {
       exerciseId,
       role: "added",
       setsLabel: `${extra?.sets ?? 3} × ${repsText}`,
       intensityLabel: "RPE 8–9 · запас 1–2 повт.",
-      note: extra?.note,
+      note: extra && extra.exerciseId === exerciseId ? extra.note : undefined,
       added: true,
+      ...(extra && extra.exerciseId !== exerciseId ? { replacedFrom: extra.exerciseId } : {}),
     };
   }
   /** Упражнения оригинального дня (включая базовое): всё, чего здесь нет, — «добавлено». */
-  static originalIds(day: LaidDay): string[] {
-    return [LaidDupPlan.LIFT_EXERCISE[LaidDupPlan.LIFT_OF[day]], ...LaidDupPlan.LAYOUT[day].aux.map((x) => x.exerciseId)];
+  static originalIds(day: LaidDay, substitutions?: LaidSubstitutions): string[] {
+    return [
+      LaidDupPlan.resolveExerciseId(LaidDupPlan.LIFT_EXERCISE[LaidDupPlan.LIFT_OF[day]], substitutions),
+      ...LaidDupPlan.LAYOUT[day].aux.map((x) => LaidDupPlan.resolveExerciseId(x.exerciseId, substitutions)),
+    ];
   }
-  static isAdded(day: LaidDay, exerciseId: string): boolean {
-    return !LaidDupPlan.originalIds(day).includes(exerciseId);
+  static isAdded(day: LaidDay, exerciseId: string, substitutions?: LaidSubstitutions): boolean {
+    return !LaidDupPlan.originalIds(day, substitutions).includes(exerciseId);
   }
 
-  /** Строка плана дня: «1 × 5 × 85 кг · 4 × 12 × 65 кг». */
+  /** Строка плана дня: «1 × 5 × 85 кг · 4 × 12 × 65 кг» или калибровка/RIR без фиктивных процентов. */
   static line(plan: LaidDayPlan): string {
+    if (plan.prescriptionMode === "calibration") {
+      return `Калибровка · 1 × ${plan.heavy.reps} (RIR 2–3) · ${plan.work.sets} × ${plan.work.reps} (RIR 2)`;
+    }
+    if (plan.prescriptionMode === "rir_range") {
+      const rirText = plan.painFlag ? "RIR 2–3 · щадяще" : "RIR 1–2";
+      return `По RIR · 1 × ${plan.heavy.reps} (${rirText}) · ${plan.work.sets} × ${plan.work.reps} (RIR 2)`;
+    }
     return `1 × ${plan.heavy.reps} × ${LaidDupPlan.kg(plan.heavy.weightKg)} кг · ${plan.work.sets} × ${plan.work.reps} × ${LaidDupPlan.kg(plan.work.weightKg)} кг`;
   }
   /** Короткая строка для компактных плиток дней: «85×5 · 4×12×65 кг». */
   static compactLine(plan: LaidDayPlan): string {
+    if (plan.prescriptionMode === "calibration") {
+      return `Калибровка · 1×${plan.heavy.reps} · ${plan.work.sets}×${plan.work.reps} (RIR 2–3)`;
+    }
+    if (plan.prescriptionMode === "rir_range") {
+      return `По RIR · 1×${plan.heavy.reps} · ${plan.work.sets}×${plan.work.reps}`;
+    }
     return `1×${plan.heavy.reps} ${LaidDupPlan.kg(plan.heavy.weightKg)} кг · ${plan.work.sets}×${plan.work.reps} ${LaidDupPlan.kg(plan.work.weightKg)} кг`;
   }
   /** Число с запятой, без лишнего нуля: 67,5; 85. */
@@ -575,10 +738,31 @@ export class LaidDupPlan {
   /** Что делает день: для заметки тяжёлого упражнения. */
   static describe(plan: LaidDayPlan): string {
     const { heavy, work } = plan;
+    if (plan.prescriptionMode === "calibration") {
+      return [
+        `${LaidDupPlan.weekLabel(plan.position)}.`,
+        `${LaidDupPlan.PLAN_MARK} калибровка 1 × ${heavy.reps} ${LaidDupPlan.repsWord(heavy.reps)} с запасом 2–3 повторения (RIR 2–3), затем ${work.sets} × ${work.reps} ${LaidDupPlan.repsWord(work.reps)} (RIR 2).`,
+        "Подбери комфортный рабочий вес без привязки к старому 1ПМ — после 2 тренировок сможешь задать собственный максимум.",
+      ].join(" ");
+    }
+    if (plan.prescriptionMode === "rir_range") {
+      return [
+        `${LaidDupPlan.weekLabel(plan.position)}.`,
+        `${LaidDupPlan.PLAN_MARK} ${plan.painFlag ? "щадящий режим (пометка боли)" : "работа по RIR (класс C)"}: 1 × ${heavy.reps} ${LaidDupPlan.repsWord(heavy.reps)} и ${work.sets} × ${work.reps} ${LaidDupPlan.repsWord(work.reps)} с запасом ${plan.painFlag ? "2–3" : "1–2"} повт.`,
+        plan.painFlag
+          ? "Тяжёлые синглы 95 % и автоповышение веса отключены — ориентируйся на переносимый вес без усиления симптомов."
+          : "Для этого типа движения проценты от 1ПМ неточны — прогрессируй по повторениям и RIR.",
+      ].join(" ");
+    }
+    const replacedNote =
+      plan.liftExerciseId !== plan.originalLiftExerciseId
+        ? `Замена вместо «${exerciseById(plan.originalLiftExerciseId)?.name ?? LaidDupPlan.LIFT_LABEL[plan.lift]}»: волновая периодизация и проценты сохранены.`
+        : "";
     return [
       `${LaidDupPlan.weekLabel(plan.position)}.`,
       `${LaidDupPlan.PLAN_MARK} 1 × ${heavy.reps} ${LaidDupPlan.repsWord(heavy.reps)} · ${LaidDupPlan.pct(heavy.percent)} % от 1ПМ (${LaidDupPlan.kg(plan.maxKg)} кг) = ${LaidDupPlan.kg(heavy.weightKg)} кг${heavy.light ? " (облегчённо, не по оригиналу)" : ""}.`,
       `Затем ${work.sets} × ${work.reps} ${LaidDupPlan.repsWord(work.reps)} · ${LaidDupPlan.pct(work.percent)} % = ${LaidDupPlan.kg(work.weightKg)} кг${work.light ? " (облегчённо)" : ""}.`,
+      ...(replacedNote ? [replacedNote] : []),
     ].join(" ");
   }
   static pct(value: number): string {
@@ -587,24 +771,50 @@ export class LaidDupPlan {
 
   /** Подходы базового упражнения дня: тяжёлый и четыре рабочих (ничего не отмечено). */
   static liftSets(plan: LaidDayPlan): SetEntry[] {
-    const set = (weight: number, reps: number): SetEntry => ({ id: crypto.randomUUID(), weight, reps, rir: null, warmup: false, done: false });
+    const rir = plan.prescriptionMode === "percent_1rm" ? null : 2;
+    const set = (weight: number, reps: number): SetEntry => ({ id: crypto.randomUUID(), weight, reps, rir, warmup: false, done: false });
     return [set(plan.heavy.weightKg, plan.heavy.reps), ...Array.from({ length: plan.work.sets }, () => set(plan.work.weightKg, plan.work.reps))];
   }
 
   /** Упражнения дня для шаблона программы (веса базового — недели 1; на старте считаются заново). */
-  static entries(day: LaidDay, maxes: LaidMaxes, options: { extras: boolean; light: boolean }): WorkoutExercise[] {
+  static entries(
+    day: LaidDay,
+    maxes: LaidMaxes,
+    options: {
+      extras: boolean;
+      light: boolean;
+      substitutions?: LaidSubstitutions;
+      calibrationLifts?: readonly LaidLift[];
+      painFlags?: readonly LaidLift[];
+    },
+  ): WorkoutExercise[] {
     const plan = LaidDupPlan.day(day, 0, maxes, options);
     const layout = LaidDupPlan.LAYOUT[day];
     const lift = { ...makeExerciseEntry(plan.liftExerciseId), sets: LaidDupPlan.liftSets(plan) };
-    const rows = [...layout.aux, ...(options.extras ? layout.extras : [])].map((x) => {
+    const seen = new Set<string>([plan.liftExerciseId]);
+    const rows: WorkoutExercise[] = [];
+    for (const x of [...layout.aux, ...(options.extras ? layout.extras : [])]) {
+      const resolvedId = LaidDupPlan.resolveExerciseId(x.exerciseId, options.substitutions);
+      if (seen.has(resolvedId)) continue;
+      seen.add(resolvedId);
       const reps = x.byWave ? x.byWave[0] : x.repMin;
-      return {
-        ...makeExerciseEntry(x.exerciseId),
-        sets: makeSets(x.sets, 0, reps).map((s) => ({ ...s, rir: null })),
-        repMin: x.byWave ? reps : x.repMin,
-        repMax: x.byWave ? reps : x.repMax,
-      };
-    });
+      const def = exerciseById(resolvedId);
+      const isDuration = def?.recording.type === "duration";
+      rows.push({
+        ...makeExerciseEntry(resolvedId),
+        sets: makeSets(x.sets, 0, isDuration ? 0 : reps).map((s) => ({
+          ...s,
+          rir: null,
+          ...(isDuration ? { durationSeconds: 45 } : {}),
+        })),
+        ...(isDuration
+          ? {}
+          : {
+              repMin: x.byWave ? reps : x.repMin,
+              repMax: x.byWave ? reps : x.repMax,
+            }),
+      });
+    }
     return [lift, ...rows];
   }
 
@@ -617,16 +827,28 @@ export class LaidDupPlan {
     cycleId?: string;
     rhythm?: LaidRhythm;
     weekdays?: Partial<Record<LaidDay, number>>;
+    substitutions?: LaidSubstitutions;
+    calibrationLifts?: readonly LaidLift[];
+    painFlags?: readonly LaidLift[];
   }): Routine[] {
     const cycleId = input.cycleId ?? crypto.randomUUID();
     const baseWeekdays = LaidDupPlan.RHYTHM_WEEKDAYS[input.rhythm ?? "6x1"];
     const weekdays: Record<LaidDay, number> = { ...baseWeekdays, ...(input.weekdays ?? {}) };
+    const substitutions = LaidDupPlan.normalizeSubstitutions(input.substitutions);
+    const calibrationLifts = input.calibrationLifts?.length ? [...new Set(input.calibrationLifts)] : undefined;
+    const painFlags = input.painFlags?.length ? [...new Set(input.painFlags)] : undefined;
     return LaidDupPlan.DAYS.map((day) => ({
       id: crypto.randomUUID(),
       name: LaidDupPlan.NAMES[day],
       notes: `${LaidDupPlan.ORIGINAL[day]} программы Дэвида Лейда (DUP, 9 недель). Отдых на базовом движении — 3–4 мин, вспомогательные — запас 1–2 повторения (RPE 8–9).`,
       days: [weekdays[day]],
-      exercises: LaidDupPlan.entries(day, input.maxes, input),
+      exercises: LaidDupPlan.entries(day, input.maxes, {
+        extras: input.extras,
+        light: input.light,
+        substitutions,
+        calibrationLifts,
+        painFlags,
+      }),
       restSeconds: LaidDupPlan.REST_SECONDS,
       progression: "repeat" as const,
       repMin: 8,
@@ -642,6 +864,9 @@ export class LaidDupPlan {
         maxesFromWeek: 0,
         extras: input.extras,
         light: input.light,
+        ...(substitutions ? { substitutions } : {}),
+        ...(calibrationLifts ? { calibrationLifts } : {}),
+        ...(painFlags ? { painFlags } : {}),
       },
     }));
   }
@@ -712,7 +937,12 @@ export class LaidDupPlan {
     if (!p) return null;
     const raw = LaidDupPlan.weekOf(p.startMonday, date);
     const position = LaidDupPlan.position(raw);
-    return LaidDupPlan.day(p.day, raw, LaidDupPlan.maxesFor(p, position.week), { light: p.light });
+    return LaidDupPlan.day(p.day, raw, LaidDupPlan.maxesFor(p, position.week), {
+      light: p.light,
+      substitutions: p.substitutions,
+      calibrationLifts: p.calibrationLifts,
+      painFlags: p.painFlags,
+    });
   }
 
   /**
@@ -779,13 +1009,32 @@ export class LaidDupPlan {
     return { base, added: total(true) - base };
   }
 
+  /** Сколько тренировок за окно содержат выполненные рабочие подходы этого упражнения (для проверки калибровки ≥ 2 сессий). */
+  static sessionsForExercise(workouts: Workout[], exerciseId: string, since = "0000-01-01", until = "9999-12-31"): number {
+    const dates = new Set<string>();
+    for (const w of workouts) {
+      if (w.date < since || w.date > until) continue;
+      if (w.exercises.some((e) => e.exerciseId === exerciseId && e.sets.some((s) => s.done && !s.warmup && s.reps > 0))) {
+        dates.add(`${w.id}:${w.date}`);
+      }
+    }
+    return dates.size;
+  }
+
   /**
    * Лучший расчётный 1ПМ базового упражнения по Эпли среди выполненных рабочих подходов с даты `since` (включительно):
    * null, если подходящих нет. Дедуплицирует ревизии тренировок и игнорирует частичную амплитуду (ROM),
    * чтобы не завышать рабочие максимумы полной амплитуды.
    */
-  static estimate(workouts: Workout[], lift: LaidLift, since = "0000-01-01", until = "9999-12-31"): number | null {
-    const id = LaidDupPlan.LIFT_EXERCISE[lift];
+  static estimate(
+    workouts: Workout[],
+    lift: LaidLift,
+    since = "0000-01-01",
+    until = "9999-12-31",
+    exerciseIdOverride?: string,
+    maxReps = 12,
+  ): number | null {
+    const id = exerciseIdOverride || LaidDupPlan.LIFT_EXERCISE[lift];
     const unique = new Map<string, Workout>();
     for (const w of workouts) {
       const prev = unique.get(w.id);
@@ -803,6 +1052,7 @@ export class LaidDupPlan {
       for (const entry of w.exercises) {
         if (entry.exerciseId !== id) continue;
         for (const set of entry.sets) {
+          if (set.reps > maxReps) continue;
           const rom = set.execution?.rom ?? entry.execution?.rom;
           if (rom === "shortened_partial" || rom === "lengthened_partial") continue;
           const value = estimatedOneRepMax(set, entry);
@@ -813,31 +1063,43 @@ export class LaidDupPlan {
     return best === null ? null : Math.round(best * 10) / 10;
   }
 
-  /** Оценка по истории для окна создания: свежая история за последние полгода. */
-  static estimates(workouts: Workout[], today: string): Record<LaidLift, number | null> {
+  /** Оценка по истории для окна создания: свежая история за последние полгода (с учётом замен базовых лифтов). */
+  static estimates(workouts: Workout[], today: string, substitutions?: LaidSubstitutions): Record<LaidLift, number | null> {
     const since = addCalendarDays(today, -LaidDupPlan.ESTIMATE_DAYS);
     return {
-      squat: LaidDupPlan.estimate(workouts, "squat", since, today),
-      bench: LaidDupPlan.estimate(workouts, "bench", since, today),
-      deadlift: LaidDupPlan.estimate(workouts, "deadlift", since, today),
-      ohp: LaidDupPlan.estimate(workouts, "ohp", since, today),
+      squat: LaidDupPlan.estimate(workouts, "squat", since, today, LaidDupPlan.liftExerciseId("squat", substitutions)),
+      bench: LaidDupPlan.estimate(workouts, "bench", since, today, LaidDupPlan.liftExerciseId("bench", substitutions)),
+      deadlift: LaidDupPlan.estimate(workouts, "deadlift", since, today, LaidDupPlan.liftExerciseId("deadlift", substitutions)),
+      ohp: LaidDupPlan.estimate(workouts, "ohp", since, today, LaidDupPlan.liftExerciseId("ohp", substitutions)),
     };
   }
 
   /**
    * «Можно обновить максимум»: оценка по подходам последних 28 дней (и не раньше действующей настройки) не меньше чем на 5 %
-   * выше действующего максимума. Возвращает предложенные максимумы: оценка, округлённая вниз до 2,5 кг.
+   * выше действующего максимума. Guardrails:
+   * - пропускает лифты с пометкой боли (`painFlags`) и в режиме калибровки (`calibrationLifts`);
+   * - не принимает подходы выше 10 повторений как силовой триггер (высокая погрешность e1RM на 11+ повт.).
    */
-  static suggestion(p: RoutinePeriodization, workouts: Workout[], today: string): { lift: LaidLift; from: number; estimate: number; to: number }[] {
+  static suggestion(
+    p: RoutinePeriodization,
+    workouts: Workout[],
+    today: string,
+    options: { maxJumpFactor?: number } = {},
+  ): { lift: LaidLift; from: number; estimate: number; to: number }[] {
     const settingStart = addCalendarDays(p.startMonday, p.maxesFromWeek * 7);
     const window = addCalendarDays(today, -LaidDupPlan.SUGGEST_DAYS);
     const since = settingStart > window ? settingStart : window;
     const found: { lift: LaidLift; from: number; estimate: number; to: number }[] = [];
     for (const lift of ["squat", "bench", "deadlift", "ohp"] as const) {
-      const estimate = LaidDupPlan.estimate(workouts, lift, since, today);
+      if (p.painFlags?.includes(lift) || p.calibrationLifts?.includes(lift)) continue;
+      const estimate = LaidDupPlan.estimate(workouts, lift, since, today, LaidDupPlan.liftExerciseId(lift, p.substitutions), 10);
       const current = p.maxes[lift];
       if (estimate !== null && estimate >= current * 1.05) {
-        const to = Math.min(MAX_KG, Math.floor(estimate / 2.5) * 2.5);
+        const capped =
+          options.maxJumpFactor && options.maxJumpFactor > 1
+            ? Math.min(estimate, current * options.maxJumpFactor)
+            : estimate;
+        const to = Math.min(MAX_KG, Math.floor(capped / 2.5) * 2.5);
         if (to > current) found.push({ lift, from: current, estimate, to });
       }
     }
@@ -850,19 +1112,25 @@ export class LaidDupPlan {
    * остаются на прежних числах, потому что старая настройка уходит в `earlier` (`withMaxes`). После 9-й недели
    * не срабатывает: обновлять нечего, цикл закончен. Ничего не понижается — правило только на рост.
    */
-  static autoMaxes(p: RoutinePeriodization, workouts: Workout[], today: string): LaidAutoUpdate | null {
+  static autoMaxes(
+    p: RoutinePeriodization,
+    workouts: Workout[],
+    today: string,
+    options: { maxJumpFactor?: number; minorMode?: boolean } = {},
+  ): LaidAutoUpdate | null {
+    if (options.minorMode) return null;
     const position = LaidDupPlan.position(LaidDupPlan.weekOf(p.startMonday, today));
     if (position.finished) return null;
-    const applied = LaidDupPlan.suggestion(p, workouts, today);
+    const applied = LaidDupPlan.suggestion(p, workouts, today, { maxJumpFactor: options.maxJumpFactor });
     if (!applied.length) return null;
     const maxes = { ...p.maxes };
     for (const item of applied) maxes[item.lift] = item.to;
     return { maxes, applied, fromWeek: position.week };
   }
   /** Уведомление об автопересчёте: что выросло и с какой недели. */
-  static autoNotice(update: LaidAutoUpdate): string {
+  static autoNotice(update: LaidAutoUpdate, substitutions?: LaidSubstitutions): string {
     const list = update.applied
-      .map((item) => `${LaidDupPlan.LIFT_LABEL[item.lift]} ${LaidDupPlan.kg(item.from)} → ${LaidDupPlan.kg(item.to)} кг`)
+      .map((item) => `${LaidDupPlan.liftLabel(item.lift, substitutions)} ${LaidDupPlan.kg(item.from)} → ${LaidDupPlan.kg(item.to)} кг`)
       .join("; ");
     return `Максимумы обновлены автоматически: ${list}. Оценка — по подходам ${LaidDupPlan.windowText(LaidDupPlan.SUGGEST_DAYS)}, новые веса — с недели ${update.fromWeek + 1}.`;
   }
@@ -874,5 +1142,231 @@ export class LaidDupPlan {
       .filter((stage) => stage.fromWeek < week)
       .slice(-7);
     return { ...p, maxes: { ...maxes }, maxesFromWeek: week, earlier: earlier.length ? earlier : undefined };
+  }
+
+  /** Уникальные упражнения цикла (сначала 4 базовых лифта, затем вспомогательные и добавленные) с днями и недельными подходами. */
+  static catalogSlots(extras: boolean, substitutions?: LaidSubstitutions): LaidSlotInfo[] {
+    const map = new Map<string, LaidSlotInfo>();
+    const addSlot = (originalId: string, role: LaidSlotInfo["role"], day: LaidDay, sets: number, lift?: LaidLift) => {
+      const resolvedId = LaidDupPlan.resolveExerciseId(originalId, substitutions);
+      const prev = map.get(originalId);
+      if (prev) {
+        if (!prev.days.includes(day)) prev.days.push(day);
+        prev.weeklySets += sets;
+        if (role === "lift" || role === "wave-aux") prev.role = role;
+        if (lift) prev.lift = lift;
+      } else {
+        map.set(originalId, {
+          originalId,
+          resolvedId,
+          role,
+          ...(lift ? { lift } : {}),
+          days: [day],
+          weeklySets: sets,
+          replaced: resolvedId !== originalId,
+        });
+      }
+    };
+    for (const lift of ["squat", "bench", "deadlift", "ohp"] as const) {
+      const originalId = LaidDupPlan.LIFT_EXERCISE[lift];
+      for (const day of LaidDupPlan.DAYS) {
+        if (LaidDupPlan.LIFT_OF[day] === lift) addSlot(originalId, "lift", day, 5, lift);
+      }
+    }
+    for (const day of LaidDupPlan.DAYS) {
+      const layout = LaidDupPlan.LAYOUT[day];
+      for (const x of layout.aux) addSlot(x.exerciseId, x.byWave ? "wave-aux" : "aux", day, x.sets);
+      if (extras) for (const x of layout.extras) addSlot(x.exerciseId, "added", day, x.sets);
+    }
+    return [...map.values()];
+  }
+
+  /** Упражнения, которые уже стоят в тех же днях цикла, что и `originalId` — их нельзя выбирать заменой, чтобы не плодить дубли в одном дне. */
+  static conflictingIdsForSubstitution(originalId: string, extras: boolean, substitutions?: LaidSubstitutions): string[] {
+    const conflicts = new Set<string>();
+    for (const day of LaidDupPlan.DAYS) {
+      const layout = LaidDupPlan.LAYOUT[day];
+      const dayOriginals = [
+        LaidDupPlan.LIFT_EXERCISE[LaidDupPlan.LIFT_OF[day]],
+        ...layout.aux.map((x) => x.exerciseId),
+        ...(extras ? layout.extras.map((x) => x.exerciseId) : []),
+      ];
+      if (!dayOriginals.includes(originalId)) continue;
+      for (const other of dayOriginals) {
+        if (other !== originalId) conflicts.add(LaidDupPlan.resolveExerciseId(other, substitutions));
+      }
+    }
+    return [...conflicts];
+  }
+
+  /** Сводка планового недельного объёма по группам мышц (прямые + 0,5 косвенных) и осевой нагрузки по массиву упражнений. */
+  private static summarizeExercisesVolume(items: { exerciseId: string; sets: number; entry?: WorkoutExercise }[]): LaidVolumeSummary {
+    const totals = Object.fromEntries(MUSCLES.map((m) => [m.id, 0])) as Record<Muscle, number>;
+    let totalSets = 0;
+    let axialSets = 0;
+    for (const item of items) {
+      totalSets += item.sets;
+      if (isAxialExercise(item.exerciseId)) axialSets += item.sets;
+      const def = (item.entry ? exerciseForEntry(item.entry) : undefined) ?? exerciseById(item.exerciseId);
+      if (!def) continue;
+      for (const p of def.primary) totals[p] += item.sets;
+      for (const s of def.secondary) totals[s] += item.sets * 0.5;
+    }
+    const muscles = MUSCLES.map((m) => ({
+      id: m.id,
+      name: m.short,
+      sets: Math.round(totals[m.id] * 10) / 10,
+    })).filter((m) => m.sets > 0);
+    return { totalSets, axialSets, muscles };
+  }
+
+  /** Недельный объём и осевая нагрузка шаблона цикла с учётом `extras` и `substitutions`. */
+  static weeklyMuscleVolume(options: { extras: boolean; substitutions?: LaidSubstitutions }): LaidVolumeSummary {
+    const maxes: LaidMaxes = { squat: 100, bench: 100, deadlift: 100, ohp: 100 };
+    const items: { exerciseId: string; sets: number; entry: WorkoutExercise }[] = [];
+    for (const day of LaidDupPlan.DAYS) {
+      for (const entry of LaidDupPlan.entries(day, maxes, { extras: options.extras, light: false, substitutions: options.substitutions })) {
+        items.push({ exerciseId: entry.exerciseId, sets: entry.sets.filter((s) => !s.warmup).length, entry });
+      }
+    }
+    return LaidDupPlan.summarizeExercisesVolume(items);
+  }
+
+  /** Недельный объём и осевая нагрузка уже созданного цикла. */
+  static cycleMuscleVolume(cycle: readonly Routine[]): LaidVolumeSummary {
+    const items: { exerciseId: string; sets: number; entry: WorkoutExercise }[] = [];
+    for (const r of cycle) {
+      for (const entry of r.exercises) {
+        items.push({ exerciseId: entry.exerciseId, sets: entry.sets.filter((s) => !s.warmup).length, entry });
+      }
+    }
+    return LaidDupPlan.summarizeExercisesVolume(items);
+  }
+
+  /**
+   * Применить новые замены упражнений ко всем программам действующего цикла:
+   * заменяет упражнения во всех днях, сохраняет дни недели, историю максимумов (`earlier`) и прочие правки,
+   * а если для заменённого базового лифта передан новый 1ПМ — обновляет его с недели `fromWeek`.
+   */
+  static withSubstitutions(
+    cycle: readonly Routine[],
+    nextSubstitutions?: LaidSubstitutions,
+    options?: {
+      maxes?: LaidMaxes;
+      fromWeek?: number;
+      calibrationLifts?: readonly LaidLift[];
+      painFlags?: readonly LaidLift[];
+    },
+  ): Routine[] {
+    const normalized = LaidDupPlan.normalizeSubstitutions(nextSubstitutions);
+    const out: Routine[] = [];
+    for (const routine of cycle) {
+      const prev = LaidDupPlan.periodizationOf(routine);
+      if (!prev) continue;
+      const oldSubs = prev.substitutions;
+      const nextPeriodizationBase =
+        options?.maxes &&
+        (["squat", "bench", "deadlift", "ohp"] as const).some((l) => options.maxes![l] !== prev.maxes[l])
+          ? LaidDupPlan.withMaxes(prev, options.maxes, options.fromWeek ?? 0)
+          : { ...prev };
+      const calLifts =
+        options?.calibrationLifts !== undefined
+          ? options.calibrationLifts.length
+            ? [...new Set(options.calibrationLifts)]
+            : undefined
+          : prev.calibrationLifts;
+      const pFlags =
+        options?.painFlags !== undefined
+          ? options.painFlags.length
+            ? [...new Set(options.painFlags)]
+            : undefined
+          : prev.painFlags;
+      const nextPeriodization: RoutinePeriodization = {
+        ...nextPeriodizationBase,
+        ...(normalized ? { substitutions: normalized } : {}),
+        ...(calLifts ? { calibrationLifts: calLifts } : {}),
+        ...(pFlags ? { painFlags: pFlags } : {}),
+      };
+      if (!normalized) delete nextPeriodization.substitutions;
+      if (!calLifts) delete nextPeriodization.calibrationLifts;
+      if (!pFlags) delete nextPeriodization.painFlags;
+
+      const day = prev.day;
+      const layout = LaidDupPlan.LAYOUT[day];
+      const origLiftId = LaidDupPlan.LIFT_EXERCISE[LaidDupPlan.LIFT_OF[day]];
+      const slotOriginals = [
+        origLiftId,
+        ...layout.aux.map((x) => x.exerciseId),
+        ...layout.extras.map((x) => x.exerciseId),
+      ];
+      // Карта «текущий exerciseId в программе → новый exerciseId»
+      const remap = new Map<string, string>();
+      for (const origId of slotOriginals) {
+        const oldId = LaidDupPlan.resolveExerciseId(origId, oldSubs);
+        const newId = LaidDupPlan.resolveExerciseId(origId, normalized);
+        if (oldId !== newId) remap.set(oldId, newId);
+      }
+
+      const activeWeek = options?.fromWeek ?? 0;
+      const newPlan = LaidDupPlan.day(day, activeWeek, LaidDupPlan.maxesFor(nextPeriodization, activeWeek), {
+        light: nextPeriodization.light,
+        substitutions: normalized,
+        calibrationLifts: calLifts,
+        painFlags: pFlags,
+      });
+
+      const seen = new Set<string>();
+      const nextExercises: WorkoutExercise[] = [];
+      for (const entry of routine.exercises) {
+        const mappedId = remap.get(entry.exerciseId);
+        const targetId = mappedId ?? entry.exerciseId;
+        if (seen.has(targetId)) continue;
+        seen.add(targetId);
+
+        if (!mappedId) {
+          // Если у базового лифта поменялся только 1ПМ, обновим шаблон подходов на актуальный план
+          if (entry.exerciseId === newPlan.liftExerciseId && options?.maxes) {
+            nextExercises.push({ ...entry, sets: LaidDupPlan.liftSets(newPlan) });
+          } else {
+            nextExercises.push(entry);
+          }
+          continue;
+        }
+
+        const fresh = makeExerciseEntry(mappedId);
+        if (mappedId === newPlan.liftExerciseId) {
+          nextExercises.push({
+            ...fresh,
+            sets: LaidDupPlan.liftSets(newPlan),
+          });
+        } else {
+          const def = exerciseById(mappedId);
+          const isDuration = def?.recording.type === "duration";
+          const workingCount = Math.max(1, entry.sets.filter((s) => !s.warmup).length || entry.sets.length);
+          const fallbackReps = entry.repMin ?? (entry.sets.find((s) => !s.warmup)?.reps || 10);
+          nextExercises.push({
+            ...fresh,
+            sets: makeSets(workingCount, 0, isDuration ? 0 : fallbackReps).map((s) => ({
+              ...s,
+              rir: null,
+              ...(isDuration ? { durationSeconds: 45 } : {}),
+            })),
+            ...(isDuration
+              ? {}
+              : {
+                  ...(entry.repMin !== undefined ? { repMin: entry.repMin } : {}),
+                  ...(entry.repMax !== undefined ? { repMax: entry.repMax } : {}),
+                }),
+          });
+        }
+      }
+
+      out.push({
+        ...routine,
+        exercises: nextExercises,
+        periodization: nextPeriodization,
+      });
+    }
+    return out;
   }
 }

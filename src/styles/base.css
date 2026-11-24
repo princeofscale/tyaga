@@ -1,3 +1,4 @@
+@layer tokens, base, layout, components, screens, utilities;
 @layer base {
     :root {
         font-synthesis: none;
@@ -831,5 +832,12 @@
             grid-template-columns: 1fr;
             padding: 18px
         }
+    }
+    dialog:modal {
+        overscroll-behavior: contain;
+    }
+    dialog::backdrop {
+        overflow: hidden;
+        overscroll-behavior: contain;
     }
 }

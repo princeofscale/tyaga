@@ -5,6 +5,7 @@ import { ANATOMICAL_MUSCLES, evidenceById, type Exercise } from "../lib/model";
 import BodyMap from "./BodyMap";
 import { ExternalLink, Globe2, Sparkles } from "lucide-react";
 import { MuscleParticipation } from "../domain/MuscleParticipation";
+import { SubstitutionPolicy } from "../domain/SubstitutionPolicy";
 import { CHEST_HEADS, DELTOID_HEADS } from "../data/muscles";
 const ROLE_NAMES = {
   primary: "Движители",
@@ -51,6 +52,7 @@ export default function ExerciseInfo({
     }),
     [e],
   );
+  const romEvidence = useMemo(() => SubstitutionPolicy.lengthenedEvidence(e), [e]);
 
   return (
     <div className="exercise-technique">
@@ -76,6 +78,11 @@ export default function ExerciseInfo({
             : `Вариант упражнения · каталог ${e.catalogRevision}`}
         </span>
         {e.source?.record.review && <span className="reviewed-tag">Разметка проверена по источникам · редакционная модель</span>}
+        {romEvidence.level === "strong" || romEvidence.level === "moderate" ? (
+          <span className="reviewed-tag" title={`${romEvidence.detail} (${romEvidence.citation})`}>
+            {romEvidence.label} ({romEvidence.citation})
+          </span>
+        ) : null}
       </div>
 
       {highlightedHeads.length > 0 && (

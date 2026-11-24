@@ -1,5 +1,6 @@
 import type { Exercise, Workout } from "../lib/types";
 import { AnalyticsFacts, type FactsOptions } from "./AnalyticsFacts";
+import { MuscleParticipation } from "./MuscleParticipation";
 
 export type UnmarkedExercise = { exerciseId: string; name: string; sets: number; exercise?: Exercise };
 export type CoverageReport = { exercises: number; sets: number; items: UnmarkedExercise[] };
@@ -13,6 +14,12 @@ export class MuscleCoverage {
   static unmarked(exercise: Exercise | undefined) {
     if (!exercise) return false;
     return !exercise.primary.length && !exercise.secondary.length && !(exercise.custom?.declaredZones?.length ?? 0);
+  }
+
+  /** Есть зоны (например, архивный каталог v1), но нет детальной анатомической разметки мышц для карты тела. */
+  static anatomicallyUnmapped(exercise: Exercise | undefined): boolean {
+    if (!exercise || this.unmarked(exercise)) return false;
+    return MuscleParticipation.roles(exercise).length === 0;
   }
 
   /** Упражнения «Мои» без разметки — то, что массовая разметка предлагает выбрать первым. */

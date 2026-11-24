@@ -14,11 +14,11 @@ an independently validated clinical atlas.
 
 ## Fonts and libraries
 
-Fira Sans Extra Condensed, Onest and JetBrains Mono: SIL Open Font License 1.1.
-Onest: Copyright 2021 The Onest Project Authors (https://github.com/simpals/onest).
+Golos Text, Sofia Sans Condensed and JetBrains Mono: SIL Open Font License 1.1.
+Golos Text & Sofia Sans Condensed licences are stored alongside the woff2 files in `src/assets/fonts/`.
 JetBrains Mono: Copyright 2020 The JetBrains Mono Project Authors
 (https://github.com/JetBrains/JetBrainsMono).
-React, React DOM, Lucide, Motion/Framer Motion and TanStack Query retain their
+React, React DOM, Lucide and Motion/Framer Motion retain their
 original notices. Apple Health import: fflate (MIT), saxes (ISC) and xmlchars (MIT).
 Full applicable notices copied from the pinned installed packages are included in
 [the shipped licence file](<public/licenses/third-party.txt>) and served with the application.

@@ -98,6 +98,9 @@ export function DeloadModal({
               </span>
             </div>
             <p className="fatigue-reason-text">{assessment.reason}</p>
+            {assessment.observedPatternNote ? (
+              <p className="tiny text-accent">{assessment.observedPatternNote}</p>
+            ) : null}
             <p className="tiny">Индекс записанного объёма, не измерение усталости или восстановления.</p>
           </div>
         </div>

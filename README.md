@@ -62,7 +62,7 @@
 
 - **Фронтенд:** React 19, TypeScript, Motion, Lucide, CSS с дизайн-токенами.
 - **Night Session:** графитовый фон, лайм, оригинальная SVG-графика дисков, адаптивные экраны и поддержка уменьшения движения.
-- **Шрифты:** локальные, с родной кириллицей: Fira Sans Extra Condensed для заголовков и крупных цифр, Onest для интерфейса, JetBrains Mono для кодов. Семейства заданы токенами в [fonts.css](<src/styles/fonts.css>). Внешний CDN не нужен.
+- **Шрифты:** локальные, с родной кириллицей: Sofia Sans Condensed для заголовков и крупных цифр, Golos Text для интерфейса, JetBrains Mono для кодов. Семейства заданы токенами в [fonts.css](<src/styles/fonts.css>). Внешний CDN не нужен.
 - **Звук:** Web Audio API, тактильная отдача — `navigator.vibrate`.
 - **Web:** Cloudflare Worker + D1, серверные ревизии, сессионные cookie.
 - **Android:** автономный движок `sql.js` (SQLite в WASM), облачная синхронизация по желанию пользователя.
@@ -142,7 +142,7 @@ npm run dev
 npm run check:migrations  # проверка нумерации SQL-миграций (без новых дублей)
 npm run lint              # ESLint 10 с --max-warnings=0 (без baseline)
 npm run typecheck         # продукт: src, server, db, конфиги
-npm run typecheck:tests   # e2e-спеки и конфиги Playwright (tests/ не входит в основной tsconfig)
+npm run typecheck:tests   # все тесты (unit + e2e) и playwright.config.ts
 npm test
 npm run build
 
@@ -160,15 +160,17 @@ npm run test:e2e:visual
 
 ## Android APK
 
-> **Статус релиза:** веб-версия находится на **1.5.0 (Night Session)**, а `android/app/build.gradle` уже обновлён до `versionName "1.5.0"` / `versionCode 4`. Однако ранее выложенный на сайте подписанный APK остаётся на прежней версии **1.2 / versionCode 3** и ещё не перевыпущен под Night Session 1.5.0. Чтобы обновить APK на сайте, соберите и подпишите новую сборку локально:
+> **Статус релиза:** веб-версия находится на **1.5.0 (Night Session)**, а `android/app/build.gradle` уже обновлён до `versionName "1.5.0"` / `versionCode 4`. Скопируйте `.env.device.example` в `.env.device` (файл игнорируется git) и укажите `VITE_CLOUD_URL`. Для подписанной release-сборки задайте переменные `TYAGA_KEYSTORE_FILE`, `TYAGA_KEYSTORE_PASSWORD`, `TYAGA_KEY_ALIAS`, `TYAGA_KEY_PASSWORD`:
 
 ```bash
 npm run build:android
-cd android && ./gradlew assembleDebug
+cd android && ./gradlew assembleRelease
 node scripts/copy-apk.mjs
 ```
 
-Выходной путь: `android/app/build/outputs/apk/debug/app-debug.apk`. Для обновления уже установленного приложения нужны прежняя подпись и увеличенный Android `versionCode`; другая подпись может потребовать удаления приложения и потери телефонной SQLite. Сохранение прежнего APK на сайте не обновляет его встроенный интерфейс.
+`copy-apk.mjs` копирует подписанный `app-release.apk` и записывает в `dist/client/app-version.json` `versionCode`, `versionName` и `sha256` (для локальной отладки допускается `node scripts/copy-apk.mjs --debug`). При обновлении приложение сверяет SHA-256 перед установкой.
+
+> **Важно о зависимостях:** `@mediapipe/tasks-vision` зафиксирован точно на `0.10.35` из-за локального бандлинга внутренних WASM-файлов (`?url`) и вызова `FilesetResolver.isSimdSupported()` в `src/services/PoseVideoAnalysis.ts`. `typescript` удерживается на 5.x до поддержки TS 7 в `typescript-eslint`.
 
 ## Лицензия
 

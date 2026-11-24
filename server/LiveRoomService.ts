@@ -7,12 +7,15 @@ import {
   type LiveRoom,
   type LiveState,
 } from "../src/lib/liveRoom";
+import { AuthError } from "./AccountService";
 import { InputError, num, object, str } from "./validation";
 
 const IDLE_MS = ROOM_IDLE_HOURS * 3_600_000;
 /** Предел validWorkout: 30 упражнений по 30 подходов. Строже нельзя — легальная тренировка не должна ломать комнату. */
 const MAX_SETS = 900;
 const MAX_REST_AHEAD_MS = 3_600_000;
+const JOIN_WINDOW_MS = 15 * 60_000;
+const MAX_JOIN_FAILURES = 20;
 const PHASES: readonly LivePhase[] = ["idle", "lifting", "resting", "done"];
 const ISO_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
 const NOT_FOUND = "Комната не найдена или уже закрыта";
@@ -72,6 +75,36 @@ export class LiveRoomService {
     return this.db.prepare("DELETE FROM live_members WHERE updated_at<?").bind(this.cutoff()).run();
   }
 
+  private joinLimitKey() {
+    return `live_join:${this.accountId}`;
+  }
+
+  private async guardJoinAttempts() {
+    const row = await this.db
+      .prepare("SELECT attempts, window_start FROM auth_limits WHERE platform_id = ?")
+      .bind(this.joinLimitKey())
+      .first<{ attempts: number; window_start: number }>();
+    if (row && row.window_start >= Date.now() - JOIN_WINDOW_MS && row.attempts >= MAX_JOIN_FAILURES) {
+      throw new AuthError("Слишком много попыток входа в комнату. Попробуй через 15 минут.", 429);
+    }
+  }
+
+  private async noteJoinFailure() {
+    const now = Date.now();
+    await this.db.batch([
+      this.db.prepare("DELETE FROM auth_limits WHERE window_start < ?").bind(now - 86_400_000),
+      this.db
+        .prepare(
+          "INSERT INTO auth_limits (platform_id,attempts,window_start) VALUES (?,1,?) ON CONFLICT(platform_id) DO UPDATE SET attempts = CASE WHEN auth_limits.window_start < ? THEN 1 ELSE auth_limits.attempts + 1 END, window_start = CASE WHEN auth_limits.window_start < ? THEN excluded.window_start ELSE auth_limits.window_start END",
+        )
+        .bind(this.joinLimitKey(), now, now - JOIN_WINDOW_MS, now - JOIN_WINDOW_MS),
+    ]);
+  }
+
+  private async clearJoinFailures() {
+    await this.db.prepare("DELETE FROM auth_limits WHERE platform_id = ?").bind(this.joinLimitKey()).run();
+  }
+
   async current(): Promise<LiveRoom | null> {
     const mine = await this.db
       .prepare("SELECT code FROM live_members WHERE account_id=? AND updated_at>=?")
@@ -95,6 +128,7 @@ export class LiveRoomService {
   }
 
   async join(input: unknown): Promise<LiveRoom> {
+    await this.guardJoinAttempts();
     const code = RoomCode.normalize(str(object(input).code, 40));
     if (!RoomCode.isValid(code)) throw new InputError("Код комнаты — пять символов, например H7KQ2");
     await this.sweep();
@@ -102,13 +136,20 @@ export class LiveRoomService {
       .prepare("SELECT COUNT(*) AS n,MAX(account_id=?) AS mine FROM live_members WHERE code=?")
       .bind(this.accountId, code)
       .first<{ n: number; mine: number | null }>();
-    if (!seats?.n) throw new InputError(NOT_FOUND);
-    if (seats.mine === 1) return this.room(code);
+    if (!seats?.n) {
+      await this.noteJoinFailure();
+      throw new InputError(NOT_FOUND);
+    }
+    if (seats.mine === 1) {
+      await this.clearJoinFailures();
+      return this.room(code);
+    }
     const entered = await this.db
       .prepare(enterRoom("(SELECT COUNT(*) FROM live_members WHERE code=?1)<?4"))
       .bind(code, this.accountId, new Date().toISOString(), MAX_ROOM_MEMBERS)
       .run();
     if (entered.meta.changes !== 1) throw new InputError(FULL);
+    await this.clearJoinFailures();
     return this.room(code);
   }
 

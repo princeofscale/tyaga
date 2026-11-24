@@ -4,6 +4,7 @@ dist/
 .sites-runtime/
 .env
 .env.*
+!.env.device.example
 .dev.vars
 .dev.vars.*
 *.log
@@ -16,11 +17,5 @@ playwright-report/
 .omx/
 .omx-state-locks/
 .omx-state-locks.identity.json
-.codex/*
-!.codex/agents/
-!.codex/agents/**
-!.codex/skills/
-!.codex/skills/**
-.codex/skills/.system/**
-!.codex/prompts/
-!.codex/prompts/**
+.codex/
+.claude/

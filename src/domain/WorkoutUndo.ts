@@ -2,7 +2,7 @@ import type { Draft } from "../lib/draft";
 import type { WorkoutExercise, SetEntry } from "../lib/types";
 export type WorkoutRemoval =
   | { kind: "exercise"; index: number; exercise: WorkoutExercise }
-  | { kind: "set"; exerciseId: string; index: number; set: SetEntry };
+  | { kind: "set"; exerciseId: string; exerciseIndex?: number; index: number; set: SetEntry };
 /** Restores the removed item only, preserving all edits made after deletion. */
 export class WorkoutUndo {
   static valid(value: unknown): value is WorkoutRemoval {
@@ -83,6 +83,7 @@ export class WorkoutUndo {
         {
           kind: "set",
           exerciseId: exercise.exerciseId,
+          exerciseIndex,
           index,
           set: structuredClone(set),
         } as WorkoutRemoval,
@@ -107,9 +108,12 @@ export class WorkoutUndo {
         structuredClone(item.exercise),
       );
     } else {
-      const index = exercises.findIndex(
-        (e) => e.exerciseId === item.exerciseId,
-      );
+      const preferred =
+        typeof item.exerciseIndex === "number" &&
+        exercises[item.exerciseIndex]?.exerciseId === item.exerciseId
+          ? item.exerciseIndex
+          : exercises.findIndex((e) => e.exerciseId === item.exerciseId);
+      const index = preferred;
       if (index < 0 || exercises[index].sets.length >= 30)
         throw new Error("Сначала восстанови упражнение");
       const e = exercises[index];

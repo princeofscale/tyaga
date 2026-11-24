@@ -25,6 +25,9 @@ export function addCalendarDays(date: string, days: number) {
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
+export function daysBetween(from: string, to: string) {
+  return Math.round((Date.parse(to + "T12:00:00Z") - Date.parse(from + "T12:00:00Z")) / 86400000);
+}
 export function weekStart(date = new Date(), timeZone?: string) {
   const day = localDate(date, timeZone);
   const weekday = new Date(day + "T12:00:00Z").getUTCDay();

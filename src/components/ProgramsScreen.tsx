@@ -1,6 +1,6 @@
 import { m, useReducedMotion } from "motion/react";
 import { Suspense, useState, useEffect, useMemo, useRef } from "react";
-import { ChevronRight, Plus, Save, Trash2 } from "lucide-react";
+import { ArrowLeftRight, ChevronRight, Plus, Save, Trash2 } from "lucide-react";
 import { TrainingProgram, DAY_NAMES } from "../domain/TrainingProgram";
 import { TrainingCalendar, type ScheduledTraining } from "../domain/TrainingCalendar";
 import {
@@ -13,16 +13,17 @@ import {
   fmt,
 } from "../lib/model";
 import ExerciseInfo from "./ExerciseInfo";
-import type { Exercise, Routine, Workout } from "../lib/types";
+import ExerciseSwapModal from "./ExerciseSwapModal";
+import type { Exercise, LaidMaxes, Routine, Workout } from "../lib/types";
 import { ApiError } from "../services/ApiClient";
 import Modal from "./Modal";
 import Select from "./Select";
 import { ExerciseLibrary } from "./chunks";
 import { DeloadPlan, type DeloadPlanRecord } from "../domain/DeloadPlan";
 import { dateLabel } from "../lib/calendar";
-import { LaidDupPlan, type LaidDay } from "../domain/LaidDupPlan";
+import { LaidDupPlan, type LaidDay, type LaidLift, type LaidSubstitutions } from "../domain/LaidDupPlan";
 import LaidDupModal from "./LaidDupModal";
-import { LaidDupCard, LaidDupSchedule, LaidWeekScheduleModal } from "./LaidDupPanel";
+import { LaidDupCard, LaidDupSchedule, LaidSubstitutionsModal, LaidWeekScheduleModal } from "./LaidDupPanel";
 import ScheduleOccurrenceModal from "./ScheduleOccurrenceModal";
 import ProgramRoutineCard from "./ProgramRoutineCard";
 import ProgramWeek from "./ProgramWeek";
@@ -32,6 +33,8 @@ type Props = {
   routines: Routine[];
   workouts: Workout[];
   timeZone: string;
+  accountId?: string;
+  minorMode?: boolean;
   personal: Exercise[];
   favorites: string[];
   onFavorite: (id: string) => void;
@@ -58,6 +61,8 @@ export default function ProgramsScreen(props: Props) {
   const [laid, setLaid] = useState<{ mode: "create" | "update" | "restart"; cycleId?: string } | null>(null);
   const [schedule, setSchedule] = useState<string | null>(null);
   const [weekEditor, setWeekEditor] = useState<string | null>(null);
+  const [subsEditor, setSubsEditor] = useState<string | null>(null);
+  const [swapIndex, setSwapIndex] = useState<number | null>(null);
   const [adjustment, setAdjustment] = useState<Pick<ScheduledTraining, "routine" | "originalDate"> | null>(null);
   const [calendarNotice, setCalendarNotice] = useState("");
   const calendarHeading = useRef<HTMLHeadingElement>(null);
@@ -87,9 +92,14 @@ export default function ProgramsScreen(props: Props) {
   const editorRef = useRef<Routine | null>(editor);
   editorRef.current = editor;
   const dirty = !!editor && baseline.current !== null && JSON.stringify(editor) !== baseline.current;
+  const weightHintsKey = editor
+    ? `${editor.id}|${editor.progression}|${editor.repMin}|${editor.repMax}|${editor.incrementKg}|${editor.cycle ? "c" : ""}|${editor.exercises.map((e) => `${e.exerciseId}:${e.machineInstanceId ?? ""}:${e.equipmentNote ?? ""}:${e.sets.length}`).join(",")}`
+    : "";
   const weightHints = useMemo(
-    () => (editor ? new TrainingProgram(editor).weightHints(props.workouts, props.timeZone) : []),
-    [editor, props.workouts, props.timeZone],
+    () => (editorRef.current ? new TrainingProgram(editorRef.current).weightHints(props.workouts, props.timeZone) : []),
+    // Пересчёт только при изменении структуры упражнений/прогрессии, не на каждый ввод названия или заметок.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [weightHintsKey, props.workouts, props.timeZone],
   );
   const closeEditor = () => {
     setEditor(null);
@@ -121,7 +131,9 @@ export default function ProgramsScreen(props: Props) {
   /** R11-REQ04 / QA-R11-05: в копии Лейда подпись «Начнёшь с веса из истории» скрыта, только когда этот вес и так стоит в поле; иначе она объясняет, почему старт не с числа в поле. */
   const laidCopy = pendingNote !== "";
   /** Основной лифт программы Лейда: его подходы и веса считаются по неделе, плоской схемой не редактируются. */
-  const laidLift = laidEdited ? LaidDupPlan.LIFT_EXERCISE[LaidDupPlan.LIFT_OF[laidEdited.day]] : null;
+  const laidLift = laidEdited
+    ? LaidDupPlan.liftExerciseId(LaidDupPlan.LIFT_OF[laidEdited.day], laidEdited.substitutions)
+    : null;
   const laidPlan = editor && laidEdited ? LaidDupPlan.planFor(editor, today) : null;
   const open = (routine: Routine) => {
     setPendingNote("");
@@ -214,6 +226,48 @@ export default function ProgramsScreen(props: Props) {
       const msg =
         (e instanceof Error ? e.message : "Не удалось сохранить дни недели") +
         (saved ? ` Уже обновлено программ: ${saved} из ${updates.length} — проверь расписание и повтори.` : "");
+      setError(msg);
+      throw new Error(msg, { cause: e });
+    } finally {
+      setBusy(false);
+    }
+  }
+  /** Применить замены упражнений ко всем шести программам цикла Лейда. */
+  async function saveLaidSubstitutions(
+    cycle: Routine[],
+    substitutions: LaidSubstitutions | undefined,
+    maxes: LaidMaxes,
+    options?: { calibrationLifts?: LaidLift[]; painFlags?: LaidLift[] },
+  ) {
+    const first = cycle[0].periodization!;
+    const position = LaidDupPlan.position(LaidDupPlan.weekOf(first.startMonday, today));
+    const fromWeek = position.beforeStart ? 0 : position.week;
+    const updated = LaidDupPlan.withSubstitutions(cycle, substitutions, {
+      maxes,
+      fromWeek,
+      calibrationLifts: options?.calibrationLifts,
+      painFlags: options?.painFlags,
+    });
+    if (!updated.length) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    let saved = 0;
+    try {
+      for (const routine of updated) {
+        await props.onSave(routine);
+        saved++;
+      }
+      const count = substitutions ? Object.keys(substitutions).length : 0;
+      setNotice(
+        count > 0
+          ? `Замены сохранены на весь цикл Лейда (${count}): веса, периодизация и объём обновлены.`
+          : "Возвращены оригинальные упражнения цикла Лейда.",
+      );
+    } catch (e) {
+      const msg =
+        (e instanceof Error ? e.message : "Не удалось сохранить замены") +
+        (saved ? ` Уже обновлено программ: ${saved} из ${updated.length} — проверь список и повтори.` : "");
       setError(msg);
       throw new Error(msg, { cause: e });
     } finally {
@@ -401,6 +455,7 @@ export default function ProgramsScreen(props: Props) {
               busy={busy}
               onSchedule={() => setSchedule(plan.cycleId)}
               onEditDays={() => setWeekEditor(plan.cycleId)}
+              onEditSubstitutions={() => setSubsEditor(plan.cycleId)}
               onUpdate={() => setLaid({
                 mode: LaidDupPlan.position(LaidDupPlan.weekOf(plan.startMonday, today)).finished ? "restart" : "update",
                 cycleId: plan.cycleId,
@@ -483,6 +538,9 @@ export default function ProgramsScreen(props: Props) {
           cycle={laid.mode === "create" ? undefined : cycleById(laid.cycleId)}
           existing={laid.mode === "create" && laidCycles.length > 0}
           workouts={props.workouts}
+          personal={props.personal}
+          accountId={props.accountId}
+          minorMode={props.minorMode}
           today={today}
           onSave={props.onSave}
           onClose={() => setLaid(null)}
@@ -502,6 +560,11 @@ export default function ProgramsScreen(props: Props) {
             setSchedule(null);
             setWeekEditor(id);
           }}
+          onEditSubstitutions={() => {
+            const id = cycleById(schedule)[0].periodization!.cycleId;
+            setSchedule(null);
+            setSubsEditor(id);
+          }}
           onUpdate={() => {
             const cycle = cycleById(schedule);
             setSchedule(null);
@@ -520,6 +583,18 @@ export default function ProgramsScreen(props: Props) {
           today={today}
           onSave={(weekdays) => saveLaidWeekdays(cycleById(weekEditor), weekdays)}
           onClose={() => setWeekEditor(null)}
+        />
+      ) : null}
+      {subsEditor && cycleById(subsEditor) ? (
+        <LaidSubstitutionsModal
+          cycle={cycleById(subsEditor)}
+          workouts={props.workouts}
+          personal={props.personal}
+          accountId={props.accountId}
+          minorMode={props.minorMode}
+          today={today}
+          onSave={(subs, maxes, opts) => saveLaidSubstitutions(cycleById(subsEditor), subs, maxes, opts)}
+          onClose={() => setSubsEditor(null)}
         />
       ) : null}
       {editor ? (
@@ -697,6 +772,15 @@ export default function ProgramsScreen(props: Props) {
                           <h3>{entryName(entry)}</h3>
                         </div>
                         <div className="routine-order-controls">
+                          <button
+                            type="button"
+                            className="icon-button"
+                            aria-label={`Заменить ${entryName(entry)}`}
+                            title="Заменить упражнение"
+                            onClick={() => setSwapIndex(index)}
+                          >
+                            <ArrowLeftRight size={16} />
+                          </button>
                           <button
                             type="button"
                             disabled={index === 0}
@@ -955,6 +1039,52 @@ export default function ProgramsScreen(props: Props) {
           </form>
         </Modal>
       ) : null}
+      {editor && swapIndex !== null && editor.exercises[swapIndex] && exerciseForEntry(editor.exercises[swapIndex]) ? (
+        <ExerciseSwapModal
+          currentExercise={exerciseForEntry(editor.exercises[swapIndex])!}
+          personal={props.personal}
+          excludeIds={editor.exercises.filter((_, i) => i !== swapIndex).map((e) => e.exerciseId)}
+          requireWeighted={laidLift === editor.exercises[swapIndex].exerciseId}
+          subtitle={
+            laidEdited
+              ? "Замена изменит этот день; чтобы заменить упражнение во всех днях цикла сразу, открой «Замены» на карточке Лейда."
+              : undefined
+          }
+          onSwap={(nextEx) => {
+            const target = editor.exercises[swapIndex];
+            const isDuration = nextEx.recording.type === "duration";
+            const fresh = makeExerciseEntry(nextEx.id);
+            const nextEntry = {
+              ...fresh,
+              sets: target.sets.map((s) => ({
+                ...s,
+                id: crypto.randomUUID(),
+                weight: 0,
+                done: false,
+                ...(isDuration ? { reps: 0, durationSeconds: s.durationSeconds ?? 45 } : {}),
+              })),
+              ...(isDuration ? {} : { repMin: target.repMin, repMax: target.repMax }),
+            };
+            const nextExercises = editor.exercises.map((e, i) => (i === swapIndex ? nextEntry : e));
+            let nextPeriodization = editor.periodization;
+            if (laidEdited) {
+              const origLift = LaidDupPlan.LIFT_EXERCISE[LaidDupPlan.LIFT_OF[laidEdited.day]];
+              const currentLift = LaidDupPlan.liftExerciseId(LaidDupPlan.LIFT_OF[laidEdited.day], laidEdited.substitutions);
+              if (target.exerciseId === currentLift) {
+                const merged = LaidDupPlan.normalizeSubstitutions({
+                  ...(laidEdited.substitutions ?? {}),
+                  [origLift]: nextEx.id,
+                });
+                nextPeriodization = { ...laidEdited, ...(merged ? { substitutions: merged } : {}) };
+                if (!merged) delete nextPeriodization.substitutions;
+              }
+            }
+            setEditor({ ...editor, exercises: nextExercises, periodization: nextPeriodization });
+            setSwapIndex(null);
+          }}
+          onClose={() => setSwapIndex(null)}
+        />
+      ) : null}
       {picker && editor ? (
         <Modal
           title="Упражнения для программы"
@@ -1040,7 +1170,8 @@ export default function ProgramsScreen(props: Props) {
         <Modal
           title="Удалить программу?"
           onClose={() => {
-            if (!busy) setDeleting(null);
+            if (busy) return false;
+            setDeleting(null);
           }}
         >
           <p>
