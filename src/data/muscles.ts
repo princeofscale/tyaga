@@ -1,21 +1,29 @@
 // Display zones aggregate anatomical entries; a zone is not one anatomical muscle.
 // R04-REQ08: у группы одно название на всех экранах — `name` совпадает с `short`.
+// Недельные ориентиры (рабочие подходы/нед., прямые + 0,5 косвенных) основаны на
+// мета-анализах Schoenfeld / Pelland et al. и ориентирах RP Hypertrophy (Dr. Mike Israetel):
+// mv = поддержка массы, mev = минимум для роста, mavLow–mavHigh = оптимальный рост, mrv = предел восстановления.
 export const MUSCLES = [
-  { id: "chest", name: "Грудь", short: "Грудь", goal: 10 },
-  { id: "back", name: "Спина", short: "Спина", goal: 12 },
-  { id: "shoulders", name: "Плечи", short: "Плечи", goal: 8 },
-  { id: "biceps", name: "Сгибатели рук", short: "Сгибатели рук", goal: 6 },
-  { id: "triceps", name: "Трицепс", short: "Трицепс", goal: 6 },
-  { id: "quads", name: "Квадрицепс", short: "Квадрицепс", goal: 10 },
+  { id: "chest", name: "Грудь", short: "Грудь", goal: 12, mv: 4, mev: 8, mavLow: 12, mavHigh: 20, mrv: 22 },
+  { id: "back", name: "Спина", short: "Спина", goal: 14, mv: 6, mev: 10, mavLow: 14, mavHigh: 22, mrv: 25 },
+  { id: "shoulders", name: "Плечи", short: "Плечи", goal: 12, mv: 6, mev: 8, mavLow: 12, mavHigh: 20, mrv: 26 },
+  { id: "biceps", name: "Сгибатели рук", short: "Сгибатели рук", goal: 10, mv: 4, mev: 8, mavLow: 12, mavHigh: 18, mrv: 24 },
+  { id: "triceps", name: "Трицепс", short: "Трицепс", goal: 10, mv: 4, mev: 6, mavLow: 10, mavHigh: 16, mrv: 20 },
+  { id: "quads", name: "Квадрицепс", short: "Квадрицепс", goal: 12, mv: 6, mev: 8, mavLow: 12, mavHigh: 18, mrv: 20 },
   {
     id: "hamstrings",
     name: "Задняя часть бедра",
     short: "Задняя часть бедра",
-    goal: 8,
+    goal: 10,
+    mv: 4,
+    mev: 6,
+    mavLow: 10,
+    mavHigh: 16,
+    mrv: 20,
   },
-  { id: "glutes", name: "Ягодицы", short: "Ягодицы", goal: 8 },
-  { id: "calves", name: "Икры", short: "Икры", goal: 6 },
-  { id: "core", name: "Пресс", short: "Пресс", goal: 6 },
+  { id: "glutes", name: "Ягодицы", short: "Ягодицы", goal: 10, mv: 4, mev: 6, mavLow: 10, mavHigh: 16, mrv: 22 },
+  { id: "calves", name: "Икры", short: "Икры", goal: 10, mv: 6, mev: 8, mavLow: 12, mavHigh: 18, mrv: 24 },
+  { id: "core", name: "Пресс", short: "Пресс", goal: 8, mv: 4, mev: 6, mavLow: 10, mavHigh: 18, mrv: 24 },
 ] as const;
 export type Muscle = (typeof MUSCLES)[number]["id"];
 export const ANATOMICAL_MUSCLES = [

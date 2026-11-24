@@ -19,13 +19,13 @@ import { MuscleReadiness } from "../domain/MuscleReadiness";
 import { StrengthTotal } from "../domain/StrengthTotal";
 import { PersonalRecordsCalculator } from "../domain/PersonalRecords";
 import { BackdatedWorkout } from "../domain/BackdatedWorkout";
+import { WorkoutFlow } from "../domain/WorkoutFlow";
 import { SmartCoach } from "../domain/SmartCoach";
 import { SupplementsStore, type SupplementsState } from "../domain/Supplements";
 import { elapsedMs, type Draft } from "../lib/draft";
 import { entryName, fmt, localDate, workingSets, type Routine, type Workout } from "../lib/model";
 import { quantity, quantityWord } from "../lib/quantity";
 import WeeklyActivityBar from "./WeeklyActivityBar";
-import "../styles/today-redesign.css";
 
 function formatClock(seconds: number): string {
   const s = Math.max(0, Math.floor(seconds));
@@ -89,7 +89,7 @@ type Props = {
   hasPrograms: boolean;
   nextProgram?: string;
   deloadLine?: string | null;
-  load: { done: number; goal: number };
+  load: { done: number; goal: number; growthZones?: number; maintenanceZones?: number; totalZones?: number };
   onStart: () => void;
   onOpenWorkout: (workout: Workout) => void;
   onEmpty: () => void;
@@ -140,11 +140,10 @@ export default function TodayDashboard({
     (sum, exercise) => sum + exercise.sets.filter((set) => !set.warmup).length,
     0,
   );
-  const draftTotalSets = draft?.exercises.reduce(
-    (sum, exercise) => sum + exercise.sets.filter((set) => !set.warmup).length,
-    0,
-  ) ?? 0;
-  const draftDoneSets = draft ? workingSets([draft]) : 0;
+  const { workingTotal: draftTotalSets, workingDone: draftDoneSets } = useMemo(
+    () => new WorkoutFlow(draft?.exercises ?? []),
+    [draft?.exercises],
+  );
   const estMinutes = plannedSets ? Math.max(20, Math.round(plannedSets * 2.8)) : null;
 
   const preview = !draft && plan && plan.exercises.length > 0 ? plan.exercises : null;
@@ -384,7 +383,12 @@ export default function TodayDashboard({
           </span>
           <span className="week-summary-head">
             <span>
-              <strong>{fmt(load.done)}</strong> / {load.goal} зачтено зонам
+              <strong>{fmt(load.done)}</strong> / {load.goal} экв. подх.
+              <small style={{ display: "block", fontSize: "0.74rem", color: "var(--ink-soft)", marginTop: 2 }}>
+                {load.growthZones
+                  ? `В росте: ${load.growthZones} из ${load.totalZones ?? 10} мышц${load.maintenanceZones ? ` · поддержка: ${load.maintenanceZones}` : ""}`
+                  : `Сумма целей ${load.totalZones ?? 10} групп мышц · зачтено зонам`}
+              </small>
             </span>
           </span>
           <span className="meter" aria-hidden="true">

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DeloadEngine, DELOAD_PRESETS } from "../src/domain/DeloadEngine";
+import { DeloadEngine } from "../src/domain/DeloadEngine";
 import type { Workout } from "../src/lib/model";
 
 test("DeloadEngine assesses fatigue from workout volume", () => {

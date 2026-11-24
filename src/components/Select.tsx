@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { Check, ChevronDown } from "lucide-react";
 import { matchesSearch } from "../lib/search";
 
@@ -38,7 +38,7 @@ export default function Select({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const shown = searchable && query.trim() ? options.filter((o) => matchesSearch(`${o.label} ${o.search ?? ""}`, query)) : options;
-  const place = () => {
+  const place = useCallback(() => {
     const box = trigger.current!.getBoundingClientRect();
     const pop = list.current!;
     const width = Math.max(box.width, 200);
@@ -52,7 +52,7 @@ export default function Select({
     pop.style.maxHeight = `${Math.max(80, Math.min(320, up ? above : below))}px`;
     pop.style.top = up ? "" : `${box.bottom + 6}px`;
     pop.style.bottom = up ? `${innerHeight - box.top + 6}px` : "";
-  };
+  }, [options.length]);
   useEffect(() => {
     if (!open) return;
     // Follow the field while the page scrolls under the open list.
@@ -63,7 +63,7 @@ export default function Select({
       removeEventListener("scroll", follow, true);
       removeEventListener("resize", follow);
     };
-  }, [open]);
+  }, [open, place]);
   if (!supported)
     return (
       <select value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} {...aria}>

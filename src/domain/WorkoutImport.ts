@@ -364,6 +364,7 @@ export class WorkoutImport {
       } catch (e) {
         throw new Error(
           `Строка ${index + 2}: ${e instanceof Error ? e.message : "неверные данные"}`,
+          { cause: e },
         );
       }
     });

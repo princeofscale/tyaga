@@ -5,7 +5,6 @@ import { PersonalRecordsCalculator } from "../src/domain/PersonalRecords";
 import { TrainingAnalytics } from "../src/domain/TrainingAnalytics";
 import { ProgressSeries } from "../src/domain/ProgressSeries";
 import { TrainingVolume } from "../src/domain/TrainingVolume";
-import { WorkoutReference } from "../src/domain/WorkoutReference";
 import { ProgressOverview } from "../src/domain/ProgressOverview";
 import {
   calendarWeek,
@@ -136,7 +135,7 @@ test("invalid numbers are skipped and reported without poisoning volume/e1RM", (
 test("duplicates are not counted twice; newer workout revisions replace older facts", () => {
   const w = sample();
   w.exercises[0].sets.push({ ...w.exercises[0].sets[0] });
-  let result = new AnalyticsFacts([w, w]).read();
+  const result = new AnalyticsFacts([w, w]).read();
   assert.equal(result.sets.length, 1);
   assert.equal(result.diagnostics.duplicateSets, 1);
   assert.equal(result.diagnostics.duplicateWorkouts, 1);

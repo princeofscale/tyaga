@@ -1,8 +1,7 @@
-import type { Exercise, ProductData, Routine, Workout } from "../lib/types";
+import type { Exercise } from "../lib/types";
 import type { ImportPreview, ImportedWorkout } from "../domain/WorkoutImport";
 import { ImportChunks } from "../domain/ImportChunks";
 import { apiClient } from "./ApiClient";
-import { productService } from "./ProductService";
 import { exerciseCatalog } from "../lib/catalog";
 
 type Progress = (status: { phase: string; done: number; total: number; imported: number; skipped: number }) => void;
@@ -156,7 +155,7 @@ export class ImportService {
       if (Array.isArray(part.addedIds)) return part;
       staged += part.imported;
     }
-    onProgress({ phase: "Записываем историю", done: done++, total, imported: staged, skipped: 0 });
+    onProgress({ phase: "Записываем историю", done, total, imported: staged, skipped: 0 });
     const result = await this.client.request<ImportResult>("/api/import", "POST", {
       format: preview.format, runId, manifestHash, parts: parts.length, finalize: true,
     });

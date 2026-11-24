@@ -182,7 +182,7 @@ export class WarmupLadderCalculator {
 
     // Final: Target Working Set
     steps.push({
-      stepIndex: idx++,
+      stepIndex: idx,
       percent: 100,
       weightKg: roundedTarget,
       reps: targetReps,

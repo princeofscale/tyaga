@@ -1,4 +1,4 @@
-import { Share2, PlusSquare, Smartphone, CheckCircle2, X } from "lucide-react";
+import { Share2, PlusSquare, CheckCircle2 } from "lucide-react";
 
 export function IosInstallPrompt({ onClose }: { onClose: () => void }) {
   return (
@@ -10,8 +10,8 @@ export function IosInstallPrompt({ onClose }: { onClose: () => void }) {
         </div>
         <h3>Установи Тягу на экран iPhone</h3>
         <p>
-          Приложение будет открываться на весь экран без адресной строки браузера.
-          Для запуска и сохранения тренировок в облако нужен интернет; черновик остаётся на этом устройстве.
+          Приложение открывается на весь экран без адресной строки и работает в спортзале без связи:
+          оболочка и каталог кэшируются, а завершённые тренировки и изменения встают в очередь и уходят в облако при возвращении сети.
         </p>
       </div>
 

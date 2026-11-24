@@ -1,19 +1,17 @@
-import { useBodyweight } from "../state/BodyweightContext";
+import { useBodyweight } from "../state/bodyweightStore";
 import { JournalBackup, type ProfileBackup } from "../domain/JournalBackup";
 import type { ThemeId } from "../lib/theme";
 import { useMemo, useState } from "react";
-import { Check, FileUp, Import, ShieldCheck } from "lucide-react";
+import { FileUp, Import, ShieldCheck } from "lucide-react";
 import {
   WorkoutImport,
   type ImportFormat,
   type ImportPreview,
   type ImportOptions,
 } from "../domain/WorkoutImport";
-import { ImportMapping } from "../domain/ImportMapping";
 import { ImportNameMatcher } from "../domain/ImportNameMatcher";
 import { DateText } from "../domain/DateText";
 import { RestorePlan, type ExistingData } from "../domain/RestorePlan";
-import { quantity } from "../lib/quantity";
 import { importService } from "../services/ImportService";
 import Select from "./Select";
 import { EXERCISES, exerciseById, localDate } from "../lib/model";

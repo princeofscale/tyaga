@@ -471,14 +471,17 @@ export default {
     const response = await env.ASSETS.fetch(request);
     const headers = new Headers(response.headers);
     headers.set("X-Content-Type-Options", "nosniff");
+    headers.set("X-Frame-Options", "DENY");
     headers.set("Referrer-Policy", "same-origin");
     headers.set(
       "Content-Security-Policy",
       // connect-src: MediaPipe-модель анализа техники лежит на storage.googleapis.com
       // (src/services/PoseVideoAnalysis.ts). Без явного хоста фича падает в проде,
       // хотя в e2e на vite preview (без этого заголовка) проходит.
-      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://storage.googleapis.com; font-src 'self'; object-src 'none'; base-uri 'self'",
+      // React style-атрибуты применяются через CSSOM и не требуют 'unsafe-inline'.
+      "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://storage.googleapis.com; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
     );
+    headers.set("Permissions-Policy", "geolocation=(), microphone=()");
     return new Response(response.body, { status: response.status, headers });
   },
 };

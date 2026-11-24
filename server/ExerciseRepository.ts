@@ -1,6 +1,8 @@
-import data from "../data/wger/catalog-v3-reviewed.json";
-import previousRuData from "../data/wger/catalog-v2-ru.json";
-import previousData from "../data/wger/catalog-v1.json";
+import {
+  WGER_CURRENT as data,
+  WGER_PREVIOUS_RU as previousRuData,
+  WGER_PREVIOUS_V1 as previousData,
+} from "./wgerCatalog";
 import {
   WgerExerciseAdapter,
   WGER_ZONES,

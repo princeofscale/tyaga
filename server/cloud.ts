@@ -1,4 +1,4 @@
-// Cloudflare deployment entry (wrangler.cloud.jsonc). Instead of the hosting
+// Cloudflare deployment entry (wrangler.production.jsonc). Instead of the hosting
 // platform's identity header, people sign in with email and password: web pages
 // carry the session cookie, the Android app sends the same token as Bearer.
 import worker, { handleApi, type Env } from "./index";

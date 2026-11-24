@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { m, useReducedMotion } from "motion/react";
-import { Flame, TrendingUp } from "lucide-react";
+import { Activity, Dumbbell, Flame, Layers, TrendingUp } from "lucide-react";
 import { ProgressOverview as Overview, OVERVIEW_PERIODS, type OverviewPeriod } from "../domain/ProgressOverview";
 import { PersonalRecordsCalculator } from "../domain/PersonalRecords";
 import { StrengthTotal } from "../domain/StrengthTotal";
@@ -12,7 +12,7 @@ import StrengthTotalCard from "./StrengthTotalCard";
 import StatsAnalytics from "./StatsAnalytics";
 import { quantityWord } from "../lib/quantity";
 import type { Workout, Settings } from "../lib/model";
-import "../styles/progress-redesign.css";
+import "../styles/progress.css";
 
 export default function ProgressOverview({
   workouts,
@@ -31,15 +31,15 @@ export default function ProgressOverview({
   const days = useMemo(() => Overview.days(period, workouts, zone), [period, workouts, zone]);
   const data = useMemo(() => Overview.calculate(workouts, days, zone), [workouts, days, zone]);
   const long = days > 84;
-  const buckets = useMemo(() => (long ? Overview.weekly(data.current, data.start, data.end, zone) : []), [long, data, zone]);
+  const buckets = useMemo(
+    () => (long ? Overview.weekly(data.current, data.start, data.end, zone) : []),
+    [long, data, zone],
+  );
   const totalSummary = useMemo(
     () => StrengthTotal.fromWorkouts(workouts, zone, bodyMassKg),
     [workouts, zone, bodyMassKg],
   );
-  const pulse = useMemo(
-    () => StrengthTotal.weekdayPulse(data.current, zone),
-    [data, zone],
-  );
+  const pulse = useMemo(() => StrengthTotal.weekdayPulse(data.current, zone), [data, zone]);
   const streak = useMemo(
     () => new PersonalRecordsCalculator(workouts).calculateStreak(zone),
     [workouts, zone],
@@ -47,102 +47,130 @@ export default function ProgressOverview({
   const label = OVERVIEW_PERIODS.find((p) => p.id === period)!.label.toLowerCase();
 
   return (
-    <div className="progress-overview">
-      <div className="overview-period">
-        <div>
-          <h2>Сводка</h2>
-          <p>
-            За {period === "all" ? "всё время" : label}:{" "}
-            <time dateTime={data.start}>{DateText.day(data.start)}</time> —{" "}
-            <time dateTime={data.end}>{DateText.day(data.end)}</time>
-          </p>
-        </div>
-        <div
-          className="progress-period"
-          role="group"
-          aria-label="Период прогресса"
-        >
-          {OVERVIEW_PERIODS.map((p) => (
-            <button key={p.id} type="button" aria-pressed={p.id === period} onClick={() => setPeriod(p.id)}>
-              {p.label}
-            </button>
-          ))}
-        </div>
-      </div>
+    <div className="progress-overview tel-panel">
+      {/* Hero-блок в стиле ИИ-анализа */}
+      <m.section
+        className="tel-hero is-single"
+        aria-label="Сводка прогресса"
+        initial={reduced ? false : { opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+      >
+        <div className="tel-card-head">
+          <div style={{ display: "grid", gap: 6 }}>
+            <span className="tel-eyebrow-pill">
+              <Activity size={14} aria-hidden="true" />
+              Сводка · {period === "all" ? "всё время" : label}
+            </span>
+            <h2 style={{ margin: 0, fontSize: "clamp(1.3rem, 1rem + 1vw, 1.7rem)" }}>
+              <time dateTime={data.start}>{DateText.day(data.start)}</time> —{" "}
+              <time dateTime={data.end}>{DateText.day(data.end)}</time>
+            </h2>
+          </div>
 
-      <div className="progress-metrics">
+          <div className="tel-pill-row" role="group" aria-label="Период прогресса">
+            {OVERVIEW_PERIODS.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                className={`tel-pill-btn${p.id === period ? " active" : ""}`}
+                aria-pressed={p.id === period}
+                onClick={() => setPeriod(p.id)}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {data.bestGrowth && long ? (
+          <div className="coach-next-chip">
+            <TrendingUp size={15} aria-hidden="true" />
+            <b>Лидер роста:</b>
+            <span>{data.bestGrowth.name}</span>
+            <span className="coach-rir-badge">
+              {data.bestGrowth.percent > 0 ? "+" : ""}
+              {data.bestGrowth.percent}%
+            </span>
+          </div>
+        ) : null}
+      </m.section>
+
+      {/* 4 карточки телеметрии (как в ИИ-анализе) */}
+      <section className="tel-metric-grid" aria-label="Ключевые показатели">
         <m.article
-          className="progress-metric"
+          className="tel-metric-card"
           initial={reduced ? false : { opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.22 }}
+          transition={{ duration: 0.2 }}
         >
-          <span>Тренировки</span>
-          <strong>
-            {data.workouts}
-            <small>
-              {" "}
-              {quantityWord(data.workouts, "тренировка", "тренировки", "тренировок")}
-            </small>
-          </strong>
-          <p>
-            Недель с залом: {data.activeWeeks} / {data.totalWeeks}
-          </p>
+          <span className="tel-metric-label">
+            <Dumbbell size={13} aria-hidden="true" />
+            Тренировки
+          </span>
+          <b className="tel-metric-val">{data.workouts}</b>
+          <span className="tel-metric-sub">
+            Недель с залом: {data.activeWeeks} из {data.totalWeeks}
+          </span>
         </m.article>
 
         <m.article
-          className={`progress-metric accent${data.strengthChange !== null && data.strengthChange > 0 ? " is-positive" : ""}`}
+          className={`tel-metric-card${data.strengthChange !== null && data.strengthChange > 0 ? " is-accent" : ""}`}
           initial={reduced ? false : { opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.22, delay: reduced ? 0 : 0.04 }}
+          transition={{ duration: 0.2, delay: reduced ? 0 : 0.04 }}
         >
-          <span>Сила (e1RM)</span>
-          <strong>
+          <span className="tel-metric-label">
+            <TrendingUp size={13} aria-hidden="true" />
+            Сила (e1RM)
+          </span>
+          <b className="tel-metric-val">
             {data.strengthChange === null
               ? "—"
               : `${data.strengthChange > 0 ? "+" : ""}${data.strengthChange}%`}
-          </strong>
-          <p>
+          </b>
+          <span className="tel-metric-sub">
             {data.comparedLifts
               ? `${data.comparedLifts} ${quantityWord(data.comparedLifts, "движение", "движения", "движений")}`
-              : "Мало данных"}
-          </p>
+              : "Нужно больше данных"}
+          </span>
         </m.article>
 
         <m.article
-          className="progress-metric"
+          className="tel-metric-card"
           initial={reduced ? false : { opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.22, delay: reduced ? 0 : 0.08 }}
+          transition={{ duration: 0.2, delay: reduced ? 0 : 0.08 }}
         >
-          <span>Объём</span>
-          <strong>
-            {data.sets}
-            <small>
-              {" "}
-              {quantityWord(data.sets, "рабочий подход", "рабочих подхода", "рабочих подходов")}
-            </small>
-          </strong>
-          <p title={data.volumeKg > 0 ? undefined : VolumeLabel.reason(data.volumeOmitted)}>
+          <span className="tel-metric-label">
+            <Layers size={13} aria-hidden="true" />
+            Рабочие подходы
+          </span>
+          <b className="tel-metric-val">{data.sets}</b>
+          <span className="tel-metric-sub" title={data.volumeKg > 0 ? undefined : VolumeLabel.reason(data.volumeOmitted)}>
             {VolumeLabel.overview(data.volumeKg, data.volumeOmitted)}
             {data.workloadChange !== null
               ? ` · ${data.workloadChange > 0 ? "+" : ""}${data.workloadChange}%`
               : ""}
-          </p>
+          </span>
         </m.article>
-      </div>
 
-      {data.bestGrowth && long ? (
-        <p className="overview-best-growth">
-          <TrendingUp size={15} aria-hidden="true" />
-          <span>Лидер роста:</span>
-          <b>{data.bestGrowth.name}</b>
-          <strong>
-            {data.bestGrowth.percent > 0 ? "+" : ""}
-            {data.bestGrowth.percent}%
-          </strong>
-        </p>
-      ) : null}
+        <m.article
+          className="tel-metric-card"
+          initial={reduced ? false : { opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.2, delay: reduced ? 0 : 0.12 }}
+        >
+          <span className="tel-metric-label">
+            <Flame size={13} aria-hidden="true" />
+            Серия недель
+          </span>
+          <b className="tel-metric-val">
+            {streak.currentWeekStreak} <small>нед.</small>
+          </b>
+          <span className="tel-metric-sub">Рекорд: {streak.bestWeekStreak} нед.</span>
+        </m.article>
+      </section>
 
       <StrengthTotalCard
         summary={totalSummary}
@@ -150,16 +178,14 @@ export default function ProgressOverview({
         onOpenLift={onStrength}
       />
 
-      <section className="pulse-strip" aria-label="Серия и дни тренировок">
+      <section className="pulse-strip" aria-label="Дни тренировок">
         <div className="pulse-streak">
           <div className="pulse-streak-icon" aria-hidden="true">
             <Flame size={20} />
           </div>
           <div className="pulse-streak-copy">
-            <strong>
-              {streak.currentWeekStreak} {quantityWord(streak.currentWeekStreak, "неделя", "недели", "недель")} подряд
-            </strong>
-            <span>Рекорд серии: {streak.bestWeekStreak} нед.</span>
+            <strong>Ритм недели</strong>
+            <span>Чаще всего тренируешься по выбранным дням</span>
           </div>
         </div>
         <div className="pulse-days" aria-label="Распределение тренировок по дням недели">

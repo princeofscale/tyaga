@@ -59,7 +59,6 @@ const body: RecordingSpec = {
   e1rmEligible: false,
 };
 const added: RecordingSpec = { ...body, loadMode: "added_bodyweight" };
-const assisted: RecordingSpec = { ...body, loadMode: "assisted_bodyweight" };
 const hamstrings: AnatomicalMuscle[] = [
   "biceps-femoris-long",
   "semitendinosus",

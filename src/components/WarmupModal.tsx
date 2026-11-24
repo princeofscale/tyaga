@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Dumbbell, Flame, Check, ShieldCheck } from "lucide-react";
+import { Dumbbell, ShieldCheck } from "lucide-react";
 import {
   WarmupLadderCalculator,
   type WarmupStep,
@@ -10,7 +10,6 @@ import { NumberField } from "./NumberField";
 export function WarmupModal({
   defaultWeight = 80,
   defaultReps = 6,
-  onClose,
 }: {
   defaultWeight?: number;
   defaultReps?: number;

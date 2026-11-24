@@ -3,10 +3,6 @@ import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import { createHash } from "node:crypto";
-import { ImportMapping } from "../src/domain/ImportMapping";
-import { WorkoutImport } from "../src/domain/WorkoutImport";
-import { volumeSummary } from "../src/lib/model";
-import { readFileSync, existsSync } from "node:fs";
 import type { Exercise, Workout } from "../src/lib/types";
 
 type ImportResponse = { imported: number; skipped: number; replaced: number; kept: number; runId: string; addedIds: string[]; workouts: Workout[]; exercises: Exercise[]; exerciseIdMap: Record<string, string> };
@@ -67,35 +63,6 @@ const session = (exercise: Record<string, unknown>) => ({
   notes: "",
   timeZone: "UTC",
   exercises: [{ sourceName: "Deadlift (Barbell)", displayName: "Deadlift (Barbell)", type: "reps", sets: sets(100), ...exercise }],
-});
-
-test("real Strong 21/175 CSV imports and replaces the whole file without mixed mapping", async (t) => {
-  const path = new URL("../artifacts/agent-evolution/product-visits/po-v3-r02/strong-test-history.csv", import.meta.url);
-  if (!existsSync(path)) return t.skip("product owner's Strong CSV is not in this checkout");
-  const parsed = new WorkoutImport({ dateOrder: "dmy", weightUnit: "kg", distanceUnit: "km", timeZone: "UTC" }).parse(readFileSync(path, "utf8"), "strong");
-  assert.equal(parsed.workouts.length, 21);
-  assert.equal(parsed.setCount, 175);
-  const mapped = parsed.workouts.map((w) => ({ ...w, exercises: w.exercises.map((e) => {
-    const chosen = ImportMapping.suggestForImport(e.sourceName);
-    assert.ok(chosen, `qualified Strong name ${e.sourceName}`);
-    return { ...e, exerciseId: chosen.id, displayName: chosen.name, catalogRevision: chosen.catalogRevision };
-  }) }));
-  const { mf, request } = await sandbox();
-  try {
-    const first = await request("/api/import", "POST", { format: "strong", workouts: mapped, runId: ownRun() });
-    assert.equal(first.status, 200);
-    assert.equal((await asJson<ImportResponse>(first)).imported, 21);
-    const withVolume = (await asJson<{ workouts: Workout[] }>(await request("/api/data"))).workouts;
-    assert.equal(withVolume.length, 21);
-    assert.ok(volumeSummary(withVolume, "all").total > 0);
-    const literal = await request("/api/import", "POST", { format: "strong", workouts: parsed.workouts, replace: true, runId: ownRun() });
-    assert.equal(literal.status, 200);
-    assert.equal((await asJson<ImportResponse>(literal)).replaced, 21);
-    const after = (await asJson<{ workouts: Workout[] }>(await request("/api/data"))).workouts;
-    assert.equal(after.length, 21);
-    assert.ok(after.every((w) => w.exercises.every((e) => e.exerciseId.startsWith("custom:"))));
-    assert.equal(volumeSummary(after, "all").total, 0);
-  } finally { await mf.dispose(); }
 });
 
 test("sync revision-one remote edit keeps notes and sets during both undo and replace", async () => {

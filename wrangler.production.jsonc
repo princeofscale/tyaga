@@ -1,5 +1,4 @@
-// New production in the user's authorized account; legacy hosting is unchanged.
-// Always use this config explicitly. wrangler.cloud.jsonc targets the old site.
+// Production Cloudflare Workers configuration.
 {
 	"name": "tyaga",
 	"account_id": "86373735788c01599af67ce3a6a4777a",
@@ -11,7 +10,9 @@
 		"binding": "ASSETS",
 		"not_found_handling": "single-page-application",
 		"run_worker_first": [
-			"/api/*"
+			"/api/*",
+			"/",
+			"/index.html"
 		]
 	},
 	"d1_databases": [

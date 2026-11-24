@@ -18,10 +18,12 @@ export default function CloudSyncPanel({ displayName }: { displayName: string })
   const [error, setError] = useState("");
   const [recoveryCode, setRecoveryCode] = useState("");
   const [savedEdits, setSavedEdits] = useState(0);
+  const lastSyncAt = state?.lastSyncAt;
+  const isConnected = Boolean(state);
   useEffect(() => {
-    if (!state) return;
+    if (!isConnected) return;
     api<{ records: unknown[] }>("/api/sync/recovery").then(({ records }) => setSavedEdits(records.length)).catch(() => undefined);
-  }, [state?.lastSyncAt]);
+  }, [isConnected, lastSyncAt]);
   const exportSavedEdits = async () => {
     try {
       const { records } = await api<{ records: unknown[] }>("/api/sync/recovery");

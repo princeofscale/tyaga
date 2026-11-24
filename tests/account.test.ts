@@ -87,3 +87,106 @@ test("authentication attempt limits are persisted and cannot be bypassed by remo
     assert.equal((await call("/api/auth/register","POST",credentials)).status,201);
   } finally { await mf.dispose(); }
 });
+test("PBKDF2 uses 600k iterations for new accounts and transparently upgrades legacy 100k hashes on login", async () => {
+  const { mf, db, call } = await setup();
+  try {
+    const reg = await call("/api/auth/register", "POST", credentials);
+    assert.equal(reg.status, 201);
+    const fresh = await db.prepare("SELECT id, password_hash, salt FROM accounts").first<{ id: string; password_hash: string; salt: string }>();
+    assert.ok(fresh);
+    assert.match(fresh.password_hash, /^pbkdf2\$600000\$[a-f0-9]{64}$/);
+
+    // Simulate a legacy 100k raw-hex hash stored before the upgrade.
+    const legacySalt = "0123456789abcdef0123456789abcdef";
+    const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(credentials.password), "PBKDF2", false, ["deriveBits"]);
+    const legacyBits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: new TextEncoder().encode(legacySalt), iterations: 100000 }, key, 256);
+    const legacyHex = [...new Uint8Array(legacyBits)].map((b) => b.toString(16).padStart(2, "0")).join("");
+    await db.prepare("UPDATE accounts SET password_hash = ?, salt = ? WHERE id = ?").bind(legacyHex, legacySalt, fresh.id).run();
+
+    // Wrong password against legacy hash fails and does not upgrade.
+    assert.equal((await call("/api/auth/login", "POST", { ...credentials, password: "wrong passphrase" })).status, 401);
+    const stillLegacy = await db.prepare("SELECT password_hash, salt FROM accounts WHERE id = ?").bind(fresh.id).first<{ password_hash: string; salt: string }>();
+    assert.equal(stillLegacy?.password_hash, legacyHex);
+
+    // Correct password succeeds and seamlessly migrates the stored hash to 600k with a fresh salt.
+    const ok = await call("/api/auth/login", "POST", credentials);
+    assert.equal(ok.status, 200);
+    const upgraded = await db.prepare("SELECT password_hash, salt FROM accounts WHERE id = ?").bind(fresh.id).first<{ password_hash: string; salt: string }>();
+    assert.ok(upgraded);
+    assert.match(upgraded.password_hash, /^pbkdf2\$600000\$[a-f0-9]{64}$/);
+    assert.notEqual(upgraded.salt, legacySalt);
+
+    // Subsequent login works against the upgraded 600k hash.
+    assert.equal((await call("/api/auth/login", "POST", credentials)).status, 200);
+  } finally {
+    await mf.dispose();
+  }
+});
+test("active session management lists devices, revokes individual/other sessions and logs out everywhere", async () => {
+  const { mf, call } = await setup();
+  try {
+    const reg = await call("/api/auth/register", "POST", credentials);
+    assert.equal(reg.status, 201);
+    const cookie1 = cookieOf(reg);
+
+    // Create two more sessions from distinct User-Agents.
+    const loginPhone = await mf.dispatchFetch("https://gym.example/api/auth/login", {
+      method: "POST",
+      headers: {
+        "oai-authenticated-user-id": "owner-a",
+        Origin: "https://gym.example",
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Safari/604.1",
+      },
+      body: JSON.stringify(credentials),
+    });
+    assert.equal(loginPhone.status, 200);
+    const cookiePhone = cookieOf(loginPhone);
+
+    const loginLaptop = await mf.dispatchFetch("https://gym.example/api/auth/login", {
+      method: "POST",
+      headers: {
+        "oai-authenticated-user-id": "owner-a",
+        Origin: "https://gym.example",
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/131.0.0.0 Safari/537.36",
+      },
+      body: JSON.stringify(credentials),
+    });
+    assert.equal(loginLaptop.status, 200);
+    const cookieLaptop = cookieOf(loginLaptop);
+
+    // List sessions from laptop: current first, device labels parsed cleanly, no token hashes leaked.
+    const listRes = await call("/api/auth/sessions", "GET", undefined, cookieLaptop);
+    assert.equal(listRes.status, 200);
+    const { sessions } = (await listRes.json()) as {
+      sessions: Array<{ id: string; deviceLabel: string; current: boolean; token_hash?: string }>;
+    };
+    assert.equal(sessions.length, 3);
+    assert.equal(sessions[0].current, true);
+    assert.equal(sessions[0].deviceLabel, "Chrome · macOS");
+    assert.ok(sessions.some((s) => s.deviceLabel === "Safari · iPhone"));
+    assert.ok(sessions.every((s) => s.token_hash === undefined && s.id.length === 16));
+
+    // Revoke only the phone session.
+    const phoneSession = sessions.find((s) => s.deviceLabel === "Safari · iPhone")!;
+    const delPhone = await call(`/api/auth/sessions/${phoneSession.id}`, "DELETE", {}, cookieLaptop);
+    assert.equal(delPhone.status, 200);
+    assert.equal((await call("/api/data", "GET", undefined, cookiePhone)).status, 401);
+    assert.equal((await call("/api/data", "GET", undefined, cookie1)).status, 200);
+
+    // Revoke all other sessions: cookie1 dies, laptop survives.
+    const revOthers = await call("/api/auth/sessions/revoke-others", "POST", {}, cookieLaptop);
+    assert.equal(revOthers.status, 200);
+    assert.equal((await call("/api/data", "GET", undefined, cookie1)).status, 401);
+    assert.equal((await call("/api/data", "GET", undefined, cookieLaptop)).status, 200);
+
+    // Revoke all sessions (sign out everywhere) without changing password.
+    const revAll = await call("/api/auth/sessions/revoke-all", "POST", {}, cookieLaptop);
+    assert.equal(revAll.status, 200);
+    assert.equal(revAll.headers.get("Clear-Site-Data"), '"cookies"');
+    assert.equal((await call("/api/data", "GET", undefined, cookieLaptop)).status, 401);
+  } finally {
+    await mf.dispose();
+  }
+});

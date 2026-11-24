@@ -4,7 +4,7 @@ import { Timer, Users } from "lucide-react";
 import { LivePresenter } from "../domain/LiveSession";
 import { useNow } from "../lib/useNow";
 import LiveAvatar from "./LiveAvatar";
-import { useLiveRoom } from "./LiveRoomProvider";
+import { useLiveRoom } from "../lib/liveRoomContext";
 
 /** Полоса напарников над тренировкой: кто что делает, пока ты работаешь. Показывается, только если в комнате есть кто-то ещё. */
 export default function LiveStrip({ onOpen }: { onOpen: () => void }) {

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { AnatomyPresenter } from "../src/domain/AnatomyPresenter";
 import { CHEST_HEADS, DELTOID_HEADS } from "../src/data/muscles";
-import { anatomicalLoad, exerciseById, makeWorkout, type Workout, type SetEntry } from "../src/lib/model";
+import { anatomicalLoad, exerciseById, makeWorkout, type Workout } from "../src/lib/model";
 
 function createWorkout(exerciseId: string, setsCount = 3): Workout {
   const w = makeWorkout([exerciseId], [], "UTC");

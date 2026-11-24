@@ -1,8 +1,8 @@
 import { useState, useMemo } from "react";
-import { ArrowLeftRight, Search, X, Check, Dumbbell, Sparkles, Filter, ChevronRight } from "lucide-react";
+import { ArrowLeftRight, Search, X, Sparkles, ChevronRight } from "lucide-react";
 import type { Exercise } from "../lib/types";
 import { EXERCISES } from "../lib/catalog";
-import { ExerciseAlternativesFinder, type DetectedEquipment, type ExerciseAlternative } from "../domain/ExerciseAlternatives";
+import { ExerciseAlternativesFinder, type DetectedEquipment } from "../domain/ExerciseAlternatives";
 import { ExerciseLabels } from "../domain/ExerciseLabels";
 import Modal from "./Modal";
 import { matchesSearch } from "../lib/search";

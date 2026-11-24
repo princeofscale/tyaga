@@ -50,11 +50,10 @@ export class TeamChallengeProgress {
   }
   static summary(people: ChallengeParticipant[]) {
     const weeks = people.flatMap((p) => p.weeks ?? []);
-    let streak = 0,
-      best = 0;
+    let best = 0;
     // A completed current week may extend the streak; an unfinished week has time left.
     for (const p of people) {
-      streak = 0;
+      let streak = 0;
       for (const w of (p.weeks ?? []).filter((w) => w.phase !== "future")) {
         if (w.fulfilled) {
           streak++;

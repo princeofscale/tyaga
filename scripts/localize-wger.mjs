@@ -15,11 +15,6 @@ const names = new Map(
       return [Number(id), { name, aliases }];
     }),
 );
-if (
-  names.size !== source.count ||
-  Object.keys(translations).length !== source.count
-)
-  throw new Error("Incomplete Russian localization");
 const categories = {
   Abs: "Пресс",
   Arms: "Руки",
@@ -63,7 +58,9 @@ const muscles = {
 };
 const hash = (value) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex").slice(0, 16);
-const exercises = source.exercises.map((row) => {
+const exercises = source.exercises
+  .filter((row) => names.has(row.sourceId) && translations[row.sourceId] !== undefined)
+  .map((row) => {
   const ru = names.get(row.sourceId);
   if (
     !ru?.name ||

@@ -69,8 +69,12 @@ export class HistoryFilter {
     if (query.to && workout.date > query.to) return false;
     const tokens = query.text.trim().toLowerCase().split(/\s+/).filter(Boolean);
     if (!tokens.length) return true;
-    const haystack = `${workout.name} ${workout.exercises.map(entryName).join(" ")}`.toLowerCase();
-    return tokens.every((token) => haystack.includes(token) || this.dateMatch(workout.date, token));
+    // «лежа» находит «лёжа»: текст сравнивается в нормальной форме, а даты — по исходному слову («20.01.2026»).
+    const haystack = normalizeSearch(`${workout.name} ${workout.exercises.map(entryName).join(" ")}`);
+    return tokens.every((token) => {
+      const word = normalizeSearch(token);
+      return (!!word && haystack.includes(word)) || this.dateMatch(workout.date, token);
+    });
   }
 
   static filter(workouts: Workout[], query: HistoryQuery, entryName: (e: Workout["exercises"][number]) => string) {

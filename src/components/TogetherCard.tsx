@@ -8,7 +8,7 @@ import { copyText, shareLink } from "../lib/shareLink";
 import { fmt } from "../lib/model";
 import { useNow } from "../lib/useNow";
 import LiveAvatar from "./LiveAvatar";
-import { useLiveRoom } from "./LiveRoomProvider";
+import { useLiveRoom } from "../lib/liveRoomContext";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 const linkOrigin = () => (import.meta.env.MODE === "device" ? CLOUD_URL : window.location.origin);

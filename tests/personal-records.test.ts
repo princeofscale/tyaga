@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { PersonalRecordsCalculator } from "../src/domain/PersonalRecords";
-import { makeWorkout, type Workout } from "../src/lib/model";
+import { makeWorkout } from "../src/lib/model";
 
 test("PersonalRecordsCalculator computes best weight, 1RM and set volume", () => {
   const w1 = makeWorkout(["bench"], [], "UTC");

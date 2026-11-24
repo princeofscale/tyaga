@@ -126,7 +126,7 @@ export class ExerciseAlternativesFinder {
         .map((p) => MUSCLES.find((m) => m.id === p)?.short || p)
         .join(", ");
 
-      let equipReason = "";
+      let equipReason: string;
       if (candEquip !== curEquip) {
         const fromEquip = EQUIPMENT_NAMES[curEquip];
         const toEquip = EQUIPMENT_NAMES[candEquip];

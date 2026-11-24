@@ -11,7 +11,6 @@ import {
 } from "../domain/AnatomyPresenter";
 import { CHEST_HEADS, DELTOID_HEADS } from "../data/muscles";
 import type { Exercise, Muscle, MuscleLoad, Workout } from "../lib/model";
-export { loadColor };
 const EMPTY_WORKOUTS: Workout[] = [];
 const DEFAULT_OPTIONS = {};
 
@@ -111,9 +110,9 @@ export default function BodyMap({
             <m.div
               className="body-figure"
               key={view}
-              initial={{ opacity: 0 }}
+              initial={false}
               animate={{ opacity: 1 }}
-              transition={{ duration: 0.25 }}
+              transition={{ duration: 0.2 }}
             >
               <svg
                 viewBox={atlas[view].viewBox}

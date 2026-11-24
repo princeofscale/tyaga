@@ -45,6 +45,8 @@ export default tseslint.config(
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "warn",
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
+      // Игнорируем rest-siblings (`const { id, ...rest } = obj`) и явно помеченные `_arg`.
+      "@typescript-eslint/no-unused-vars": ["error", { ignoreRestSiblings: true, argsIgnorePattern: "^_" }],
       // Пустые catch допустимы, если они осознанно глушат ошибку хранилища.
       "no-empty": ["error", { allowEmptyCatch: true }],
     },
@@ -52,5 +54,18 @@ export default tseslint.config(
   {
     files: ["server/**/*.ts", "db/**/*.ts", "scripts/**/*.{ts,mjs}"],
     languageOptions: { globals: { ...globals.node } },
+  },
+  {
+    files: ["tests/**/*.{ts,tsx}"],
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off",
+    },
+  },
+  {
+    files: ["tests/e2e/**/*.{ts,tsx}"],
+    rules: {
+      // Playwright fixture API uses `use(...)`, which is not a React hook.
+      "react-hooks/rules-of-hooks": "off",
+    },
   },
 );

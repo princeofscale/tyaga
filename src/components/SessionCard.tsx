@@ -1,6 +1,7 @@
-import { ChevronRight, Clock3 } from "lucide-react";
+import { ChevronRight, Clock3, Trophy } from "lucide-react";
 import { m } from "motion/react";
 import { DateText } from "../domain/DateText";
+import { HistoryInsights } from "../domain/HistoryInsights";
 import { VolumeLabel } from "../domain/VolumeLabel";
 import {
   entryName,
@@ -17,6 +18,8 @@ type Props = {
   currentYear: string;
   /** Тренировки, которые ещё ждут отправки на сервер. */
   pendingIds: Set<string>;
+  /** Упражнения, где в этой тренировке побит прежний расчётный 1ПМ. */
+  records?: string[];
   /** Общий вход экрана: уважает «уменьшить движение». */
   enter: (delay: number) => Record<string, unknown>;
   onOpen: (workout: Workout) => void;
@@ -29,18 +32,22 @@ export default function SessionCard({
   index = 0,
   currentYear,
   pendingIds,
+  records = [],
   enter,
   onOpen,
 }: Props) {
   const tonnage = volumeSummary([w], "all");
   const caption = VolumeLabel.caption(tonnage.total, tonnage.omittedSets);
+  const names = w.exercises.map((e) => entryName(e));
   return (
     <m.button
-      className="session-item"
+      type="button"
+      className={`session-item${expanded ? " session-item-rich" : ""}${records.length ? " has-record" : ""}`}
       onClick={() => onOpen(w)}
       {...enter(0.34 + index * 0.06)}
     >
       <div className="session-date">
+        {expanded ? <small className="session-weekday">{HistoryInsights.weekday(w.date)}</small> : null}
         <b>{new Date(w.date + "T12:00:00").getDate()}</b>
         <span>{DateText.monthShort(w.date)}</span>
         {w.date.slice(0, 4) !== currentYear ? (
@@ -49,15 +56,21 @@ export default function SessionCard({
       </div>
       <div className="session-item-info">
         <h3>
-          {w.name}
+          <span className="session-name">{w.name}</span>
+          {records.length ? (
+            <span className="record-badge" title={`Рекорд: ${records.join(", ")}`}>
+              <Trophy size={12} aria-hidden="true" />
+              {records.length > 1 ? `Рекорды · ${records.length}` : "Рекорд"}
+            </span>
+          ) : null}
           {pendingIds.has(w.id) ? <span className="pending-badge">Ждёт отправки</span> : null}
         </h3>
         <p>
           {w.exercises.length} упр. <span>·</span> {workingSets([w])} подх.{" "}
-          {expanded ? (
+          {expanded && names.length ? (
             <>
               <span>·</span>
-              {w.exercises.slice(0, 2).map((e) => entryName(e)).join(", ")}
+              <span className="session-names" title={names.join(", ")}>{names.join(", ")}</span>
             </>
           ) : null}
         </p>
@@ -74,11 +87,11 @@ export default function SessionCard({
         </b>
         {caption ? <small className="volume-none">{caption}</small> : null}
         <span>
-          <Clock3 size={13} />
+          <Clock3 size={13} aria-hidden="true" />
           {w.duration} мин
         </span>
       </div>
-      <ChevronRight size={17} className="muted" />
+      <ChevronRight size={17} className="muted session-chevron" aria-hidden="true" />
     </m.button>
   );
 }

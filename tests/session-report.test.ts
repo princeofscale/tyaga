@@ -5,8 +5,7 @@ import { WarmupPlanner } from "../src/domain/WarmupPlanner";
 import { makeWorkout, muscleLoad, exerciseCatalog } from "../src/lib/model";
 import { AppleHealthImport, healthDate } from "../src/domain/AppleHealthImport";
 import { WgerExerciseAdapter, type WgerSnapshot } from "../src/domain/WgerExercise";
-import reviewed from "../data/wger/catalog-v3-reviewed.json";
-import previous from "../data/wger/catalog-v2-ru.json";
+import { WGER_CURRENT as reviewed, WGER_PREVIOUS_RU as previous } from "../server/wgerCatalog";
 import { PersonalExerciseFactory } from "../server/PersonalExerciseFactory";
 test("50 kg bench scaffolds 20/30/40 warmups; total work and direct preparation remain visible separately",()=> {
   const w=makeWorkout(["bench"]); w.exercises[0].sets=w.exercises[0].sets.slice(0,1); w.exercises[0].sets[0].weight=50; w.exercises[0].sets[0].reps=8; w.exercises[0].sets[0].done=true;

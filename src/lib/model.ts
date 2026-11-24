@@ -11,16 +11,13 @@ export { MUSCLES, ANATOMICAL_MUSCLES, CHEST_HEADS, DELTOID_HEADS };
 import {
   EXERCISES,
   exerciseById,
-  exerciseForEntry,
   entrySpec,
-  progressKey,
 } from "./catalog";
 import {
   localDate,
   weekStart,
   browserTimeZone,
   addCalendarDays,
-  dateLabel,
 } from "./calendar";
 import type {
   Settings,

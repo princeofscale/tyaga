@@ -6,7 +6,7 @@ import { normalizeSearch } from "../src/lib/search";
 import { ExerciseRepository } from "./ExerciseRepository";
 import { ProductRepository } from "./ProductRepository";
 import { PersonalExerciseFactory, digest } from "./PersonalExerciseFactory";
-import { ImportReceiptService, canonicalHash, type ImportReceipt } from "./ImportReceiptService";
+import { ImportReceiptService, canonicalHash } from "./ImportReceiptService";
 import { object, str, validWorkout, InputError } from "./validation";
 
 export class HistoryImportService {

@@ -4,7 +4,7 @@ import { LiveLink, RoomLink } from "../domain/LiveSession";
 import { CLOUD_URL } from "../device/cloudSync";
 import { quantity } from "../lib/quantity";
 import { shareLink } from "../lib/shareLink";
-import { useLiveRoom } from "./LiveRoomProvider";
+import { useLiveRoom } from "../lib/liveRoomContext";
 
 const linkOrigin = () => (import.meta.env.MODE === "device" ? CLOUD_URL : window.location.origin);
 

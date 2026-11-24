@@ -1,0 +1,114 @@
+@layer tokens {
+  :root {
+    --accent-soft: color-mix(in oklab, var(--accent) 13%, var(--surface));
+    --accent-line: color-mix(in oklab, var(--accent) 44%, var(--line));
+    --accent-dim: color-mix(in oklab, var(--accent) 68%, var(--surface));
+    --sat: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+    --sab: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+    --tabbar: 64px;
+    --journal-gutter: clamp(20px, 3vw, 44px);
+    --journal-gap: clamp(16px, 1.8vw, 24px);
+    --in-oklab:  ;
+    --bg: #090a0f;
+    --bg-elevated: #0e1018;
+    --journal-top: rgba(12, 14, 21, 0.88);
+    --surface: #131621;
+    --surface-2: #1a1e2e;
+    --surface-3: #23283d;
+    --text: #f5f7fc;
+    --text-soft: #c9d0e0;
+    --muted: #8892aa;
+    --faint: #58627a;
+    --line-soft: rgba(255, 255, 255, 0.06);
+    --line: rgba(255, 255, 255, 0.11);
+    --line-strong: rgba(255, 255, 255, 0.19);
+    --accent: #e2441f;
+    --accent-hover: #f2532e;
+    --on-accent: #ffffff;
+    --over: #f59e0b;
+    --warn: #f59e0b;
+    --danger: #f43f5e;
+    --stabilize: #38bdf8;
+    --r-card: 18px;
+    --r-btn: 12px;
+    --r-field: 11px;
+    --r-pill: 999px;
+    --shadow-card: 0 1px 0 inset rgba(255, 255, 255, 0.06),
+    0 1px 2px rgba(0, 0, 0, 0.45),
+    0 14px 36px -16px rgba(0, 0, 0, 0.65);
+    --shadow-float: 0 1px 0 inset rgba(255, 255, 255, 0.08),
+    0 12px 40px rgba(0, 0, 0, 0.65);
+    --shadow-accent: 0 8px 24px -8px color-mix(in oklab, var(--accent) 55%, transparent);
+    --surface-grad: linear-gradient(180deg, rgba(255, 255, 255, 0.032) 0%, rgba(255, 255, 255, 0) 100%);
+    --journal-rail: 232px;
+    --journal-width: 1280px;
+  }
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}@keyframes account-spin { to { transform:rotate(360deg); } }
+@keyframes sheet-up {
+  from {
+    transform: translateY(40px);
+    opacity: 0;
+  }
+}
+
+@keyframes pulse-recording-dot {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.4);
+    opacity: 0.45;
+  }
+}
+
+@keyframes stepper-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes check-pop {
+  0% { transform: scale(0.8); }
+  60% { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+
+@keyframes stats-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes night-dialog-in { from { opacity: 0; transform: translateY(10px) scale(.985); } to { opacity: 1; transform: none; } }
+@keyframes fade-in { from { opacity: 0; } }
+@keyframes modal-out { to { opacity: 0; transform: translateY(12px) scale(.98); } }
+@keyframes fade-out { to { opacity: 0; } }
+
+@keyframes history-rise {
+  from { opacity: 0; transform: translateY(6px); }
+}
+
+@keyframes progress-fade-start {
+  to { --fade-start: var(--fade-size); }
+}
+@keyframes progress-fade-end {
+  from { --fade-end: var(--fade-size); }
+}
+
+@keyframes workout-undo-countdown {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}

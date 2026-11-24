@@ -1,5 +1,5 @@
 import { m, useReducedMotion } from "motion/react";
-import { lazy, Suspense, useState, useEffect, useMemo, useRef } from "react";
+import { Suspense, useState, useEffect, useMemo, useRef } from "react";
 import { ChevronRight, Plus, Save, Trash2 } from "lucide-react";
 import { TrainingProgram, DAY_NAMES } from "../domain/TrainingProgram";
 import { TrainingCalendar, type ScheduledTraining } from "../domain/TrainingCalendar";
@@ -96,10 +96,10 @@ export default function ProgramsScreen(props: Props) {
     setAskClose(false);
     props.onInitialUsed?.();
   };
-  const initial = props.initial;
+  const { initial, onInitialUsed } = props;
   useEffect(() => {
-    if (initial) props.onInitialUsed?.();
-  }, [initial]);
+    if (initial) onInitialUsed?.();
+  }, [initial, onInitialUsed]);
   const [conflict, setConflict] = useState<{ current: Routine | null } | null>(
     null,
   );

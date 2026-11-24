@@ -4,11 +4,12 @@ import { PreviousSets } from "../domain/PreviousSets";
 import { DeloadEngine, type DeloadMode } from "../domain/DeloadEngine";
 import { SetCompleteness, type MissingField } from "../domain/SetCompleteness";
 import { WorkoutUndo } from "../domain/WorkoutUndo";
+import { WorkoutFlow, type WorkoutSetPosition } from "../domain/WorkoutFlow";
 import { SetPropagation, type SetFollowers } from "../domain/SetPropagation";
 import { WorkoutDiscard } from "../domain/WorkoutDiscard";
 import { selectOnFocus, trimLeadingZeros } from "../lib/numberField";
-import { ExerciseLibrary } from "./chunks";
-import { Fragment, memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { ExerciseLibrary, PlateCalculator } from "./chunks";
+import { Fragment, Suspense, memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import {
   ChevronDown,
@@ -22,6 +23,7 @@ import {
   X,
   Dumbbell,
   Calendar,
+  Clock,
   Volume2,
   VolumeX,
   Flame,
@@ -31,18 +33,16 @@ import {
   ArrowLeftRight,
   CheckCircle2,
 } from "lucide-react";
-import PlateCalculator from "./PlateCalculator";
 import { PlateApplication } from "../domain/PlateApplication";
 import { LaidDupPlan } from "../domain/LaidDupPlan";
 import ExerciseSwapModal from "./ExerciseSwapModal";
 import LiveStrip from "./LiveStrip";
 import RoomBadge from "./RoomBadge";
-import { useLiveRoom } from "./LiveRoomProvider";
+import { useLiveRoom } from "../lib/liveRoomContext";
 import Modal from "./Modal";
 import { audioHaptics } from "../lib/audioHaptics";
 import type { Exercise } from "../lib/types";
 import { detectExerciseEquipment } from "../domain/ExerciseAlternatives";
-import "../styles/workout-redesign.css";
 import {
   MUSCLES,
   exerciseForEntry,
@@ -53,7 +53,6 @@ import {
   localDate,
   makeSets,
   volumeSummary,
-  workingSets,
   type Workout,
   type SetEntry,
   type Settings,
@@ -131,6 +130,68 @@ function previousLabel(entry: WorkoutExercise, previous?: SetEntry) {
 }
 /** Узкая ячейка переносит «100 × 8» на две строки перед «×», а не обрезает многоточием. */
 const wrapSafe = (label: string) => label.replace(" × ", " ×\u00a0");
+
+const WorkoutAutoDuration = memo(function WorkoutAutoDuration({
+  draft,
+  manualClock,
+  retro,
+  estimatedMinutes,
+}: {
+  draft: Draft;
+  manualClock: boolean;
+  retro: boolean;
+  estimatedMinutes: number;
+}) {
+  const running = !manualClock && !retro && draft.clock.runningSince !== null;
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!running) return;
+    const sync = () => setNow(Date.now());
+    const id = setInterval(sync, 1000);
+    const onVis = () => {
+      if (document.visibilityState === "visible") sync();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [running]);
+
+  const elapsedSec = Math.floor(elapsedMs(draft, now) / 1000);
+  const autoMin = Math.max(0, Math.round(elapsedSec / 60));
+  const isHistoricalEdit = draft.editing;
+  const displayMin = isHistoricalEdit
+    ? draft.workout.duration
+    : retro || manualClock
+      ? estimatedMinutes
+      : autoMin;
+  const detail = isHistoricalEdit
+    ? "Из сохранённой записи"
+    : retro || manualClock
+      ? "Расчёт по подходам"
+      : draft.clock.runningSince === null
+        ? `На паузе · ${clock(elapsedSec)}`
+        : `Идёт таймер · ${clock(elapsedSec)}`;
+
+  return (
+    <div className="workout-auto-duration" role="status" aria-live="off">
+      <div className="workout-auto-duration-head">
+        <span className="workout-auto-duration-label">
+          <Clock size={14} aria-hidden="true" />
+          Длительность
+        </span>
+        <span className="workout-auto-pill">Авто</span>
+      </div>
+      <div className="workout-auto-duration-val">
+        <strong>{displayMin}</strong>
+        <span>мин</span>
+        <small>{detail}</small>
+      </div>
+    </div>
+  );
+});
 
 /** Изолированный живой таймер тренировки в шапке — тикает сам, не перерисовывая список упражнений. */
 const WorkoutLiveClock = memo(function WorkoutLiveClock({
@@ -361,7 +422,7 @@ export default function WorkoutView({
   const reducedMotion = useReducedMotion();
   const [announcement, setAnnouncement] = useState("");
   const [rirHelp, setRirHelp] = useState(false);
-  const [datePanel, setDatePanel] = useState(false);
+  const [entryPanel, setEntryPanel] = useState(false);
   const [needs, setNeeds] = useState<{ setId: string; field: MissingField } | null>(null);
   const [plateCalcTarget, setPlateCalcTarget] = useState<{ weight: number; ei: number } | null>(null);
   const [swapTarget, setSwapTarget] = useState<{ ei: number; exercise: Exercise } | null>(null);
@@ -388,8 +449,9 @@ export default function WorkoutView({
   const gymToggleRef = useRef<HTMLButtonElement>(null);
   const focusGymToggle = useRef(false);
   const consumedFocus = useRef<string | null>(null);
-  const lastGymMark = useRef(-Infinity);
+  const lastGymMark = useRef<HTMLButtonElement | null>(null);
   const hintPrefix = useId();
+  const entryPanelId = hintPrefix + "-entry";
   useLayoutEffect(() => {
     if (!focusGymToggle.current) return;
     focusGymToggle.current = false;
@@ -471,6 +533,7 @@ export default function WorkoutView({
   }, [focusRequest, gymMode, readOnly, selectGymSet, workoutId]);
   const restSeconds = draft?.workout.restSeconds ?? settings.restSeconds;
   const exercises = draft?.workout.exercises;
+  const flow = useMemo(() => new WorkoutFlow(exercises ?? []), [exercises]);
   const previous = useMemo(
     () =>
       new Map(
@@ -504,6 +567,28 @@ export default function WorkoutView({
     );
   }, [inDeload, history, exercises, workoutId, draft?.workout.date, settings.timeZone]);
   const hasDraft = !!draft;
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const updateRef = useRef(update);
+  updateRef.current = update;
+  const [toastPaused, setToastPaused] = useState(false);
+  const removalCount = draft?.removals?.length ?? 0;
+  const latestRemoval = draft?.removals?.at(-1);
+  const removalKey = latestRemoval
+    ? `${removalCount}:${latestRemoval.kind}:${latestRemoval.kind === "set" ? latestRemoval.set.id : latestRemoval.exercise.exerciseId}`
+    : "";
+
+  useEffect(() => {
+    if (!removalCount || toastPaused) return;
+    const id = setTimeout(() => {
+      const current = draftRef.current;
+      if (current?.removals?.length) {
+        updateRef.current({ ...current, removals: [] });
+      }
+    }, 3000);
+    return () => clearTimeout(id);
+  }, [removalCount, removalKey, toastPaused]);
+
   useLayoutEffect(() => {
     const screen = screenRef.current;
     const bar = barRef.current;
@@ -571,6 +656,7 @@ export default function WorkoutView({
     }
 
     const targetEx = w.exercises[ei];
+    const next = patch.done ? flow.after(targetEx.sets[si].id)?.position : undefined;
     const isSupersetTransition =
       patch.done &&
       targetEx?.supersetId &&
@@ -606,12 +692,50 @@ export default function WorkoutView({
       },
       ...(patch.done
         ? {
-            restFocus: (()=>{const candidates=w.exercises.flatMap(e=>e.sets.map(s=>({exerciseId:e.exerciseId,setId:s.id,done:s.done})));const next=candidates.find(s=>!s.done&&s.setId!==w.exercises[ei].sets[si].id);return next?{exerciseId:next.exerciseId,setId:next.setId}:undefined;})(),
+            restFocus: next ? { exerciseId: next.entry.exerciseId, setId: next.set.id } : undefined,
             restUntil: Date.now() + effectiveRest * 1000,
             pausedRest: null,
           }
         : {}),
     });
+    return next;
+  };
+
+  const addSet = (ei: number, warmup: boolean) => {
+    const entry = w.exercises[ei];
+    if (entry.sets.length >= 30) return;
+    const spec = exerciseForEntry(entry)!.recording;
+    const last = entry.sets.filter((set) => set.warmup === warmup).at(-1);
+    const timed = spec.type === "duration";
+    const next: SetEntry = {
+      ...makeSets(1, last?.weight ?? 0, timed ? 1 : last?.reps ?? 0, last?.rir ?? null)[0],
+      warmup,
+      ...(warmup ? { kind: "warmup" } : {}),
+      ...(timed ? { rir: null, durationSeconds: last?.durationSeconds ?? 30 } : {}),
+      ...(spec.loadMode === "assisted_bodyweight" ? { assistanceKg: last?.assistanceKg ?? 0 } : {}),
+    };
+    const sets = [...entry.sets];
+    const firstWorking = warmup ? sets.findIndex((set) => !set.warmup) : -1;
+    sets.splice(firstWorking < 0 ? sets.length : firstWorking, 0, next);
+    patchExercise(ei, { sets });
+    if (gymMode) selectGymSet(next.id);
+  };
+
+  const removeGymSet = ({ exerciseIndex, setIndex }: WorkoutSetPosition) => {
+    const next = WorkoutUndo.set(draft, exerciseIndex, setIndex);
+    if (next === draft) return;
+    const sets = next.workout.exercises[exerciseIndex].sets;
+    update(next);
+    selectGymSet(sets[Math.min(setIndex, sets.length - 1)].id);
+  };
+
+  const removeGymExercise = (exerciseIndex: number) => {
+    const next = WorkoutUndo.exercise(draft, exerciseIndex);
+    if (next === draft) return;
+    const remaining = next.workout.exercises;
+    const nextEntry = remaining[Math.min(exerciseIndex, remaining.length - 1)];
+    update(next);
+    selectGymSet(nextEntry?.sets[0]?.id ?? null);
   };
 
   const bumpWeight = (ei: number, si: number, delta: number) => {
@@ -650,9 +774,6 @@ export default function WorkoutView({
     );
   };
   const manualClock = BackdatedWorkout.manualDuration(draft, settings.timeZone);
-  const elapsed = manualClock
-    ? w.duration
-    : Math.floor(elapsedMs(draft) / 60000);
   const toggleSessionClock = () =>
     update(
       draft.clock.runningSince === null
@@ -675,6 +796,7 @@ export default function WorkoutView({
       Дата
       <input
         type="date"
+        disabled={saving}
         aria-label={panel ? "Дата записи" : undefined}
         max={localDate(new Date(), zone)}
         value={w.date}
@@ -685,40 +807,28 @@ export default function WorkoutView({
       />
     </label>
   );
+  const estimatedMinutes = (() => {
+    const sets = w.exercises.flatMap((e) => e.sets);
+    const done = sets.filter((s) => s.done);
+    const sample = done.length > 0 ? done : sets;
+    const work = sample.filter((s) => !s.warmup).length;
+    const warm = sample.filter((s) => s.warmup).length;
+    return Math.max(10, Math.round(work * 3 + warm * 1.5));
+  })();
   const durationField = (panel = false) => (
-    <label>
-      Длительность, минуты
-      <input
-        aria-label={panel ? "Длительность записи, минуты" : "Длительность тренировки, минуты"}
-        disabled={saving}
-        type="number"
-        min="0"
-        max="1440"
-        value={elapsed}
-        onChange={(e) =>
-          update({
-            ...checkpointDraft(draft, Date.now(), true),
-            manualDuration: true,
-            workout: { ...w, duration: Number(e.target.value) },
-          })
-        }
-      />
-    </label>
+    <WorkoutAutoDuration
+      draft={draft}
+      manualClock={manualClock}
+      retro={panel || BackdatedWorkout.isBackdated(draft, settings.timeZone)}
+      estimatedMinutes={estimatedMinutes}
+    />
   );
   const summary = volumeSummary([w]);
-  const warmupSummary = volumeSummary([w], "warmup");
-  const warmupCount = w.exercises.reduce(
-    (n, e) => n + e.sets.filter((s) => s.done && s.warmup).length,
-    0,
-  );
-  const doneWorking = workingSets([w]);
-  const totalWorking = w.exercises.reduce(
-    (count, exercise) => count + exercise.sets.filter((set) => !set.warmup).length,
-    0,
-  );
+  const { workingDone: doneWorking, workingTotal: totalWorking } = flow;
   /** Общие свойства числовых полей строки: выбрать подход и выделить число при касании. */
   const fieldProps = (ei: number, si: number) => ({
     onFocus: (e: React.FocusEvent<HTMLInputElement>) => {
+      lastGymMark.current = null;
       selectOnFocus.onFocus(e);
       followersRef.current = SetPropagation.followers(w.exercises[ei].sets, si);
       setActiveSetKey(w.exercises[ei].sets[si].id);
@@ -839,7 +949,7 @@ export default function WorkoutView({
               {set.kind === "dropset" ? "D" : set.kind === "myorep" ? "M" : set.warmup ? "Р" : kindIndex + 1}
             </button>
           )}
-          <button
+          {(!gym || last) && <button
             type="button"
             className="set-previous"
             disabled={!fromLast}
@@ -852,7 +962,7 @@ export default function WorkoutView({
             }}
           >
             {gym ? `Прошлый: ${lastText}` : wrapSafe(lastText)}
-          </button>
+          </button>}
           {gym ? <div className="gym-set-fields">{fields}</div> : fields}
           <button
             type="button"
@@ -861,24 +971,20 @@ export default function WorkoutView({
             aria-pressed={set.done}
             onClick={(event) => {
               event.stopPropagation();
+              if (gym && event.detail > 1 && lastGymMark.current === event.currentTarget) return;
               if (!set.done) {
                 const field = SetCompleteness.missing(exercise, set);
                 if (field) {
                   setNeeds({ setId: set.id, field });
-                  if (!gym) event.currentTarget.closest(".set-row")
+                  event.currentTarget.closest(".set-row, .gym-set-row")
                     ?.querySelector<HTMLInputElement>(`[data-set-field="${field}"]`)?.focus();
                   return;
                 }
-                if (gym) {
-                  // A double tap must not log the newly displayed set as well.
-                  const time = performance.now();
-                  if (time - lastGymMark.current < 350) return;
-                  lastGymMark.current = time;
-                }
               }
+              if (gym) lastGymMark.current = event.currentTarget;
               setNeeds(null);
-              changeSet(ei, si, { done: !set.done });
-              if (!set.done && gymSetId === set.id) selectGymSet(null);
+              const next = changeSet(ei, si, { done: !set.done });
+              if (!set.done && (gym || gymSetId === set.id)) selectGymSet(next?.set.id ?? set.id);
             }}
           >
             <svg className="set-check-feedback" aria-hidden="true" width="22" height="22" viewBox="0 0 24 24"
@@ -986,6 +1092,19 @@ export default function WorkoutView({
             >
               {soundEnabled ? <Volume2 size={19} aria-hidden="true" /> : <VolumeX size={19} aria-hidden="true" />}
             </button>
+            {!retroLabel && (
+              <button
+                type="button"
+                className="icon-button workout-entry-toggle"
+                aria-label="Дата, длительность и заметки"
+                title="Дата, длительность и заметки"
+                aria-expanded={entryPanel}
+                aria-controls={entryPanelId}
+                onClick={() => setEntryPanel((open) => !open)}
+              >
+                <Calendar size={18} aria-hidden="true" />
+              </button>
+            )}
             <button
               type="button"
               className="button secondary cancel-workout-btn"
@@ -1005,26 +1124,39 @@ export default function WorkoutView({
             </button>
           </div>
         ) : null}
-        {retroLabel ? (
+        {(retroLabel || entryPanel) && (
           <div className="retro-date">
-            <button
-              type="button"
-              className="retro-chip"
-              aria-expanded={datePanel}
-              aria-controls="retro-date-panel"
-              onClick={() => setDatePanel((open) => !open)}
-            >
-              <Calendar size={15} aria-hidden="true" />
-              {retroLabel}
-            </button>
-            {datePanel ? (
-              <div className="retro-panel" id="retro-date-panel" role="group" aria-label="Дата и длительность записи">
-                {dateField(true)}
-                {durationField(true)}
+            {retroLabel && (
+              <button
+                type="button"
+                className="retro-chip"
+                aria-expanded={entryPanel}
+                aria-controls={entryPanelId}
+                onClick={() => setEntryPanel((open) => !open)}
+              >
+                <Calendar size={15} aria-hidden="true" />
+                {retroLabel}
+              </button>
+            )}
+            {entryPanel && (
+              <div className="retro-panel workout-entry-panel" id={entryPanelId} role="group" aria-label="Дата и длительность записи">
+                {dateField(!!retroLabel)}
+                {durationField(!!retroLabel)}
+                <div className="workout-entry-notes">
+                  <label htmlFor={entryPanelId + "-notes"}>Заметки</label>
+                  <textarea
+                    id={entryPanelId + "-notes"}
+                    rows={2}
+                    value={w.notes}
+                    disabled={saving}
+                    maxLength={2000}
+                    onChange={(e) => setWorkout({ ...w, notes: e.target.value })}
+                  />
+                </div>
               </div>
-            ) : null}
+            )}
           </div>
-        ) : null}
+        )}
         {draft.editing ? null : <LiveStrip onOpen={onOpenTogether} />}
         <div className="workout-command-strip" ref={pinRef}>
           <div className="workout-live-hud">
@@ -1034,8 +1166,8 @@ export default function WorkoutView({
               saving={saving}
               onTogglePause={toggleSessionClock}
             />
-            <span className="hud-metric">
-              <b>{doneWorking}<small> / {totalWorking}</small></b>
+            <span className="hud-metric hud-working">
+              <b aria-live="polite" aria-atomic="true">{doneWorking}<small> / {totalWorking}</small></b>
               <span className="hud-label">Рабочие подходы</span>
             </span>
             <span className="hud-metric hud-tonnage-inline">
@@ -1048,10 +1180,7 @@ export default function WorkoutView({
             className="button primary finish-button"
             aria-label={draft.editing ? "Сохранить изменения" : "Завершить тренировку"}
             onClick={onSave}
-            disabled={
-              saving || readOnly ||
-              !w.exercises.some((e) => e.sets.some((s) => s.done && !s.warmup))
-            }
+            disabled={saving || readOnly || doneWorking === 0}
           >
             {saving ? "…" : draft.editing ? "Сохранить" : "Завершить"}
           </button>
@@ -1088,6 +1217,11 @@ export default function WorkoutView({
         className="workout-main"
         disabled={saving || readOnly}
         aria-label="Поля тренировки"
+        onClickCapture={(event) => {
+          if (gymMode && event.target instanceof Element && !event.target.closest(".gym-set-check")) {
+            lastGymMark.current = null;
+          }
+        }}
         onKeyDown={(event) => {
           if (readOnly || event.nativeEvent.isComposing) return;
           if (gymMode && event.repeat && (event.key === "Enter" || event.key === " ")) {
@@ -1117,10 +1251,14 @@ export default function WorkoutView({
         ) : null}
         {gymMode ? (
           <WorkoutGym
-            exercises={w.exercises}
+            flow={flow}
             selected={gymSetId}
             onSelect={selectGymSet}
-            editor={(entry, ei, si) => renderSet(entry, ei, si, true)}
+            editor={({ entry, exerciseIndex, setIndex }) => renderSet(entry, exerciseIndex, setIndex, true)}
+            onAddSet={addSet}
+            onRemoveSet={removeGymSet}
+            onRemoveExercise={removeGymExercise}
+            onAddExercise={onPick}
           />
         ) : w.exercises.map((we, ei) => {
           const exercise = exerciseForEntry(we)!;
@@ -1423,26 +1561,7 @@ export default function WorkoutView({
                 <button
                   className="add-set"
                   disabled={we.sets.length >= 30}
-                  onClick={() => {
-                    const last = we.sets.at(-1)!;
-                    // Новый подход наследует вес, повторы и RIR предыдущего (R02-REQ09).
-                    const next = makeSets(1, last.weight, last.reps, last.rir ?? null).map(
-                      (s) => ({
-                        ...s,
-                        ...(timed
-                          ? {
-                              reps: 1,
-                              rir: null,
-                              durationSeconds: last.durationSeconds ?? 30,
-                            }
-                          : {}),
-                        ...(assistance
-                          ? { assistanceKg: last.assistanceKg ?? 0 }
-                          : {}),
-                      }),
-                    );
-                    patchExercise(ei, { sets: [...we.sets, ...next] });
-                  }}
+                  onClick={() => addSet(ei, false)}
                 >
                   <Plus size={16} />
                   Подход
@@ -1486,106 +1605,88 @@ export default function WorkoutView({
           </Fragment>
         );
         })}
-        <button
-          className="button secondary full-width"
-          disabled={w.exercises.length >= 30}
-          onClick={onPick}
-        >
-          <Plus size={18} />
-          Добавить упражнение
-        </button>
-        <details className="workout-details panel" open={draft.editing}>
-          <summary>Детали тренировки</summary>
-          {dateField()}
-          <div className="duration-controls">
-            {durationField()}
-            {!draft.editing ? (
-              <button
-                className="icon-button"
-                disabled={saving}
-                aria-label={
-                  draft.clock.runningSince === null
-                    ? "Продолжить счётчик тренировки"
-                    : "Приостановить счётчик тренировки"
-                }
-                onClick={toggleSessionClock}
-              >
-                {draft.clock.runningSince === null ? (
-                  <Play size={18} />
-                ) : (
-                  <Pause size={18} />
-                )}
-              </button>
-            ) : null}
-          </div>
-          <label className="notes-label">
-            Заметки
-            <textarea
-              rows={2}
-              placeholder="Заметка"
-              value={w.notes}
-              maxLength={2000}
-              onChange={(e) => setWorkout({ ...w, notes: e.target.value })}
-            />
-          </label>
-          <div className="session-summary-stats">
-            <span>
-              Упражнения<b>{w.exercises.length}</b>
-            </span>
-            <span>
-              Рабочие подходы<b>{doneWorking}</b>
-            </span>
-            <span>
-              Тоннаж<b>{fmt(summary.total)} кг</b>
-            </span>
-            <span>
-              Разминка<b>{warmupCount} подх. · {fmt(warmupSummary.total)} кг</b>
-            </span>
-          </div>
+        {(!gymMode || !flow.positions.length) && (
           <button
-            className="text-button danger-text discard"
-            disabled={saving}
-            onClick={requestDiscard}
+            type="button"
+            className="button secondary full-width"
+            disabled={w.exercises.length >= 30}
+            onClick={onPick}
           >
-            {draft.editing ? "Отменить изменения" : "Отменить тренировку"}
+            <Plus size={18} aria-hidden="true" />
+            Добавить упражнение
           </button>
-        </details>
+        )}
       </fieldset>
       {/* Одна нижняя стопка: «Отменить удаление» и таймер отдыха идут друг под другом в одном липком блоке, поэтому не могут перекрыть друг друга. */}
       <div className="workout-dock" ref={dockRef}>
+      <div className="workout-toast-region" role="region" aria-label="Уведомления тренировки">
       <AnimatePresence initial={false}>
         {lastRemoval ? (
           <m.div
-            className="workout-undo"
-            key="undo"
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 8 }}
+            className={`workout-undo${toastPaused ? " is-paused" : ""}`}
+            key={removalKey}
+            initial={reducedMotion ? false : { opacity: 0, y: 12, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={reducedMotion ? undefined : { opacity: 0, y: 10, scale: 0.97 }}
+            transition={{ type: "spring", stiffness: 460, damping: 34 }}
             role="status"
+            onMouseEnter={() => setToastPaused(true)}
+            onMouseLeave={() => setToastPaused(false)}
+            onFocusCapture={() => setToastPaused(true)}
+            onBlurCapture={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                setToastPaused(false);
+              }
+            }}
           >
-            <span>
-              {lastRemoval.kind === "set" ? "Подход удалён" : "Упражнение убрано"}
-              {draft.removals!.length > 1 ? ` · ещё ${draft.removals!.length - 1}` : ""}
+            <span className="workout-undo-icon" aria-hidden="true">
+              <Trash2 size={16} />
             </span>
-            <button
-              type="button"
-              className="button secondary"
-              aria-label="Отменить удаление"
-              onClick={() => {
-                try {
-                  update(WorkoutUndo.restore(draft));
-                  setUndoError("");
-                } catch (e) {
-                  setUndoError((e as Error).message);
-                }
-              }}
-            >
-              <RotateCcw size={16} />
-              Отменить
-            </button>
+            <div className="workout-undo-copy">
+              <strong className="workout-undo-title">
+                {lastRemoval.kind === "set" ? "Подход удалён" : "Упражнение убрано"}
+              </strong>
+              <span className="workout-undo-sub">
+                {draft.removals!.length > 1
+                  ? `В очереди ещё ${draft.removals!.length - 1} · можно вернуть`
+                  : "Исчезнет через 3 с · можно вернуть"}
+              </span>
+            </div>
+            <div className="workout-undo-actions">
+              <button
+                type="button"
+                className="workout-undo-btn"
+                aria-label="Отменить удаление"
+                onClick={() => {
+                  try {
+                    setToastPaused(false);
+                    update(WorkoutUndo.restore(draft));
+                    setUndoError("");
+                  } catch (e) {
+                    setUndoError((e as Error).message);
+                  }
+                }}
+              >
+                <RotateCcw size={15} aria-hidden="true" />
+                <span>Вернуть</span>
+              </button>
+              <button
+                type="button"
+                className="workout-undo-close"
+                aria-label="Скрыть уведомление"
+                onClick={() => {
+                  setToastPaused(false);
+                  update({ ...draft, removals: [] });
+                }}
+              >
+                <X size={15} aria-hidden="true" />
+              </button>
+            </div>
+            <span className="workout-undo-timer" aria-hidden="true" />
           </m.div>
         ) : null}
       </AnimatePresence>
+      </div>
       {/* A skipped or expired rest must stop covering the controls immediately. */}
       <WorkoutRestBar
         draft={draft}
@@ -1614,20 +1715,22 @@ export default function WorkoutView({
 
       {!readOnly && plateCalcTarget && (
         <Modal title="Калькулятор блинов" onClose={() => setPlateCalcTarget(null)} wide>
-          <PlateCalculator
-            initialWeight={plateCalcTarget.weight}
-            onClose={() => setPlateCalcTarget(null)}
-            applyScope={PlateApplication.scope(w.exercises[plateCalcTarget.ei]?.sets ?? [], plateCalcTarget.weight)}
-            onApplyWeight={(appliedWeight) => {
-              const targetEi = plateCalcTarget.ei;
-              setWorkout({
-                ...w,
-                exercises: w.exercises.map((e, i) =>
-                  i === targetEi ? { ...e, sets: PlateApplication.apply(e.sets, plateCalcTarget.weight, appliedWeight) } : e,
-                ),
-              });
-            }}
-          />
+          <Suspense fallback={<div className="empty">Загружаем…</div>}>
+            <PlateCalculator
+              initialWeight={plateCalcTarget.weight}
+              onClose={() => setPlateCalcTarget(null)}
+              applyScope={PlateApplication.scope(w.exercises[plateCalcTarget.ei]?.sets ?? [], plateCalcTarget.weight)}
+              onApplyWeight={(appliedWeight) => {
+                const targetEi = plateCalcTarget.ei;
+                setWorkout({
+                  ...w,
+                  exercises: w.exercises.map((e, i) =>
+                    i === targetEi ? { ...e, sets: PlateApplication.apply(e.sets, plateCalcTarget.weight, appliedWeight) } : e,
+                  ),
+                });
+              }}
+            />
+          </Suspense>
         </Modal>
       )}
 

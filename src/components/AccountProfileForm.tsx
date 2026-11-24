@@ -1,14 +1,15 @@
-import { useBodyweight } from "../state/BodyweightContext";
+import { useBodyweight } from "../state/bodyweightStore";
 import { BodyMass } from "../domain/BodyMass";
 import { BodyweightTracker } from "../domain/BodyweightTracker";
 import { localDate } from "../lib/calendar";
-import { Suspense, useState, useEffect, type FormEvent } from "react";
+import { Suspense, useState, useEffect, useCallback, type FormEvent } from "react";
 import { CloudSyncPanel } from "./chunks";
 import RecoveryCodeModal from "./RecoveryCodeModal";
 import { TimeZoneField } from "./TimeZoneField";
-import { Smartphone, UserRound, Sparkles } from "lucide-react";
+import { Laptop, LogOut, Smartphone, UserRound, Sparkles } from "lucide-react";
 import { api } from "../services/ApiClient";
-import { signOutAccount } from "../services/signOut";import type { AccountProfile } from "../lib/account";
+import { signOutAccount } from "../services/signOut";
+import type { AccountProfile, SessionDevice } from "../lib/account";
 import { cloudState } from "../device/cloudSync";
 import {
   THEMES,
@@ -38,6 +39,67 @@ export function AccountProfileForm({
 }) {
   const journal = useBodyweight();
   const [confirmLogout, setConfirmLogout] = useState(false);
+  const [confirmLogoutAll, setConfirmLogoutAll] = useState(false);
+  const [sessions, setSessions] = useState<SessionDevice[] | null>(null);
+  const [sessionsBusy, setSessionsBusy] = useState(false);
+  const loadSessions = useCallback(async () => {
+    if (onDevice) return;
+    setSessionsBusy(true);
+    try {
+      const r = await api<{ sessions: SessionDevice[] }>("/api/auth/sessions");
+      setSessions(r.sessions);
+    } catch {
+      // Нет связи — список сессий не показываем, форма профиля остаётся рабочей.
+    } finally {
+      setSessionsBusy(false);
+    }
+  }, []);
+  const revokeSession = async (id: string) => {
+    setBusy(true);
+    setError("");
+    try {
+      const r = await api<{ revoked: boolean; current: boolean }>(
+        `/api/auth/sessions/${encodeURIComponent(id)}`,
+        "DELETE",
+        {},
+      );
+      if (r.current) {
+        onLogout();
+        return;
+      }
+      setSessions((list) => (list ? list.filter((s) => s.id !== id) : list));
+      setSaved("Сессия завершена");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось завершить сессию");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const revokeOthers = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      await api<{ revoked: number }>("/api/auth/sessions/revoke-others", "POST", {});
+      setSessions((list) => (list ? list.filter((s) => s.current) : list));
+      setSaved("Остальные устройства вышли из аккаунта");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось завершить остальные сессии");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const revokeAll = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      await api<{ loggedOut: boolean }>("/api/auth/sessions/revoke-all", "POST", {});
+      onLogout();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось выйти со всех устройств");
+      setBusy(false);
+      setConfirmLogoutAll(false);
+    }
+  };
   const [zone, setZone] = useState(account.timeZone);
   const [newCode, setNewCode] = useState("");
   const latestMass = journal.massAt(
@@ -321,6 +383,95 @@ export function AccountProfileForm({
               intro="Новый код восстановления. Прежний больше не подходит. Сохрани этот: он показывается один раз."
             />
           ) : null}
+          <details
+            className="password-details sessions-details"
+            onToggle={(e) => {
+              if (e.currentTarget.open && sessions === null && !sessionsBusy) void loadSessions();
+            }}
+          >
+            <summary>Активные устройства и сессии</summary>
+            <p className="tiny">
+              Управляй входами на других устройствах без смены пароля.
+            </p>
+            {sessionsBusy && !sessions ? (
+              <p className="tiny" role="status">Загружаем список устройств…</p>
+            ) : sessions && sessions.length ? (
+              <ul className="sessions-list">
+                {sessions.map((s) => {
+                  const isMobile = /iPhone|iPad|Android/i.test(s.deviceLabel);
+                  const lastSeen = new Date(s.lastSeenAt).toLocaleString("ru-RU", {
+                    day: "numeric",
+                    month: "short",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  });
+                  return (
+                    <li key={s.id} className={`session-device-row${s.current ? " is-current" : ""}`}>
+                      <span className="session-device-icon" aria-hidden="true">
+                        {isMobile ? <Smartphone size={16} /> : <Laptop size={16} />}
+                      </span>
+                      <div className="session-device-info">
+                        <b>
+                          {s.deviceLabel}
+                          {s.current ? <span className="session-current-badge">Текущее</span> : null}
+                        </b>
+                        <small>Активность: {lastSeen}</small>
+                      </div>
+                      {!s.current ? (
+                        <button
+                          type="button"
+                          className="text-button"
+                          disabled={busy}
+                          onClick={() => void revokeSession(s.id)}
+                        >
+                          Завершить
+                        </button>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <p className="tiny">Не удалось получить список устройств.</p>
+            )}
+            <div className="session-actions">
+              {sessions && sessions.length > 1 ? (
+                <button
+                  type="button"
+                  className="button secondary"
+                  disabled={busy}
+                  onClick={() => void revokeOthers()}
+                >
+                  Завершить остальные ({sessions.length - 1})
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="button secondary"
+                disabled={busy}
+                onClick={() => setConfirmLogoutAll(true)}
+              >
+                <LogOut size={16} aria-hidden="true" />
+                Выйти со всех устройств
+              </button>
+            </div>
+            {confirmLogoutAll ? (
+              <div className="account-logout-confirm" role="alertdialog" aria-label="Выйти со всех устройств?">
+                <p>
+                  Завершить все активные сессии, включая это устройство?
+                  {hasDraft || queued ? " Несохранённая тренировка на этом устройстве пропадёт." : ""}
+                </p>
+                <div className="actions">
+                  <button type="button" className="button danger" disabled={busy} onClick={() => void revokeAll()}>
+                    Выйти везде
+                  </button>
+                  <button type="button" className="button secondary" disabled={busy} autoFocus onClick={() => setConfirmLogoutAll(false)}>
+                    Отмена
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </details>
           <a
             className="button secondary android-download"
             href="/tyaga.apk"

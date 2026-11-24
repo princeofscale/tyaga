@@ -1,5 +1,5 @@
 import { MUSCLES, ANATOMICAL_MUSCLES } from "../data/muscles";
-import { exerciseById, exerciseForEntry } from "../lib/catalog";
+import { exerciseById } from "../lib/catalog";
 import type { Workout, Settings, MuscleLoad, Exercise } from "../lib/types";
 import { AnalyticsFacts, type FactsOptions } from "./AnalyticsFacts";
 import { MuscleParticipation } from "./MuscleParticipation";

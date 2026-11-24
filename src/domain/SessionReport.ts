@@ -3,7 +3,6 @@ import { TrainingVolume } from "./TrainingVolume";
 import { TrainingAnalytics } from "./TrainingAnalytics";
 import { DEFAULT_SETTINGS, volumeSummary } from "../lib/model";
 import type { Workout, Settings } from "../lib/types";
-import { exerciseForEntry } from "../lib/catalog";
 
 /** A journal report, not an estimate of physiological stimulus or recovery. */
 export class SessionReport {

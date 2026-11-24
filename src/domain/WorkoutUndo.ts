@@ -62,15 +62,20 @@ export class WorkoutUndo {
       ].slice(-10),
     };
   }
-  static set(draft: Draft, exerciseIndex: number): Draft {
+  static set(draft: Draft, exerciseIndex: number, setIndex?: number): Draft {
+    if (!Number.isInteger(exerciseIndex)) return draft;
     const exercise = draft.workout.exercises[exerciseIndex];
     if (!exercise || exercise.sets.length <= 1) return draft;
+    const index = setIndex === undefined ? exercise.sets.length - 1 : setIndex;
+    if (!Number.isInteger(index) || index < 0) return draft;
+    const set = exercise.sets[index];
+    if (!set) return draft;
     return {
       ...draft,
       workout: {
         ...draft.workout,
         exercises: draft.workout.exercises.map((e, i) =>
-          i === exerciseIndex ? { ...e, sets: e.sets.slice(0, -1) } : e,
+          i === exerciseIndex ? { ...e, sets: e.sets.filter((_, j) => j !== index) } : e,
         ),
       },
       removals: [
@@ -78,8 +83,8 @@ export class WorkoutUndo {
         {
           kind: "set",
           exerciseId: exercise.exerciseId,
-          index: exercise.sets.length - 1,
-          set: structuredClone(exercise.sets.at(-1)!),
+          index,
+          set: structuredClone(set),
         } as WorkoutRemoval,
       ].slice(-10),
     };

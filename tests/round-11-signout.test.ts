@@ -5,7 +5,6 @@ import { apiClient } from "../src/services/ApiClient";
 
 const answer = (status: number, body: unknown) => async () => new Response(JSON.stringify(body), { status });
 function withTransport(transport: typeof fetch) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const client = apiClient as any;
   const before = client.transport;
   client.transport = transport;

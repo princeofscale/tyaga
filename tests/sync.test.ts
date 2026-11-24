@@ -146,3 +146,71 @@ test("phone and cloud converge: push, pull, newer edit wins, deletes and favorit
   assert.deepEqual((await remote("/api/product", { token })).data.favorites, []);
   assert.deepEqual(await sync(), { pushed: 0, pulled: 0 });
 });
+
+test("cross-account UPSERT conflict leaves original owner intact and never poisons sync_versions", async () => {
+  const remote = await cloudWorker();
+  const tokenA = (await remote("/api/auth/register", { body: { email: "owner-a@example.test", password: "account a passphrase", displayName: "A", timeZone: "UTC" } })).response.headers.get("X-Tyaga-Session")!;
+  const tokenB = (await remote("/api/auth/register", { body: { email: "owner-b@example.test", password: "account b passphrase", displayName: "B", timeZone: "UTC" } })).response.headers.get("X-Tyaga-Session")!;
+
+  const workoutA = completed(120);
+  assert.equal((await remote("/api/workouts", { method: "PUT", token: tokenA, body: workoutA })).status, 200);
+  const routineA = {
+    id: "shared-routine-id",
+    name: "Программа A",
+    notes: "",
+    days: [0],
+    restSeconds: 90,
+    progression: "repeat",
+    repMin: 8,
+    repMax: 12,
+    incrementKg: 2.5,
+    revision: 0,
+    exercises: workoutA.exercises,
+  };
+  assert.equal((await remote("/api/routines", { method: "PUT", token: tokenA, body: routineA })).status, 200);
+
+  const changesA = (await remote("/api/sync/changes?since=0", { token: tokenA })).data as SyncPage;
+  const workoutDocA = changesA.docs.find((d) => d.kind === "workout" && d.id === workoutA.id)!;
+  const routineDocA = changesA.docs.find((d) => d.kind === "routine" && d.id === routineA.id)!;
+  assert.ok(workoutDocA && routineDocA);
+
+  // Account B attempts to overwrite Account A's workout and routine with the same IDs and a future timestamp.
+  const tamperedWorkoutPayload = JSON.stringify({ ...completed(10), id: workoutA.id, name: "Подмена B" });
+  const tamperedRoutinePayload = JSON.stringify({ ...routineA, name: "Подмена программы B" });
+  const attack = await remote("/api/sync/apply", {
+    token: tokenB,
+    body: {
+      docs: [
+        {
+          kind: "workout",
+          id: workoutA.id,
+          versionAt: "2099-01-01T00:00:00.000Z",
+          deleted: false,
+          row: { ...workoutDocA.row, payload: tamperedWorkoutPayload, updated_at: "2099-01-01T00:00:00.000Z", revision: 99 },
+        },
+        {
+          kind: "routine",
+          id: routineA.id,
+          versionAt: "2099-01-01T00:00:00.000Z",
+          deleted: false,
+          row: { ...routineDocA.row, payload: tamperedRoutinePayload, updated_at: "2099-01-01T00:00:00.000Z", revision: 99 },
+        },
+      ],
+    },
+  });
+  assert.equal(attack.status, 200);
+  assert.deepEqual(attack.data, { applied: 0, skipped: 2 });
+
+  // Account A's workout and routine remain completely untouched.
+  const dataA = (await remote("/api/data", { token: tokenA })).data as { workouts: Workout[] };
+  assert.equal(dataA.workouts.length, 1);
+  assert.equal(dataA.workouts[0].exercises[0].sets[0].weight, 120);
+  const productA = (await remote("/api/product", { token: tokenA })).data as { routines: Array<{ id: string; name: string }> };
+  assert.equal(productA.routines.find((r) => r.id === routineA.id)?.name, "Программа A");
+
+  // Account B has no leaked rows and no poisoned sync_versions entries.
+  const dataB = (await remote("/api/data", { token: tokenB })).data as { workouts: Workout[] };
+  assert.equal(dataB.workouts.length, 0);
+  const changesB = (await remote("/api/sync/changes?since=0", { token: tokenB })).data as SyncPage;
+  assert.deepEqual(changesB.docs, []);
+});

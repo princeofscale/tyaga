@@ -38,12 +38,11 @@ import { friendsApi } from "../services/FriendsApi";
 import { CLOUD_URL, cloudState } from "../device/cloudSync";
 import { localDate } from "../lib/calendar";
 import type { Routine, Workout } from "../lib/types";
-import { useLiveRoom } from "./LiveRoomProvider";
+import { useLiveRoom } from "../lib/liveRoomContext";
 import Modal from "./Modal";
 import RoomInvite from "./RoomInvite";
 import TogetherCard from "./TogetherCard";
 import "../styles/friends.css";
-import "../styles/friends-redesign.css";
 
 type FriendsTab = "friends" | "together" | "programs";
 type CreateMode = "template" | "mine";
@@ -182,7 +181,6 @@ export default function FriendsScreen({
     return () => {
       mounted.current = false;
       controller.abort();
-      ++generation.current;
       clearInterval(interval);
       document.removeEventListener("visibilitychange", load);
       window.removeEventListener("online", load);

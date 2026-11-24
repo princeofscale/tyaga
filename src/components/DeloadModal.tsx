@@ -1,8 +1,6 @@
 import { useState, useMemo } from "react";
 import {
   BatteryCharging,
-  Activity,
-  Flame,
   ShieldCheck,
   Zap,
   CheckCircle2,

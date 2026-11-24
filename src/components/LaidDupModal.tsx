@@ -3,7 +3,7 @@ import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import { Check, Sparkles } from "lucide-react";
 import { DAY_NAMES } from "../domain/TrainingProgram";
 import { LaidDupPlan, type LaidLift, type LaidWeekSlot } from "../domain/LaidDupPlan";
-import { addCalendarDays, dateLabel } from "../lib/calendar";
+import { dateLabel } from "../lib/calendar";
 import { setsWord } from "../lib/quantity";
 import type { LaidMaxes, Routine, Workout } from "../lib/types";
 import LaidWeekOrderEditor from "./LaidWeekOrderEditor";
@@ -470,4 +470,4 @@ export default function LaidDupModal(props: Props) {
 }
 
 /** Понедельник недели `week` (0-based) от старта — для подписей. */
-export const laidWeekMonday = (startMonday: string, week: number) => addCalendarDays(startMonday, week * 7);
+

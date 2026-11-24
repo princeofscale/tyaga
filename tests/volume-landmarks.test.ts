@@ -12,15 +12,28 @@ function workout(id = "lat-pulldown", date = "2026-11-12") {
   return w;
 }
 
-test("volume reference describes recorded volume without promising growth or diagnosing overtraining", () => {
+test("volume landmarks classify per-muscle MV / MEV / MAV / MRV phases accurately", () => {
+  // Chest: MV 4, MEV 8, MAV 12–20, MRV 22
+  assert.equal(Volume.assessMuscleVolume("chest", 0).phase, "no_sets");
+  assert.equal(Volume.assessMuscleVolume("chest", 2).phase, "below_mv");
+  assert.equal(Volume.assessMuscleVolume("chest", 5).phase, "maintenance");
+  assert.equal(Volume.assessMuscleVolume("chest", 9).phase, "min_growth");
+  assert.equal(Volume.assessMuscleVolume("chest", 14).phase, "optimal_growth");
+  assert.equal(Volume.assessMuscleVolume("chest", 21).phase, "high_volume");
+  assert.equal(Volume.assessMuscleVolume("chest", 24).phase, "overreaching");
+
+  // Status compatibility
   assert.equal(Volume.assessMuscleVolume("chest", 0).status, "no_sets");
-  assert.equal(Volume.assessMuscleVolume("chest", 4).status, "below_reference");
-  assert.equal(Volume.assessMuscleVolume("chest", 9.5).status, "below_reference");
-  assert.equal(Volume.assessMuscleVolume("chest", 10).status, "within_reference");
-  assert.equal(Volume.assessMuscleVolume("chest", 20).status, "within_reference");
-  assert.equal(Volume.assessMuscleVolume("chest", 20.5).status, "above_reference");
-  assert.match(Volume.assessMuscleVolume("chest", 4).recommendation, /Рост возможен/);
+  assert.equal(Volume.assessMuscleVolume("chest", 5).status, "below_reference");
+  assert.equal(Volume.assessMuscleVolume("chest", 12).status, "within_reference");
+  assert.equal(Volume.assessMuscleVolume("chest", 24).status, "above_reference");
   assert.match(Volume.assessMuscleVolume("chest", 40).recommendation, /не определяет перетренированность/);
+
+  // Different muscles have distinct evidence-based brackets (e.g. back vs triceps)
+  const back = Volume.getBracket("back");
+  const triceps = Volume.getBracket("triceps");
+  assert.ok(back.mev > triceps.mev);
+  assert.ok(back.mrv > triceps.mrv);
 });
 
 test("fractional volume includes pulling assistance once per zone, but excludes stabilization", () => {

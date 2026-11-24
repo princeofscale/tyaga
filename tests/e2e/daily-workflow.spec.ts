@@ -10,7 +10,6 @@ import { mkdir } from "node:fs/promises";
 import { DEFAULT_SETTINGS, makeWorkout } from "../../src/lib/model";
 import { mockWeights, weightFixture } from "./fixtures/bodyweight";
 import type { FriendsData } from "../../src/domain/FriendsService";
-import type { TrainingMeetup } from "../../src/domain/TrainingMeetups";
 test.use({ timezoneId: "Europe/Saratov" });
 
 const NOW = new Date("2026-11-10T12:00:00Z");

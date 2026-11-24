@@ -1,21 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
-import {
-  useQuery,
-  keepPreviousData,
-  QueryClient,
-  QueryClientProvider,
-} from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
   ChevronLeft,
   ChevronRight,
   Database,
   Dumbbell,
-  Globe2,
+  Info,
+  Pencil,
   Plus,
   Search,
   Star,
-  Pencil,
+  X,
 } from "lucide-react";
 import Select from "./Select";
 import { MUSCLES, exerciseCatalog, type Exercise } from "../lib/model";
@@ -23,11 +18,109 @@ import { WGER_ZONES } from "../domain/WgerExercise";
 import { matchesSearch, normalizeSearch } from "../lib/search";
 import { ExerciseSearchRank } from "../domain/ExerciseSearchRank";
 import { quantity } from "../lib/quantity";
-import { exerciseLibraryService } from "../services/ExerciseLibraryService";
+import { exerciseLibraryService, type LibraryPage } from "../services/ExerciseLibraryService";
 import { MuscleParticipation } from "../domain/MuscleParticipation";
 import { MuscleCoverage } from "../domain/MuscleCoverage";
 import { PersonalExerciseMarking, type Marking } from "../domain/PersonalExerciseMarking";
 import { productService } from "../services/ProductService";
+
+const WGER_CACHE_TTL_MS = 300_000;
+const wgerCache = new Map<string, { data: LibraryPage; fetchedAt: number }>();
+
+function useWgerCatalog(
+  enabled: boolean,
+  filters: { search: string; muscle: string; equipment: string; page: number },
+) {
+  const key = JSON.stringify([filters.search, filters.muscle, filters.equipment, filters.page, "all"]);
+  const [data, setData] = useState<LibraryPage | undefined>(() => wgerCache.get(key)?.data);
+  const [error, setError] = useState<Error | null>(null);
+  const [isPending, setIsPending] = useState(false);
+  const [isFetching, setIsFetching] = useState(false);
+  const [reloadTick, setReloadTick] = useState(0);
+  const dataRef = useRef(data);
+  dataRef.current = data;
+
+  const refetch = useCallback(() => {
+    wgerCache.delete(key);
+    setReloadTick((n) => n + 1);
+  }, [key]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const cached = wgerCache.get(key);
+    if (cached && !cached.data.importing && Date.now() - cached.fetchedAt < WGER_CACHE_TTL_MS) {
+      setData(cached.data);
+      setError(null);
+      setIsPending(false);
+      setIsFetching(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    let pollTimer: number | undefined;
+    let active = true;
+
+    const run = async (attempt: number) => {
+      if (!active) return;
+      if (!dataRef.current) setIsPending(true);
+      setIsFetching(true);
+      setError(null);
+      try {
+        const result = await exerciseLibraryService.find(
+          {
+            search: filters.search,
+            muscle: filters.muscle,
+            equipment: filters.equipment,
+            page: filters.page,
+            language: "all",
+          },
+          controller.signal,
+        );
+        if (!active) return;
+        if (!result.importing) {
+          wgerCache.set(key, { data: result, fetchedAt: Date.now() });
+        }
+        setData(result);
+        setIsPending(false);
+        setIsFetching(false);
+        if (result.importing) {
+          pollTimer = window.setTimeout(() => void run(0), 400);
+        }
+      } catch (err) {
+        if (!active || controller.signal.aborted) return;
+        if (attempt < 1) {
+          void run(attempt + 1);
+          return;
+        }
+        setError(err instanceof Error ? err : new Error("Не удалось загрузить базу упражнений"));
+        setIsPending(false);
+        setIsFetching(false);
+      }
+    };
+
+    void run(0);
+    return () => {
+      active = false;
+      controller.abort();
+      if (pollTimer !== undefined) clearTimeout(pollTimer);
+    };
+  }, [enabled, key, filters.search, filters.muscle, filters.equipment, filters.page, reloadTick]);
+
+  return {
+    data,
+    error,
+    isError: error !== null,
+    isPending: enabled && isPending && !data,
+    isFetching: enabled && isFetching,
+    refetch,
+  };
+}
+
+function equipmentLabel(eq: Exercise["equipment"]): string {
+  if (eq === "dumbbells") return "Гантели";
+  if (eq === "bodyweight") return "Вес тела";
+  return "Зал";
+}
 
 function LibraryContent({
   picker = false,
@@ -56,16 +149,13 @@ function LibraryContent({
   onFavorite?: (id: string) => void;
   onCreate?: () => void;
   onEdit?: (exercise: Exercise) => void;
-  /** Упражнения сохранены с новой разметкой (массовое назначение группы или упражнения каталога). */
   onMarked?: (exercises: Exercise[]) => void;
-  /** Открыть «Мои» сразу в режиме разметки (переход из «Прогресс → Мышцы»). */
   startMarking?: boolean;
-  /** Упражнения каталога (например, из базы) без мышц, которые уже есть в журнале: размечаются своей копией. */
   catalogGaps?: Exercise[];
 }) {
-  const [source, setSource] = useState<
-    "tyaga" | "wger" | "personal" | "favorites"
-  >(startMarking ? "personal" : "tyaga");
+  const [source, setSource] = useState<"tyaga" | "wger" | "personal" | "favorites">(
+    startMarking ? "personal" : "tyaga",
+  );
   const [bulk, setBulk] = useState(startMarking);
   const [picked, setPicked] = useState<string[]>([]);
   const [zonePick, setZonePick] = useState("");
@@ -79,7 +169,7 @@ function LibraryContent({
   const [subheadFilter, setSubheadFilter] = useState("all");
   const [equipment, setEquipment] = useState("all");
   const [page, setPage] = useState(1);
-  const [language, setLanguage] = useState("all");
+
   useEffect(() => {
     const id = setTimeout(() => setDebounced(search), 200);
     return () => clearTimeout(id);
@@ -88,44 +178,38 @@ function LibraryContent({
     setPage(1);
     setSubheadFilter("all");
   }, [muscle]);
-  useEffect(() => setPage(1), [debounced, equipment, language, subheadFilter]);
-  const query = useQuery({
-    queryKey: ["wger", debounced, muscle, equipment, page, language],
-    queryFn: ({ signal }) =>
-      exerciseLibraryService.find(
-        { search: debounced, muscle, equipment, page, language },
-        signal,
-      ),
-    enabled: source === "wger",
-    staleTime: 300000,
-    placeholderData: keepPreviousData,
-    refetchInterval: (q) => (q.state.data?.importing ? 400 : false),
-    retry: 1,
+  useEffect(() => setPage(1), [debounced, equipment, subheadFilter]);
+
+  const query = useWgerCatalog(source === "wger", {
+    search: debounced,
+    muscle,
+    equipment,
+    page,
   });
+
   const local =
     source === "personal"
       ? personal
       : favorites
           .map((id) => exerciseCatalog.find(id))
           .filter((e): e is Exercise => !!e);
+
   const filteredLocal = local.filter(
     (e) =>
-      matchesSearch(
-        `${e.name} ${e.nameEn} ${(e.aliases ?? []).join(" ")}`,
-        search,
-      ) &&
+      matchesSearch(`${e.name} ${e.nameEn} ${(e.aliases ?? []).join(" ")}`, search) &&
       (muscle === "all" ||
         e.custom?.declaredZones.includes(muscle as never) ||
         e.primary.includes(muscle as never)) &&
       (equipment === "all" || e.equipment === equipment),
   );
+
   const baseExercises =
     source === "tyaga"
       ? exerciseCatalog.search({ text: search, zone: muscle, equipment })
       : source === "wger"
         ? ExerciseSearchRank.withCoreFirst(
-            query.data?.exercises ?? [],
-            page === 1 && language !== "en"
+            (query.data?.exercises ?? []).filter((e) => e.source?.record.loggable !== false),
+            page === 1
               ? exerciseCatalog.search({ text: debounced, zone: muscle, equipment })
               : [],
             debounced,
@@ -137,20 +221,26 @@ function LibraryContent({
     subheadFilter !== "all"
       ? baseExercises.filter((e) => MuscleParticipation.headRole(subheadFilter, e) !== undefined)
       : baseExercises;
+
   const unmarked = useMemo(() => MuscleCoverage.unmarkedPersonal(personal), [personal]);
   const togglePicked = (id: string) =>
     setPicked((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
   const gapsShown = catalogGaps.filter((e) => matchesSearch(`${e.name} ${e.nameEn}`, search));
-  /** Сначала спрашиваем, если среди выбранных есть уже размеченные: молча их не переписываем. */
+
   function requestMarking(patch: Marking) {
     const chosen = personal.filter((e) => picked.includes(e.id));
     const { marked, unmarked: fresh } = PersonalExerciseMarking.split(chosen);
     if (marked.length) {
-      setConfirm({ patch, marked: marked.length, fresh: fresh.length + catalogGaps.filter((e) => picked.includes(e.id)).length });
+      setConfirm({
+        patch,
+        marked: marked.length,
+        fresh: fresh.length + catalogGaps.filter((e) => picked.includes(e.id)).length,
+      });
       return;
     }
     void applyMarking(patch, false);
   }
+
   async function applyMarking(patch: Marking, onlyUnmarked: boolean) {
     setConfirm(null);
     const chosenPersonal = personal.filter((e) => picked.includes(e.id));
@@ -178,8 +268,9 @@ function LibraryContent({
       setMarkResult(
         `Размечено ${saved.length} из ${total}.` +
           (skipped ? ` ${skipped} на время — им подходит только группа мышц.` : "") +
-          (onlyUnmarked && chosenPersonal.length > own.length ? ` Уже размеченные (${chosenPersonal.length - own.length}) не тронуты.` : "") +
-          " Мышцы в «Прогрессе» пересчитаны, в том числе за прошлые тренировки.",
+          (onlyUnmarked && chosenPersonal.length > own.length
+            ? ` Уже размеченные (${chosenPersonal.length - own.length}) не тронуты.`
+            : ""),
       );
       setPicked([]);
     } catch (e) {
@@ -189,9 +280,10 @@ function LibraryContent({
       setMarking(null);
     }
   }
-  // Число на вкладке — весь список без поиска и фильтров, а не устаревшая константа.
+
   const curatedTotal = useMemo(() => exerciseCatalog.search({}).length, []);
   const count = source !== "wger" ? exercises.length : (query.data?.total ?? 0);
+
   const zones = (e: Exercise) =>
     e.source
       ? [
@@ -204,90 +296,191 @@ function LibraryContent({
       : e.custom
         ? e.custom.declaredZones
         : [...e.primary, ...e.secondary];
+
+  const showBulkControl =
+    source === "personal" && onMarked && (unmarked.length + catalogGaps.length > 0 || bulk);
+
   return (
-    <div className={`exercise-library ${picker ? "is-picker" : ""}`}>
-      <div className="catalog-tabs" role="group" aria-label="Каталог упражнений">
+    <div className={`exlib-screen exercise-library ${picker ? "is-picker" : ""}`}>
+      {/* Вкладки каталога */}
+      <div className="tel-pill-row" role="group" aria-label="Каталог упражнений">
         <button
-          className={source === "tyaga" ? "active" : ""}
+          type="button"
+          className={`tel-pill-btn${source === "tyaga" ? " active" : ""}`}
           aria-pressed={source === "tyaga"}
           onClick={() => {
             setSource("tyaga");
             setPage(1);
           }}
         >
-          <Dumbbell size={17} />
-          Основные <span>{curatedTotal}</span>
+          <Dumbbell size={15} aria-hidden="true" />
+          Основные <span className="pill-count">{curatedTotal}</span>
         </button>
         <button
-          className={source === "wger" ? "active" : ""}
+          type="button"
+          className={`tel-pill-btn${source === "wger" ? " active" : ""}`}
           aria-pressed={source === "wger"}
           onClick={() => {
             setSource("wger");
             setPage(1);
           }}
         >
-          <Database size={17} />
-          База <span>{query.data?.catalogTotal ?? 918}</span>
+          <Database size={15} aria-hidden="true" />
+          Вся база <span className="pill-count">{query.data?.catalogTotal ?? 918}</span>
         </button>
         <button
-          className={source === "personal" ? "active" : ""}
+          type="button"
+          className={`tel-pill-btn${source === "personal" ? " active" : ""}`}
           aria-pressed={source === "personal"}
           onClick={() => setSource("personal")}
         >
-          <Pencil size={17} />
-          Мои <span>{personal.length}</span>
+          <Pencil size={15} aria-hidden="true" />
+          Мои <span className="pill-count">{personal.length}</span>
         </button>
         <button
-          className={source === "favorites" ? "active" : ""}
+          type="button"
+          className={`tel-pill-btn${source === "favorites" ? " active" : ""}`}
           aria-pressed={source === "favorites"}
           onClick={() => setSource("favorites")}
         >
-          <Star size={17} />
-          Избранное <span>{favorites.length}</span>
+          <Star size={15} aria-hidden="true" />
+          Избранное <span className="pill-count">{favorites.length}</span>
         </button>
       </div>
-      {source === "personal" && onCreate ? (
-        <button className="button secondary personal-create" onClick={onCreate}>
-          <Plus size={17} />
-          Создать упражнение
-        </button>
-      ) : null}
-      {source === "personal" && onMarked && (personal.length || catalogGaps.length) ? (
-        <div className="bulk-head">
-          <span>
-            {unmarked.length + catalogGaps.length
-              ? `Без разметки мышц: ${unmarked.length + catalogGaps.length} из ${personal.length + catalogGaps.length}`
-              : "У всех упражнений есть разметка мышц"}
-          </span>
+
+      {/* Поиск + оборудование */}
+      <div className="exlib-toolbar">
+        <div className="exlib-search">
+          <Search size={17} aria-hidden="true" />
+          <input
+            aria-label="Поиск упражнений"
+            placeholder="Найти упражнение…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          {search ? (
+            <button
+              type="button"
+              className="exlib-search-clear"
+              aria-label="Очистить поиск"
+              onClick={() => setSearch("")}
+            >
+              <X size={14} aria-hidden="true" />
+            </button>
+          ) : null}
+        </div>
+        <Select
+          aria-label="Оборудование упражнений"
+          value={equipment}
+          onChange={setEquipment}
+          options={[
+            { value: "all", label: "Всё оборудование" },
+            { value: "dumbbells", label: "Гантели" },
+            { value: "bodyweight", label: "Вес тела" },
+          ]}
+        />
+      </div>
+
+      {/* Мышечные группы */}
+      <div className="tel-pill-row" role="group" aria-label="Мышечная группа">
+        {[{ id: "all", short: "Все" }, ...MUSCLES].map((m) => (
           <button
+            key={m.id}
             type="button"
-            className="button secondary"
-            aria-pressed={bulk}
-            onClick={() => {
-              setBulk((v) => !v);
-              setPicked([]);
-              setMarkResult("");
-            }}
+            className={`tel-pill-btn${muscle === m.id ? " active" : ""}`}
+            aria-pressed={muscle === m.id}
+            onClick={() => setMuscle(m.id)}
           >
-            {bulk ? "Готово" : "Разметить несколько"}
+            {m.short}
           </button>
+        ))}
+      </div>
+
+      {(muscle === "chest" || muscle === "shoulders") && (
+        <div className="tel-pill-row" role="group" aria-label="Фильтр по пучкам мышц">
+          {[
+            { id: "all", label: "Все пучки" },
+            ...(muscle === "chest"
+              ? [
+                  { id: "chest-upper", label: "Верх груди" },
+                  { id: "chest-mid", label: "Середина груди" },
+                  { id: "chest-lower", label: "Низ груди" },
+                ]
+              : [
+                  { id: "deltoid-anterior", label: "Передняя дельта" },
+                  { id: "deltoid-middle", label: "Средняя дельта" },
+                  { id: "deltoid-posterior", label: "Задняя дельта" },
+                ]),
+          ].map((sub) => (
+            <button
+              key={sub.id}
+              type="button"
+              className={`tel-pill-btn${subheadFilter === sub.id ? " active" : ""}`}
+              aria-pressed={subheadFilter === sub.id}
+              onClick={() => setSubheadFilter(sub.id)}
+            >
+              {sub.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Действия раздела «Мои» */}
+      {source === "personal" && (onCreate || showBulkControl) ? (
+        <div className="tel-card-head">
+          {onCreate ? (
+            <button type="button" className="button primary" onClick={onCreate}>
+              <Plus size={16} aria-hidden="true" />
+              Создать упражнение
+            </button>
+          ) : null}
+          {showBulkControl ? (
+            <button
+              type="button"
+              className="button secondary"
+              aria-pressed={bulk}
+              onClick={() => {
+                setBulk((v) => !v);
+                setPicked([]);
+                setMarkResult("");
+              }}
+            >
+              {bulk
+                ? "Готово"
+                : `Разметить мышцы (${unmarked.length + catalogGaps.length})`}
+            </button>
+          ) : null}
         </div>
       ) : null}
+
+      {/* Массовая разметка (только по запросу) */}
       {source === "personal" && bulk && onMarked ? (
-        <section className="bulk-panel panel" aria-label="Массовая разметка">
-          <p>
-            <b>Выбрано {picked.length}</b> из {filteredLocal.length + gapsShown.length}
-          </p>
-          <div className="bulk-select">
-            <button type="button" className="button secondary" onClick={() => setPicked([...filteredLocal.filter((e) => MuscleCoverage.unmarked(e)), ...gapsShown].map((e) => e.id))}>
-              Выбрать без разметки ({filteredLocal.filter((e) => MuscleCoverage.unmarked(e)).length + gapsShown.length})
-            </button>
-            <button type="button" className="button secondary" onClick={() => setPicked([...filteredLocal, ...gapsShown].map((e) => e.id))}>
-              Выбрать все показанные
-            </button>
-            <button type="button" className="button secondary" disabled={!picked.length} onClick={() => setPicked([])}>
-              Снять выбор
-            </button>
+        <section className="tel-card" aria-label="Массовая разметка">
+          <div className="tel-card-head">
+            <h3>Выбрано: {picked.length}</h3>
+            <div className="bulk-select">
+              <button
+                type="button"
+                className="button secondary"
+                onClick={() =>
+                  setPicked(
+                    [...filteredLocal.filter((e) => MuscleCoverage.unmarked(e)), ...gapsShown].map(
+                      (e) => e.id,
+                    ),
+                  )
+                }
+              >
+                Без разметки ({filteredLocal.filter((e) => MuscleCoverage.unmarked(e)).length + gapsShown.length})
+              </button>
+              <button
+                type="button"
+                className="button secondary"
+                disabled={!picked.length}
+                onClick={() => setPicked([])}
+              >
+                Снять выбор
+              </button>
+            </div>
           </div>
           <div className="bulk-apply">
             <label>
@@ -310,14 +503,14 @@ function LibraryContent({
           </div>
           <div className="bulk-apply">
             <label>
-              Это то же, что…
+              Аналог из каталога
               <Select
                 searchable
                 value={basePick}
                 disabled={!!marking}
                 onChange={setBasePick}
                 options={[
-                  { value: "", label: "Выбери упражнение каталога" },
+                  { value: "", label: "Выбери упражнение" },
                   ...exerciseCatalog.curatedExercises().map((e) => ({
                     value: e.id,
                     label: e.name,
@@ -332,17 +525,17 @@ function LibraryContent({
               disabled={!picked.length || !basePick || !!marking}
               onClick={() => requestMarking({ basedOn: basePick })}
             >
-              Назначить упражнение каталога
+              Привязать
             </button>
           </div>
           {confirm ? (
             <div className="bulk-confirm" role="alert">
               <p>
-                <b>У {confirm.marked} уже есть разметка.</b> Заменить её на выбранную? Прежняя группа или привязка пропадёт.
+                <b>У {confirm.marked} уже есть разметка.</b> Заменить её на выбранную?
               </p>
               <div className="bulk-select">
                 <button type="button" className="button danger" onClick={() => void applyMarking(confirm.patch, false)}>
-                  Заменить разметку у {confirm.marked}
+                  Заменить ({confirm.marked})
                 </button>
                 {confirm.fresh ? (
                   <button type="button" className="button secondary" onClick={() => void applyMarking(confirm.patch, true)}>
@@ -355,309 +548,173 @@ function LibraryContent({
               </div>
             </div>
           ) : null}
-          {marking ? (
-            <p role="status">
-              Сохраняем {marking.done} из {marking.total}…
-            </p>
-          ) : null}
+          {marking ? <p role="status">Сохраняем {marking.done} из {marking.total}…</p> : null}
           {markResult ? <p role="status" className="bulk-result">{markResult}</p> : null}
         </section>
       ) : null}
+
       {source === "personal" && bulk && onMarked && gapsShown.length ? (
-        <section className="bulk-gaps panel" aria-label="Из каталога без мышц">
-          <h3>Из каталога без мышц · {gapsShown.length}</h3>
-          <p className="tiny">
-            В каталоге у этих упражнений нет разметки мышц. Выбери их и назначь группу или движение: появится своя копия с тем же названием, а история подхватит мышцы.
-          </p>
+        <section className="tel-card" aria-label="Из каталога без мышц">
+          <h3>Из каталога без разметки ({gapsShown.length})</h3>
           <ul>
             {gapsShown.map((e) => (
               <li key={e.id}>
                 <label className="bulk-check">
-                  <input type="checkbox" aria-label={`Выбрать ${e.name}`} checked={picked.includes(e.id)} onChange={() => togglePicked(e.id)} />
+                  <input
+                    type="checkbox"
+                    aria-label={`Выбрать ${e.name}`}
+                    checked={picked.includes(e.id)}
+                    onChange={() => togglePicked(e.id)}
+                  />
+                  <span>{e.name}</span>
                 </label>
-                <span>{e.name}</span>
-                <small>из каталога</small>
               </li>
             ))}
           </ul>
         </section>
       ) : null}
-      <div className="exercise-filters">
-        <div className="search-field">
-          <Search size={18} aria-hidden="true" />
-          <input
-            aria-label="Поиск упражнений"
-            placeholder={
-              source === "wger"
-                ? "Название на русском или английском…"
-                : "Найти упражнение…"
-            }
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          {search ? (
-            <button
-              className="text-button"
-              aria-label="Очистить поиск"
-              onClick={() => setSearch("")}
-            >
-              ×
-            </button>
-          ) : null}
-        </div>
-        <Select
-          aria-label="Оборудование упражнений"
-          value={equipment}
-          onChange={setEquipment}
-          options={[
-            { value: "all", label: "Всё оборудование" },
-            { value: "dumbbells", label: "Гантели" },
-            { value: "bodyweight", label: "Вес тела" },
-          ]}
-        />
-      </div>
-      <div className="muscle-chips-row" role="group" aria-label="Мышечная группа">
-        {[{ id: "all", short: "Все" }, ...MUSCLES].map((m) => (
-          <button
-            key={m.id}
-            className={muscle === m.id ? "active" : ""}
-            aria-pressed={muscle === m.id}
-            onClick={() => setMuscle(m.id)}
-          >
-            {m.short}
-          </button>
-        ))}
-      </div>
 
-      {(muscle === "chest" || muscle === "shoulders") && (
-        <div className="subhead-filters-row" role="group" aria-label="Фильтр по пучкам мышц">
-          <span className="subhead-label">
-            {muscle === "chest" ? "Отдел груди:" : "Пучок дельты:"}
-          </span>
-          <button
-            type="button"
-            className={`subhead-btn ${subheadFilter === "all" ? "active" : ""}`}
-            aria-pressed={subheadFilter === "all"}
-            onClick={() => setSubheadFilter("all")}
-          >
-            Все
-          </button>
-          {muscle === "chest" ? (
-            <>
-              <button
-                type="button"
-                className={`subhead-btn ${subheadFilter === "chest-upper" ? "active" : ""}`}
-                aria-pressed={subheadFilter === "chest-upper"}
-                onClick={() => setSubheadFilter("chest-upper")}
-              >
-                Верх груди
-              </button>
-              <button
-                type="button"
-                className={`subhead-btn ${subheadFilter === "chest-mid" ? "active" : ""}`}
-                aria-pressed={subheadFilter === "chest-mid"}
-                onClick={() => setSubheadFilter("chest-mid")}
-              >
-                Середина груди
-              </button>
-              <button
-                type="button"
-                className={`subhead-btn ${subheadFilter === "chest-lower" ? "active" : ""}`}
-                aria-pressed={subheadFilter === "chest-lower"}
-                onClick={() => setSubheadFilter("chest-lower")}
-              >
-                Низ груди
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                type="button"
-                className={`subhead-btn ${subheadFilter === "deltoid-anterior" ? "active" : ""}`}
-                aria-pressed={subheadFilter === "deltoid-anterior"}
-                onClick={() => setSubheadFilter("deltoid-anterior")}
-              >
-                Передняя дельта
-              </button>
-              <button
-                type="button"
-                className={`subhead-btn ${subheadFilter === "deltoid-middle" ? "active" : ""}`}
-                aria-pressed={subheadFilter === "deltoid-middle"}
-                onClick={() => setSubheadFilter("deltoid-middle")}
-              >
-                Средняя дельта
-              </button>
-              <button
-                type="button"
-                className={`subhead-btn ${subheadFilter === "deltoid-posterior" ? "active" : ""}`}
-                aria-pressed={subheadFilter === "deltoid-posterior"}
-                onClick={() => setSubheadFilter("deltoid-posterior")}
-              >
-                Задняя дельта
-              </button>
-            </>
-          )}
-        </div>
-      )}
       {source === "wger" && query.isError ? (
         <div className="error-banner" role="alert">
-          <p>{query.error.message}</p>
-          <button onClick={() => void query.refetch()}>Повторить</button>
+          <p>{query.error?.message}</p>
+          <button type="button" onClick={() => query.refetch()}>
+            Повторить
+          </button>
         </div>
       ) : null}
+
       {source === "wger" && (query.isPending || query.data?.importing) ? (
         <div className="catalog-loading" role="status">
           <span className="loader" />
           <b>
             {query.data?.importing
-              ? `Подготовка библиотеки · ${query.data.imported} / ${query.data.catalogTotal}`
-              : "Открываем библиотеку…"}
+              ? `Подготовка базы · ${query.data.imported} / ${query.data.catalogTotal}`
+              : "Открываем базу…"}
           </b>
-          <span>Упражнения сохраняются в локальной базе приложения.</span>
         </div>
       ) : (
         <>
-          <div className="library-header">
-            <span>
-              {quantity(count, "упражнение", "упражнения", "упражнений")}
-            </span>
+          <div className="exlib-meta-row">
+            <span>{quantity(count, "упражнение", "упражнения", "упражнений")}</span>
             {query.isFetching ? <span role="status">Обновляем…</span> : null}
           </div>
+
           <div
-            className={picker ? "picker-list" : "library-grid"}
+            className={picker ? "exlib-picker-list" : "exlib-grid"}
             aria-busy={source === "wger" && query.isFetching}
           >
-            {exercises.map((e, i) => {
+            {exercises.map((e) => {
               const added = selectedIds.includes(e.id);
-              const loggable = e.source?.record.loggable ?? true;
+              const isFav = favorites.includes(e.id);
+              const muscleLabels = zones(e)
+                .slice(0, 2)
+                .map((z) => MUSCLES.find((m) => m.id === z)?.short)
+                .filter(Boolean);
+
               return (
-                <article
-                  key={e.id}
-                  data-exercise-id={e.id}
-                  className={picker ? "picker-exercise" : "library-card panel"}
-                >
-                  {source === "personal" && bulk && onMarked ? (
-                    <label className="bulk-check">
-                      <input
-                        type="checkbox"
-                        aria-label={`Выбрать ${e.name}`}
-                        checked={picked.includes(e.id)}
-                        onChange={() => togglePicked(e.id)}
-                      />
-                    </label>
-                  ) : null}
-                  <div className="library-icon" aria-hidden="true">
-                    <Dumbbell size={19} />
-                  </div>
-                  <div className="library-copy">
-                    <h3>{e.name}</h3>
-                    {e.source || e.custom ? (
-                      <span className="exercise-source-tag">
-                        {e.custom
-                          ? "Моё"
-                          : e.source!.record.review
-                            ? "Проверено"
-                            : "Не проверено"}
-                      </span>
+                <article key={e.id} data-exercise-id={e.id} className="exlib-card">
+                  <div className="exlib-card-main">
+                    {source === "personal" && bulk && onMarked ? (
+                      <label className="bulk-check">
+                        <input
+                          type="checkbox"
+                          aria-label={`Выбрать ${e.name}`}
+                          checked={picked.includes(e.id)}
+                          onChange={() => togglePicked(e.id)}
+                        />
+                      </label>
                     ) : null}
-                    {(() => {
-                      const badge = MuscleParticipation.primaryLabel(e);
-                      return badge ? (
-                        <span className="library-head-tag">{badge}</span>
-                      ) : null;
-                    })()}
-                    <p>
-                      {zones(e)
-                        .slice(0, 3)
-                        .map(
-                          (zone) => MUSCLES.find((m) => m.id === zone)?.short,
-                        )
-                        .join(" · ") || "Мышцы не указаны источником"}
-                    </p>
                     <button
-                      className="text-button"
+                      type="button"
+                      className="exlib-card-title-btn"
                       onClick={() => onDetail(e.id)}
                     >
-                      Техника и мышцы
+                      {e.name}
                     </button>
-                    {!loggable ? (
-                      <small className="timed-only">
-                        Служебная запись для отдыха
-                      </small>
-                    ) : null}
+                    <div className="exlib-tags">
+                      {muscleLabels.map((mName) => (
+                        <span key={mName} className="exlib-tag is-accent">
+                          {mName}
+                        </span>
+                      ))}
+                      <span className="exlib-tag">{equipmentLabel(e.equipment)}</span>
+                    </div>
                   </div>
-                  <div className="library-actions">
+
+                  <div className="exlib-actions">
                     <button
-                      className={
-                        picker ? "icon-button add-exercise-button" : "library-add"
-                      }
-                      aria-label={`Добавить ${e.name}`}
-                      disabled={added || limitReached || !loggable}
-                      onClick={() => onAdd(e.id)}
+                      type="button"
+                      className="exlib-icon-btn"
+                      aria-label={`Техника и мышцы: ${e.name}`}
+                      title="Техника и мышцы"
+                      onClick={() => onDetail(e.id)}
                     >
-                      {added ? <Check size={19} /> : <Plus size={19} />}
+                      <Info size={16} aria-hidden="true" />
                     </button>
                     {onFavorite ? (
                       <button
-                        className={`favorite-button ${favorites.includes(e.id) ? "active" : ""}`}
-                        aria-label={`${favorites.includes(e.id) ? "Убрать из избранного" : "В избранное"}: ${e.name}`}
-                        aria-pressed={favorites.includes(e.id)}
+                        type="button"
+                        className={`exlib-icon-btn${isFav ? " is-fav" : ""}`}
+                        aria-label={`${isFav ? "Убрать из избранного" : "В избранное"}: ${e.name}`}
+                        aria-pressed={isFav}
                         onClick={() => onFavorite(e.id)}
                       >
-                        <Star
-                          size={17}
-                          fill={
-                            favorites.includes(e.id) ? "currentColor" : "none"
-                          }
-                        />
+                        <Star size={16} fill={isFav ? "currentColor" : "none"} aria-hidden="true" />
                       </button>
                     ) : null}
                     {e.custom && onEdit ? (
                       <button
-                        className="custom-edit-button"
+                        type="button"
+                        className="exlib-icon-btn"
                         aria-label={`Редактировать ${e.name}`}
                         onClick={() => onEdit(e)}
                       >
-                        <Pencil size={15} />
+                        <Pencil size={15} aria-hidden="true" />
                       </button>
                     ) : null}
+                    <button
+                      type="button"
+                      className="exlib-icon-btn is-primary"
+                      aria-label={`Добавить ${e.name}`}
+                      disabled={added || limitReached}
+                      onClick={() => onAdd(e.id)}
+                    >
+                      {added ? <Check size={17} aria-hidden="true" /> : <Plus size={17} aria-hidden="true" />}
+                    </button>
                   </div>
-                  {!picker ? (
-                    <span className="library-index" aria-hidden="true">
-                      {String(
-                        (source === "wger" ? (page - 1) * 24 : 0) + i + 1,
-                      ).padStart(2, "0")}
-                    </span>
-                  ) : null}
                 </article>
               );
             })}
+
             {!exercises.length ? (
               <div className="no-results">
-                Нет подходящих упражнений. Попробуй другой поиск или фильтр.
+                Ничего не нашлось. Попробуй другой запрос или фильтр.
               </div>
             ) : null}
           </div>
+
           {source === "wger" && count > 24 ? (
             <div className="catalog-pagination">
               <button
+                type="button"
                 className="button secondary"
                 disabled={page <= 1 || query.isFetching}
                 onClick={() => setPage((p) => p - 1)}
               >
-                <ChevronLeft size={16} />
+                <ChevronLeft size={16} aria-hidden="true" />
                 Назад
               </button>
               <span>
                 {page} / {Math.ceil(count / 24)}
               </span>
               <button
+                type="button"
                 className="button secondary"
                 disabled={page >= Math.ceil(count / 24) || query.isFetching}
                 onClick={() => setPage((p) => p + 1)}
               >
                 Далее
-                <ChevronRight size={16} />
+                <ChevronRight size={16} aria-hidden="true" />
               </button>
             </div>
           ) : null}
@@ -667,15 +724,6 @@ function LibraryContent({
   );
 }
 
-const queryClient = new QueryClient({
-  defaultOptions: { queries: { refetchOnWindowFocus: false, retry: 1 } },
-});
-export default function ExerciseLibrary(
-  props: Parameters<typeof LibraryContent>[0],
-) {
-  return (
-    <QueryClientProvider client={queryClient}>
-      <LibraryContent {...props} />
-    </QueryClientProvider>
-  );
+export default function ExerciseLibrary(props: Parameters<typeof LibraryContent>[0]) {
+  return <LibraryContent {...props} />;
 }

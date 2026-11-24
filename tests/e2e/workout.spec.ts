@@ -42,7 +42,7 @@ async function cleanup(_request: APIRequestContext) {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       return await response.json() as any;
     } catch (error) {
-      throw new Error(`Fixture cleanup ${method} ${path}: ${error instanceof Error ? error.message : "failed"}`);
+      throw new Error(`Fixture cleanup ${method} ${path}: ${error instanceof Error ? error.message : "failed"}`, { cause: error });
     }
   };
   const data = await call("/api/data");
@@ -158,8 +158,11 @@ test("save/reload/edit/export/settings/repeat preserve the actual workout and ti
   expect(await page.locator(".plan-item").count()).toBeLessThanOrEqual(2);
   await page.screenshot({ path: "artifacts/planner-v2.png", fullPage: true });
   await startBench(page, "[E2E] Журнал");
-  await page.getByText("Детали тренировки", { exact: true }).click();
-  await page.getByLabel("Длительность тренировки, минуты").fill("42");
+  const metadata = page.getByRole("button", { name: "Дата, длительность и заметки", exact: true });
+  const fields = page.getByRole("group", { name: "Дата и длительность записи", exact: true });
+  const duration = fields.getByLabel("Длительность тренировки, минуты", { exact: true });
+  await metadata.click();
+  await duration.fill("42");
   const rest = await page.locator(".rest-digits").textContent();
   await page.reload();
   await page
@@ -168,9 +171,8 @@ test("save/reload/edit/export/settings/repeat preserve the actual workout and ti
   await expect(
     page.getByLabel("Жим штанги лёжа, подход 1, вес", { exact: true }),
   ).toHaveValue("70");
-  await expect(page.getByLabel("Длительность тренировки, минуты")).toHaveValue(
-    "42",
-  );
+  await metadata.click();
+  await expect(duration).toHaveValue("42");
   expect(await page.locator(".rest-digits").textContent()).not.toBe("00:00");
   expect(rest).not.toBe("00:00");
   await page.screenshot({ path: "artifacts/workout-v2.png", fullPage: true });
@@ -609,24 +611,22 @@ test("wger browse, attribution and recording survive reload and edit", async ({
     .getByRole("button", { name: "Упражнения", exact: true })
     .click();
   await page
-    .locator(".catalog-tabs")
-    .getByRole("button", { name: /База/ })
+    .getByRole("group", { name: "Каталог упражнений" })
+    .getByRole("button", { name: /Вся база|База/ })
     .click();
   await page.getByLabel("Поиск упражнений").fill("bench");
-  await expect(page.locator(".library-card").first()).toBeVisible({
+  await expect(page.locator(".exlib-card").first()).toBeVisible({
     timeout: 30000,
   });
   await expect(page.locator(".catalog-loading")).toHaveCount(0);
   await page.screenshot({ path: "artifacts/wger-v3.png", fullPage: true });
   const card = page
-    .locator(".library-card")
-    // Раунд 4 (REQ09): «Основные» упражнения идут первыми и без источника — нужна карточка из импортированной «Базы».
-    .filter({ has: page.locator(".exercise-source-tag") })
-    .filter({ has: page.locator(".library-add:not([disabled])") })
+    .locator(".exlib-card")
+    .filter({ has: page.locator(".exlib-icon-btn.is-primary:not([disabled])") })
     .first();
-  const name = (await card.locator("h3").textContent())!;
+  const name = (await card.locator(".exlib-card-title-btn").textContent())!;
   await card
-    .getByRole("button", { name: "Техника и мышцы", exact: true })
+    .getByRole("button", { name: `Техника и мышцы: ${name}` })
     .click();
   await page.getByText("Источник и лицензии", { exact: true }).click();
   await expect(page.locator(".wger-attribution a").first()).toHaveAttribute(
@@ -683,7 +683,6 @@ test("wger browse, attribution and recording survive reload and edit", async ({
 
 test("programs save to the account, schedule a week and propose safe double progression", async ({
   page,
-  request,
 }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
@@ -793,7 +792,7 @@ test("personal timed exercises, aliases and favorites survive reload and history
     .getByRole("button", { name: "Упражнения", exact: true })
     .click();
   await page
-    .locator(".catalog-tabs")
+    .getByRole("group", { name: "Каталог упражнений" })
     .getByRole("button", { name: /Мои/ })
     .click();
   await page
@@ -812,7 +811,7 @@ test("personal timed exercises, aliases and favorites survive reload and history
     .click();
   await page.getByLabel("Поиск упражнений").fill("side bridge");
   const card = page
-    .locator(".library-card")
+    .locator(".exlib-card")
     .filter({ hasText: "[E2E] Боковая планка" });
   await expect(card).toBeVisible();
   await card
@@ -833,7 +832,7 @@ test("personal timed exercises, aliases and favorites survive reload and history
     .getByRole("button", { name: "Упражнения", exact: true })
     .click();
   await page
-    .locator(".catalog-tabs")
+    .getByRole("group", { name: "Каталог упражнений" })
     .getByRole("button", { name: /Избранное/ })
     .click();
   await page

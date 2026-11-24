@@ -121,13 +121,19 @@ export const sessions = sqliteTable(
   "sessions",
   {
     tokenHash: text("token_hash").primaryKey(),
+    id: text("id"),
     accountId: text("account_id")
       .notNull()
       .references(() => accounts.id),
+    userAgent: text("user_agent").notNull().default(""),
+    lastSeenAt: integer("last_seen_at").notNull().default(0),
     expiresAt: integer("expires_at").notNull(),
     createdAt: integer("created_at").notNull(),
   },
-  (t) => [index("idx_sessions_account_expiry").on(t.accountId, t.expiresAt)],
+  (t) => [
+    index("idx_sessions_account_expiry").on(t.accountId, t.expiresAt),
+    index("idx_sessions_id").on(t.id),
+  ],
 );
 
 export const authLimits = sqliteTable("auth_limits", {

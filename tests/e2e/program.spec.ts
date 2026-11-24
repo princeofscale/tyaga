@@ -2,7 +2,6 @@ import { TrainingProgram } from "../../src/domain/TrainingProgram";
 import { makeExerciseEntry, type Routine } from "../../src/lib/model";
 import { test, expect } from "@playwright/test";
 const BASE = "http://localhost:5173";
-const WORKER = "http://127.0.0.1:8787";
 const headers = { Origin: BASE };
 
 test("программа v2 добавляется из шаблона и показывается с подходами и разгрузкой", async ({

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useLiveRoom } from "../components/LiveRoomProvider";
+import { useLiveRoom } from "./liveRoomContext";
 import { LiveBroadcastPolicy } from "../domain/LiveSession";
 import { entryName } from "./catalog";
 import { storedDraftId, type Draft } from "./draft";

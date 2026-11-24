@@ -14,9 +14,10 @@ function walk(dir: string, root: string): string[] {
 }
 
 /**
- * Оболочка и каталог доступны без сети после первого входа (R03-REQ04).
- * Данные тренировок сервис-воркер не трогает: `/api` всегда идёт в сеть,
- * офлайн-копию данных ведёт приложение (src/lib/offlineSnapshot.ts).
+ * Полный офлайн web-PWA (оболочка, ассеты, справочник `/api/exercises` и быстрый fallback навигации).
+ * Личные данные и очередь записи ведутся в браузере отдельно по аккаунту
+ * (`src/lib/offlineSnapshot.ts`, `src/domain/PendingWorkouts.ts`, `src/lib/offlineMutationQueue.ts`)
+ * и очищаются при выходе.
  */
 export function serviceWorkerPlugin(outDir: string): Plugin {
   return {
@@ -37,8 +38,9 @@ function source(version: string, precache: string[]) {
   return `// Сгенерировано vite-плагином serviceWorkerPlugin. Версия = хэш состава сборки.
 const VERSION = ${JSON.stringify(version)};
 const CACHE = "tyaga-shell-" + VERSION;
+const CATALOG_CACHE = "tyaga-catalog-" + VERSION;
 const PRECACHE = ${JSON.stringify(precache)};
-const NAVIGATION_TIMEOUT_MS = 4000;
+const NAVIGATION_TIMEOUT_MS = 1500;
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -49,7 +51,13 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((key) => key.startsWith("tyaga-shell-") && key !== CACHE).map((key) => caches.delete(key))))
+      .then((keys) =>
+        Promise.all(
+          keys
+            .filter((key) => (key.startsWith("tyaga-shell-") && key !== CACHE) || (key.startsWith("tyaga-catalog-") && key !== CATALOG_CACHE))
+            .map((key) => caches.delete(key)),
+        ),
+      )
       .then(() => self.clients.claim()),
   );
 });
@@ -63,12 +71,25 @@ function withTimeout(promise, ms) {
 
 async function navigate(request) {
   const cache = await caches.open(CACHE);
-  try {
-    const response = await withTimeout(fetch(request), NAVIGATION_TIMEOUT_MS);
-    if (response.ok && (response.headers.get("content-type") || "").includes("text/html")) cache.put("/", response.clone());
+  const cached = await cache.match("/", { ignoreVary: true });
+  const network = fetch(request).then((response) => {
+    if (response.ok && (response.headers.get("content-type") || "").includes("text/html")) {
+      cache.put("/", response.clone());
+    }
     return response;
+  });
+  if (cached) {
+    try {
+      return await withTimeout(network, NAVIGATION_TIMEOUT_MS);
+    } catch {
+      network.catch(() => {});
+      return cached;
+    }
+  }
+  try {
+    return await network;
   } catch {
-    return (await cache.match("/", { ignoreVary: true })) || Response.error();
+    return Response.error();
   }
 }
 
@@ -82,12 +103,30 @@ async function assetFirst(request) {
   return response;
 }
 
+async function catalogStaleWhileRevalidate(request) {
+  const cache = await caches.open(CATALOG_CACHE);
+  const hit = await cache.match(request.url, { ignoreVary: true });
+  const network = fetch(request)
+    .then((response) => {
+      if (response.ok && response.status === 200) {
+        cache.put(request.url, response.clone());
+      }
+      return response;
+    })
+    .catch(() => null);
+  if (hit) return hit;
+  const fresh = await network;
+  return fresh || Response.error();
+}
+
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   if (request.method !== "GET") return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith("/api/") || url.pathname === "/sw.js") return;
+  if (url.pathname === "/sw.js") return;
+  if (url.pathname === "/api/exercises") return event.respondWith(catalogStaleWhileRevalidate(request));
+  if (url.pathname.startsWith("/api/")) return;
   if (request.mode === "navigate") return event.respondWith(navigate(request));
   if (url.pathname.startsWith("/assets/") || url.pathname === "/favicon.svg" || url.pathname === "/manifest.webmanifest")
     return event.respondWith(assetFirst(request));

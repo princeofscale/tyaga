@@ -1,6 +1,6 @@
 import { useEffect, useId } from "react";
 import { DoorOpen } from "lucide-react";
-import { useLiveRoom } from "./LiveRoomProvider";
+import { useLiveRoom } from "../lib/liveRoomContext";
 
 /**
  * Ссылка в комнату сама никого не впускает: вход показывает остальным имя человека и его подходы,

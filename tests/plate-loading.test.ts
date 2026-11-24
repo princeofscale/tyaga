@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { PlateLoadingCalculator, type PlateLoadingResult } from "../src/domain/PlateLoadingCalculator";
-import PlateCalculator, { calculatePlatesGreedy, OLYMPIC_PLATES } from "../src/components/PlateCalculator";
+import PlateCalculator from "../src/components/PlateCalculator";
+import { calculatePlatesGreedy, OLYMPIC_PLATES } from "../src/domain/plateSpecs";
 import { WarmupModal } from "../src/components/WarmupModal";
 
 function assertFiniteResult(result: PlateLoadingResult): void {

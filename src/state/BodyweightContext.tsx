@@ -1,15 +1,8 @@
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { BodyweightJournal } from "../services/BodyweightJournal";
 import { weightClient } from "../services/BodyweightApi";
 import { cloudState } from "../device/cloudSync";
-const Context = createContext<BodyweightJournal | null>(null);
+import { BodyweightContext } from "./bodyweightStore";
 
 /** One account-bound journal serves the profile, workout defaults, backup and weight screen. */
 export function BodyweightProvider({
@@ -26,10 +19,11 @@ export function BodyweightProvider({
   );
   const binding =
     import.meta.env.MODE === "device" ? (cloud?.email ?? "") : undefined;
-  const journal = useMemo(
-    () => new BodyweightJournal(accountId, timeZone, weightClient(), binding),
-    [accountId, timeZone, binding, cloud?.token],
-  );
+  const cloudToken = cloud?.token;
+  const journal = useMemo(() => {
+    void cloudToken;
+    return new BodyweightJournal(accountId, timeZone, weightClient(), binding);
+  }, [accountId, timeZone, binding, cloudToken]);
   useEffect(() => {
     const changed = () =>
       setCloud(import.meta.env.MODE === "device" ? cloudState() : null);
@@ -65,12 +59,5 @@ export function BodyweightProvider({
       document.removeEventListener("visibilitychange", sync);
     };
   }, [journal]);
-  return <Context.Provider value={journal}>{children}</Context.Provider>;
-}
-export function useBodyweight() {
-  const journal = useContext(Context);
-  if (!journal) throw new Error("Журнал веса недоступен");
-  const [, render] = useState(0);
-  useEffect(() => journal.subscribe(() => render((n) => n + 1)), [journal]);
-  return journal;
+  return <BodyweightContext.Provider value={journal}>{children}</BodyweightContext.Provider>;
 }

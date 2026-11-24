@@ -62,6 +62,11 @@ const TABLES: Record<SyncKind, { columns: Column[]; key: string; read: string; u
   },
 };
 const VERSION = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
+const SINGLE_PK_OWNER_CHECKS: Partial<Record<SyncKind, string>> = {
+  workout: "SELECT owner_id FROM workouts WHERE id = ?",
+  routine: "SELECT owner_id FROM routines WHERE id = ?",
+  custom_exercise: "SELECT owner_id FROM custom_exercises WHERE id = ?",
+};
 type VersionRow = { seq: number; kind: SyncKind; doc_id: string; version_at: string; deleted: number };
 
 export class SyncService {
@@ -103,7 +108,17 @@ export class SyncService {
         ? this.db.prepare("SELECT date,payload,revision FROM workouts WHERE owner_id=? AND id=?").bind(this.ownerId, d.id)
         : this.db.prepare("SELECT NULL AS date,NULL AS payload,NULL AS revision WHERE 0")))
       : [];
+    const existingOwners = docs.length
+      ? await this.db.batch(docs.map((d) => {
+          const check = !d.deleted ? SINGLE_PK_OWNER_CHECKS[d.kind] : undefined;
+          return check
+            ? this.db.prepare(check).bind(d.id)
+            : this.db.prepare("SELECT NULL AS owner_id WHERE 0");
+        }))
+      : [];
     const newer = docs.filter((d, i) => {
+      const existingOwner = (existingOwners[i].results[0] as { owner_id: string } | undefined)?.owner_id;
+      if (existingOwner && existingOwner !== this.ownerId) return false;
       const current = (local[i].results[0] as { version_at: string } | undefined)?.version_at;
       return !current || d.versionAt > current;
     });

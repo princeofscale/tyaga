@@ -35,7 +35,6 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
 export function ShareStoryCardModal({
   workout,
   account,
-  onClose,
 }: {
   workout: Workout;
   account: AccountProfile;
@@ -80,7 +79,8 @@ export function ShareStoryCardModal({
     };
   }, []);
 
-  const drawCard = () => {
+  useEffect(() => {
+    if (!fontsReady) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
@@ -272,11 +272,7 @@ export function ShareStoryCardModal({
     ctx.fillStyle = "#5f6b5c";
     ctx.font = font(600, 24);
     ctx.fillText("Тяга · силовой журнал", width / 2, height - 100);
-  };
-
-  useEffect(() => {
-    if (fontsReady) drawCard();
-  }, [workout, format, fontsReady]);
+  }, [workout, account.displayName, format, fontsReady, summary.total, durationMin, workingSetsCount, bestSet]);
 
   const handleDownload = () => {
     const canvas = canvasRef.current;

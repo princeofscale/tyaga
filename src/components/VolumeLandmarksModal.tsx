@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { Zap, Info, Activity, AlertTriangle, CheckCircle2 } from "lucide-react";
-import { VolumeLandmarksCalculator, type VolumeStatusKind } from "../domain/VolumeLandmarks";
+import { VolumeLandmarksCalculator } from "../domain/VolumeLandmarks";
 import { BiomechanicsEngine } from "../domain/BiomechanicsEngine";
 import { dateLabel, fmt } from "../lib/model";
 import type { Workout } from "../lib/types";
@@ -24,7 +24,14 @@ export function VolumeLandmarksModal({ workouts, today, mapping, timeZone }: {
     () => new Map(bio.zones.map((z) => [z.muscle, z])),
     [bio],
   );
-  const count = (status: VolumeStatusKind) => report.assessments.filter((a) => a.status === status).length;
+  const growthCount = report.assessments.filter(
+    (a) => a.phase === "min_growth" || a.phase === "optimal_growth",
+  ).length;
+  const maintenanceCount = report.assessments.filter((a) => a.phase === "maintenance").length;
+  const highCount = report.assessments.filter(
+    (a) => a.phase === "high_volume" || a.phase === "overreaching",
+  ).length;
+
   return (
     <div className="volume-landmarks-modal-content">
       <div className="rp-hero-card">
@@ -33,13 +40,15 @@ export function VolumeLandmarksModal({ workouts, today, mapping, timeZone }: {
           <div>
             <h3>Недельный объём по мышцам</h3>
             <p>{dateLabel(report.startDate)} — {dateLabel(report.endDate)} · последние 7 дней</p>
-            <p>Общий ориентир для гипертрофии — 10–20 трудных подходов в неделю. Рост возможен и при меньшем объёме; индивидуальный оптимум зависит от прогресса и восстановления.</p>
+            <p>
+              Ориентиры MV (поддержка), MEV (старт роста), MAV (оптимальный набор массы) и MRV (порог восстановления) рассчитаны для каждой группы мышц отдельно.
+            </p>
           </div>
         </div>
         <div className="rp-summary-stats">
-          <div className="rp-stat-chip optimal"><b>{count("within_reference")}</b><span>В общем диапазоне</span></div>
-          <div className="rp-stat-chip growth"><b>{count("above_reference")}</b><span>Выше диапазона</span></div>
-          <div className="rp-stat-chip under"><b>{count("below_reference") + count("no_sets")}</b><span>Ниже ориентира</span></div>
+          <div className="rp-stat-chip optimal"><b>{growthCount}</b><span>Набор массы</span></div>
+          <div className="rp-stat-chip under"><b>{maintenanceCount}</b><span>Поддержка</span></div>
+          <div className="rp-stat-chip growth"><b>{highCount}</b><span>Высокий / перегруз</span></div>
         </div>
         {bio.workingSets > 0 && (
           <div className="rp-bio-strip" aria-label="Биомеханика недели">
@@ -75,36 +84,64 @@ export function VolumeLandmarksModal({ workouts, today, mapping, timeZone }: {
             ))}
           </ul>
         )}
-        <p>Считаем выполненные рабочие подходы при любом RIR: прямые + 0,5 × помощь. Стабилизация и разминка исключены. Коэффициент 0,5 — приближение для учёта объёма, а не доля силы или роста.</p>
-        <p>Без RIR: {report.unknownRirSets} из {report.workingSets} {quantityWord(report.workingSets, "рабочего подхода", "рабочих подходов", "рабочих подходов")}. При неизвестном запасе или лёгкой работе стимул оценить нельзя. Отказ не обязателен.</p>
+        <p>Прямые подходы считаются как 1, косвенные (синергисты) как 0,5. Разминка и стабилизация исключены.</p>
+        {report.unknownRirSets > 0 && (
+          <p>
+            Без RIR: {report.unknownRirSets} из {report.workingSets}{" "}
+            {quantityWord(report.workingSets, "рабочего подхода", "рабочих подходов", "рабочих подходов")}.
+          </p>
+        )}
       </div>
       <div className="rp-muscle-list">
         {report.assessments.map((item) => {
           const bioZone = bioByMuscle.get(item.muscle);
+          const b = item.bracket;
           return (
             <div key={item.muscle} className="rp-muscle-item">
               <div className="rp-item-header">
                 <div className="rp-item-title-group">
                   <h4 className="rp-muscle-title">{item.muscleName}</h4>
-                  <span className="rp-status-tag" style={{ color: item.statusColor, borderColor: `${item.statusColor}44`, backgroundColor: `${item.statusColor}18` }}>{item.statusLabel}</span>
+                  <span
+                    className="rp-status-tag"
+                    style={{
+                      color: item.phaseColor,
+                      borderColor: `${item.phaseColor}44`,
+                      backgroundColor: `${item.phaseColor}18`,
+                    }}
+                  >
+                    {item.phaseLabel}
+                  </span>
                 </div>
-                <div className="rp-sets-counter"><b>{fmt(item.actualSets)}</b><span className="unit">экв. подх./нед</span></div>
+                <div className="rp-sets-counter">
+                  <b>{fmt(item.actualSets)}</b>
+                  <span className="unit">экв. подх./нед</span>
+                </div>
               </div>
               <p className="tiny">
-                {fmt(item.directSets)} прямых + 0,5 × {fmt(item.indirectSets)} с помощью · из них при RIR ≤ 3: {fmt(item.knownHardSets)} экв. подх.
+                {fmt(item.directSets)} прям. + 0,5 × {fmt(item.indirectSets)} косв. · RIR ≤ 3: {fmt(item.knownHardSets)}
                 {bioZone && bioZone.effectiveSets > 0 ? ` · стимул: ${fmt(bioZone.effectiveSets)}` : ""}
-                {bioZone?.avgRir !== null && bioZone?.avgRir !== undefined ? ` · ср. RIR ${fmt(bioZone.avgRir)}` : ""}
               </p>
-              <div className="rp-bar-track"><div className="rp-bar-fill" style={{ width: `${Math.min(100, item.progressPercent)}%`, backgroundColor: item.statusColor }} /></div>
-              <div className="rp-milestones-row"><span>Общий диапазон: {item.bracket.referenceMin}–{item.bracket.referenceMax} подх./нед</span></div>
-              <p className="rp-recommendation-text">{item.recommendation}</p>
+              <div className="rp-bar-track">
+                <div
+                  className="rp-bar-fill"
+                  style={{ width: `${Math.min(100, item.progressPercent)}%`, backgroundColor: item.phaseColor }}
+                />
+              </div>
+              <div className="rp-milestones-row">
+                <span>MV {b.mv} · MEV {b.mev} · MAV {b.mavLow}–{b.mavHigh} · MRV {b.mrv}</span>
+              </div>
+              <p className="rp-recommendation-text">{item.effectSummary} {item.recommendation}</p>
             </div>
           );
         })}
       </div>
       <div className="rp-footer-note">
         <Info size={14} className="text-accent" />
-        <span>Зоны объединяют разные мышцы: объём всей спины или плеч не означает достаточную работу каждого пучка. Источники: <a href="https://acsm.org/resistance-training-guidelines-update-2026/" target="_blank" rel="noreferrer">ACSM, 2026</a>, <a href="https://doi.org/10.47206/ijsc.v1i1.81" target="_blank" rel="noreferrer">IUSCA, 2021</a>, <a href="https://doi.org/10.1007/s40279-025-02344-w" target="_blank" rel="noreferrer">Pelland et al., 2026</a>.</span>
+        <span>
+          Ориентиры: RP Hypertrophy (Dr. M. Israetel), мета-анализы{" "}
+          <a href="https://doi.org/10.1007/s40279-025-02344-w" target="_blank" rel="noreferrer">Pelland et al.</a>{" "}
+          и Schoenfeld et al. Индивидуальный оптимум зависит от сна, стажа и прогресса рабочих весов.
+        </span>
       </div>
     </div>
   );

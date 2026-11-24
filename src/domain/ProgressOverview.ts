@@ -1,7 +1,7 @@
 import { AnalyticsFacts } from "./AnalyticsFacts";
 import { addCalendarDays, localDate, weekStart } from "../lib/calendar";
 import { DateText } from "./DateText";
-import { volumeSummary, workingSets, type Workout } from "../lib/model";
+import { volumeSummary, type Workout } from "../lib/model";
 import { PersonalRecordsCalculator } from "./PersonalRecords";
 export type OverviewPeriod = "4w" | "8w" | "12w" | "6m" | "year" | "all";
 export const OVERVIEW_PERIODS: { id: OverviewPeriod; label: string }[] = [

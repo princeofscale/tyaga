@@ -223,7 +223,7 @@ test("profile contract, saved colors and all desktop navigation remain functiona
     await noOverflow(page);
     if (name === "Прогресс") await shot(page, "progress-1440");
     if (name === "Упражнения") {
-      await expect(page.locator(".library-card").first()).toBeVisible();
+      await expect(page.locator(".exlib-card").first()).toBeVisible();
       await shot(page, "library-1440");
     }
   }

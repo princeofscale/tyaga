@@ -1,539 +1,883 @@
-/* ═══════════════════════════════════════════════════════════════
-   SUPPLEMENTS PAGE — Obsidian & Ember aesthetic
-   ═══════════════════════════════════════════════════════════════ */
-
-.supplements-screen {
-  display: grid;
-  gap: 20px;
-  padding-bottom: 40px;
-  min-width: 0;
-}
-
-.supplements-screen > * {
-  min-width: 0;
-}
-
-.sup-hero {
-  position: relative;
-  overflow: hidden;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 20px;
-  align-items: center;
-  padding: 24px;
-  border-radius: 22px;
-  background:
-    radial-gradient(480px 260px at 92% 0%, color-mix(in oklab, var(--accent) 18%, transparent), transparent 72%),
+@layer screens {
+    .supplements-screen {
+        display: grid;
+        gap: 18px;
+        padding-bottom: 40px;
+        min-width: 0
+    }
+    .supplements-screen > * {
+        min-width: 0
+    }
+    .supplements-screen.is-dragging, .supplements-screen.is-dragging * {
+        cursor: grabbing !important
+    }
+    .sup-hero {
+        position: relative;
+        overflow: hidden;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 20px;
+        align-items: center;
+        padding: 24px;
+        border-radius: 22px;
+        background: radial-gradient(480px 260px at 92% 0%, color-mix(in oklab, var(--accent) 18%, transparent), transparent 72%),
     linear-gradient(155deg var(--in-oklab), var(--bg-elevated, #181c2b), var(--bg-card));
-  border: 1px solid color-mix(in oklab, var(--accent) 26%, var(--line));
-  box-shadow: var(--shadow-lg, 0 18px 42px rgba(0, 0, 0, 0.42));
-}
-
-.sup-hero-copy {
-  display: grid;
-  gap: 8px;
-}
-
-.sup-hero-eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--accent);
-}
-
-.sup-hero-copy h1 {
-  margin: 0;
-  font-size: clamp(1.5rem, 1.1rem + 1.4vw, 2.05rem);
-  line-height: 1.12;
-  letter-spacing: -0.02em;
-  text-wrap: balance;
-}
-
-.sup-hero-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 14px;
-  font-size: 0.86rem;
-  color: var(--ink-soft);
-}
-
-.sup-hero-meta span {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.sup-hero-meta b {
-  color: var(--ink);
-  font-variant-numeric: tabular-nums;
-}
-
-.sup-hero-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 6px;
-}
-
-.sup-ring-wrap {
-  position: relative;
-  width: 112px;
-  height: 112px;
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-}
-
-.sup-ring-svg {
-  width: 112px;
-  height: 112px;
-  transform: rotate(-90deg);
-}
-
-.sup-ring-track {
-  fill: none;
-  stroke: color-mix(in oklab, var(--line) 85%, transparent);
-  stroke-width: 8;
-}
-
-.sup-ring-fill {
-  fill: none;
-  stroke: var(--accent);
-  stroke-width: 8;
-  stroke-linecap: round;
-  filter: drop-shadow(0 0 10px color-mix(in oklab, var(--accent) 55%, transparent));
-}
-
-.sup-ring-center {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-content: center;
-  text-align: center;
-}
-
-.sup-ring-center strong {
-  font-family: var(--font-display, inherit);
-  font-size: 1.55rem;
-  line-height: 1;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-}
-
-.sup-ring-center span {
-  font-size: 0.72rem;
-  color: var(--ink-soft);
-  margin-top: 2px;
-}
-
-/* 7-day adherence strip */
-.sup-week-strip {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 8px;
-  padding: 14px 16px;
-  border-radius: 18px;
-  background: var(--bg-card);
-  border: 1px solid var(--line);
-}
-
-.sup-week-day {
-  display: grid;
-  justify-items: center;
-  gap: 6px;
-  padding: 8px 4px;
-  border-radius: 12px;
-  background: transparent;
-  border: 1px solid transparent;
-  transition: background 0.18s ease, border-color 0.18s ease;
-}
-
-.sup-week-day.is-today {
-  background: color-mix(in oklab, var(--accent) 10%, var(--bg-soft));
-  border-color: color-mix(in oklab, var(--accent) 34%, var(--line));
-}
-
-.sup-week-day-label {
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--ink-soft);
-  text-transform: uppercase;
-}
-
-.sup-week-dot {
-  width: 28px;
-  height: 28px;
-  border-radius: 999px;
-  display: grid;
-  place-items: center;
-  font-size: 0.74rem;
-  font-weight: 700;
-  border: 1px solid var(--line);
-  color: var(--ink-soft);
-  background: var(--bg-soft);
-}
-
-.sup-week-dot.done {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--on-accent, #ffffff);
-  box-shadow: 0 0 14px color-mix(in oklab, var(--accent) 42%, transparent);
-}
-
-.sup-week-dot.partial {
-  background: color-mix(in oklab, var(--accent) 20%, var(--bg-soft));
-  border-color: color-mix(in oklab, var(--accent) 55%, var(--line));
-  color: var(--ink);
-}
-
-/* Daily stack cards */
-.sup-section {
-  display: grid;
-  gap: 12px;
-}
-
-.sup-section-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.sup-section-head h2 {
-  margin: 0;
-  font-size: 1.12rem;
-  font-weight: 700;
-}
-
-.sup-stack-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 12px;
-}
-
-.sup-card {
-  position: relative;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: center;
-  padding: 14px 16px;
-  border-radius: 16px;
-  background: var(--bg-card);
-  border: 1px solid var(--line);
-  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
-}
-
-.sup-card::before {
-  content: "";
-  position: absolute;
-  inset-block: 12px;
-  left: 0;
-  width: 3px;
-  border-radius: 0 4px 4px 0;
-  background: var(--sup-accent, var(--accent));
-  opacity: 0.85;
-}
-
-.sup-card.is-taken {
-  background: color-mix(in oklab, var(--sup-accent, var(--accent)) 10%, var(--bg-card));
-  border-color: color-mix(in oklab, var(--sup-accent, var(--accent)) 42%, var(--line));
-}
-
-.sup-check-btn {
-  width: 44px;
-  height: 44px;
-  border-radius: 13px;
-  border: 1.5px solid color-mix(in oklab, var(--sup-accent, var(--accent)) 45%, var(--line));
-  background: var(--bg-soft);
-  color: transparent;
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
-}
-
-.sup-card.is-taken .sup-check-btn {
-  background: var(--sup-accent, var(--accent));
-  border-color: var(--sup-accent, var(--accent));
-  color: #ffffff;
-  box-shadow: 0 6px 18px color-mix(in oklab, var(--sup-accent, var(--accent)) 35%, transparent);
-}
-
-.sup-card-body {
-  min-width: 0;
-  display: grid;
-  gap: 4px;
-}
-
-.sup-card-title {
-  font-size: 0.96rem;
-  font-weight: 700;
-  color: var(--ink);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.sup-card.is-taken .sup-card-title {
-  color: var(--ink);
-}
-
-.sup-card-sub {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.78rem;
-  color: var(--ink-soft);
-}
-
-.sup-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--bg-soft);
-  border: 1px solid var(--line);
-  font-size: 0.74rem;
-  font-weight: 600;
-  color: var(--ink-soft);
-}
-
-.sup-card-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.sup-icon-btn {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--ink-soft);
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-}
-
-.sup-icon-btn:hover {
-  background: var(--bg-soft);
-  color: var(--ink);
-  border-color: var(--line);
-}
-
-.sup-icon-btn.danger:hover {
-  color: #f87171;
-  border-color: color-mix(in oklab, #f87171 38%, var(--line));
-}
-
-/* Catalog picker */
-.sup-cat-tabs {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding-bottom: 4px;
-  scrollbar-width: none;
-}
-
-.sup-cat-tabs::-webkit-scrollbar {
-  display: none;
-}
-
-.sup-cat-tab {
-  position: relative;
-  min-block-size: 44px;
-  padding: 8px 14px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  background: var(--bg-card);
-  color: var(--ink-soft);
-  font-size: 0.84rem;
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.sup-cat-tab.active {
-  color: var(--on-accent, #ffffff);
-  background: var(--accent);
-  border-color: var(--accent);
-}
-
-.sup-catalog-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  gap: 12px;
-}
-
-.sup-catalog-card {
-  display: grid;
-  gap: 10px;
-  padding: 15px 16px;
-  border-radius: 16px;
-  background: var(--bg-card);
-  border: 1px solid var(--line);
-  transition: border-color 0.18s ease, transform 0.18s ease;
-}
-
-.sup-catalog-card.in-stack {
-  border-color: color-mix(in oklab, var(--sup-accent, var(--accent)) 45%, var(--line));
-  background: color-mix(in oklab, var(--sup-accent, var(--accent)) 7%, var(--bg-card));
-}
-
-.sup-catalog-top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.sup-catalog-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 999px;
-  margin-top: 6px;
-  flex-shrink: 0;
-  background: var(--sup-accent, var(--accent));
-  box-shadow: 0 0 10px color-mix(in oklab, var(--sup-accent, var(--accent)) 60%, transparent);
-}
-
-.sup-catalog-name {
-  flex: 1;
-  min-width: 0;
-  display: grid;
-  gap: 3px;
-}
-
-.sup-catalog-name b {
-  font-size: 0.94rem;
-  color: var(--ink);
-}
-
-.sup-catalog-name small {
-  font-size: 0.78rem;
-  color: var(--ink-soft);
-  line-height: 1.35;
-}
-
-.sup-catalog-foot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.sup-add-btn {
-  min-block-size: 44px;
-  padding: 8px 14px;
-  border-radius: 12px;
-  border: 1px solid var(--line);
-  background: var(--bg-soft);
-  color: var(--ink);
-  font-size: 0.82rem;
-  font-weight: 700;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-}
-
-.sup-add-btn.added {
-  background: color-mix(in oklab, var(--ok, #22c55e) 16%, var(--bg-soft));
-  border-color: color-mix(in oklab, var(--ok, #22c55e) 44%, var(--line));
-  color: var(--ink);
-}
-
-/* Custom form */
-.sup-custom-form {
-  display: grid;
-  gap: 12px;
-  padding: 18px;
-  border-radius: 18px;
-  background: var(--bg-card);
-  border: 1px solid var(--line);
-}
-
-.sup-custom-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: 10px;
-}
-
-.sup-custom-field {
-  display: grid;
-  gap: 6px;
-  font-size: 0.8rem;
-  color: var(--ink-soft);
-}
-
-.sup-custom-field input,
-.sup-custom-field select {
-  min-block-size: 44px;
-  padding: 8px 12px;
-  border-radius: 12px;
-  border: 1px solid var(--line);
-  background: var(--bg-soft);
-  color: var(--ink);
-  font-size: 0.9rem;
-}
-
-.sup-empty {
-  padding: 24px 18px;
-  border-radius: 18px;
-  border: 1px dashed var(--line);
-  background: var(--bg-card);
-  text-align: center;
-  display: grid;
-  gap: 8px;
-  justify-items: center;
-}
-
-.sup-empty p {
-  margin: 0;
-  color: var(--ink-soft);
-  font-size: 0.9rem;
-  max-width: 44ch;
-}
-
-/* Inline dose editor */
-.sup-edit-row {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
-  gap: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--line);
-}
-
-.sup-edit-row input,
-.sup-edit-row select {
-  min-block-size: 44px;
-  padding: 6px 10px;
-  border-radius: 10px;
-  border: 1px solid var(--line);
-  background: var(--bg-soft);
-  color: var(--ink);
-  font-size: 0.84rem;
-}
-
-@media (max-width: 640px) {
-  .sup-hero {
-    grid-template-columns: 1fr;
-    padding: 18px;
-  }
-  .sup-ring-wrap {
-    justify-self: start;
-  }
-  .sup-edit-row {
-    grid-template-columns: 1fr;
-  }
+        border: 1px solid color-mix(in oklab, var(--accent) 26%, var(--line));
+        box-shadow: var(--shadow-lg, 0 18px 42px rgba(0, 0, 0, 0.42))
+    }
+    .sup-hero-copy {
+        display: grid;
+        gap: 8px
+    }
+    .sup-hero-eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--accent)
+    }
+    .sup-hero-copy h1 {
+        margin: 0;
+        font-size: clamp(1.5rem, 1.1rem + 1.4vw, 2.05rem);
+        line-height: 1.12;
+        letter-spacing: -0.02em;
+        text-wrap: balance
+    }
+    .sup-hero-meta {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px 14px;
+        font-size: 0.86rem;
+        color: var(--ink-soft)
+    }
+    .sup-hero-meta span {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px
+    }
+    .sup-hero-meta b {
+        color: var(--ink);
+        font-variant-numeric: tabular-nums
+    }
+    .sup-remaining-pill {
+        padding: 3px 10px;
+        border-radius: 999px;
+        background: color-mix(in oklab, var(--accent) 14%, var(--bg-soft));
+        border: 1px solid color-mix(in oklab, var(--accent) 34%, var(--line));
+        color: var(--ink) !important;
+        font-size: 0.78rem
+    }
+    .sup-hero-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 6px
+    }
+    .sup-ring-wrap {
+        position: relative;
+        width: 112px;
+        height: 112px;
+        display: grid;
+        place-items: center;
+        flex-shrink: 0
+    }
+    .sup-ring-svg {
+        width: 112px;
+        height: 112px;
+        transform: rotate(-90deg)
+    }
+    .sup-ring-track {
+        fill: none;
+        stroke: color-mix(in oklab, var(--line) 85%, transparent);
+        stroke-width: 8
+    }
+    .sup-ring-fill {
+        fill: none;
+        stroke: var(--accent);
+        stroke-width: 8;
+        stroke-linecap: round;
+        filter: drop-shadow(0 0 10px color-mix(in oklab, var(--accent) 55%, transparent))
+    }
+    .sup-ring-center {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-content: center;
+        text-align: center
+    }
+    .sup-ring-center strong {
+        font-family: var(--font-display, inherit);
+        font-size: 1.55rem;
+        line-height: 1;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums
+    }
+    .sup-ring-center span {
+        font-size: 0.72rem;
+        color: var(--ink-soft);
+        margin-top: 2px
+    }
+    .sup-week-strip {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 8px;
+        padding: 12px 14px;
+        border-radius: 18px;
+        background: var(--bg-card);
+        border: 1px solid var(--line)
+    }
+    .sup-week-day {
+        display: grid;
+        justify-items: center;
+        gap: 6px;
+        padding: 8px 4px;
+        border-radius: 12px;
+        background: transparent;
+        border: 1px solid transparent;
+        cursor: pointer;
+        color: inherit;
+        transition: background 0.18s ease, border-color 0.18s ease
+    }
+    .sup-week-day:hover {
+        background: var(--bg-soft)
+    }
+    .sup-week-day.is-today {
+        border-color: color-mix(in oklab, var(--accent) 30%, var(--line))
+    }
+    .sup-week-day.is-selected {
+        background: color-mix(in oklab, var(--accent) 14%, var(--bg-soft));
+        border-color: var(--accent)
+    }
+    .sup-week-day-label {
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: var(--ink-soft);
+        text-transform: uppercase
+    }
+    .sup-week-dot {
+        width: 28px;
+        height: 28px;
+        border-radius: 999px;
+        display: grid;
+        place-items: center;
+        font-size: 0.74rem;
+        font-weight: 700;
+        border: 1px solid var(--line);
+        color: var(--ink-soft);
+        background: var(--bg-soft)
+    }
+    .sup-week-dot.done {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: var(--on-accent, #ffffff);
+        box-shadow: 0 0 14px color-mix(in oklab, var(--accent) 42%, transparent)
+    }
+    .sup-week-dot.partial {
+        background: color-mix(in oklab, var(--accent) 20%, var(--bg-soft));
+        border-color: color-mix(in oklab, var(--accent) 55%, var(--line));
+        color: var(--ink)
+    }
+    .sup-mode-tabs {
+        display: flex;
+        gap: 8px;
+        overflow-x: auto;
+        scrollbar-width: none;
+        padding-bottom: 2px
+    }
+    .sup-mode-tabs::-webkit-scrollbar {
+        display: none
+    }
+    .sup-mode-tab {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        min-block-size: 44px;
+        padding: 8px 16px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: var(--bg-card);
+        color: var(--ink-soft);
+        font-size: 0.85rem;
+        font-weight: 650;
+        white-space: nowrap;
+        cursor: pointer;
+        transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease
+    }
+    .sup-mode-tab:hover {
+        border-color: var(--line-strong);
+        color: var(--ink)
+    }
+    .sup-mode-tab.active {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: var(--on-accent, #ffffff)
+    }
+    .sup-stack-panel {
+        display: grid;
+        gap: 14px;
+        padding: 20px;
+        border-radius: 22px;
+        background: radial-gradient(460px 200px at 0% 0%, color-mix(in oklab, var(--accent) 10%, transparent), transparent 74%),
+    var(--bg-card);
+        border: 1px solid color-mix(in oklab, var(--accent) 20%, var(--line));
+        box-shadow: var(--shadow-lg, 0 14px 36px rgba(0, 0, 0, 0.34))
+    }
+    .sup-stack-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px 14px
+    }
+    .sup-stack-title-group {
+        display: inline-flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px 10px
+    }
+    .sup-stack-title-group h2 {
+        margin: 0;
+        font-size: 1.16rem;
+        font-weight: 780;
+        letter-spacing: -0.01em
+    }
+    .sup-count-badge {
+        display: inline-grid;
+        place-items: center;
+        min-width: 26px;
+        height: 26px;
+        padding: 0 8px;
+        border-radius: 999px;
+        background: color-mix(in oklab, var(--accent) 18%, var(--bg-soft));
+        border: 1px solid color-mix(in oklab, var(--accent) 40%, var(--line));
+        font-family: var(--font-mono);
+        font-size: 0.78rem;
+        font-weight: 750;
+        color: var(--ink)
+    }
+    .sup-progress-chip {
+        padding: 4px 10px;
+        border-radius: 999px;
+        background: var(--bg-soft);
+        border: 1px solid var(--line);
+        font-size: 0.76rem;
+        font-weight: 600;
+        color: var(--ink-soft)
+    }
+    .sup-drag-hint {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 0.76rem;
+        color: var(--ink-soft)
+    }
+    .sup-stack-list {
+        display: grid;
+        gap: 10px;
+        padding: 2px
+    }
+    .sup-card {
+        position: relative;
+        display: grid;
+        grid-template-columns: auto auto minmax(0, 1fr) auto;
+        gap: 10px 12px;
+        align-items: center;
+        padding: 13px 14px 13px 12px;
+        border-radius: 16px;
+        background: var(--bg-soft);
+        border: 1px solid var(--line);
+        scroll-margin: 16px;
+        transition: border-color 0.2s ease, background-color 0.2s ease
+    }
+    .sup-card::before {
+        content: "";
+        position: absolute;
+        inset-block: 12px;
+        left: 0;
+        width: 3px;
+        border-radius: 0 4px 4px 0;
+        background: var(--sup-accent, var(--accent));
+        opacity: 0.88
+    }
+    .sup-card.is-taken {
+        background: color-mix(in oklab, var(--sup-accent, var(--accent)) 11%, var(--bg-soft));
+        border-color: color-mix(in oklab, var(--sup-accent, var(--accent)) 45%, var(--line))
+    }
+    .sup-card.is-rest-day {
+        opacity: 0.74
+    }
+    .sup-card:has(.sup-drag-handle:focus-visible) {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px
+    }
+    .sup-card.is-grabbed {
+        border-color: var(--accent);
+        box-shadow: 0 14px 32px rgba(0, 0, 0, 0.45);
+        transform: scale(1.012);
+        z-index: 10
+    }
+    .sup-drag-handle {
+        display: inline-grid;
+        place-items: center;
+        width: 36px;
+        height: 44px;
+        border-radius: 10px;
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--ink-soft);
+        opacity: 0.72;
+        cursor: grab;
+        touch-action: none;
+        -webkit-user-select: none;
+        user-select: none;
+        transition: opacity 140ms ease, background-color 140ms ease, color 140ms ease
+    }
+    .sup-drag-handle:is(:hover, :focus-visible) {
+        opacity: 1;
+        background: var(--bg-card);
+        color: var(--ink);
+        outline: none
+    }
+    .sup-drag-handle:active, .sup-drag-handle[aria-pressed="true"] {
+        cursor: grabbing;
+        background: color-mix(in oklab, var(--accent) 18%, var(--bg-card));
+        color: var(--accent);
+        opacity: 1
+    }
+    .sup-key-hint {
+        display: none;
+        font-size: 0.72rem;
+        color: var(--accent);
+        margin-top: 2px
+    }
+    .sup-card:has(.sup-drag-handle:focus-visible) .sup-key-hint, .sup-card.is-grabbed .sup-key-hint {
+        display: block
+    }
+    .sup-check-btn {
+        width: 44px;
+        height: 44px;
+        border-radius: 13px;
+        border: 1.5px solid color-mix(in oklab, var(--sup-accent, var(--accent)) 45%, var(--line));
+        background: var(--bg-card);
+        color: transparent;
+        display: grid;
+        place-items: center;
+        cursor: pointer;
+        transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease
+    }
+    .sup-card.is-taken .sup-check-btn {
+        background: var(--sup-accent, var(--accent));
+        border-color: var(--sup-accent, var(--accent));
+        color: #ffffff;
+        box-shadow: 0 6px 18px color-mix(in oklab, var(--sup-accent, var(--accent)) 35%, transparent)
+    }
+    .sup-card-body {
+        min-width: 0;
+        display: grid;
+        gap: 5px
+    }
+    .sup-card-title-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px 8px
+    }
+    .sup-card-title {
+        font-size: 0.98rem;
+        font-weight: 720;
+        color: var(--ink)
+    }
+    .sup-rest-badge {
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: var(--bg-card);
+        border: 1px solid var(--line);
+        font-size: 0.7rem;
+        color: var(--ink-soft)
+    }
+    .sup-card-sub {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px
+    }
+    .sup-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 3px 9px;
+        border-radius: 999px;
+        background: var(--bg-card);
+        border: 1px solid var(--line);
+        font-size: 0.74rem;
+        font-weight: 600;
+        color: var(--ink-soft)
+    }
+    .sup-pill.is-dose {
+        color: var(--ink);
+        font-family: var(--font-mono);
+        border-color: color-mix(in oklab, var(--sup-accent, var(--accent)) 35%, var(--line))
+    }
+    .sup-card-actions {
+        display: flex;
+        align-items: center;
+        gap: 4px
+    }
+    .sup-icon-btn {
+        width: 40px;
+        height: 40px;
+        border-radius: 11px;
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--ink-soft);
+        display: grid;
+        place-items: center;
+        cursor: pointer
+    }
+    .sup-icon-btn:hover, .sup-icon-btn.is-active {
+        background: var(--bg-card);
+        color: var(--ink);
+        border-color: var(--line)
+    }
+    .sup-icon-btn.danger:hover {
+        color: #f87171;
+        border-color: color-mix(in oklab, #f87171 38%, var(--line))
+    }
+    .sup-edit-panel {
+        grid-column: 1 / -1;
+        display: grid;
+        gap: 14px;
+        padding-top: 12px;
+        border-top: 1px solid var(--line)
+    }
+    .sup-edit-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+        gap: 10px
+    }
+    .sup-edit-col {
+        display: grid;
+        gap: 6px;
+        min-width: 0
+    }
+    .sup-edit-label {
+        font-size: 0.74rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--ink-soft)
+    }
+    .sup-edit-panel input, .sup-edit-panel select {
+        min-block-size: 42px;
+        padding: 6px 10px;
+        border-radius: 11px;
+        border: 1px solid var(--line);
+        background: var(--bg-card);
+        color: var(--ink);
+        font-size: 0.88rem
+    }
+    .sup-dose-field {
+        display: grid;
+        gap: 4px
+    }
+    .sup-dose-inputs {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 6px
+    }
+    .sup-dose-inputs input:is(:user-invalid, .user-invalid-fallback) {
+        border-color: #ef4444;
+        background: color-mix(in oklab, #ef4444 10%, var(--bg-card))
+    }
+    .sup-dose-error {
+        font-size: 0.75rem;
+        color: #f87171
+    }
+    .sup-edit-days {
+        display: grid;
+        gap: 8px
+    }
+    .sup-edit-days-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px
+    }
+    .sup-preset-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px
+    }
+    .sup-preset-chip {
+        padding: 4px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: var(--bg-card);
+        color: var(--ink-soft);
+        font-size: 0.74rem;
+        font-weight: 600;
+        cursor: pointer
+    }
+    .sup-preset-chip:hover {
+        border-color: var(--accent);
+        color: var(--ink)
+    }
+    .sup-day-toggles {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 6px
+    }
+    .sup-day-toggle {
+        min-block-size: 40px;
+        border-radius: 11px;
+        border: 1px solid var(--line);
+        background: var(--bg-card);
+        color: var(--ink-soft);
+        font-size: 0.78rem;
+        font-weight: 700;
+        cursor: pointer;
+        transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease
+    }
+    .sup-day-toggle.active {
+        background: color-mix(in oklab, var(--accent) 22%, var(--bg-card));
+        border-color: var(--accent);
+        color: var(--ink)
+    }
+    .sup-edit-foot {
+        display: flex;
+        justify-content: flex-end
+    }
+    .sup-day-timeline {
+        display: grid;
+        gap: 14px
+    }
+    .sup-slot-block {
+        display: grid;
+        gap: 8px;
+        padding: 14px;
+        border-radius: 16px;
+        background: var(--bg-soft);
+        border: 1px solid var(--line)
+    }
+    .sup-slot-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px
+    }
+    .sup-slot-title {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.84rem;
+        font-weight: 750;
+        color: var(--ink)
+    }
+    .sup-slot-stat {
+        font-family: var(--font-mono);
+        font-size: 0.76rem;
+        color: var(--ink-soft)
+    }
+    .sup-slot-items {
+        display: grid;
+        gap: 6px
+    }
+    .sup-timeline-row {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        min-block-size: 48px;
+        padding: 9px 12px;
+        border-radius: 12px;
+        border: 1px solid var(--line);
+        background: var(--bg-card);
+        color: var(--ink);
+        text-align: left;
+        cursor: pointer
+    }
+    .sup-timeline-row.is-taken {
+        border-color: color-mix(in oklab, var(--sup-accent, var(--accent)) 45%, var(--line));
+        background: color-mix(in oklab, var(--sup-accent, var(--accent)) 10%, var(--bg-card))
+    }
+    .sup-timeline-check {
+        width: 28px;
+        height: 28px;
+        border-radius: 9px;
+        border: 1.5px solid color-mix(in oklab, var(--sup-accent, var(--accent)) 45%, var(--line));
+        background: var(--bg-soft);
+        color: transparent;
+        display: grid;
+        place-items: center
+    }
+    .sup-timeline-row.is-taken .sup-timeline-check {
+        background: var(--sup-accent, var(--accent));
+        border-color: var(--sup-accent, var(--accent));
+        color: #ffffff
+    }
+    .sup-timeline-copy {
+        display: grid;
+        gap: 2px;
+        min-width: 0
+    }
+    .sup-timeline-copy b {
+        font-size: 0.9rem
+    }
+    .sup-timeline-copy small {
+        font-size: 0.76rem;
+        color: var(--ink-soft)
+    }
+    .sup-week-planner {
+        display: grid;
+        gap: 8px;
+        overflow-x: auto
+    }
+    .sup-wp-head, .sup-wp-row, .sup-wp-foot {
+        display: grid;
+        grid-template-columns: minmax(140px, 1.5fr) repeat(7, minmax(38px, 1fr));
+        align-items: center;
+        gap: 6px
+    }
+    .sup-wp-head {
+        padding: 0 10px 4px;
+        font-size: 0.74rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        color: var(--ink-soft)
+    }
+    .sup-wp-day-col, .sup-wp-day-total {
+        text-align: center
+    }
+    .sup-wp-row {
+        padding: 9px 10px;
+        border-radius: 13px;
+        background: var(--bg-soft);
+        border: 1px solid var(--line)
+    }
+    .sup-wp-name {
+        display: grid;
+        gap: 2px;
+        min-width: 0
+    }
+    .sup-wp-name b {
+        font-size: 0.86rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap
+    }
+    .sup-wp-name small {
+        font-size: 0.72rem;
+        color: var(--ink-soft)
+    }
+    .sup-wp-cell {
+        min-block-size: 38px;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: var(--bg-card);
+        color: var(--ink-soft);
+        display: grid;
+        place-items: center;
+        cursor: pointer;
+        transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease
+    }
+    .sup-wp-cell.is-active {
+        background: color-mix(in oklab, var(--sup-accent, var(--accent)) 22%, var(--bg-card));
+        border-color: var(--sup-accent, var(--accent));
+        color: var(--ink)
+    }
+    .sup-wp-foot {
+        padding: 6px 10px 0;
+        font-size: 0.76rem;
+        font-weight: 700;
+        color: var(--ink-soft);
+        font-family: var(--font-mono)
+    }
+    .sup-section {
+        display: grid;
+        gap: 12px
+    }
+    .sup-section-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px
+    }
+    .sup-section-head h2 {
+        margin: 0;
+        font-size: 1.12rem;
+        font-weight: 700
+    }
+    .sup-cat-tabs {
+        display: flex;
+        gap: 8px;
+        overflow-x: auto;
+        padding-bottom: 4px;
+        scrollbar-width: none
+    }
+    .sup-cat-tabs::-webkit-scrollbar {
+        display: none
+    }
+    .sup-cat-tab {
+        position: relative;
+        min-block-size: 44px;
+        padding: 8px 14px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: var(--bg-card);
+        color: var(--ink-soft);
+        font-size: 0.84rem;
+        font-weight: 600;
+        white-space: nowrap;
+        cursor: pointer
+    }
+    .sup-cat-tab.active {
+        color: var(--on-accent, #ffffff);
+        background: var(--accent);
+        border-color: var(--accent)
+    }
+    .sup-catalog-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+        gap: 12px
+    }
+    .sup-catalog-card {
+        display: grid;
+        gap: 10px;
+        padding: 15px 16px;
+        border-radius: 16px;
+        background: var(--bg-card);
+        border: 1px solid var(--line);
+        transition: border-color 0.18s ease, transform 0.18s ease
+    }
+    .sup-catalog-card.in-stack {
+        border-color: color-mix(in oklab, var(--sup-accent, var(--accent)) 45%, var(--line));
+        background: color-mix(in oklab, var(--sup-accent, var(--accent)) 7%, var(--bg-card))
+    }
+    .sup-catalog-top {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 10px
+    }
+    .sup-catalog-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        margin-top: 6px;
+        flex-shrink: 0;
+        background: var(--sup-accent, var(--accent));
+        box-shadow: 0 0 10px color-mix(in oklab, var(--sup-accent, var(--accent)) 60%, transparent)
+    }
+    .sup-catalog-name {
+        flex: 1;
+        min-width: 0;
+        display: grid;
+        gap: 3px
+    }
+    .sup-catalog-name b {
+        font-size: 0.94rem;
+        color: var(--ink)
+    }
+    .sup-catalog-name small {
+        font-size: 0.78rem;
+        color: var(--ink-soft);
+        line-height: 1.35
+    }
+    .sup-catalog-foot {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px
+    }
+    .sup-add-btn {
+        min-block-size: 44px;
+        padding: 8px 14px;
+        border-radius: 12px;
+        border: 1px solid var(--line);
+        background: var(--bg-soft);
+        color: var(--ink);
+        font-size: 0.82rem;
+        font-weight: 700;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer
+    }
+    .sup-add-btn.added {
+        background: color-mix(in oklab, var(--ok, #22c55e) 16%, var(--bg-soft));
+        border-color: color-mix(in oklab, var(--ok, #22c55e) 44%, var(--line));
+        color: var(--ink)
+    }
+    .sup-custom-form {
+        display: grid;
+        gap: 14px;
+        padding: 18px;
+        border-radius: 18px;
+        background: var(--bg-card);
+        border: 1px solid var(--line)
+    }
+    .sup-custom-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+        gap: 12px
+    }
+    .sup-custom-field {
+        display: grid;
+        gap: 6px;
+        font-size: 0.8rem;
+        color: var(--ink-soft)
+    }
+    .sup-custom-field input, .sup-custom-field select {
+        min-block-size: 44px;
+        padding: 8px 12px;
+        border-radius: 12px;
+        border: 1px solid var(--line);
+        background: var(--bg-soft);
+        color: var(--ink);
+        font-size: 0.9rem
+    }
+    .sup-empty {
+        padding: 24px 18px;
+        border-radius: 16px;
+        border: 1px dashed var(--line);
+        background: var(--bg-soft);
+        text-align: center;
+        display: grid;
+        gap: 8px;
+        justify-items: center
+    }
+    .sup-empty p {
+        margin: 0;
+        color: var(--ink-soft);
+        font-size: 0.9rem;
+        max-width: 44ch
+    }
+    @media (max-width: 640px) {
+        .sup-hero {
+            grid-template-columns: 1fr;
+            padding: 18px
+        }
+        .sup-ring-wrap {
+            justify-self: start
+        }
+        .sup-stack-panel {
+            padding: 16px
+        }
+        .sup-card {
+            grid-template-columns: auto auto minmax(0, 1fr)
+        }
+        .sup-card-actions {
+            grid-column: 1 / -1;
+            justify-content: flex-end;
+            border-top: 1px solid var(--line);
+            padding-top: 8px
+        }
+    }
 }

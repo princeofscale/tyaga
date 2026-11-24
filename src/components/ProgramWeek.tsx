@@ -7,7 +7,7 @@ import { DAY_NAMES } from "../domain/TrainingProgram";
 import { addCalendarDays, calendarWeek, dateLabel } from "../lib/calendar";
 import { quantity } from "../lib/quantity";
 import type { Routine, Workout } from "../lib/types";
-import "../styles/training-calendar.css";
+import "../styles/programs.css";
 
 interface ProgramWeekProps {
   routines: readonly Routine[];

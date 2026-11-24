@@ -38,6 +38,7 @@ export class ApiClient {
       if (signal?.aborted) throw error;
       throw new Error(
         "Запрос не завершился. Введённые данные остаются в форме; можно повторить запрос.",
+        { cause: error },
       );
     }
     let data: T & {

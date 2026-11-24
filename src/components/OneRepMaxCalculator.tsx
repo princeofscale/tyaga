@@ -7,7 +7,6 @@ import { NumberField } from "./NumberField";
 export default function OneRepMaxCalculator({
   initialWeight = 80,
   initialReps = 8,
-  onClose,
 }: {
   initialWeight?: number;
   initialReps?: number;

@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { SmartCoach, type CoachInsightCategory } from "../domain/SmartCoach";
 import { fmt, type Routine, type Workout } from "../lib/model";
-import "../styles/smart-coach.css";
+import "../styles/progress.css";
 
 const GAUGE_R = 46;
 const GAUGE_C = 2 * Math.PI * GAUGE_R;

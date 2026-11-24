@@ -14,8 +14,6 @@ import {
   addCalendarDays,
   localDate,
   type Workout,
-  type WorkoutExercise,
-  type SetEntry,
 } from "../lib/model";
 
 export interface ExercisePR {
@@ -225,7 +223,6 @@ export class PersonalRecordsCalculator {
       return { currentWeekStreak: 0, bestWeekStreak: 0, totalWeeks: 0 };
     }
 
-    const today = localDate(this.now, timeZone);
     const thisWeek = weekStart(this.now, timeZone);
 
     const weekSet = new Set<string>();
@@ -422,8 +419,8 @@ export class PersonalRecordsCalculator {
       }
     }
 
-    let pushPullRatio: number | null = null;
-    let pushPullStatus: BalanceRatios["pushPullStatus"] = "no-data";
+    let pushPullRatio: number | null;
+    let pushPullStatus: BalanceRatios["pushPullStatus"];
     if (pushSets === 0 && pullSets === 0) {
       pushPullRatio = null;
       pushPullStatus = "no-data";
@@ -443,8 +440,8 @@ export class PersonalRecordsCalculator {
             : "balanced";
     }
 
-    let upperLowerRatio: number | null = null;
-    let upperLowerStatus: BalanceRatios["upperLowerStatus"] = "no-data";
+    let upperLowerRatio: number | null;
+    let upperLowerStatus: BalanceRatios["upperLowerStatus"];
     if (upperSets === 0 && lowerSets === 0) {
       upperLowerRatio = null;
       upperLowerStatus = "no-data";

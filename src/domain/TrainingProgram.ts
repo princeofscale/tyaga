@@ -7,7 +7,6 @@ import {
   makeSets,
   exerciseForEntry,
   exerciseById,
-  progressKey,
   localDate,
 } from "../lib/model";
 import { MUSCLES } from "../data/muscles";

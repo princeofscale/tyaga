@@ -1,14 +1,25 @@
 import { AnalyticsFacts } from "./AnalyticsFacts";
 import { trailingWindow } from "../lib/calendar";
 import { MUSCLES } from "../data/muscles";
-import { addCalendarDays } from "../lib/calendar";
 import type { Muscle, MuscleLoad, Workout } from "../lib/types";
 import { TrainingAnalytics, type AnalysisOptions } from "./TrainingAnalytics";
 
 export interface VolumeLandmarkBracket {
   muscle: Muscle;
   muscleName: string;
+  /** Maintenance Volume — минимум для удержания массы. */
+  mv: number;
+  /** Minimum Effective Volume — минимум для запуска роста. */
+  mev: number;
+  /** Нижняя граница оптимального диапазона гипертрофии (MAV). */
+  mavLow: number;
+  /** Верхняя граница оптимального диапазона гипертрофии (MAV). */
+  mavHigh: number;
+  /** Maximum Recoverable Volume — ориентировочный порог восстановления. */
+  mrv: number;
+  /** Совместимость со старым API: начало продуктивного диапазона роста (MEV). */
   referenceMin: number;
+  /** Совместимость со старым API: верх продуктивного диапазона роста (MAV high). */
   referenceMax: number;
 }
 
@@ -17,6 +28,15 @@ export type VolumeStatusKind =
   | "below_reference"
   | "within_reference"
   | "above_reference";
+
+export type VolumePhase =
+  | "no_sets"
+  | "below_mv"
+  | "maintenance"
+  | "min_growth"
+  | "optimal_growth"
+  | "high_volume"
+  | "overreaching";
 
 export interface MuscleVolumeAssessment {
   muscle: Muscle;
@@ -28,26 +48,45 @@ export interface MuscleVolumeAssessment {
   status: VolumeStatusKind;
   statusLabel: string;
   statusColor: string;
+  /** Детальная физиологическая фаза объёма (MV / MEV / MAV / MRV). */
+  phase: VolumePhase;
+  phaseLabel: string;
+  phaseShort: string;
+  phaseColor: string;
+  /** Понятный прогноз эффекта при сохранении текущего объёма. */
+  effectSummary: string;
   recommendation: string;
+  /** Процент заполнения шкалы до MRV (может быть > 100 при превышении). */
   progressPercent: number;
 }
 
 /**
- * A population-level weekly reference, not individual MV/MEV/MAV/MRV thresholds.
- * ACSM (2026): ~10 weekly sets for hypertrophy; IUSCA (2021): individualize volume.
- * Pelland et al. (2026): fractional indirect sets and diminishing returns.
- * These sources do not validate distinct exact thresholds for each display zone.
+ * Недельные ориентиры объёма (рабочие подходы/нед.: прямые + 0,5 × косвенные; разминка не считается).
+ * Основано на мета-анализах Schoenfeld et al., Pelland et al. (дробный учёт косвенных подходов и убывающая отдача)
+ * и ориентирах RP Hypertrophy (MV / MEV / MAV / MRV по группам мышц для среднего атлета).
  */
 export class VolumeLandmarksCalculator {
   static getBracket(muscle: Muscle): VolumeLandmarkBracket {
     const zone = MUSCLES.find((m) => m.id === muscle)!;
-    return { muscle, muscleName: zone.name, referenceMin: 10, referenceMax: 20 };
+    return {
+      muscle,
+      muscleName: zone.name,
+      mv: zone.mv,
+      mev: zone.mev,
+      mavLow: zone.mavLow,
+      mavHigh: zone.mavHigh,
+      mrv: zone.mrv,
+      referenceMin: zone.mev,
+      referenceMax: zone.mavHigh,
+    };
   }
 
   static assessMuscleVolume(muscle: Muscle, actualSets: number): MuscleVolumeAssessment {
     if (!Number.isFinite(actualSets) || actualSets < 0)
       throw new RangeError("Число подходов должно быть конечным и неотрицательным");
+
     const bracket = this.getBracket(muscle);
+    const scaleMax = bracket.mrv + 4;
     const base = {
       muscle,
       muscleName: bracket.muscleName,
@@ -55,35 +94,110 @@ export class VolumeLandmarksCalculator {
       directSets: actualSets,
       indirectSets: 0,
       bracket,
-      progressPercent: actualSets / bracket.referenceMax * 100,
+      progressPercent: (actualSets / scaleMax) * 100,
     };
-    if (actualSets === 0) return {
-      ...base,
-      status: "no_sets",
-      statusLabel: "Нет записанной работы",
-      statusColor: "#7e8b91",
-      recommendation: "В журнале нет рабочих подходов для этой зоны за период. Это не доказывает потерю мышц или отсутствие другой нагрузки.",
-    };
-    if (actualSets < bracket.referenceMin) return {
-      ...base,
-      status: "below_reference",
-      statusLabel: "Ниже общего ориентира",
-      statusColor: "#58c0ff",
-      recommendation: "Рост возможен и при меньшем объёме. Если несколько недель нет прогресса в весе или повторах, а восстановление хорошее, попробуй добавить 1–2 трудных подхода в неделю.",
-    };
-    if (actualSets <= bracket.referenceMax) return {
-      ...base,
-      status: "within_reference",
-      statusLabel: "В общем диапазоне",
-      statusColor: "#cafa64",
-      recommendation: "Типичный ориентир для гипертрофии при достаточно трудных подходах. Если вес или повторы растут, повышать объём необязательно. Это не гарантия максимального роста.",
-    };
+
+    if (actualSets === 0) {
+      return {
+        ...base,
+        status: "no_sets",
+        statusLabel: "Нет нагрузки",
+        statusColor: "#7e8b91",
+        phase: "no_sets",
+        phaseLabel: "Нет нагрузки",
+        phaseShort: "Пусто",
+        phaseColor: "#7e8b91",
+        effectSummary: "Нет стимула за неделю; при паузе дольше 2–3 недель начнётся детренировка.",
+        recommendation: `Для удержания массы нужно от ${bracket.mv} подх./нед., для роста — от ${bracket.mev} подх./нед.`,
+      };
+    }
+
+    if (actualSets < bracket.mv) {
+      return {
+        ...base,
+        status: "below_reference",
+        statusLabel: "Ниже поддержки",
+        statusColor: "#94a3b8",
+        phase: "below_mv",
+        phaseLabel: "Ниже поддержки (< MV)",
+        phaseShort: "< MV",
+        phaseColor: "#94a3b8",
+        effectSummary: "Объёма меньше порога удержания — при таком темпе возможен постепенный откат.",
+        recommendation: `Добавь хотя бы до ${bracket.mv} трудных подходов для удержания массы или до ${bracket.mev} — чтобы запустить рост.`,
+      };
+    }
+
+    if (actualSets < bracket.mev) {
+      return {
+        ...base,
+        status: "below_reference",
+        statusLabel: "Поддержка массы",
+        statusColor: "#38bdf8",
+        phase: "maintenance",
+        phaseLabel: "Поддержка массы (MV)",
+        phaseShort: "Поддержка",
+        phaseColor: "#38bdf8",
+        effectSummary: "Удержание текущей мышечной массы и силы без заметной гипертрофии.",
+        recommendation: `Отлично для разгрузки или занятой недели. Чтобы мышца росла, подними объём до ${bracket.mev}–${bracket.mavLow} подх./нед. (рост возможен и ниже у новичков).`,
+      };
+    }
+
+    if (actualSets < bracket.mavLow) {
+      return {
+        ...base,
+        status: "within_reference",
+        statusLabel: "Начальный рост",
+        statusColor: "#22c55e",
+        phase: "min_growth",
+        phaseLabel: "Начальный рост (MEV)",
+        phaseShort: "Старт роста",
+        phaseColor: "#22c55e",
+        effectSummary: "Минимально эффективный объём — запускает набор мышечной массы при хорошем качестве подходов (RIR 0–3).",
+        recommendation: `Хорошая стартовая точка цикла. Если веса и повторы растут — оставайся здесь; если прогресс встал, добавь до ${bracket.mavLow}–${bracket.mavHigh} подх./нед.`,
+      };
+    }
+
+    if (actualSets <= bracket.mavHigh) {
+      return {
+        ...base,
+        status: "within_reference",
+        statusLabel: "Набор массы",
+        statusColor: "#4ade80",
+        phase: "optimal_growth",
+        phaseLabel: "Набор массы (MAV)",
+        phaseShort: "Набор массы",
+        phaseColor: "#4ade80",
+        effectSummary: "Оптимальная зона гипертрофии — максимальная отдача на единицу усталости.",
+        recommendation: "Держи этот диапазон, пока веса или повторения растут и восстановление в норме. Подходы должны быть близки к отказу (RIR 0–3).",
+      };
+    }
+
+    if (actualSets <= bracket.mrv) {
+      return {
+        ...base,
+        status: "above_reference",
+        statusLabel: "Высокий объём",
+        statusColor: "#f59e0b",
+        phase: "high_volume",
+        phaseLabel: "Предельный объём (к MRV)",
+        phaseShort: "Высокий объём",
+        phaseColor: "#f59e0b",
+        effectSummary: "Рост возможен, но отдача падает, а локальная и системная усталость быстро накапливаются.",
+        recommendation: `Оправдано в пиковую неделю перед разгрузкой. Следи за сном, суставами и рабочими весами — при спаде сразу сбавляй объём.`,
+      };
+    }
+
     return {
       ...base,
       status: "above_reference",
-      statusLabel: "Выше общего диапазона",
-      statusColor: "#f59e0b",
-      recommendation: "Отдача от дополнительных подходов обычно уменьшается. Проверь прогресс, сон и усталость; при ухудшении результатов сократи объём. Само число подходов не определяет перетренированность.",
+      statusLabel: "Риск перетренировки",
+      statusColor: "#ef4444",
+      phase: "overreaching",
+      phaseLabel: "Риск перетренировки (> MRV)",
+      phaseShort: "Перегруз",
+      phaseColor: "#ef4444",
+      effectSummary: "Выше среднего предела восстановления — риск перетренировки, падения силы и перегрузки связок.",
+      recommendation: `Снизь объём до ${bracket.mavLow}–${bracket.mavHigh} подх./нед. или сделай разгрузочную неделю (~${bracket.mv} подх.). Само число подходов не определяет перетренированность, но при таком объёме восстановление обычно не успевает.`,
     };
   }
 

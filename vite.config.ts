@@ -17,6 +17,8 @@ export default defineConfig(({ mode }) => ({
   build: {
     outDir: mode === "device" ? "dist/device" : "dist/client",
     sourcemap: false,
+    // Keep fonts as external files so strict CSP `font-src 'self'` never blocks base64 data: fonts.
+    assetsInlineLimit: (filePath) => (filePath.endsWith(".woff2") ? false : undefined),
     rollupOptions: {
       output: {
         manualChunks(id) {
@@ -26,6 +28,16 @@ export default defineConfig(({ mode }) => ({
             id.includes("/node_modules/scheduler/")
           )
             return "react";
+          if (id.includes("/node_modules/motion") || id.includes("/node_modules/framer-motion"))
+            return "motion";
+          if (id.includes("/node_modules/lucide-react"))
+            return "icons";
+          if (
+            id.includes("/src/data/catalog-v3") ||
+            id.includes("/src/data/muscles") ||
+            id.includes("/src/lib/catalog")
+          )
+            return "catalog";
         },
       },
     },

@@ -20,7 +20,6 @@ export function smallTargets(page: Page) {
   });
 }
 
-const BENCH = "Жим штанги лёжа";
 /** Кнопки, ссылки, summary и плашки, чей текст шире собственной рамки, и пары соседей, чьи рамки пересекаются. */
 export function clipped(page: Page, scope = "main") {
   return page.evaluate((root) => {
