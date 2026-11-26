@@ -34,7 +34,7 @@
     "@capacitor/share": "^8.0.3",
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
     "fflate": "^0.8.3",
-    "lucide-react": "^0.468.0",
+    "lucide-react": "^1.78.0",
     "motion": "^14.0.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
