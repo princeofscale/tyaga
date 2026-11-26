@@ -12,35 +12,6 @@
     .orm-rir-row .orm-rep-presets {
         flex-wrap: wrap
     }
-    .journal-supplements {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 6px;
-        min-inline-size: 44px;
-        min-block-size: 44px;
-        padding: 0 12px;
-        white-space: nowrap
-    }
-    .journal-supplements.active {
-        border-color: color-mix(in oklab, var(--accent) 55%, var(--line));
-        background: color-mix(in oklab, var(--accent) 16%, var(--bg-soft));
-        color: var(--ink)
-    }
-    @media (min-width: 961px) {
-        .journal-supplements {
-            display: none
-        }
-    }
-    @media (max-width: 440px) {
-        .journal-supplements {
-            padding: 0;
-            inline-size: 44px
-        }
-        .journal-supplements span {
-            display: none
-        }
-    }
     .history-head h1 {
         font-size: clamp(2rem, 1.3rem + 2.4vw, 3.1rem)
     }
@@ -902,39 +873,75 @@
         font-variant-numeric: tabular-nums;
         color: var(--muted)
     }
-    .today-quick-tools {
+    .today-readiness-disclosure {
+        display: grid;
+        gap: 0
+    }
+    .today-readiness-summary {
+        list-style: none;
         display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        padding: 12px clamp(16px, 2.6vw, 24px) 16px;
-        border-top: 1px solid var(--line-soft)
-    }
-    .quick-tool-chip {
-        display: inline-flex;
         align-items: center;
-        justify-content: center;
-        gap: 7px;
-        min-height: 44px;
-        min-width: 44px;
-        padding: 8px 13px;
-        border-radius: 10px;
-        border: 1px solid var(--line);
-        background: var(--bg);
-        color: var(--text-soft);
-        font: 600 0.8125rem/1.2 var(--font-body);
-        transition: border-color 150ms ease-out, color 150ms ease-out, background-color 150ms ease-out, scale 140ms ease-out
+        justify-content: space-between;
+        gap: 12px;
+        min-block-size: 48px;
+        cursor: pointer;
+        user-select: none
     }
-    .quick-tool-chip:hover {
-        border-color: var(--accent);
-        background: var(--surface-2);
+    .today-readiness-summary::-webkit-details-marker {
+        display: none
+    }
+    .today-readiness-summary-copy {
+        display: grid;
+        gap: 3px;
+        min-inline-size: 0
+    }
+    .today-readiness-summary-copy h2 {
+        font-size: 0.96rem;
+        font-weight: 700;
         color: var(--text)
     }
-    .quick-tool-chip:active {
-        scale: 0.97
+    .today-readiness-summary-meta {
+        font-size: 0.78rem;
+        color: var(--muted);
+        line-height: 1.35
     }
-    .quick-tool-chip svg {
-        color: var(--accent);
-        flex: none
+    .today-readiness-chevron {
+        flex: none;
+        color: var(--muted);
+        transition: transform 180ms ease-out
+    }
+    .today-readiness-disclosure[open] .today-readiness-chevron {
+        transform: rotate(180deg)
+    }
+    .today-readiness-body {
+        display: grid;
+        gap: 10px;
+        padding-top: 12px;
+        margin-top: 10px;
+        border-top: 1px solid var(--line-soft)
+    }
+    .today-readiness-foot {
+        display: flex;
+        justify-content: flex-end
+    }
+    .plan-preview-toggle, .plan-more-btn {
+        min-block-size: 44px;
+        display: inline-flex;
+        align-items: center
+    }
+    .plan-more-btn {
+        margin-top: 6px;
+        font-size: 0.84rem
+    }
+    .today-smart-row.is-single {
+        grid-template-columns: minmax(0, 1fr)
+    }
+    .progress-overview-stack {
+        display: grid;
+        gap: 22px
+    }
+    .progress-coach-section {
+        scroll-margin-top: 20px
     }
     .today-telemetry-card {
         display: flex;
@@ -1023,16 +1030,6 @@
         border-radius: inherit;
         transform-origin: left center;
         background: var(--accent)
-    }
-    @media (max-width: 480px) {
-        .today-quick-tools {
-            gap: 6px
-        }
-        .quick-tool-chip {
-            flex: 1 1 auto;
-            padding-inline: 10px;
-            font-size: 0.8rem
-        }
     }
     .mv-controls {
         display: flex;
@@ -1771,5 +1768,68 @@
     .avoided-restore-btn:hover {
         border-color: var(--accent);
         color: var(--accent);
+    }
+    .settings-inventory {
+        margin-top: 16px;
+        padding: 14px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--bg);
+        display: grid;
+        gap: 12px
+    }
+    .settings-inventory-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px 8px;
+        color: var(--text);
+        font-size: 0.88rem
+    }
+    .settings-inventory-head svg {
+        color: var(--accent);
+        flex: none
+    }
+    .settings-inventory-head small {
+        color: var(--muted);
+        font-size: 0.76rem
+    }
+    .settings-inventory-row {
+        display: grid;
+        gap: 6px
+    }
+    .settings-inventory-row > span {
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: var(--text-soft)
+    }
+    .settings-pill-group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px
+    }
+    .settings-pill {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-block-size: 44px;
+        min-inline-size: 44px;
+        padding: 6px 12px;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        color: var(--text-soft);
+        font-size: 0.82rem;
+        font-weight: 600;
+        transition: border-color 140ms ease-out, background-color 140ms ease-out, color 140ms ease-out
+    }
+    .settings-pill:hover {
+        border-color: var(--line-strong);
+        color: var(--text)
+    }
+    .settings-pill.active {
+        border-color: color-mix(in oklab, var(--accent) 58%, var(--line));
+        background: color-mix(in oklab, var(--accent) 14%, var(--surface));
+        color: var(--text)
     }
 }

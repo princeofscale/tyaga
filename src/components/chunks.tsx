@@ -17,7 +17,6 @@ export const PersonalExerciseEditor = lazyChunk(() => import("./PersonalExercise
 export const HistoryImporter = lazyChunk(() => import("./HistoryImporter"), "Импорт не загрузился");
 export const AppleHealthPanel = lazyChunk(() => import("./AppleHealthPanel"), "Показатели часов не загрузились");
 export const CloudSyncPanel = lazyChunk(() => import("./CloudSyncPanel"), "Облако не загрузилось");
-export const PoseAnalysisPanel = lazyChunk(() => import("./PoseAnalysisPanel"), "Анализ видео не загрузился");
 export const WorkoutDetailModal = lazyChunk(() => import("./WorkoutDetailModal"), "Окно тренировки не загрузилось");
 export const ProgressScreen = lazyChunk(() => import("../features/progress/ProgressScreen"), "Раздел прогресса не загрузился");
 export const HistoryScreen = lazyChunk(() => import("../features/history/HistoryScreen"), "История не загрузилась");

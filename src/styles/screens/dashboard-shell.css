@@ -1929,9 +1929,6 @@
     .readiness-tile.is-ready {
         border-color: color-mix(in oklab, var(--accent) 30%, var(--line))
     }
-    .today-quick-tools {
-        background: rgba(9, 10, 15, 0.25)
-    }
     .today-rail {
         display: flex;
         flex-direction: column;

@@ -388,9 +388,6 @@
         z-index: 40;
         pointer-events: none
     }
-    .button.primary {
-        letter-spacing: -0.01em
-    }
     .chip-count {
         opacity: 0.85
     }
@@ -446,20 +443,7 @@
         min-height: 48px;
         padding: 12px 20px;
         border-radius: var(--r-btn);
-        font-weight: 750
-    }
-    .button.primary {
-        background: var(--accent);
-        border: 1px solid transparent;
-        text-shadow: none
-    }
-    .button.primary:hover:not(:disabled) {
-        background: var(--accent-hover);
-        box-shadow: none;
-        transform: none
-    }
-    .button.primary:active:not(:disabled) {
-        box-shadow: none
+        font-weight: 700
     }
     .button.secondary:hover:not(:disabled) {
         transform: none
@@ -610,20 +594,23 @@
         background-attachment: fixed
     }
     .button.primary {
-        background: linear-gradient(180deg var(--in-oklab), color-mix(in oklab, var(--accent) 88%, white), var(--accent));
-        border: 1px solid color-mix(in oklab, var(--accent) 75%, white);
+        background: var(--accent);
+        border: 1px solid color-mix(in oklab, var(--accent) 82%, white);
         color: var(--on-accent);
         border-radius: var(--r-btn);
         font-weight: 700;
-        box-shadow: var(--shadow-accent);
-        transition: transform 140ms ease-out, filter 150ms ease-out, box-shadow 180ms ease-out
+        letter-spacing: -0.01em;
+        box-shadow: none;
+        text-shadow: none;
+        transition: background-color 140ms ease-out, border-color 140ms ease-out, transform 120ms ease-out
     }
     .button.primary:hover:not(:disabled) {
-        background: linear-gradient(180deg var(--in-oklab), color-mix(in oklab, var(--accent-hover) 90%, white), var(--accent-hover));
-        box-shadow: 0 10px 28px -6px color-mix(in oklab, var(--accent) 68%, transparent)
+        background: var(--accent-hover);
+        border-color: color-mix(in oklab, var(--accent-hover) 86%, white);
+        box-shadow: none
     }
     .button.primary:active:not(:disabled) {
-        transform: scale(0.98)
+        transform: scale(0.985)
     }
     .button.secondary {
         background: var(--surface-2);

@@ -17,14 +17,12 @@
         overflow: hidden;
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto;
-        gap: 20px;
+        gap: 18px;
         align-items: center;
-        padding: 24px;
-        border-radius: 22px;
-        background: radial-gradient(480px 260px at 92% 0%, color-mix(in oklab, var(--accent) 18%, transparent), transparent 72%),
-    linear-gradient(155deg var(--in-oklab), var(--bg-elevated, #181c2b), var(--bg-card));
-        border: 1px solid color-mix(in oklab, var(--accent) 26%, var(--line));
-        box-shadow: var(--shadow-lg, 0 18px 42px rgba(0, 0, 0, 0.42))
+        padding: 20px;
+        border-radius: 20px;
+        background: var(--bg-card);
+        border: 1px solid var(--line);
     }
     .sup-hero-copy {
         display: grid;
@@ -78,6 +76,9 @@
         gap: 10px;
         margin-top: 6px
     }
+    .sup-hero-actions .button {
+        min-block-size: 44px;
+    }
     .sup-ring-wrap {
         position: relative;
         width: 112px;
@@ -101,7 +102,6 @@
         stroke: var(--accent);
         stroke-width: 8;
         stroke-linecap: round;
-        filter: drop-shadow(0 0 10px color-mix(in oklab, var(--accent) 55%, transparent))
     }
     .sup-ring-center {
         position: absolute;

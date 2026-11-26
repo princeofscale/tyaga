@@ -142,13 +142,12 @@ export function AppSidebar({
 
 export function AppTopbar({
   account,
-  view,
   onNavigate,
   onOpenTools,
   onOpenProfile,
 }: {
   account: AccountProfile;
-  view: ProductView;
+  view?: ProductView;
   onNavigate: (v: ProductView) => void;
   onOpenTools: () => void;
   onOpenProfile: () => void;
@@ -171,15 +170,6 @@ export function AppTopbar({
           <span className="brand-type">Тяга</span>
         </a>
         <div className="journal-topbar-actions">
-          <button
-            type="button"
-            className={`button secondary journal-supplements${view === "supplements" ? " active" : ""}`}
-            aria-label="Добавки"
-            onClick={() => onNavigate("supplements")}
-          >
-            <Pill size={15} aria-hidden="true" />
-            <span>Добавки</span>
-          </button>
           <button
             type="button"
             className="button secondary journal-more"

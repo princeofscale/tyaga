@@ -22,13 +22,15 @@
         border: none;
         color: var(--muted);
         cursor: pointer;
-        padding: 6px;
-        border-radius: 6px;
+        min-inline-size: 44px;
+        min-block-size: 44px;
+        padding: 8px;
+        border-radius: 10px;
         display: flex;
         align-items: center;
         justify-content: center;
-        opacity: 0.5;
-        transition: opacity 0.15s, color 0.15s
+        opacity: 0.65;
+        transition: opacity 0.15s, color 0.15s, background-color 0.15s
     }
     .friend-remove-btn:hover {
         opacity: 1;
@@ -57,7 +59,8 @@
         margin: 7px 0 0
     }
     .meetups-panel .section-head .button {
-        font-size: 0.74rem;
+        font-size: 0.78rem;
+        min-block-size: 44px;
         padding: 10px 14px
     }
     .meetup-empty {
