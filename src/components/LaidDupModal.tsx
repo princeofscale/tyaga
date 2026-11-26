@@ -41,6 +41,8 @@ type Props = {
   onSwitch?: (mode: Mode) => void;
   /** Заменить выбранные старые программы новыми (удаление старых разом после создания новых). */
   onReplaceRoutines?: (toDelete: Routine[], toCreate: Routine[]) => Promise<void>;
+  /** Улучшить действующий цикл до «Умного DUP v2» (одна кнопка на весь цикл). */
+  onUpgradeToV2?: () => Promise<void> | void;
 };
 
 const LIFTS: LaidLift[] = ["squat", "bench", "deadlift", "ohp"];
@@ -101,6 +103,8 @@ export default function LaidDupModal(props: Props) {
   const [light, setLight] = useState(() => !!props.minorMode);
   const [version, setVersion] = useState<LaidVersion>(() => base?.version ?? "v1");
   const isV2 = version === "v2";
+  /** Действующий цикл уже на v2: в режимах «Обновить максимумы»/«Новый цикл» переключатели больше не нужны. */
+  const cycleIsV2 = base?.version === "v2";
   const [useTrainingMax, setUseTrainingMax] = useState(() => mode === "create");
   const [midDeload, setMidDeload] = useState(() => !!base?.deloadWeeks?.includes(6));
   const [rollingWeek, setRollingWeek] = useState(() => base?.weekMode === "rolling");
@@ -427,51 +431,73 @@ export default function LaidDupModal(props: Props) {
                   ? "Умный DUP v2: веса считаются от 90 % тренировочного максимума (ТМ), без опасных синглов 1ПМ и с разгрузкой на 7-й неделе."
                   : `1ПМ — максимум на одно повторение; вводи осторожный тренировочный максимум (92,5 % от 1ПМ). ${LaidDupPlan.LOAD_NOTICE}`}
               </p>
-              {mode === "create" ? (
-                <div className={`laid-v2-banner${isV2 ? " is-active" : ""}`}>
-                  <div className="laid-v2-banner-head">
-                    <div className="laid-v2-banner-copy">
-                      <span className="laid-v2-eyebrow">
-                        <Sparkles size={13} aria-hidden="true" />
-                        {isV2 ? "Умный DUP v2 · Баланс и защита" : "Рекомендуемое улучшение (1 кнопка)"}
-                      </span>
-                      <strong>
-                        {isV2
-                          ? "Программа улучшена под длинные рычаги и восстановление"
-                          : "Умный DUP v2: Баланс и защита"}
-                      </strong>
-                      <small>
-                        {isV2
-                          ? "Включены ритм 3+1+3, плавающая неделя, ТМ 90 %, −68 % нагрузки на поясницу, икры/пресс/задняя дельта и разгрузка на 7-й нед."
-                          : "В один клик заменяет все настройки: −68 % на поясницу, закрытые икры/пресс/задняя дельта, без синглов 1ПМ, 57–65 мин."}
-                      </small>
+              {(() => {
+                // В режимах «Обновить максимумы»/«Новый цикл» версия цикла не правится этим окном:
+                // действующий цикл улучшается целиком через onUpgradeToV2 (одна кнопка на весь цикл).
+                const v2On = mode === "create" ? isV2 : cycleIsV2;
+                const canToggle = mode === "create";
+                const canUpgrade = mode !== "create" && !cycleIsV2;
+                return (
+                  <div className={`laid-v2-banner${v2On ? " is-active" : ""}`}>
+                    <div className="laid-v2-banner-head">
+                      <div className="laid-v2-banner-copy">
+                        <span className="laid-v2-eyebrow">
+                          <Sparkles size={13} aria-hidden="true" />
+                          {v2On ? "Умный DUP v2 · Баланс и защита" : "Рекомендуемое улучшение (1 кнопка)"}
+                        </span>
+                        <strong>
+                          {v2On
+                            ? "Программа улучшена под длинные рычаги и восстановление"
+                            : "Умный DUP v2: Баланс и защита"}
+                        </strong>
+                        <small>
+                          {v2On
+                            ? "Включены ритм 3+1+3, плавающая неделя, ТМ 90 %, −68 % нагрузки на поясницу, икры/пресс/задняя дельта и разгрузка на 7-й нед."
+                            : "В один клик заменяет все настройки: −68 % на поясницу, закрытые икры/пресс/задняя дельта, без синглов 1ПМ, 57–65 мин."}
+                        </small>
+                      </div>
+                      {canToggle || canUpgrade ? (
+                        <button
+                          type="button"
+                          className={`button ${v2On ? "secondary" : "primary"} laid-v2-toggle-btn`}
+                          aria-pressed={canToggle ? isV2 : v2On}
+                          disabled={busy}
+                          onClick={() => {
+                            if (!canToggle) {
+                              void (async () => {
+                                setBusy(true);
+                                try {
+                                  await props.onUpgradeToV2?.();
+                                  props.onClose();
+                                } finally {
+                                  setBusy(false);
+                                }
+                              })();
+                              return;
+                            }
+                            const next: LaidVersion = isV2 ? "v1" : "v2";
+                            setVersion(next);
+                            setSubstitutions({});
+                            if (next === "v2") {
+                              setSlots(LaidDupPlan.slotsForRhythm("3x1x3"));
+                              setExtras(true);
+                              setLight(true);
+                              setMidDeload(true);
+                              setRollingWeek(true);
+                            } else {
+                              setLight(!!props.minorMode);
+                              setMidDeload(false);
+                              setRollingWeek(false);
+                            }
+                          }}
+                        >
+                          {canToggle ? (isV2 ? "Вернуться к оригиналу" : "Улучшить программу") : "Улучшить программу"}
+                        </button>
+                      ) : null}
                     </div>
-                    <button
-                      type="button"
-                      className={`button ${isV2 ? "secondary" : "primary"} laid-v2-toggle-btn`}
-                      aria-pressed={isV2}
-                      onClick={() => {
-                        const next: LaidVersion = isV2 ? "v1" : "v2";
-                        setVersion(next);
-                        setSubstitutions({});
-                        if (next === "v2") {
-                          setSlots(LaidDupPlan.slotsForRhythm("3x1x3"));
-                          setExtras(true);
-                          setLight(true);
-                          setMidDeload(true);
-                          setRollingWeek(true);
-                        } else {
-                          setLight(!!props.minorMode);
-                          setMidDeload(false);
-                          setRollingWeek(false);
-                        }
-                      }}
-                    >
-                      {isV2 ? "Вернуться к оригиналу" : "Улучшить программу"}
-                    </button>
                   </div>
-                </div>
-              ) : null}
+                );
+              })()}
               {props.minorMode ? (
                 <p className="tiny laid-deload-hint">
                   Включён безопасный режим (до 18 лет): облегчённый формат без синглов 95–97,5 % включён по умолчанию, автоэскалация 1ПМ отключена. Рекомендуется контроль техники с тренером.
@@ -1058,7 +1084,7 @@ export default function LaidDupModal(props: Props) {
                   ) : null}
                 </AnimatePresence>
               </>
-            ) : (
+            ) : cycleIsV2 ? null : (
               <details className="laid-disclosure laid-update-opts" open={mode === "restart"}>
                 <summary>
                   <span className="laid-disclosure-label">

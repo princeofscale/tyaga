@@ -21,9 +21,15 @@ test("computeBundleVersion changes when un-hashed file contents change", () => {
   }
 });
 
-test("generated service worker avoids skipWaiting, uses non-atomic precache, guards HTML fallback, and caps catalog cache", () => {
+test("generated service worker never self-activates, uses non-atomic precache, guards HTML fallback, and caps catalog cache", () => {
   const sw = buildServiceWorkerSource("abc123def456", ["/", "/manifest.webmanifest", "/assets/index.js"]);
-  assert.doesNotMatch(sw, /self\.skipWaiting\(/, "must not force skipWaiting and break lazy chunks in open tabs");
+  const installBlock = sw.slice(sw.indexOf('self.addEventListener("install"'), sw.indexOf('self.addEventListener("activate"'));
+  assert.doesNotMatch(installBlock, /self\.skipWaiting\(/, "install must not force skipWaiting and break lazy chunks in open tabs");
+  assert.match(
+    sw,
+    /addEventListener\("message"[\s\S]*SKIP_WAITING"[\s\S]*skipWaiting\(\)/,
+    "skipWaiting must stay behind the explicit user-triggered SKIP_WAITING message",
+  );
   assert.match(sw, /Promise\.allSettled\(/, "precache must tolerate single file failure");
   assert.match(sw, /isHtmlFallback/, "assetFirst must refuse caching HTML SPA fallback under /assets/");
   assert.match(sw, /event\.waitUntil\(network\)/, "catalog SWR must keep SW alive while revalidating");

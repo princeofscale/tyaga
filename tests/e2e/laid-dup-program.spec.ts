@@ -259,6 +259,32 @@ test("R10-REQ02: Лейд уже есть — повторное нажатие 
   await expect(dialog(page).getByLabel("1ПМ: присед")).toHaveValue("");
 });
 
+test("DUP v2: «Улучшить программу» доступна в окне «Обновить максимумы» и переводит весь цикл на v2 одной кнопкой; после апгрейда старые переключатели скрыты", async ({ page }) => {
+  test.setTimeout(90_000);
+  const { store } = await laidApp(page, { routines: sixRoutines() });
+  await openPrograms(page);
+  await page.getByRole("button", { name: /Дэвид Лейд · DUP/ }).click();
+  await dialog(page).getByRole("button", { name: "Обновить максимумы", exact: true }).click();
+  const d = dialog(page);
+  const upgrade = d.getByRole("button", { name: "Улучшить программу", exact: true });
+  await expect(upgrade).toBeVisible();
+  await upgrade.click();
+  await expect(dialog(page)).toHaveCount(0);
+  expect(store).toHaveLength(6);
+  expect(store.every((r) => r.periodization!.version === "v2")).toBe(true);
+  await expect(page.locator(".laid-notice")).toContainText("Умного DUP v2");
+  // Карточка переименовалась и перестала предлагать апгрейд
+  await expect(page.getByRole("heading", { name: "Умный DUP v2 · Баланс и защита" })).toBeVisible();
+  await expect(page.locator(".laid-v2-upgrade-btn")).toHaveCount(0);
+  // В окне «Обновить максимумы» цикла v2 переключателей больше нет: цикл управляется сам
+  await page.getByRole("button", { name: /Дэвид Лейд · DUP/ }).click();
+  await dialog(page).getByRole("button", { name: "Обновить максимумы", exact: true }).click();
+  const d2 = dialog(page);
+  await expect(d2.getByText("Умный DUP v2 · Баланс и защита")).toBeVisible();
+  await expect(d2.getByRole("switch", { name: /Плавающая неделя/ })).toHaveCount(0);
+  await expect(d2.getByRole("button", { name: "Улучшить программу", exact: true })).toHaveCount(0);
+});
+
 // ───────────── R10-REQ03: тренировка по плану ─────────────
 test("R10-REQ03: критерий 3 — Ноги 1, Жим 1, Тяга 2 недели 1: тяжёлый подход и четыре рабочих; заметка недели; «добавлено» помечено", async ({ page }) => {
   test.setTimeout(120_000);

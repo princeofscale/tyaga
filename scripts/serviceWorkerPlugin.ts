@@ -85,6 +85,11 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+self.addEventListener("message", (event) => {
+  // Обновление по кнопке: вкладка уже показала плашку, поэтому сразу активируем новую версию.
+  if (event.data && event.data.type === "SKIP_WAITING") self.skipWaiting();
+});
+
 function withTimeout(promise, ms) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("timeout")), ms);

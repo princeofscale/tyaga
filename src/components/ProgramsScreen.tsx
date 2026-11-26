@@ -755,6 +755,9 @@ export default function ProgramsScreen(props: Props) {
           today={today}
           onSave={props.onSave}
           onReplaceRoutines={replaceRoutinesBatch}
+          onUpgradeToV2={
+            laid.mode === "create" ? undefined : () => upgradeLaidCycleToV2(cycleById(laid.cycleId))
+          }
           onClose={() => setLaid(null)}
           onDone={setNotice}
           onSwitch={(mode) => setLaid({ mode, cycleId: laidCycles[0]?.[0].periodization!.cycleId })}
