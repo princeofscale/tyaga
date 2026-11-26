@@ -1,5 +1,8 @@
-import { useState } from "react";
-import { Flame, Layers3, CheckCircle2, Trophy, Share2, Check, Sparkles, Camera } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Flame, Layers3, CheckCircle2, Trophy, Share2, Check, Sparkles, Camera, Activity } from "lucide-react";
+import { DeloadEngine } from "../domain/DeloadEngine";
+import { MuscleReadiness } from "../domain/MuscleReadiness";
+import { BiomechanicsProfileStore } from "../domain/BiomechanicsProfile";
 import { SessionReport } from "../domain/SessionReport";
 import { fmt, type Workout, type Settings } from "../lib/model";
 import type { AccountProfile } from "../lib/account";
@@ -11,14 +14,42 @@ export default function SessionInsights({
   workout,
   settings,
   account,
+  allWorkouts,
 }: {
   workout: Workout;
   settings: Settings;
   account?: AccountProfile;
+  allWorkouts?: Workout[];
 }) {
   const [copied, setCopied] = useState(false);
   const [showStoryModal, setShowStoryModal] = useState(false);
   const report = new SessionReport(workout, settings), sets = report.sets, volume = report.volume;
+
+  const recoveryImpact = useMemo(() => {
+    const pool = allWorkouts && allWorkouts.length > 0 ? allWorkouts : [workout];
+    const deloadV2 = DeloadEngine.evaluateV2(pool, {
+      today: workout.date,
+      timeZone: settings.timeZone,
+      isLongLimbed: BiomechanicsProfileStore.read().longLevers,
+      currentBodyweightKg: account?.bodyMassKg ?? 75,
+    });
+    const readinessV2 = MuscleReadiness.fromWorkoutsV2(pool, workout.date, settings.timeZone);
+    const fatigued = readinessV2
+      .filter((m) => m.readinessPct < 75)
+      .sort((a, b) => a.readinessPct - b.readinessPct)
+      .slice(0, 3);
+    return {
+      axialPct: Math.min(130, Math.round(deloadV2.axialUtilization * 100)),
+      localPct: Math.min(130, Math.round(deloadV2.localUtilization * 100)),
+      statusLabel:
+        deloadV2.status === "deload_recommended"
+          ? "Показана разгрузка"
+          : deloadV2.status === "productive_overreach"
+            ? "Высокая нагрузка"
+            : "В норме",
+      fatigued,
+    };
+  }, [allWorkouts, workout, settings.timeZone, account?.bodyMassKg]);
 
   const shareSummary = async () => {
     const text = [
@@ -141,6 +172,22 @@ export default function SessionInsights({
             {volume.all.omittedSets} подх. на тренажёрах, с массой тела или неизвестным правилом веса записаны отдельно. Их значения не складываются с килограммами свободных весов.
           </p>
         )}
+      </div>
+
+      <div className="session-v2-impact" aria-label="Влияние тренировки на восстановление">
+        <div className="session-v2-impact-head">
+          <span>
+            <Activity size={14} aria-hidden="true" />
+            Нагрузка EWMA: осевая <b>{recoveryImpact.axialPct}%</b> · локальная <b>{recoveryImpact.localPct}%</b>
+          </span>
+          <span className="session-v2-impact-pill">{recoveryImpact.statusLabel}</span>
+        </div>
+        {recoveryImpact.fatigued.length > 0 ? (
+          <p className="session-v2-impact-muscles">
+            Ушли в восстановление:{" "}
+            {recoveryImpact.fatigued.map((m) => `${m.label.toLowerCase()} (${m.readinessPct}%)`).join(" · ")}
+          </p>
+        ) : null}
       </div>
 
       {volume.all.invalidSets > 0 && <p role="status">Исключено повреждённых подходов: {volume.all.invalidSets}. Проверь значения в журнале.</p>}

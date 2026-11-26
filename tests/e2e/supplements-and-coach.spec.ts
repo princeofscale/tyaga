@@ -41,11 +41,11 @@ test("Supplements page and Smart AI Coach work smoothly on desktop and mobile wi
   await page.setViewportSize({ width: 1280, height: 840 });
   await round01Fixture(page, { workouts });
 
-  // TodayDashboard shows both AI Coach card and Supplements card
-  await expect(page.locator(".today-smart-card")).toHaveCount(2);
+  // TodayDashboard shows AI Coach card; Supplements card appears only after adding a stack
+  await expect(page.locator(".today-smart-card")).toHaveCount(1);
 
-  // 1. Open Supplements page via Today card
-  await page.locator(".today-smart-card").filter({ hasText: "Добавки" }).click();
+  // 1. Open Supplements page via Sidebar navigation
+  await page.getByRole("button", { name: "Добавки", exact: true }).first().click();
   await expect(page.getByRole("heading", { name: "Добавки", exact: true })).toBeVisible();
 
   // Add Creatine, Whey Protein, and Gainer
@@ -64,11 +64,18 @@ test("Supplements page and Smart AI Coach work smoothly on desktop and mobile wi
   await expect(page.locator(".sup-ring-center")).toContainText("100%");
   await page.screenshot({ path: "artifacts/new-features/supplements-1280.png", fullPage: false });
 
-  // 2. Open Smart AI Coach in Progress
+  // Back to Today: now Supplements card appears alongside AI Coach card
+  await page.getByRole("navigation", { name: "Основная навигация" }).getByRole("button", { name: "Сегодня", exact: true }).click();
+  await expect(page.locator(".today-smart-card")).toHaveCount(2);
+
+  // 2. Open Smart AI Coach v2 inside Progress -> Обзор (merged tab)
   await page.getByRole("navigation", { name: "Основная навигация" }).getByRole("button", { name: "Прогресс", exact: true }).click();
-  await page.getByRole("tab", { name: "ИИ-анализ", exact: true }).click();
-  await expect(page.locator(".coach-hero")).toBeVisible();
-  await expect(page.locator(".coach-hero")).toContainText(/Риск перегрузки|перегрузки|Есть перекос/i);
+  await expect(page.getByRole("tab", { name: "Обзор", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator(".coach-v2-hero")).toBeVisible();
+  await expect(page.locator(".coach-v2-hero")).toContainText(/Контроль усталости|Нужна разгрузка|Готов к прогрессу|Режим разгрузки/i);
+  await expect(page.locator(".coach-ewma-bars")).toBeVisible();
+  await expect(page.locator(".coach-readiness-chip")).toHaveCount(12);
+  await page.locator(".coach-details-toggle").click();
   await expect(page.locator(".coach-insight-card").first()).toBeVisible();
   await page.screenshot({ path: "artifacts/new-features/coach-1280.png", fullPage: false });
 
@@ -78,7 +85,9 @@ test("Supplements page and Smart AI Coach work smoothly on desktop and mobile wi
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
   await page.screenshot({ path: "artifacts/new-features/coach-390.png", fullPage: false });
 
-  await page.locator(".journal-supplements").click();
+  // Open Supplements on mobile via «Ещё» -> «Добавки»
+  await page.getByRole("button", { name: "Ещё", exact: true }).last().click();
+  await page.getByRole("dialog", { name: "Инструменты и настройки" }).getByRole("button", { name: /Добавки/ }).click();
   await expect(page.getByRole("heading", { name: "Добавки", exact: true })).toBeVisible();
   await page.waitForTimeout(250);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);

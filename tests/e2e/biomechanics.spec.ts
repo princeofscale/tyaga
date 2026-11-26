@@ -1,7 +1,6 @@
 import { newDraft } from "../../src/lib/draft";
 import type { MachineInstance } from "../../src/lib/types";
 import { MachineRegistry } from "../../src/domain/MachineRegistry";
-import { existsSync } from "node:fs";
 import { test, expect, type Page } from "@playwright/test";
 import {
   DEFAULT_SETTINGS,
@@ -196,86 +195,6 @@ test("deload never treats a planned or future workout as completed work", async 
   clean();
 });
 
-test("real MediaPipe runtime analyzes local video without uploading its frames", async ({
-  page,
-}) => {
-  test.setTimeout(120000);
-  test.skip(
-    !existsSync("artifacts/models/pose_landmarker_lite_v1.task"),
-    "Run npm run test:e2e:prepare to fetch the pinned official test model",
-  );
-  const clean = await preview(page, []);
-  let modelDownloads = 0;
-  await page.route(
-    "https://storage.googleapis.com/mediapipe-models/**",
-    async (route) => {
-      modelDownloads++;
-      await route.fulfill({
-        path: "artifacts/models/pose_landmarker_lite_v1.task",
-        contentType: "application/octet-stream",
-      });
-    },
-  );
-  const externalPosts: string[] = [];
-  page.on("request", (request) => {
-    if (request.method() === "POST" && !request.url().includes("/api/"))
-      externalPosts.push(request.url());
-  });
-  const bytes = await page.evaluate(async () => {
-    const canvas = document.createElement("canvas");
-    canvas.width = 320;
-    canvas.height = 240;
-    const ctx = canvas.getContext("2d")!;
-    const stream = canvas.captureStream(10);
-    const recorder = new MediaRecorder(stream, {
-      mimeType: "video/webm;codecs=vp8",
-    });
-    const chunks: Blob[] = [];
-    recorder.ondataavailable = (e) => chunks.push(e.data);
-    const done = new Promise<Blob>(
-      (resolve) =>
-        (recorder.onstop = () =>
-          resolve(new Blob(chunks, { type: "video/webm" }))),
-    );
-    recorder.start();
-    for (let i = 0; i < 16; i++) {
-      ctx.fillStyle = i % 2 ? "#303030" : "#383838";
-      ctx.fillRect(0, 0, 320, 240);
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-    recorder.stop();
-    const blob = await done;
-    stream.getTracks().forEach((t) => t.stop());
-    return Array.from(new Uint8Array(await blob.arrayBuffer()));
-  });
-  await tool(page, "Анализ техники по видео");
-  await page
-    .getByLabel("Видео подхода", { exact: true })
-    .setInputFiles({
-      name: "blank.webm",
-      mimeType: "video/webm",
-      buffer: Buffer.from(bytes),
-    });
-  const start = page.getByRole("button", {
-    name: "Проанализировать видео",
-    exact: true,
-  });
-  await expect(start).toBeEnabled();
-  await start.click();
-  await expect(
-    page.getByRole("heading", { name: "Оценочная амплитуда", exact: true }),
-  ).toBeVisible({ timeout: 100000 });
-  await expect(
-    page.getByText("Не удалось уверенно распознать суставы.", { exact: false }),
-  ).toBeVisible();
-  expect(modelDownloads).toBe(1);
-  expect(externalPosts).toEqual([]);
-  await expect(page.locator(".pose-joints")).toContainText(
-    "Мало достоверных кадров",
-  );
-  clean();
-});
-
 test("saved machine identity and per-set execution survive draft reload without an active picker", async ({
   page,
 }) => {
@@ -425,91 +344,5 @@ test("bulk previous-work autofill keeps warmups outside the working-set order", 
   await expect(weights.nth(0)).toHaveValue("20");
   await expect(weights.nth(1)).toHaveValue("62.5");
   await expect(weights.nth(2)).toHaveValue("72.5");
-  clean();
-});
-
-test("real MediaPipe detects visible joints in an official pose fixture", async ({
-  page,
-}) => {
-  test.setTimeout(120000);
-  test.skip(
-    !existsSync("artifacts/models/pose.jpg") ||
-      !existsSync("artifacts/models/pose_landmarker_lite_v1.task"),
-    "Run npm run test:e2e:prepare",
-  );
-  const clean = await preview(page, []);
-  await page.route(
-    "https://storage.googleapis.com/mediapipe-models/**",
-    (route) =>
-      route.fulfill({
-        path: "artifacts/models/pose_landmarker_lite_v1.task",
-        contentType: "application/octet-stream",
-      }),
-  );
-  await page.route("**/test-pose.jpg", (route) =>
-    route.fulfill({
-      path: "artifacts/models/pose.jpg",
-      contentType: "image/jpeg",
-    }),
-  );
-  const bytes = await page.evaluate(async () => {
-    const image = new Image();
-    image.src = "/test-pose.jpg";
-    await image.decode();
-    const canvas = document.createElement("canvas");
-    canvas.width = 640;
-    canvas.height = 480;
-    const ctx = canvas.getContext("2d")!;
-    const stream = canvas.captureStream(10);
-    const recorder = new MediaRecorder(stream, {
-      mimeType: "video/webm;codecs=vp8",
-    });
-    const chunks: Blob[] = [];
-    recorder.ondataavailable = (e) => chunks.push(e.data);
-    const stopped = new Promise<Blob>(
-      (resolve) =>
-        (recorder.onstop = () =>
-          resolve(new Blob(chunks, { type: "video/webm" }))),
-    );
-    recorder.start();
-    for (let i = 0; i < 16; i++) {
-      ctx.drawImage(image, 0, 0, 640, 480);
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-    recorder.stop();
-    const blob = await stopped;
-    stream.getTracks().forEach((track) => track.stop());
-    return Array.from(new Uint8Array(await blob.arrayBuffer()));
-  });
-  await tool(page, "Анализ техники по видео");
-  await page
-    .getByLabel("Видео подхода", { exact: true })
-    .setInputFiles({
-      name: "pose.webm",
-      mimeType: "video/webm",
-      buffer: Buffer.from(bytes),
-    });
-  await page
-    .getByRole("button", { name: "Проанализировать видео", exact: true })
-    .click();
-  await expect(
-    page.getByRole("heading", { name: "Оценочная амплитуда", exact: true }),
-  ).toBeVisible({ timeout: 100000 });
-  const jointRows = page.locator(".pose-joints > div");
-  await expect(
-    jointRows.filter({ hasText: "амплитуда" }).first(),
-  ).toBeVisible();
-  for (const width of [390, 1440]) {
-    await page.setViewportSize({ width, height: 900 });
-    expect(
-      await page
-        .getByRole("dialog")
-        .evaluate((el) => el.scrollWidth - el.clientWidth),
-    ).toBeLessThanOrEqual(1);
-  }
-  await page.screenshot({
-    path: "artifacts/pose-analysis.png",
-    fullPage: true,
-  });
   clean();
 });

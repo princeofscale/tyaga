@@ -84,7 +84,12 @@ export default function HistoryScreen({
         </section>
       ) : null}
       {justSaved ? (
-        <SessionInsights workout={justSaved} settings={settings} account={account} />
+        <SessionInsights
+          workout={justSaved}
+          settings={settings}
+          account={account}
+          allWorkouts={workouts}
+        />
       ) : null}
       {lastImportRun
         ? (() => {

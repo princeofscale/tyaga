@@ -42,12 +42,12 @@ export default function WorkoutReadinessBar({
         <div className="readiness-hint" role="status">
           <p>
             {readiness === "worse"
-              ? "Держи RIR 2–3, не гонись за рекордом и при необходимости срежь вес на 5 %."
-              : "Сегодня в приоритете техника и RIR 3: снизь вес на 10 % и убери по 1 рабочему подходу."}
+              ? "База −5 %, подсобка −2,5 %, RIR 2–3 — сохрани технику без гонки за рекордом."
+              : "Щадящий режим: база −10 %, подсобка −5 %, RIR 3 и −1 подход на многоподходных движениях."}
           </p>
           {appliedReadiness ? (
             <span className="readiness-applied-pill">
-              {appliedReadiness === "worse" ? "Применено: −5 % веса" : "Применено: −10 % и −1 подход"}
+              {appliedReadiness === "worse" ? "Применено: база −5 %, подсобка −2,5 %" : "Применено: база −10 %, подсобка −5 % и −1 подход"}
             </span>
           ) : (
             <button
@@ -57,8 +57,8 @@ export default function WorkoutReadinessBar({
               onClick={() => onApply(readiness)}
             >
               {readiness === "worse"
-                ? "Смягчить на сегодня (−5 % веса)"
-                : "Щадящий режим (−10 % и −1 подход)"}
+                ? "Смягчить на сегодня (−5 % / −2,5 %)"
+                : "Щадящий режим (−10 % / −5 % и −1 подход)"}
             </button>
           )}
         </div>

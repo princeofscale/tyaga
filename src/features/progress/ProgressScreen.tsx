@@ -1,4 +1,4 @@
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { m } from "motion/react";
 import {
   ChevronLeft,
@@ -114,6 +114,15 @@ export default function ProgressScreen({
   const [hardSetsOnly, setHardSetsOnly] = useState(false);
   const [selectedMuscle, setSelectedMuscle] = useState<Muscle | null>(null);
   const [progressPick, setProgressExercise] = useState<string | null>(null);
+  const coachSectionRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (progressTab === "coach") {
+      requestAnimationFrame(() => {
+        coachSectionRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+      });
+    }
+  }, [progressTab]);
 
   const anchor = useMemo(
     () => addCalendarDays(weekStart(new Date(), settings.timeZone), weekOffset * 7),
@@ -221,13 +230,15 @@ export default function ProgressScreen({
         {(
           [
             ["analytics", "Обзор"],
-            ["coach", "ИИ-анализ"],
             ["strength", "Сила"],
             ["balance", "Мышцы"],
             ["bodyweight", "Вес тела"],
           ] as const
         ).map(([id, label]) => {
-          const selected = progressTab === id || (id === "balance" && progressTab === "anatomy");
+          const selected =
+            progressTab === id ||
+            (id === "analytics" && progressTab === "coach") ||
+            (id === "balance" && progressTab === "anatomy");
           return (
             <button
               key={id}
@@ -314,26 +325,28 @@ export default function ProgressScreen({
       {progressTab === "bodyweight" && (
         <BodyweightModal key={accountId} accountId={accountId} timeZone={settings.timeZone} />
       )}
-      {progressTab === "coach" ? (
-        <SmartCoachPanel
-          workouts={displayed}
-          routines={routines}
-          today={today}
-          timeZone={settings.timeZone}
-          accountId={accountId}
-          deload={deload}
-        />
-      ) : null}
-      {progressTab === "analytics" ? (
-        <ProgressOverview
-          workouts={workouts}
-          settings={settings}
-          bodyMassKg={bodyMassKg}
-          onStrength={(key) => {
-            setProgressExercise(key);
-            onProgressTabChange("strength");
-          }}
-        />
+      {progressTab === "analytics" || progressTab === "coach" ? (
+        <div className="progress-overview-stack">
+          <ProgressOverview
+            workouts={workouts}
+            settings={settings}
+            bodyMassKg={bodyMassKg}
+            onStrength={(key) => {
+              setProgressExercise(key);
+              onProgressTabChange("strength");
+            }}
+          />
+          <div ref={coachSectionRef} className="progress-coach-section">
+            <SmartCoachPanel
+              workouts={displayed}
+              routines={routines}
+              today={today}
+              timeZone={settings.timeZone}
+              accountId={accountId}
+              deload={deload}
+            />
+          </div>
+        </div>
       ) : null}
       {progressTab === "balance" ? (
         <>

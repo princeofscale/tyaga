@@ -2,20 +2,81 @@ import { addCalendarDays } from "../lib/calendar";
 import type { Muscle, Routine, Workout } from "../lib/types";
 import { AnalyticsFacts } from "./AnalyticsFacts";
 import { BiomechanicsEngine, type LaidCycleAudit, type WeeklyBiomechanicsReport } from "./BiomechanicsEngine";
-import { DeloadEngine } from "./DeloadEngine";
+import { BiomechanicsProfileStore } from "./BiomechanicsProfile";
+import { BodyweightTracker } from "./BodyweightTracker";
+import {
+  DeloadEngine,
+  type DeloadEvaluationV2,
+  type EnergyStatus,
+} from "./DeloadEngine";
 import type { DeloadPlanRecord } from "./DeloadPlan";
+import { GymInventoryStore } from "./GymInventory";
 import { LaidDupPlan } from "./LaidDupPlan";
-import { MuscleReadiness, type MuscleReadinessItem } from "./MuscleReadiness";
+import {
+  MuscleReadiness,
+  type MuscleReadinessItem,
+  type MuscleReadinessV2Item,
+} from "./MuscleReadiness";
+import { OneRepMaxFormulas } from "./OneRepMaxFormulas";
 import { PersonalRecordsCalculator, type BalanceRatios } from "./PersonalRecords";
+import {
+  ProgressionEngine,
+  toProgressionInventory,
+  type DetrainingPlan,
+} from "./ProgressionEngine";
 import { ExerciseAvoidStore } from "./SubstitutionPolicy";
 import { TrainingCalendar } from "./TrainingCalendar";
 import { TrainingProgram } from "./TrainingProgram";
 import { VolumeLandmarksCalculator } from "./VolumeLandmarks";
-import { exerciseById } from "../lib/model";
+import { exerciseById, exerciseForEntry } from "../lib/model";
 
 export type CoachLoadStatus = "no_data" | "optimal" | "overloaded" | "underloaded" | "attention";
 export type CoachInsightCategory = "overload" | "underload" | "progress" | "balance";
 export type CoachSeverity = "critical" | "warn" | "good" | "info";
+
+export type CoachStateV2 =
+  | "PEAK_PROGRESSIVE"
+  | "MANAGE_FATIGUE"
+  | "DELOAD_ACTIVE"
+  | "OVERLOAD_WARNING";
+
+export interface CoachActionV2 {
+  id: string;
+  priority: 1 | 2 | 3;
+  kind: "deload" | "detraining" | "tm_update" | "plateau" | "readiness" | "progression";
+  title: string;
+  detail: string;
+  metric?: string;
+}
+
+export interface WeightIncreaseRecommendationV2 {
+  exerciseId: string;
+  name: string;
+  fromKg: number;
+  toKg: number;
+  targetReps: number;
+  label: string;
+}
+
+export interface SmartCoachV2Summary {
+  state: CoachStateV2;
+  stateLabel: string;
+  verdict: string;
+  deload: DeloadEvaluationV2;
+  readiness: MuscleReadinessV2Item[];
+  detraining: DetrainingPlan;
+  /** Строго максимум 3 приоритизированных действия с правилами подавления шума. */
+  actions: CoachActionV2[];
+  /** Рекомендации повышения веса (гарантированно пусто при DELOAD_ACTIVE, OVERLOAD_WARNING и Detraining). */
+  weightIncreaseRecommendations: WeightIncreaseRecommendationV2[];
+  silenceActive: boolean;
+}
+
+export interface SmartCoachAnalyzeOptions {
+  isLongLimbed?: boolean;
+  energyStatus?: EnergyStatus;
+  currentBodyweightKg?: number;
+}
 
 export interface CoachInsight {
   id: string;
@@ -74,15 +135,58 @@ export interface SmartCoachReport {
   readiness: MuscleReadinessItem[];
   ratios: BalanceRatios;
   laidAudit: LaidCycleAudit | null;
+  /** Модуль 6: Единое ядро SmartCoach v2 (EWMA-делoуд, 12-групповая готовность, DDP/Detraining, правила тишины). */
+  v2: SmartCoachV2Summary;
 }
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
+function daysDiff(fromIso: string, toIso: string): number {
+  return Math.max(
+    0,
+    Math.round((Date.parse(`${toIso}T12:00:00Z`) - Date.parse(`${fromIso}T12:00:00Z`)) / 86_400_000),
+  );
+}
+
+function inferEnergyAndBodyweight(
+  accountId: string | undefined,
+  today: string,
+  timeZone: string | undefined,
+  opts?: SmartCoachAnalyzeOptions,
+): { energyStatus: EnergyStatus; currentBodyweightKg: number } {
+  let energyStatus: EnergyStatus = opts?.energyStatus ?? "unknown";
+  let currentBodyweightKg = opts?.currentBodyweightKg ?? 75;
+  if (accountId && (opts?.energyStatus === undefined || opts?.currentBodyweightKg === undefined)) {
+    try {
+      const tracker = new BodyweightTracker(accountId, timeZone);
+      const stats = tracker.getStats();
+      if (opts?.currentBodyweightKg === undefined && stats?.currentKg) {
+        currentBodyweightKg = stats.currentKg;
+      }
+      if (opts?.energyStatus === undefined) {
+        const verdict = tracker.getNeatVerdict(today);
+        if (verdict.status === "loss_optimal" || verdict.status === "loss_fast" || verdict.status === "loss_slow") {
+          energyStatus = "deficit";
+        } else if (verdict.status === "neat_plateau") {
+          energyStatus = "maintenance";
+        } else if (verdict.status === "optimal_gain") {
+          energyStatus = "optimal_surplus";
+        } else if (verdict.status === "too_fast") {
+          energyStatus = "high_surplus";
+        }
+      }
+    } catch {
+      // Ignore storage errors in non-browser/test environments
+    }
+  }
+  return { energyStatus, currentBodyweightKg };
+}
+
 /**
  * Детерминированный спортивно-аналитический «умный ИИ-тренер».
- * Анализирует реальный журнал: ACWR (перегруз / недогруз), качество стимула (RIR, SFR),
- * осевую нагрузку, плато по e1RM, баланс жимов/тяг и пучков мышц, готовность групп и цикл Дэвида Лейда.
+ * Анализирует реальный журнал: EWMA-усталость (v2) и ACWR (v1), качество стимула (RIR, SFR),
+ * осевую нагрузку, плато по e1RM, баланс жимов/тяг и 12-групповую готовность.
  */
 export class SmartCoach {
   static analyze(
@@ -93,6 +197,7 @@ export class SmartCoach {
     now = new Date(),
     accountId?: string,
     deload?: DeloadPlanRecord | null,
+    options?: SmartCoachAnalyzeOptions,
   ): SmartCoachReport {
     const bio = BiomechanicsEngine.analyzeWeek(workouts, today, { timeZone, now });
     const readiness = MuscleReadiness.fromWorkouts(workouts, today, timeZone);
@@ -522,6 +627,292 @@ export class SmartCoach {
     const sevRank: Record<CoachSeverity, number> = { critical: 0, warn: 1, good: 2, info: 3 };
     insights.sort((a, b) => sevRank[a.severity] - sevRank[b.severity]);
 
+    // === Модуль 6: SmartCoach v2 (интеграция модулей 1–5 с жёстким UX-бюджетом и Silence Rules) ===
+    const { energyStatus, currentBodyweightKg } = inferEnergyAndBodyweight(
+      accountId,
+      today,
+      timeZone,
+      options,
+    );
+    const isLongLimbed = options?.isLongLimbed ?? BiomechanicsProfileStore.read().longLevers;
+    const deloadV2 = DeloadEngine.evaluateV2(workouts, {
+      now,
+      today,
+      timeZone,
+      isLongLimbed,
+      energyStatus,
+      currentBodyweightKg,
+      painFlagsCount: painFlagsSummary.count,
+      corePainRepeated: routines.some((r) => (LaidDupPlan.periodizationOf(r)?.painFlags?.length ?? 0) > 0),
+    });
+    const readinessV2 = MuscleReadiness.fromWorkoutsV2(workouts, today, timeZone, now);
+
+    // Определяем перерыв с последней завершённой тренировки (Detraining)
+    const pastCompletedDates = workouts
+      .filter((w) => w.date <= today && w.exercises.some((e) => e.sets.some((s) => s.done && !s.warmup)))
+      .map((w) => w.date)
+      .sort();
+    const lastWorkoutDate = pastCompletedDates[pastCompletedDates.length - 1] ?? null;
+    const gapDays = lastWorkoutDate ? daysDiff(lastWorkoutDate, today) : 0;
+    const detraining = ProgressionEngine.evaluateDetraining(gapDays);
+
+    // Определяем интегральный статус SmartCoach v2 (без бессмысленных произвольных баллов)
+    const baseGroups = new Set(["erectors", "hamstrings", "quads", "chest", "lats_upper_back"]);
+    const recoveringBase = readinessV2.filter((g) => baseGroups.has(g.id) && g.readinessPct < 75);
+
+    let coachStateV2: CoachStateV2 = "PEAK_PROGRESSIVE";
+    let stateLabelV2 = "Готов к прогрессу";
+    let verdictV2 = "Нагрузка в продуктивном коридоре, базовые группы готовы к росту весов.";
+
+    if (isDeloadWeek) {
+      coachStateV2 = "DELOAD_ACTIVE";
+      stateLabelV2 = "Режим разгрузки";
+      verdictV2 = activeDeload?.reason
+        ? `${activeDeload.reason} — держи целевой RIR 3–4 без гонки за весами.`
+        : "Идёт плановая разгрузка — сбрось усталость перед следующей волной.";
+    } else if (deloadV2.status === "deload_recommended") {
+      coachStateV2 = "OVERLOAD_WARNING";
+      stateLabelV2 = "Нужна разгрузка";
+      verdictV2 = deloadV2.summary;
+    } else if (detraining.active) {
+      coachStateV2 = "MANAGE_FATIGUE";
+      stateLabelV2 = "Возврат после паузы";
+      verdictV2 = `Перерыв ${detraining.gapDays} дн. — начни с ${Math.round(detraining.weightMultiplier * 100)} % веса и ${Math.round(detraining.volumeMultiplier * 100)} % объёма (RIR ${detraining.rirFloor}+).`;
+    } else if (!hasData) {
+      coachStateV2 = "PEAK_PROGRESSIVE";
+      stateLabelV2 = "Ожидаю данные";
+      verdictV2 = "Запиши 1–2 тренировки с весом и RIR — здесь появятся EWMA-усталость и готовность 12 групп.";
+    } else if (recoveringBase.length > 0 || deloadV2.status === "productive_overreach") {
+      coachStateV2 = "MANAGE_FATIGUE";
+      stateLabelV2 = "Контроль усталости";
+      verdictV2 =
+        recoveringBase.length > 0
+          ? `Недовосстановлены: ${recoveringBase.slice(0, 2).map((g) => `${g.label.toLowerCase()} (${g.readinessPct}%)`).join(", ")} — работай по свежим зонам или держи RIR 2.`
+          : deloadV2.summary;
+    }
+
+    // Правила тишины (Silence Rules): при DELOAD_ACTIVE / OVERLOAD_WARNING / Detraining подавляем повышения и плато
+    const silenceActive =
+      coachStateV2 === "DELOAD_ACTIVE" ||
+      coachStateV2 === "OVERLOAD_WARNING" ||
+      detraining.active;
+
+    // Расчёт рекомендаций повышения веса DDP (строго подавляется при silenceActive)
+    const weightIncreaseRecommendations: WeightIncreaseRecommendationV2[] = [];
+    if (!silenceActive && hasData) {
+      const inv = toProgressionInventory(GymInventoryStore.read());
+      const seenEx = new Set<string>();
+      for (const r of routines) {
+        if (r.progression !== "double" || LaidDupPlan.periodizationOf(r)) continue;
+        for (const plan of r.exercises) {
+          if (seenEx.has(plan.exerciseId)) continue;
+          const def = exerciseForEntry(plan);
+          if (!def || !def.recording.e1rmEligible) continue;
+          // Ищем последнюю неразгрузочную сессию этого упражнения
+          const lastW = workouts
+            .filter(
+              (w) =>
+                w.date <= today &&
+                !DeloadEngine.isDeloadName(w.name) &&
+                w.exercises.some(
+                  (e) =>
+                    e.exerciseId === plan.exerciseId &&
+                    e.sets.some((s) => s.done && !s.warmup && s.weight > 0),
+                ),
+            )
+            .sort((a, b) => b.date.localeCompare(a.date))[0];
+          if (!lastW) continue;
+          const entry = lastW.exercises.find((e) => e.exerciseId === plan.exerciseId);
+          if (!entry) continue;
+          const prevSets = entry.sets
+            .filter((s) => s.done && !s.warmup && s.weight > 0)
+            .map((s) => ({ weight: s.weight, reps: s.reps, rir: s.rir }));
+          if (!prevSets.length) continue;
+
+          const recs = ProgressionEngine.recommendDdpSets({
+            previousSets: prevSets,
+            repMin: plan.repMin ?? r.repMin,
+            repMax: plan.repMax ?? r.repMax,
+            loadMode: def.recording.loadMode,
+            inventory: inv,
+          });
+          const firstUpgrade = recs.find((rec) => rec.action === "increase_weight");
+          if (firstUpgrade) {
+            seenEx.add(plan.exerciseId);
+            const prevW = prevSets[firstUpgrade.setIndex].weight;
+            weightIncreaseRecommendations.push({
+              exerciseId: plan.exerciseId,
+              name: def.name,
+              fromKg: prevW,
+              toKg: firstUpgrade.recommendedWeight,
+              targetReps: firstUpgrade.recommendedReps,
+              label: `${def.name}: ${prevW} → ${firstUpgrade.recommendedWeight} кг × ${firstUpgrade.recommendedReps}`,
+            });
+          }
+        }
+      }
+    }
+
+    // Детектор плато по RIR-нормализованному e1RM (подавляется при silenceActive)
+    const plateauActions: CoachActionV2[] = [];
+    if (!silenceActive && hasData) {
+      const p35Start = addCalendarDays(today, -35);
+      const recent35 = new AnalyticsFacts(workouts, {
+        from: p35Start,
+        through: today,
+        timeZone,
+        now,
+      }).workouts();
+      const sessionsByEx = new Map<
+        string,
+        Array<{ date: string; bestE1rm: number; confidence: number; avgRir: number | null }>
+      >();
+      for (const w of recent35) {
+        if (DeloadEngine.isDeloadName(w.name)) continue;
+        for (const e of w.exercises) {
+          const def = exerciseForEntry(e);
+          if (!def?.recording.e1rmEligible) continue;
+          let best = 0;
+          let bestConf = 0;
+          let rirSum = 0;
+          let rirN = 0;
+          for (const s of e.sets) {
+            if (!s.done || s.warmup) continue;
+            if (s.rir !== null) {
+              rirSum += s.rir;
+              rirN++;
+            }
+            const est = OneRepMaxFormulas.estimateV2({
+              weight: s.weight,
+              reps: s.reps,
+              rir: s.rir,
+              loadMode: def.recording.loadMode,
+              currentBodyweightKg: e.bodyMassKg ?? currentBodyweightKg,
+              isWarmup: s.warmup,
+              e1rmEligible: def.recording.e1rmEligible,
+            });
+            if (!est.isExcludedFromTrend && est.e1rm > best) {
+              best = est.e1rm;
+              bestConf = est.confidence;
+            }
+          }
+          if (best > 0) {
+            const arr = sessionsByEx.get(e.exerciseId) ?? [];
+            arr.push({
+              date: w.date,
+              bestE1rm: best,
+              confidence: bestConf,
+              avgRir: rirN > 0 ? rirSum / rirN : null,
+            });
+            sessionsByEx.set(e.exerciseId, arr);
+          }
+        }
+      }
+      const inv = toProgressionInventory(GymInventoryStore.read());
+      for (const [exId, pts] of sessionsByEx) {
+        const def = exerciseById(exId);
+        if (!def || pts.length < 4) continue;
+        const pDec = ProgressionEngine.detectPlateau({
+          sessions: pts,
+          isCoreOrDupFixed: ["squat", "bench", "deadlift-bar", "trap-bar-deadlift", "ohp-bar"].includes(exId),
+          weeksInCurrentVariant: 6,
+          currentRepRange: [6, 10],
+          loadMode: def.recording.loadMode,
+          globalDeloadRecommended: deloadV2.status === "deload_recommended",
+          inventory: inv,
+        });
+        if (pDec.isPlateau) {
+          plateauActions.push({
+            id: `v2-plateau-${exId}`,
+            priority: 3,
+            kind: "plateau",
+            title: `Плато: ${def.name}`,
+            detail: pDec.reason,
+            metric: `${pDec.growthPct > 0 ? "+" : ""}${pDec.growthPct}%`,
+          });
+          break;
+        }
+      }
+    }
+
+    // Собираем строго максимум 3 приоритизированных действия (бюджет UX)
+    const actionsV2: CoachActionV2[] = [];
+    if (coachStateV2 === "OVERLOAD_WARNING" && deloadV2.protocolParams) {
+      const modeName: Record<typeof deloadV2.recommendedMode, string> = {
+        none: "Без разгрузки",
+        local_micro_deload: "Локальная микро-разгрузка",
+        volume_deload: "Объёмная разгрузка",
+        intensity_taper: "Тапер-разгрузка",
+        pivot_recovery: "Восстановительный Pivot-блок",
+      };
+      actionsV2.push({
+        id: "v2-deload-action",
+        priority: 1,
+        kind: "deload",
+        title: `${modeName[deloadV2.recommendedMode]} на ${deloadV2.protocolParams.durationDays} дн.`,
+        detail: `Вес ${Math.round(deloadV2.protocolParams.weightMultiplier * 100)} %, подходы ${Math.round(deloadV2.protocolParams.volumeMultiplier * 100)} %, запас не ниже RIR ${deloadV2.protocolParams.targetRIRFloor}.`,
+        metric: `RIR ${deloadV2.protocolParams.targetRIRFloor}+`,
+      });
+    } else if (coachStateV2 === "DELOAD_ACTIVE") {
+      actionsV2.push({
+        id: "v2-deload-active",
+        priority: 1,
+        kind: "deload",
+        title: "Разгрузка по плану активна",
+        detail: "Повышения весов и алерты плато временно скрыты — фокусируйся на технике и восстановлении.",
+        metric: "RIR 3–4",
+      });
+    } else if (detraining.active) {
+      actionsV2.push({
+        id: "v2-detraining",
+        priority: 1,
+        kind: "detraining",
+        title: detraining.label,
+        detail: `Стартуй с ${Math.round(detraining.weightMultiplier * 100)} % веса и ${Math.round(detraining.volumeMultiplier * 100)} % подходов; возврат за ${detraining.rampSessions} тр.`,
+        metric: `−${Math.round((1 - detraining.weightMultiplier) * 100)}%`,
+      });
+    }
+
+    if (!silenceActive && weightIncreaseRecommendations.length > 0 && actionsV2.length < 3) {
+      const first = weightIncreaseRecommendations[0];
+      actionsV2.push({
+        id: `v2-ddp-${first.exerciseId}`,
+        priority: 2,
+        kind: "progression",
+        title: `Готово к росту веса: ${first.name}`,
+        detail: `DDP: цель взята чисто — поднимай до ${first.toKg} кг × ${first.targetReps} в первом подходе.`,
+        metric: `+${Math.round((first.toKg - first.fromKg) * 10) / 10} кг`,
+      });
+    }
+
+    if (!silenceActive && plateauActions.length > 0 && actionsV2.length < 3) {
+      actionsV2.push(plateauActions[0]);
+    }
+
+    if (!detraining.active && recoveringBase.length > 0 && actionsV2.length < 3) {
+      const worst = [...recoveringBase].sort((a, b) => a.readinessPct - b.readinessPct)[0];
+      actionsV2.push({
+        id: `v2-readiness-${worst.id}`,
+        priority: 3,
+        kind: "readiness",
+        title: `${worst.label}: восстановление ${worst.readinessPct}%`,
+        detail: "Ниже порога 75 % — лучше отдать приоритет свежим группам или снизить объём на эту зону.",
+        metric: `${worst.readinessPct}%`,
+      });
+    }
+
+    const v2: SmartCoachV2Summary = {
+      state: coachStateV2,
+      stateLabel: stateLabelV2,
+      verdict: verdictV2,
+      deload: deloadV2,
+      readiness: readinessV2,
+      detraining,
+      actions: actionsV2.slice(0, 3),
+      weightIncreaseRecommendations,
+      silenceActive,
+    };
+
     return {
       score,
       status,
@@ -546,6 +937,7 @@ export class SmartCoach {
       readiness,
       ratios,
       laidAudit,
+      v2,
     };
   }
 }

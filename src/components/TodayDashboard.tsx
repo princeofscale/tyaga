@@ -3,12 +3,11 @@ import {
   ArrowRight,
   ArrowUpRight,
   Brain,
+  ChevronDown,
   ChevronRight,
   Play,
   ClipboardCheck,
-  Dumbbell,
   Pill,
-  Target,
   Flame,
   Trophy,
   Clock,
@@ -133,9 +132,9 @@ export default function TodayDashboard({
   onOpenCoach,
   onOpenSupplements,
   onHistory,
-  onQuickTool,
 }: Props) {
   const reduceMotion = useReducedMotion();
+  const [showAllPreview, setShowAllPreview] = useState(false);
   const active = draft ?? plan;
   const finished = active ? undefined : completed;
   const status = draft ? "В работе" : plan ? "По программе" : finished ? "Выполнено" : hasPrograms ? "День отдыха" : null;
@@ -156,7 +155,7 @@ export default function TodayDashboard({
 
   const todayKey = todayProp ?? localDate(new Date(), timeZone);
   const readiness = useMemo(
-    () => MuscleReadiness.fromWorkouts(workouts, todayKey, timeZone),
+    () => MuscleReadiness.fromWorkoutsV2(workouts, todayKey, timeZone),
     [workouts, todayKey, timeZone],
   );
   const totalSummary = useMemo(
@@ -185,8 +184,19 @@ export default function TodayDashboard({
     const state = LaidDupPlan.cycleState(cycle, workouts, todayKey);
     const dayPlan = LaidDupPlan.planFor(routine, active?.programDate ?? todayKey, { workouts, cycle });
     if (!dayPlan) return null;
-    return { state, dayPlan };
+    const exerciseRows = LaidDupPlan.dayExercisesPreview(routine, state.rawWeek, workouts, todayKey);
+    return { state, dayPlan, exerciseRows };
   }, [active?.routineId, active?.programDate, finished?.routineId, routines, workouts, todayKey]);
+
+  const readyMusclesCount = readiness.filter((r) => r.canTrain).length;
+  const recoveringMuscles = readiness
+    .filter((r) => !r.canTrain)
+    .sort((a, b) => a.readinessPct - b.readinessPct);
+  const coachLoadPct = Math.round(
+    Math.max(coach.v2.deload.axialUtilization, coach.v2.deload.localUtilization) * 100,
+  );
+  const showSupplementsCard = Boolean(onOpenSupplements && supSummary && supSummary.total > 0);
+  const smartCardCount = (onOpenCoach ? 1 : 0) + (showSupplementsCard ? 1 : 0);
 
   return (
     <div className="today-dashboard">
@@ -267,87 +277,125 @@ export default function TodayDashboard({
           <section className="plan-preview" aria-labelledby="preview-title">
             <div className="today-section-head">
               <h2 id="preview-title">План тренировки</h2>
+              {preview.length > limit ? (
+                <button
+                  type="button"
+                  className="text-button plan-preview-toggle"
+                  aria-expanded={showAllPreview}
+                  onClick={() => setShowAllPreview((v) => !v)}
+                >
+                  {showAllPreview ? "Свернуть" : `Все ${preview.length}`}
+                </button>
+              ) : null}
             </div>
             <ol className="plan-exercises">
-              {preview.slice(0, limit).map((exercise, index) => {
-                const weight = exercise.sets.find((set) => !set.warmup)?.weight;
+              {(showAllPreview ? preview : preview.slice(0, limit)).map((exercise, index) => {
+                const laidRow =
+                  todayLaid?.exerciseRows[index]?.exerciseId === exercise.exerciseId
+                    ? todayLaid.exerciseRows[index]
+                    : null;
+                const firstWork = exercise.sets.find((set) => !set.warmup);
+                const weight = firstWork?.weight;
+                const rir = firstWork?.rir;
                 return (
                   <li key={`${exercise.exerciseId}:${index}`}>
                     <span className="plan-number" aria-hidden="true">
                       {String(index + 1).padStart(2, "0")}
                     </span>
                     <span className="plan-exercise-name">{entryName(exercise)}</span>
-                    <b>
-                      {PlanLine.sets(exercise)}
-                      {weight ? ` · ${fmt(weight)} кг` : ""}
-                      {weight ? (
-                        <small className="plan-source">
-                          {sources[index] === "history" ? "вес из истории" : "по плану"}
-                        </small>
-                      ) : null}
-                    </b>
+                    {laidRow ? (
+                      <b>
+                        {laidRow.setsRepsLabel} · {laidRow.weightLabel}
+                        <small className="plan-source">{laidRow.rirLabel}</small>
+                      </b>
+                    ) : (
+                      <b>
+                        {PlanLine.sets(exercise)}
+                        {weight ? ` · ${fmt(weight)} кг` : ""}
+                        {rir !== null && rir !== undefined ? ` · RIR ${rir}` : ""}
+                        {weight ? (
+                          <small className="plan-source">
+                            {sources[index] === "history" ? "вес из истории" : "по плану"}
+                          </small>
+                        ) : null}
+                      </b>
+                    )}
                   </li>
                 );
               })}
             </ol>
-            {preview.length > limit ? (
-              <p className="plan-more">
-                Ещё {quantity(preview.length - limit, "упражнение", "упражнения", "упражнений")} в тренировке
-              </p>
+            {preview.length > limit && !showAllPreview ? (
+              <button
+                type="button"
+                className="text-button plan-more-btn"
+                onClick={() => setShowAllPreview(true)}
+              >
+                Показать ещё {quantity(preview.length - limit, "упражнение", "упражнения", "упражнений")}
+              </button>
             ) : null}
           </section>
         ) : null}
 
         <section className="today-readiness" aria-labelledby="readiness-title">
-          <div className="today-section-head">
-            <h2 id="readiness-title">Готовность мышц</h2>
-            <button type="button" className="text-button readiness-more-btn" onClick={onProgress}>
-              Зоны <ArrowUpRight size={15} aria-hidden="true" />
-            </button>
-          </div>
-          <div className="readiness-grid">
-            {readiness.map((item, idx) => (
-              <div key={item.id} className={`readiness-tile is-${item.state}`}>
-                <div className="readiness-tile-head">
-                  <span className="readiness-name">{item.label}</span>
-                  <span className="readiness-state">{item.statusText}</span>
-                </div>
-                <div className="readiness-bar" aria-hidden="true">
-                  <m.span
-                    initial={reduceMotion ? false : { scaleX: 0 }}
-                    animate={{ scaleX: item.ratio }}
-                    transition={{ duration: reduceMotion ? 0 : 0.36, delay: reduceMotion ? 0 : idx * 0.03, ease: [0.22, 1, 0.36, 1] }}
-                  />
-                </div>
-                <span className="readiness-meta">
-                  {item.lastSets > 0
-                    ? `${item.lastSets} ${quantityWord(item.lastSets, "подход", "подхода", "подходов")}`
-                    : "свежая"}
+          <details className="today-readiness-disclosure">
+            <summary className="today-readiness-summary">
+              <div className="today-readiness-summary-copy">
+                <h2 id="readiness-title">Готовность мышц</h2>
+                <span className="today-readiness-summary-meta">
+                  {recoveringMuscles.length > 0
+                    ? `Готовы ${readyMusclesCount}/${readiness.length} · устали: ${recoveringMuscles
+                        .slice(0, 2)
+                        .map((m) => `${m.label.toLowerCase()} (${m.readinessPct}%)`)
+                        .join(", ")}`
+                    : `Все ${readiness.length} групп готовы к работе (≥75 %)`}
                 </span>
               </div>
-            ))}
-          </div>
+              <ChevronDown size={18} className="today-readiness-chevron" aria-hidden="true" />
+            </summary>
+            <div className="today-readiness-body">
+              <div className="readiness-grid">
+                {readiness.map((item, idx) => {
+                  const tileTone =
+                    item.status === "fresh" || item.status === "usable"
+                      ? "ready"
+                      : item.status;
+                  return (
+                    <div key={item.id} className={`readiness-tile is-${tileTone}`}>
+                      <div className="readiness-tile-head">
+                        <span className="readiness-name">{item.label}</span>
+                        <span className="readiness-state">{item.readinessPct}%</span>
+                      </div>
+                      <div className="readiness-bar" aria-hidden="true">
+                        <m.span
+                          initial={reduceMotion ? false : { scaleX: 0 }}
+                          animate={{ scaleX: Math.max(0.08, item.readinessPct / 100) }}
+                          transition={{ duration: reduceMotion ? 0 : 0.36, delay: reduceMotion ? 0 : idx * 0.02, ease: [0.22, 1, 0.36, 1] }}
+                        />
+                      </div>
+                      <span className="readiness-meta">
+                        {item.status === "fresh"
+                          ? "свежая"
+                          : item.status === "usable"
+                            ? "готова"
+                            : item.status === "recovering"
+                              ? "восстан."
+                              : "устала"}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="today-readiness-foot">
+                <button type="button" className="text-button readiness-more-btn" onClick={onProgress}>
+                  Открыть зоны нагрузки <ArrowUpRight size={15} aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+          </details>
         </section>
 
-        {onQuickTool ? (
-          <div className="today-quick-tools" role="group" aria-label="Быстрые калькуляторы">
-            <m.button type="button" className="quick-tool-chip" whileTap={reduceMotion ? undefined : { scale: 0.96 }} onClick={() => onQuickTool("plate")}>
-              <Dumbbell size={15} aria-hidden="true" />
-              <span>Блины</span>
-            </m.button>
-            <m.button type="button" className="quick-tool-chip" whileTap={reduceMotion ? undefined : { scale: 0.96 }} onClick={() => onQuickTool("orm")}>
-              <Target size={15} aria-hidden="true" />
-              <span>1ПМ</span>
-            </m.button>
-            <m.button type="button" className="quick-tool-chip" whileTap={reduceMotion ? undefined : { scale: 0.96 }} onClick={() => onQuickTool("warmup")}>
-              <Flame size={15} aria-hidden="true" />
-              <span>Разминка</span>
-            </m.button>
-          </div>
-        ) : null}
-
-        {(onOpenCoach || onOpenSupplements) ? (
-          <div className="today-smart-row">
+        {smartCardCount > 0 ? (
+          <div className={`today-smart-row${smartCardCount === 1 ? " is-single" : ""}`}>
             {onOpenCoach ? (
               <m.button
                 type="button"
@@ -359,15 +407,19 @@ export default function TodayDashboard({
                 <div className="today-smart-copy">
                   <span className="today-smart-eyebrow">
                     <Brain size={13} aria-hidden="true" />
-                    ИИ-анализ
+                    Умный коуч
                   </span>
-                  <b>{coach.statusLabel}</b>
-                  <small>{coach.nextSession.headline}</small>
+                  <b>{coach.v2.stateLabel}</b>
+                  <small>{coach.v2.actions[0]?.title ?? coach.nextSession.headline}</small>
                 </div>
-                <span className="today-smart-badge">{coach.score}</span>
+                <span className="today-smart-badge">
+                  {coach.v2.state === "DELOAD_ACTIVE"
+                    ? "RIR 3–4"
+                    : `${Math.min(130, coachLoadPct)}%`}
+                </span>
               </m.button>
             ) : null}
-            {onOpenSupplements ? (
+            {showSupplementsCard && supSummary && onOpenSupplements ? (
               <m.button
                 type="button"
                 className="today-smart-card"
@@ -380,20 +432,14 @@ export default function TodayDashboard({
                     <Pill size={13} aria-hidden="true" />
                     Добавки
                   </span>
-                  <b>
-                    {supSummary && supSummary.total > 0
-                      ? `Принято ${supSummary.taken} из ${supSummary.total}`
-                      : "Собрать ежедневный стек"}
-                  </b>
+                  <b>{`Принято ${supSummary.taken} из ${supSummary.total}`}</b>
                   <small>
-                    {supSummary && supSummary.streak > 0
+                    {supSummary.streak > 0
                       ? `Серия: ${supSummary.streak} ${quantityWord(supSummary.streak, "день", "дня", "дней")}`
-                      : "Креатин, протеин, витамины"}
+                      : "Ежедневный стек"}
                   </small>
                 </div>
-                <span className="today-smart-badge">
-                  {supSummary && supSummary.total > 0 ? `${supSummary.percent}%` : <ArrowUpRight size={17} aria-hidden="true" />}
-                </span>
+                <span className="today-smart-badge">{`${supSummary.percent}%`}</span>
               </m.button>
             ) : null}
           </div>

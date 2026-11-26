@@ -9,24 +9,17 @@ import { SetPropagation, type SetFollowers } from "../domain/SetPropagation";
 import { WorkoutDiscard } from "../domain/WorkoutDiscard";
 import { selectOnFocus, trimLeadingZeros } from "../lib/numberField";
 import { ExerciseLibrary, PlateCalculator } from "./chunks";
-import { Fragment, Suspense, memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { AnimatePresence, m, useReducedMotion } from "motion/react";
+import { Fragment, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { m, useReducedMotion } from "motion/react";
 import {
-  ChevronDown,
   Plus,
   Minus,
   Trash2,
-  Pause,
   Play,
   Info,
   Download,
   X,
   Dumbbell,
-  Calendar,
-  Clock,
-  Volume2,
-  VolumeX,
-  Sun,
   Flame,
   RotateCcw,
   TrendingUp,
@@ -34,11 +27,13 @@ import {
   ArrowLeftRight,
   CheckCircle2,
 } from "lucide-react";
+import { BiomechanicsProfileStore } from "../domain/BiomechanicsProfile";
+import { GymInventoryStore } from "../domain/GymInventory";
+import { IntraSessionAutoregulator } from "../domain/IntraSessionAutoregulator";
+import { ProgressionEngine, toProgressionInventory } from "../domain/ProgressionEngine";
 import { PlateApplication } from "../domain/PlateApplication";
 import { LaidDupPlan } from "../domain/LaidDupPlan";
 import ExerciseSwapModal from "./ExerciseSwapModal";
-import LiveStrip from "./LiveStrip";
-import RoomBadge from "./RoomBadge";
 import { useLiveRoom } from "../lib/liveRoomContext";
 import Modal from "./Modal";
 import { audioHaptics } from "../lib/audioHaptics";
@@ -61,7 +56,6 @@ import {
 } from "../lib/model";
 import {
   checkpointDraft,
-  elapsedMs,
   type Draft,
   type PersistenceStatus,
 } from "../lib/draft";
@@ -77,7 +71,9 @@ import type { DeloadPlanRecord } from "../domain/DeloadPlan";
 import LaidExerciseGuidanceBar from "./LaidExerciseGuidanceBar";
 import WorkoutGym from "./WorkoutGym";
 import WorkoutPhaseBanner from "./WorkoutPhaseBanner";
-import WorkoutReadinessBar from "./WorkoutReadinessBar";
+import { WorkoutAutoDuration } from "./workout/WorkoutLiveClock";
+import { WorkoutHeader } from "./workout/WorkoutHeader";
+import { WorkoutUndoDock } from "./workout/WorkoutUndoDock";
 
 type Props = {
   focusRequest?: {exerciseId:string;setId:string;id:string}|null;
@@ -116,16 +112,6 @@ const savedGymMode = () => {
   try { return localStorage.getItem(GYM_MODE_KEY) === "gym"; }
   catch { return false; }
 };
-const clock = (seconds: number) => {
-  const s = Math.max(0, Math.floor(seconds));
-  const h = Math.floor(s / 3600);
-  const mins = Math.floor((s % 3600) / 60);
-  const secs = s % 60;
-  if (h > 0) {
-    return `${h}:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
-  }
-  return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
-};
 const setCheckFeedback = {
   idle: { pathLength: 1 },
   complete: { pathLength: [0, 1] },
@@ -142,274 +128,6 @@ function previousLabel(entry: WorkoutExercise, previous?: SetEntry) {
 }
 /** Узкая ячейка переносит «100 × 8» на две строки перед «×», а не обрезает многоточием. */
 const wrapSafe = (label: string) => label.replace(" × ", " ×\u00a0");
-
-const WorkoutAutoDuration = memo(function WorkoutAutoDuration({
-  draft,
-  manualClock,
-  retro,
-  estimatedMinutes,
-}: {
-  draft: Draft;
-  manualClock: boolean;
-  retro: boolean;
-  estimatedMinutes: number;
-}) {
-  const running = !manualClock && !retro && draft.clock.runningSince !== null;
-  const [now, setNow] = useState(() => Date.now());
-
-  useEffect(() => {
-    if (!running) return;
-    const sync = () => setNow(Date.now());
-    const id = setInterval(sync, 1000);
-    const onVis = () => {
-      if (document.visibilityState === "visible") sync();
-    };
-    document.addEventListener("visibilitychange", onVis);
-    return () => {
-      clearInterval(id);
-      document.removeEventListener("visibilitychange", onVis);
-    };
-  }, [running]);
-
-  const elapsedSec = Math.floor(elapsedMs(draft, now) / 1000);
-  const autoMin = Math.max(0, Math.round(elapsedSec / 60));
-  const isHistoricalEdit = draft.editing;
-  const displayMin = isHistoricalEdit
-    ? draft.workout.duration
-    : retro || manualClock
-      ? estimatedMinutes
-      : autoMin;
-  const detail = isHistoricalEdit
-    ? "Из сохранённой записи"
-    : retro || manualClock
-      ? "Расчёт по подходам"
-      : draft.clock.runningSince === null
-        ? `На паузе · ${clock(elapsedSec)}`
-        : `Идёт таймер · ${clock(elapsedSec)}`;
-
-  return (
-    <div className="workout-auto-duration" role="status" aria-live="off">
-      <div className="workout-auto-duration-head">
-        <span className="workout-auto-duration-label">
-          <Clock size={14} aria-hidden="true" />
-          Длительность
-        </span>
-        <span className="workout-auto-pill">Авто</span>
-      </div>
-      <div className="workout-auto-duration-val">
-        <strong>{displayMin}</strong>
-        <span>мин</span>
-        <small>{detail}</small>
-      </div>
-    </div>
-  );
-});
-
-/** Изолированный живой таймер тренировки в шапке — тикает сам, не перерисовывая список упражнений. */
-const WorkoutLiveClock = memo(function WorkoutLiveClock({
-  draft,
-  manualClock,
-  saving,
-  onTogglePause,
-}: {
-  draft: Draft;
-  manualClock: boolean;
-  saving: boolean;
-  onTogglePause: () => void;
-}) {
-  const running = !manualClock && draft.clock.runningSince !== null;
-  const [now, setNow] = useState(() => Date.now());
-
-  useEffect(() => {
-    if (!running) return;
-    const sync = () => setNow(Date.now());
-    const id = setInterval(sync, 1000);
-    const onVis = () => {
-      if (document.visibilityState === "visible") sync();
-    };
-    document.addEventListener("visibilitychange", onVis);
-    window.addEventListener("focus", sync);
-    return () => {
-      clearInterval(id);
-      document.removeEventListener("visibilitychange", onVis);
-      window.removeEventListener("focus", sync);
-    };
-  }, [running]);
-
-  const valueText = manualClock
-    ? `${draft.workout.duration} мин`
-    : clock(Math.floor(elapsedMs(draft, now) / 1000));
-  const labelText = manualClock
-    ? "Длительность"
-    : draft.clock.runningSince === null
-      ? "Счётчик · пауза"
-      : "Счётчик";
-
-  const content = (
-    <>
-      <b>
-        <span
-          aria-hidden="true"
-          className={`live-rec-dot ${running ? "recording" : "paused"}`}
-        />
-        {valueText}
-        {!draft.editing && !manualClock ? (
-          <span className="clock-action-icon" aria-hidden="true">
-            {running ? <Pause size={12} /> : <Play size={12} />}
-          </span>
-        ) : null}
-      </b>
-      <span className="hud-label">{labelText}</span>
-    </>
-  );
-
-  if (draft.editing || manualClock) {
-    return <span className="live-clock-badge">{content}</span>;
-  }
-
-  return (
-    <button
-      type="button"
-      className="live-clock-badge is-interactive"
-      disabled={saving}
-      aria-label={
-        running
-          ? "Пауза таймера тренировки"
-          : "Возобновить таймер тренировки"
-      }
-      title={running ? "Нажми, чтобы поставить на паузу" : "Нажми, чтобы продолжить таймер"}
-      onClick={onTogglePause}
-    >
-      {content}
-    </button>
-  );
-});
-
-/** Изолированный таймер отдыха внизу экрана — тикает только пока идёт отдых. */
-const WorkoutRestBar = memo(function WorkoutRestBar({
-  draft,
-  restSeconds,
-  soundEnabled,
-  reducedMotion,
-  onShift,
-  onTogglePause,
-  onSkip,
-  onAnnounce,
-}: {
-  draft: Draft;
-  restSeconds: number;
-  soundEnabled: boolean;
-  reducedMotion: boolean | null;
-  onShift: (seconds: number) => void;
-  onTogglePause: (remaining: number) => void;
-  onSkip: () => void;
-  onAnnounce: (text: string) => void;
-}) {
-  const [now, setNow] = useState(() => Date.now());
-  const announcedTimer = useRef<number | null>(null);
-  const lastTickSecond = useRef<number | null>(null);
-  const activeCountdown = draft.pausedRest === null && draft.restUntil !== null;
-
-  useEffect(() => {
-    if (!activeCountdown) return;
-    const sync = () => setNow(Date.now());
-    sync();
-    const id = setInterval(sync, 500);
-    const onVis = () => {
-      if (document.visibilityState === "visible") sync();
-    };
-    document.addEventListener("visibilitychange", onVis);
-    return () => {
-      clearInterval(id);
-      document.removeEventListener("visibilitychange", onVis);
-    };
-  }, [activeCountdown, draft.restUntil]);
-
-  const remaining =
-    draft.pausedRest ??
-    (draft.restUntil
-      ? Math.max(0, Math.ceil((draft.restUntil - now) / 1000))
-      : 0);
-
-  useEffect(() => {
-    if (
-      draft.restUntil &&
-      draft.pausedRest === null &&
-      draft.restUntil <= now &&
-      announcedTimer.current !== draft.restUntil
-    ) {
-      announcedTimer.current = draft.restUntil;
-      onAnnounce("Отдых завершён");
-      if (soundEnabled) audioHaptics.playTimerAlert();
-    } else if (remaining > 0) {
-      onAnnounce("");
-      if (remaining <= 3 && soundEnabled && lastTickSecond.current !== remaining) {
-        lastTickSecond.current = remaining;
-        audioHaptics.playCountdownTick();
-      }
-    }
-  }, [draft.restUntil, draft.pausedRest, now, remaining, soundEnabled, onAnnounce]);
-
-  if (!(remaining > 0 || draft.pausedRest !== null)) return null;
-
-  return (
-    <m.section
-      className="rest-bar"
-      aria-label="Таймер отдыха"
-      data-paused={draft.pausedRest !== null}
-      initial={reducedMotion ? false : { opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: reducedMotion ? 0 : 0.16, ease: "easeOut" }}
-    >
-      <div className="rest-progress">
-        <span
-          style={{
-            transform: `scaleX(${Math.min(1, remaining / Math.max(restSeconds, remaining, 1))})`,
-          }}
-        />
-      </div>
-      <div className="rest-body">
-        <div className="rest-copy">
-          <span>{draft.pausedRest !== null ? "Отдых на паузе" : "Отдых"}</span>
-          <span className="rest-digits active" aria-live="off">
-            {clock(remaining)}
-          </span>
-        </div>
-        <button type="button" aria-label="Минус 15 секунд" onClick={() => onShift(-15)}>
-          −15
-        </button>
-        <button
-          type="button"
-          className="timer-plus"
-          aria-label="Плюс 15 секунд"
-          onClick={() => onShift(15)}
-        >
-          +15
-        </button>
-        <button
-          type="button"
-          className="icon-button"
-          aria-label={
-            draft.pausedRest !== null
-              ? "Продолжить таймер"
-              : "Приостановить таймер"
-          }
-          onClick={() => onTogglePause(remaining)}
-        >
-          {draft.pausedRest !== null ? <Play size={20} /> : <Pause size={20} />}
-        </button>
-        <button
-          type="button"
-          className="icon-button"
-          aria-label="Пропустить отдых"
-          onClick={onSkip}
-        >
-          <X size={20} />
-        </button>
-      </div>
-    </m.section>
-  );
-});
 
 export default function WorkoutView({
   focusRequest, notificationError, readOnly = false,
@@ -496,6 +214,9 @@ export default function WorkoutView({
     gymToggleRef.current?.focus({ preventScroll: true });
   }, [gymMode]);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [dismissedAutoreg, setDismissedAutoreg] = useState<Record<string, boolean>>({});
+  const [detrainingAppliedFor, setDetrainingAppliedFor] = useState<string | null>(null);
+  const [detrainingDismissedFor, setDetrainingDismissedFor] = useState<string | null>(null);
   useEffect(() => {
     if (!readOnly) return;
     setPlateCalcTarget(null);
@@ -591,6 +312,21 @@ export default function WorkoutView({
       ),
     [history, exercises, workoutId, draft?.workout.date, draft?.workout.name, settings.timeZone],
   );
+  const detrainingPlan = useMemo(() => {
+    if (!draft || draft.editing || !history.length) return null;
+    const todayIso = draft.workout.date;
+    const lastDate = history
+      .filter((item) => item.id !== draft.workout.id && item.date < todayIso && item.exercises.some((e) => e.sets.some((s) => s.done && !s.warmup)))
+      .map((item) => item.date)
+      .sort()
+      .at(-1);
+    if (!lastDate) return null;
+    const gapDays = Math.round(
+      (Date.parse(`${todayIso}T12:00:00Z`) - Date.parse(`${lastDate}T12:00:00Z`)) / 86_400_000,
+    );
+    const plan = ProgressionEngine.evaluateDetraining(gapDays);
+    return plan.active ? plan : null;
+  }, [draft, history]);
   const activeRoutine = useMemo(
     () => (draft?.workout.routineId && routines ? routines.find((r) => r.id === draft.workout.routineId) : undefined),
     [draft?.workout.routineId, routines],
@@ -728,24 +464,221 @@ export default function WorkoutView({
         : DELOAD_PRESETS[deloadNow].targetRir;
     return { ...source, weight, rir };
   };
+  const applyDetrainingAdjustment = () => {
+    if (!detrainingPlan || detrainingAppliedFor === w.id) return;
+    const inv = toProgressionInventory(GymInventoryStore.read());
+    const nextExercises = w.exercises.map((entry) => {
+      const def = exerciseForEntry(entry);
+      const loadMode = def?.recording.loadMode ?? "total_external";
+      const timedEx = def?.recording.type === "duration";
+      const scalable = !timedEx && DeloadEngine.isScalable(loadMode);
+      const workingSetsList = entry.sets.filter((s) => !s.warmup);
+      const sampleWeight = workingSetsList.find((s) => s.weight > 0)?.weight ?? 0;
+      const adjusted = ProgressionEngine.applyDetrainingToPlan(
+        sampleWeight,
+        workingSetsList.length,
+        detrainingPlan.gapDays,
+        loadMode,
+        inv,
+      );
+      let keptWorking = 0;
+      const nextSets = entry.sets.flatMap((s) => {
+        if (s.warmup) return [s];
+        if (s.done) {
+          keptWorking++;
+          return [s];
+        }
+        if (keptWorking >= adjusted.setsCount) return [];
+        keptWorking++;
+        const nextW =
+          scalable && s.weight > 0
+            ? ProgressionEngine.applyDetrainingToPlan(
+                s.weight,
+                workingSetsList.length,
+                detrainingPlan.gapDays,
+                loadMode,
+                inv,
+              ).weightKg
+            : s.weight;
+        return [
+          {
+            ...s,
+            weight: nextW,
+            ...(!timedEx && detrainingPlan.rirFloor !== null && (s.rir === null || s.rir < detrainingPlan.rirFloor)
+              ? { rir: detrainingPlan.rirFloor }
+              : {}),
+          },
+        ];
+      });
+      return { ...entry, sets: nextSets };
+    });
+    setWorkout({ ...w, exercises: nextExercises });
+    setDetrainingAppliedFor(w.id);
+    onToast?.(
+      `Применён мягкий вход после паузы ${detrainingPlan.gapDays} дн. (${Math.round(detrainingPlan.weightMultiplier * 100)} % веса, ${Math.round(detrainingPlan.volumeMultiplier * 100)} % объёма).`,
+    );
+  };
+
+  const renderDdpGoalLine = (
+    entry: WorkoutExercise,
+    exercise: Exercise,
+    before: { working: SetEntry[]; warmup: SetEntry[] } | undefined,
+    isLaidTopLift: boolean,
+  ) => {
+    const spec = exercise.recording;
+    if (
+      inDeload ||
+      isLaidTopLift ||
+      spec.type === "duration" ||
+      spec.loadMode === "bodyweight" ||
+      !before?.working?.length ||
+      entry.repMin === undefined ||
+      entry.repMax === undefined
+    ) {
+      return null;
+    }
+    const inv = toProgressionInventory(GymInventoryStore.read());
+    const recs = ProgressionEngine.recommendDdpSets({
+      previousSets: before.working.map((s) => ({
+        weight: s.weight,
+        reps: s.reps,
+        rir: s.rir,
+      })),
+      repMin: entry.repMin,
+      repMax: entry.repMax,
+      loadMode: spec.loadMode,
+      inventory: inv,
+    });
+    const firstRec = recs[0];
+    if (!firstRec || firstRec.recommendedWeight <= 0) return null;
+    const prevFirstWeight = before.working[0]?.weight ?? 0;
+    const delta = Math.round((firstRec.recommendedWeight - prevFirstWeight) * 100) / 100;
+    return (
+      <div className="ddp-goal-line">
+        <span>
+          Цель DDP: <strong>{fmt(firstRec.recommendedWeight)} кг × {firstRec.recommendedReps}</strong> (RIR 1–2)
+        </span>
+        {firstRec.action === "increase_weight" && delta > 0 ? (
+          <span className="ddp-upgrade-badge">+{fmt(delta)} кг</span>
+        ) : firstRec.action === "hold_improve_rir" ? (
+          <span className="ddp-hold-badge">Удержать до RIR 1–2</span>
+        ) : null}
+      </div>
+    );
+  };
+
+  const renderIntraAutoregBar = (
+    entry: WorkoutExercise,
+    ei: number,
+    exercise: Exercise,
+    before: { working: SetEntry[]; warmup: SetEntry[] } | undefined,
+    isLaidTopLift: boolean,
+  ) => {
+    const spec = exercise.recording;
+    if (spec.type === "duration" || spec.loadMode === "bodyweight") return null;
+    const workingSetsAll = entry.sets.filter((s) => !s.warmup);
+    const firstDone = workingSetsAll.find((s) => s.done && s.reps > 0);
+    const remainingUndone = workingSetsAll.filter((s) => !s.done);
+    if (!firstDone || remainingUndone.length === 0) return null;
+    const autoregKey = `${w.id}:${ei}:${firstDone.id}:${firstDone.reps}:${firstDone.rir ?? "n"}`;
+    if (dismissedAutoreg[autoregKey]) return null;
+
+    const targetReps =
+      isLaidTopLift && activeLaidPlan
+        ? activeLaidPlan.heavy.reps
+        : (entry.repMax ?? entry.repMin ?? before?.working?.[0]?.reps ?? 0);
+    if (targetReps <= 0) return null;
+    const plannedWeight = remainingUndone[0].weight || firstDone.weight;
+    const inv = toProgressionInventory(GymInventoryStore.read());
+    const adj = IntraSessionAutoregulator.evaluate({
+      exerciseId: entry.exerciseId,
+      isCompoundAxial: DeloadEngine.axialLoadMultiplier(exercise) >= 1.0,
+      loadMode: spec.loadMode,
+      plannedWeight,
+      targetReps,
+      targetRIR: 2,
+      actualReps: firstDone.reps,
+      actualRIR: firstDone.rir,
+      remainingSetsCount: remainingUndone.length,
+      inventory: inv,
+    });
+    if (!adj.shouldNotify || (inDeload && adj.status === "high_performance")) {
+      return null;
+    }
+    return (
+      <div className={`intra-autoreg-bar status-${adj.status}`} role="status">
+        <span>{adj.messageShort}</span>
+        <div className="intra-autoreg-actions">
+          <button
+            type="button"
+            className="button secondary intra-autoreg-apply"
+            onClick={() => {
+              let nextSets = entry.sets.map((s) =>
+                s.warmup || s.done
+                  ? s
+                  : {
+                      ...s,
+                      weight: adj.adjustedWeight,
+                      ...(adj.repCap !== null && s.reps > adj.repCap
+                        ? { reps: adj.repCap }
+                        : {}),
+                    },
+              );
+              if (adj.dropLastSet) {
+                for (let idx = nextSets.length - 1; idx >= 0; idx--) {
+                  if (!nextSets[idx].warmup && !nextSets[idx].done) {
+                    nextSets = nextSets.filter((_, j) => j !== idx);
+                    break;
+                  }
+                }
+              }
+              patchExercise(ei, { sets: nextSets });
+              setDismissedAutoreg((prev) => ({ ...prev, [autoregKey]: true }));
+              onToast?.(`Применено: ${adj.adjustedWeight} кг${adj.dropLastSet ? " · −1 подход" : ""}.`);
+            }}
+          >
+            Применить
+          </button>
+          <button
+            type="button"
+            className="icon-button intra-autoreg-dismiss"
+            aria-label="Скрыть подсказку"
+            onClick={() =>
+              setDismissedAutoreg((prev) => ({ ...prev, [autoregKey]: true }))
+            }
+          >
+            <X size={14} aria-hidden="true" />
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   const applyReadinessAdjustment = (level: "worse" | "hard") => {
     if (appliedReadiness) return;
-    const factor = level === "worse" ? 0.95 : 0.9;
+    const inv = toProgressionInventory(GymInventoryStore.read());
     const targetRir = level === "worse" ? 2 : 3;
     let adjustedSets = 0;
     let trimmedSets = 0;
     const nextExercises = w.exercises.map((entry) => {
       const def = exerciseForEntry(entry);
-      const loadMode = def?.recording.loadMode;
+      const loadMode = def?.recording.loadMode ?? "total_external";
       const timedEx = def?.recording.type === "duration";
       const scalable = !timedEx && DeloadEngine.isScalable(loadMode);
-      const step = loadMode === "total_external" ? 2.5 : 0.5;
+      const isCompoundAxial = DeloadEngine.axialLoadMultiplier(def) >= 1.0;
+      const workingCount = entry.sets.filter((s) => !s.warmup).length;
+
       let sets = entry.sets.map((s) => {
         if (s.done || s.warmup) return s;
-        const nextWeight =
-          scalable && s.weight > 0
-            ? Math.max(step, Math.round((s.weight * factor) / step) * step)
-            : s.weight;
+        const adj = IntraSessionAutoregulator.preSessionAdjustment({
+          status: level,
+          isCompoundAxial,
+          plannedWeight: s.weight,
+          plannedSetsCount: workingCount,
+          loadMode,
+          inventory: inv,
+        });
+        const nextWeight = scalable && s.weight > 0 ? adj.adjustedWeight : s.weight;
         if (nextWeight !== s.weight) adjustedSets++;
         return {
           ...s,
@@ -754,8 +687,16 @@ export default function WorkoutView({
         };
       });
       if (level === "hard") {
-        const workingCount = sets.filter((s) => !s.warmup).length;
-        if (workingCount >= 3) {
+        const plan = IntraSessionAutoregulator.preSessionAdjustment({
+          status: "hard",
+          isCompoundAxial,
+          plannedWeight: 0,
+          plannedSetsCount: workingCount,
+          loadMode,
+          inventory: inv,
+        });
+        const toRemove = Math.max(0, workingCount - plan.targetSetsCount);
+        for (let k = 0; k < toRemove; k++) {
           let lastUndoneIdx = -1;
           for (let i = sets.length - 1; i >= 0; i--) {
             if (!sets[i].warmup && !sets[i].done) {
@@ -775,8 +716,8 @@ export default function WorkoutView({
     setReadinessApplied({ workoutId: w.id, level });
     onToast?.(
       level === "worse"
-        ? `Смягчили оставшиеся подходы (−5 % веса, RIR ${targetRir}${adjustedSets ? `, подходов: ${adjustedSets}` : ""}).`
-        : `Включён щадящий режим (−10 % веса, RIR ${targetRir}${trimmedSets ? `, убрано подходов: ${trimmedSets}` : ""}).`,
+        ? `Смягчили оставшиеся подходы (база −5 %, подсобка −2,5 %, RIR ${targetRir}${adjustedSets ? `, подходов: ${adjustedSets}` : ""}).`
+        : `Включён щадящий режим (база −10 %, подсобка −5 %, RIR ${targetRir}${trimmedSets ? `, убрано подходов: ${trimmedSets}` : ""}).`,
     );
   };
   const setWorkout = (workout: Workout) => update({ ...draft, workout });
@@ -1194,7 +1135,6 @@ export default function WorkoutView({
       </div>
     );
   };
-  const lastRemoval = draft.removals?.at(-1);
   // Один вопрос, и только когда есть что терять: пустую тренировку закрываем сразу.
   const requestDiscard = () => {
     if (WorkoutDiscard.needsConfirmation(draft)) setShowCancelConfirm(true);
@@ -1226,201 +1166,67 @@ export default function WorkoutView({
   );
   return (
     <div className={`workout-screen workout-athletic workout-steel${gymMode ? " is-gym-mode" : ""}`} ref={screenRef} inert={readOnly}>
-      <header className="workout-bar" ref={barRef}>
-        <div className="workout-headline">
-          <div className="workout-bar-title">
-            <h1 className="workout-session-label">
-              {draft.editing ? "Редактирование тренировки" : "Активная тренировка"}
-            </h1>
-            <label className="sr-only" htmlFor={`${hintPrefix}-name`}>Название тренировки</label>
-            {room ? (
-              <textarea
-                id={`${hintPrefix}-name`}
-                ref={nameBox}
-                rows={1}
-                className="workout-name-wrap"
-                value={w.name}
-                maxLength={120}
-                disabled={saving}
-                onChange={(e) => setWorkout({ ...w, name: e.target.value.replace(/\n/g, " ") })}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.nativeEvent.isComposing) e.preventDefault();
-                }}
-              />
-            ) : (
-              <div className="workout-name-field">
-                <span className="workout-name-copy" aria-hidden="true">{w.name || "Название тренировки"}</span>
-                <input
-                  id={`${hintPrefix}-name`}
-                  type="text"
-                  value={w.name}
-                  maxLength={120}
-                  disabled={saving}
-                  onChange={(e) => setWorkout({ ...w, name: e.target.value })}
-                />
-              </div>
-            )}
-            {room ? <RoomBadge onToast={onToast ?? (() => {})} /> : null}
-          </div>
-          <div className="workout-head-buttons-cluster">
-            <button
-              type="button"
-              className="icon-button workout-minimize-btn"
-              aria-label="Свернуть тренировку"
-              onClick={onMinimize}
-            >
-              <ChevronDown size={22} aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              className="icon-button sound-toggle-btn"
-              aria-label={soundEnabled ? "Выключить звук" : "Включить звук"}
-              aria-pressed={soundEnabled}
-              title={soundEnabled ? "Звук включён" : "Звук выключен"}
-              onClick={() => setSoundEnabled((v) => !v)}
-            >
-              {soundEnabled ? <Volume2 size={19} aria-hidden="true" /> : <VolumeX size={19} aria-hidden="true" />}
-            </button>
-            {wakeLock.supported ? (
-              <button
-                type="button"
-                className={`icon-button wake-lock-btn${keepAwake ? " active" : ""}`}
-                aria-label={keepAwake ? "Разрешить гасить экран" : "Не гасить экран во время тренировки"}
-                aria-pressed={keepAwake}
-                title={keepAwake ? "Экран не гаснет" : "Не гасить экран"}
-                onClick={() =>
-                  setKeepAwake((v) => {
-                    const next = !v;
-                    try {
-                      localStorage.setItem("tyaga-wake-lock", next ? "1" : "0");
-                    } catch {
-                      /* ignore */
-                    }
-                    return next;
-                  })
-                }
-              >
-                <Sun size={18} aria-hidden="true" />
-              </button>
-            ) : null}
-            {!retroLabel && (
-              <button
-                type="button"
-                className="icon-button workout-entry-toggle"
-                aria-label="Дата, длительность и заметки"
-                title="Дата, длительность и заметки"
-                aria-expanded={entryPanel}
-                aria-controls={entryPanelId}
-                onClick={() => setEntryPanel((open) => !open)}
-              >
-                <Calendar size={18} aria-hidden="true" />
-              </button>
-            )}
-            <button
-              type="button"
-              className="button secondary cancel-workout-btn"
-              title="Отменить тренировку без сохранения"
-              onClick={requestDiscard}
-            >
-              <X size={15} aria-hidden="true" />
-              <span>Отмена</span>
-            </button>
-          </div>
-        </div>
-        {!readOnly && !draft.editing && !gymMode && workoutId ? (
-          <WorkoutReadinessBar
-            readiness={readiness}
-            appliedReadiness={appliedReadiness}
-            saving={saving}
-            onSelect={(level) =>
-              setReadinessChoice((cur) =>
-                cur?.workoutId === workoutId && cur.level === level
-                  ? null
-                  : { workoutId, level },
-              )
+      <WorkoutHeader
+        barRef={barRef}
+        pinRef={pinRef}
+        nameBox={nameBox}
+        hintPrefix={hintPrefix}
+        entryPanelId={entryPanelId}
+        draft={draft}
+        workout={w}
+        room={!!room}
+        readOnly={readOnly}
+        saving={saving}
+        gymMode={gymMode}
+        workoutId={workoutId}
+        manualClock={manualClock}
+        soundEnabled={soundEnabled}
+        onToggleSound={() => setSoundEnabled((v) => !v)}
+        wakeLockSupported={wakeLock.supported}
+        keepAwake={keepAwake}
+        onToggleWakeLock={() =>
+          setKeepAwake((v) => {
+            const next = !v;
+            try {
+              localStorage.setItem("tyaga-wake-lock", next ? "1" : "0");
+            } catch {
+              /* ignore */
             }
-            onApply={applyReadinessAdjustment}
-          />
-        ) : null}
-        {deloadLine ? (
-          <div className="deload-hint" role="status">
-            <span>{deloadLine}</span>
-            <button type="button" className="button secondary" disabled={saving} onClick={applyDeload}>
-              Подставить {deloadPlan ? DeloadHint.percent(deloadPlan.mode) : 85} %
-            </button>
-          </div>
-        ) : null}
-        {(retroLabel || entryPanel) && (
-          <div className="retro-date">
-            {retroLabel && (
-              <button
-                type="button"
-                className="retro-chip"
-                aria-expanded={entryPanel}
-                aria-controls={entryPanelId}
-                onClick={() => setEntryPanel((open) => !open)}
-              >
-                <Calendar size={15} aria-hidden="true" />
-                {retroLabel}
-              </button>
-            )}
-            {entryPanel && (
-              <div className="retro-panel workout-entry-panel" id={entryPanelId} role="group" aria-label="Дата и длительность записи">
-                {dateField(!!retroLabel)}
-                {durationField(!!retroLabel)}
-                <div className="workout-entry-notes">
-                  <label htmlFor={entryPanelId + "-notes"}>Заметки</label>
-                  <textarea
-                    id={entryPanelId + "-notes"}
-                    rows={2}
-                    value={w.notes}
-                    disabled={saving}
-                    maxLength={2000}
-                    onChange={(e) => setWorkout({ ...w, notes: e.target.value })}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-        {draft.editing ? null : <LiveStrip onOpen={onOpenTogether} />}
-        <div className="workout-command-strip" ref={pinRef}>
-          <div className="workout-live-hud">
-            <WorkoutLiveClock
-              draft={draft}
-              manualClock={manualClock}
-              saving={saving}
-              onTogglePause={toggleSessionClock}
-            />
-            <span className="hud-metric hud-working">
-              <b aria-live="polite" aria-atomic="true">{doneWorking}<small> / {totalWorking}</small></b>
-              <span className="hud-label">Рабочие подходы</span>
-            </span>
-            <span className="hud-metric hud-tonnage-inline">
-              <b>{fmt(summary.total)}<small> кг</small></b>
-              <span className="hud-label">Тоннаж</span>
-            </span>
-          </div>
-          <button
-            type="button"
-            className="button primary finish-button"
-            aria-label={draft.editing ? "Сохранить изменения" : "Завершить тренировку"}
-            onClick={onSave}
-            disabled={saving || readOnly || doneWorking === 0}
-          >
-            {saving ? "…" : draft.editing ? "Сохранить" : "Завершить"}
-          </button>
-          {gymMode && modeSwitch}
-          <div className="workout-session-progress" aria-hidden="true">
-            <m.div
-              className="workout-session-progress-fill"
-              initial={false}
-              animate={{ scaleX: totalWorking ? doneWorking / totalWorking : 0 }}
-              transition={{ duration: reducedMotion ? 0 : 0.24, ease: "easeOut" }}
-            />
-          </div>
-        </div>
-      </header>
+            return next;
+          })
+        }
+        retroLabel={retroLabel}
+        entryPanel={entryPanel}
+        onToggleEntryPanel={() => setEntryPanel((open) => !open)}
+        readiness={readiness}
+        appliedReadiness={appliedReadiness}
+        onSelectReadiness={(level) => {
+          if (!workoutId) return;
+          setReadinessChoice((cur) =>
+            cur && cur.workoutId === workoutId && cur.level === level
+              ? null
+              : { workoutId, level },
+          );
+        }}
+        onApplyReadiness={applyReadinessAdjustment}
+        deloadLine={deloadLine}
+        deloadPlan={deloadPlan}
+        onApplyDeload={applyDeload}
+        doneWorking={doneWorking}
+        totalWorking={totalWorking}
+        totalTonnage={summary.total}
+        reducedMotion={reducedMotion}
+        modeSwitch={modeSwitch}
+        dateField={dateField}
+        durationField={durationField}
+        onChangeWorkout={setWorkout}
+        onToggleClock={toggleSessionClock}
+        onMinimize={onMinimize}
+        onRequestDiscard={requestDiscard}
+        onSave={onSave}
+        onOpenTogether={onOpenTogether}
+        onToast={onToast}
+      />
       {notificationError && <p className="inline-error" role="alert">{notificationError}. Таймер на экране продолжает работать.</p>}
       {error ? (
         <p className="inline-error" role="alert" ref={errorRef}>
@@ -1478,6 +1284,31 @@ export default function WorkoutView({
             deloadNow={deloadNow}
           />
         ) : null}
+        {!draft.editing && !inDeload && detrainingPlan && detrainingAppliedFor !== w.id && detrainingDismissedFor !== w.id ? (
+          <div className="intra-autoreg-bar status-fatigued detraining-banner" role="status">
+            <span>
+              Перерыв {detrainingPlan.gapDays} дн. — мягкий вход: {Math.round(detrainingPlan.weightMultiplier * 100)} % веса,{" "}
+              {Math.round(detrainingPlan.volumeMultiplier * 100)} % объёма (RIR {detrainingPlan.rirFloor}+)
+            </span>
+            <div className="intra-autoreg-actions">
+              <button
+                type="button"
+                className="button secondary intra-autoreg-apply"
+                onClick={applyDetrainingAdjustment}
+              >
+                Применить
+              </button>
+              <button
+                type="button"
+                className="icon-button intra-autoreg-dismiss"
+                aria-label="Скрыть мягкий вход"
+                onClick={() => setDetrainingDismissedFor(w.id)}
+              >
+                <X size={14} aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+        ) : null}
         {!w.exercises.length ? (
           <p className="workout-empty-clean">
             Добавь первое упражнение
@@ -1514,18 +1345,50 @@ export default function WorkoutView({
                 isLaidTopLift && exDef?.recording.loadMode === "total_external"
                   ? (entry.sets.find((s) => !s.warmup && s.weight > 0)?.weight ?? null)
                   : null;
+              const gymWorkSets = entry.sets.filter((s) => !s.warmup);
+              const gymTargetReps =
+                isLaidTopLift && activeLaidPlan
+                  ? `1×${activeLaidPlan.heavy.reps} + ${activeLaidPlan.work.sets}×${activeLaidPlan.work.reps}`
+                  : entry.repMin !== undefined && entry.repMax !== undefined
+                    ? `${gymWorkSets.length} × ${entry.repMin === entry.repMax ? entry.repMin : `${entry.repMin}–${entry.repMax}`}`
+                    : null;
+              const gymPrevFirst = gymBefore?.working?.[0];
+              const gymWeightHint: { label: string; source: "plan" | "history" | "deload" | "none" } | null =
+                isLaidTopLift && activeLaidPlan && activeLaidPlan.prescriptionMode === "percent_1rm"
+                  ? {
+                      label: `План: ${LaidDupPlan.kg(activeLaidPlan.heavy.weightKg)} / ${LaidDupPlan.kg(activeLaidPlan.work.weightKg)} кг`,
+                      source: inDeload ? "deload" : "plan",
+                    }
+                  : exDef?.recording.loadMode === "bodyweight" || exDef?.recording.type === "duration"
+                    ? null
+                    : gymPrevFirst && gymPrevFirst.weight > 0
+                      ? {
+                          label: inDeload
+                            ? `Разгрузка: ${LaidDupPlan.kg(Math.round(gymPrevFirst.weight * 0.65 * 2) / 2)} кг`
+                            : `Прошлый: ${LaidDupPlan.kg(gymPrevFirst.weight)} кг`,
+                          source: inDeload ? "deload" : "history",
+                        }
+                      : { label: "Вес: подбери по RIR", source: "none" };
               const gymWarmups = !entry.sets.some((s) => s.warmup)
                 ? isLaidTopLift && !inDeload
-                  ? new WarmupPlanner(entry).createForTopSet(20)
+                  ? new WarmupPlanner(entry).createForTopSet(GymInventoryStore.read().barWeightKg)
                   : new WarmupPlanner(entry).create()
                 : [];
-              if (!gymGuidance && !entry.progressionNote && !gymWarmups.length) return null;
+              const gymCue = exDef ? BiomechanicsProfileStore.techniqueCue(exDef) : null;
+              const gymDdpLine = exDef ? renderDdpGoalLine(entry, exDef, gymBefore, isLaidTopLift) : null;
+              const gymAutoregBar = exDef ? renderIntraAutoregBar(entry, exerciseIndex, exDef, gymBefore, isLaidTopLift) : null;
+              if (!gymGuidance && !entry.progressionNote && !gymWarmups.length && !gymCue && !gymDdpLine && !gymAutoregBar) return null;
               return (
                 <div className="gym-guidance-stack">
+                  {gymCue ? <p className="lever-cue">{gymCue}</p> : null}
+                  {gymDdpLine}
+                  {gymAutoregBar}
                   {gymGuidance ? (
                     <LaidExerciseGuidanceBar
                       guidance={gymGuidance}
                       hasProgressionNote={!!entry.progressionNote}
+                      targetSetsReps={gymTargetReps}
+                      weightHint={gymWeightHint}
                       auxProgression={gymAuxProg}
                       topSetPlateWeightKg={gymTopWeight}
                       onApplyAuxWeight={(nextKg) => {
@@ -1666,7 +1529,7 @@ export default function WorkoutView({
           const canWarmup =
             !we.sets.some((s) => s.warmup) &&
             (isLaidTopLift && !inDeload
-              ? new WarmupPlanner(we).createForTopSet(20).length > 0
+              ? new WarmupPlanner(we).createForTopSet(GymInventoryStore.read().barWeightKg).length > 0
               : new WarmupPlanner(we).create().length > 0);
           const topSetPlateWeightKg =
             isLaidTopLift && spec.loadMode === "total_external"
@@ -1800,10 +1663,42 @@ export default function WorkoutView({
                 </p>
               ) : null}
 
+              {(() => {
+                const cue = BiomechanicsProfileStore.techniqueCue(exercise);
+                return cue ? <p className="lever-cue">{cue}</p> : null;
+              })()}
+
+              {renderDdpGoalLine(we, exercise, before, isLaidTopLift)}
+              {renderIntraAutoregBar(we, ei, exercise, before, isLaidTopLift)}
+
               {cardGuidance ? (
                 <LaidExerciseGuidanceBar
                   guidance={cardGuidance}
                   hasProgressionNote={!!we.progressionNote}
+                  targetSetsReps={
+                    isLaidTopLift && activeLaidPlan
+                      ? `1×${activeLaidPlan.heavy.reps} + ${activeLaidPlan.work.sets}×${activeLaidPlan.work.reps}`
+                      : !timed && plannedRange
+                        ? `${we.sets.filter((s) => !s.warmup).length} × ${plannedRange}`
+                        : null
+                  }
+                  weightHint={
+                    isLaidTopLift && activeLaidPlan && activeLaidPlan.prescriptionMode === "percent_1rm"
+                      ? {
+                          label: `План: ${LaidDupPlan.kg(activeLaidPlan.heavy.weightKg)} / ${LaidDupPlan.kg(activeLaidPlan.work.weightKg)} кг`,
+                          source: inDeload ? "deload" : "plan",
+                        }
+                      : noLoad || timed
+                        ? null
+                        : before?.working?.[0] && before.working[0].weight > 0
+                          ? {
+                              label: inDeload
+                                ? `Разгрузка: ${LaidDupPlan.kg(Math.round(before.working[0].weight * 0.65 * 2) / 2)} кг`
+                                : `Прошлый: ${LaidDupPlan.kg(before.working[0].weight)} кг`,
+                              source: inDeload ? "deload" : "history",
+                            }
+                          : { label: "Вес: подбери по RIR", source: "none" }
+                  }
                   auxProgression={auxProgression}
                   topSetPlateWeightKg={topSetPlateWeightKg}
                   onApplyAuxWeight={(nextKg) => {
@@ -1937,7 +1832,7 @@ export default function WorkoutView({
                       patchExercise(ei, {
                         sets: [
                           ...(isLaidTopLift && !inDeload
-                            ? new WarmupPlanner(we).createForTopSet(20)
+                            ? new WarmupPlanner(we).createForTopSet(GymInventoryStore.read().barWeightKg)
                             : new WarmupPlanner(we).create()),
                           ...we.sets,
                         ],
@@ -1983,98 +1878,20 @@ export default function WorkoutView({
           </button>
         )}
       </fieldset>
-      {/* Одна нижняя стопка: «Отменить удаление» и таймер отдыха идут друг под другом в одном липком блоке, поэтому не могут перекрыть друг друга. */}
-      <div className="workout-dock" ref={dockRef}>
-      <div className="workout-toast-region" role="region" aria-label="Уведомления тренировки">
-      <AnimatePresence initial={false}>
-        {lastRemoval ? (
-          <m.div
-            className={`workout-undo${toastPaused ? " is-paused" : ""}`}
-            key={removalKey}
-            initial={reducedMotion ? false : { opacity: 0, y: 12, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={reducedMotion ? undefined : { opacity: 0, y: 10, scale: 0.97 }}
-            transition={{ type: "spring", stiffness: 460, damping: 34 }}
-            role="status"
-            onMouseEnter={() => setToastPaused(true)}
-            onMouseLeave={() => setToastPaused(false)}
-            onFocusCapture={() => setToastPaused(true)}
-            onBlurCapture={(e) => {
-              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
-                setToastPaused(false);
-              }
-            }}
-          >
-            <span className="workout-undo-icon" aria-hidden="true">
-              <Trash2 size={16} />
-            </span>
-            <div className="workout-undo-copy">
-              <strong className="workout-undo-title">
-                {lastRemoval.kind === "set" ? "Подход удалён" : "Упражнение убрано"}
-              </strong>
-              <span className="workout-undo-sub">
-                {draft.removals!.length > 1
-                  ? `В очереди ещё ${draft.removals!.length - 1} · можно вернуть`
-                  : "Исчезнет через 3 с · можно вернуть"}
-              </span>
-            </div>
-            <div className="workout-undo-actions">
-              <button
-                type="button"
-                className="workout-undo-btn"
-                aria-label="Отменить удаление"
-                onClick={() => {
-                  try {
-                    setToastPaused(false);
-                    update(WorkoutUndo.restore(draft));
-                    setUndoError("");
-                  } catch (e) {
-                    setUndoError((e as Error).message);
-                  }
-                }}
-              >
-                <RotateCcw size={15} aria-hidden="true" />
-                <span>Вернуть</span>
-              </button>
-              <button
-                type="button"
-                className="workout-undo-close"
-                aria-label="Скрыть уведомление"
-                onClick={() => {
-                  setToastPaused(false);
-                  update({ ...draft, removals: [] });
-                }}
-              >
-                <X size={15} aria-hidden="true" />
-              </button>
-            </div>
-            <span className="workout-undo-timer" aria-hidden="true" />
-          </m.div>
-        ) : null}
-      </AnimatePresence>
-      </div>
-      {/* A skipped or expired rest must stop covering the controls immediately. */}
-      <WorkoutRestBar
+      <WorkoutUndoDock
+        dockRef={dockRef}
         draft={draft}
+        removalKey={removalKey}
         restSeconds={restSeconds}
         soundEnabled={soundEnabled}
         reducedMotion={reducedMotion}
-        onShift={shiftRest}
-        onTogglePause={(rem) =>
-          update(
-            draft.pausedRest !== null
-              ? {
-                  ...draft,
-                  restUntil: Date.now() + draft.pausedRest * 1000,
-                  pausedRest: null,
-                }
-              : { ...draft, pausedRest: rem, restUntil: null },
-          )
-        }
-        onSkip={() => update({ ...draft, restUntil: null, pausedRest: null })}
+        toastPaused={toastPaused}
+        setToastPaused={setToastPaused}
+        onUpdate={update}
+        onUndoError={setUndoError}
+        onShiftRest={shiftRest}
         onAnnounce={setAnnouncement}
       />
-      </div>
       <span className="sr-only" role="status" aria-live="polite">
         {announcement}
       </span>
@@ -2103,6 +1920,8 @@ export default function WorkoutView({
       {!readOnly && swapTarget && (
         <ExerciseSwapModal
           currentExercise={swapTarget.exercise}
+          workouts={history}
+          today={w.date}
           avoidedIds={avoidedIds}
           excludeIds={w.exercises.filter((_, i) => i !== swapTarget.ei).map((e) => e.exerciseId)}
           showScopePicker
@@ -2128,10 +1947,32 @@ export default function WorkoutView({
             const last = DeloadEngine.isDeloadName(w.name) ? find(history) : (find(DeloadEngine.regular(history)) ?? find(history));
             const previousWorking = last?.sets.filter((s) => s.done && !s.warmup) ?? [];
             const swapped = ExerciseSwap.sets(target.sets, oldSpec?.loadMode, oldSpec?.type, newEx, previousWorking);
+            // Если правило веса совпало, но пользователь ещё не вводил вес (все рабочие подходы с 0 кг и не отмечены),
+            // подставляем знакомый рабочий вес нового тренажёра/упражнения из истории.
+            const unstarted =
+              swapped.carried &&
+              previousWorking.length > 0 &&
+              target.sets.every((s) => s.warmup || (!s.done && s.weight === 0));
+            const finalSets = unstarted
+              ? target.sets.map((s) => {
+                  if (s.warmup) return s;
+                  const idx = ExecutionIdentity.setIndex(target, s);
+                  const prior = PreviousSets.pick(previousWorking, idx);
+                  return prior
+                    ? {
+                        ...s,
+                        ...PreviousSets.patch(prior, {
+                          timed: newEx.recording.type === "duration",
+                          assistance: newEx.recording.loadMode === "assisted_bodyweight",
+                        }),
+                      }
+                    : s;
+                })
+              : swapped.sets;
             setWorkout({
               ...w,
               exercises: w.exercises.map((e, i) =>
-                i === targetEi ? { ...ExerciseSwap.entry(renamed, swapped.carried), sets: swapped.sets } : e,
+                i === targetEi ? { ...ExerciseSwap.entry(renamed, swapped.carried), sets: finalSets } : e,
               ),
             });
             if (scope === "avoid") {

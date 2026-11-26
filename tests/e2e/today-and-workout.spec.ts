@@ -16,19 +16,23 @@ test("Главная, чистые Инструменты и активная т
   await page.setViewportSize({ width: 1280, height: 900 });
   await round01Fixture(page, { workouts: history });
 
-  // 1. Главная «Сегодня»: готовность мышц, силовой тотал, быстрые калькуляторы
+  // 1. Главная «Сегодня»: компактная раскрывающаяся готовность мышц, силовой тотал, без дублей калькуляторов
   await expect(page.getByRole("heading", { name: "Готовность мышц", exact: true })).toBeVisible();
-  await expect(page.locator(".readiness-tile").filter({ hasText: "Грудь" })).toContainText("Сегодня");
-  await expect(page.locator(".readiness-tile").filter({ hasText: "Ноги" })).toContainText("Вчера");
-  await expect(page.locator(".readiness-tile").filter({ hasText: "Спина" })).toContainText("4 дн.");
+  await page.locator(".today-readiness-summary").click();
+  await expect(page.locator(".readiness-tile")).toHaveCount(12);
+  await expect(page.locator(".readiness-tile").filter({ hasText: "Грудь" })).toContainText("%");
+  await expect(page.locator(".readiness-tile").filter({ hasText: "Квадрицепс" })).toContainText("%");
+  await expect(page.locator(".readiness-tile").filter({ hasText: "Поясница" })).toContainText("%");
   await expect(page.locator(".today-telemetry-card")).toContainText("Силовой тотал");
+  await expect(page.locator(".today-quick-tools")).toHaveCount(0);
 
   if (process.env.SHOTS) {
     await page.screenshot({ path: `${process.env.SHOTS}/today-1280.png`, fullPage: true });
   }
 
-  // Быстрый калькулятор блинов прямо с главной
-  await page.getByRole("group", { name: "Быстрые калькуляторы" }).getByRole("button", { name: "Блины", exact: true }).click();
+  // Калькулятор блинов открывается через «Ещё»
+  await page.getByRole("button", { name: "Ещё", exact: true }).click();
+  await page.getByRole("dialog", { name: "Инструменты и настройки" }).getByRole("button", { name: /Калькулятор блинов/ }).click();
   await expect(page.getByRole("dialog", { name: "Калькулятор блинов" })).toBeVisible();
   await page.keyboard.press("Escape");
 
