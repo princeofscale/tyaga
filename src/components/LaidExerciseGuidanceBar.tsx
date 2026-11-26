@@ -1,42 +1,54 @@
 import { Dumbbell, TrendingUp } from "lucide-react";
+import { GymInventoryStore } from "../domain/GymInventory";
 import { LaidDupPlan, type LaidAuxProgressionHint, type LaidExerciseGuidance } from "../domain/LaidDupPlan";
-import { WarmupLadderCalculator } from "../domain/WarmupLadderCalculator";
 
 type Props = {
   guidance: LaidExerciseGuidance;
   hasProgressionNote: boolean;
+  targetSetsReps?: string | null;
+  weightHint?: { label: string; source: "plan" | "history" | "deload" | "none" } | null;
   auxProgression?: LaidAuxProgressionHint | null;
   topSetPlateWeightKg?: number | null;
   onApplyAuxWeight?: (weightKg: number) => void;
 };
 
-/** Компактная строка ориентиров упражнения в цикле Лейда: роль, целевой RIR, отдых, блины на сторону и двойная прогрессия. */
+/** Компактная строка ориентиров упражнения в цикле Лейда: рабочий вес, повторы, целевой RIR, отдых и двойная прогрессия. */
 export default function LaidExerciseGuidanceBar({
   guidance,
   hasProgressionNote,
+  targetSetsReps,
+  weightHint,
   auxProgression,
   topSetPlateWeightKg,
   onApplyAuxWeight,
 }: Props) {
+  const inv = GymInventoryStore.read();
   const platesText =
-    topSetPlateWeightKg && topSetPlateWeightKg > 20
-      ? WarmupLadderCalculator.formatPlates(topSetPlateWeightKg, 20)
+    topSetPlateWeightKg && topSetPlateWeightKg > inv.barWeightKg
+      ? GymInventoryStore.formatPlatesForBar(topSetPlateWeightKg, inv)
       : null;
+
+  const showDetail =
+    !hasProgressionNote &&
+    (guidance.role === "wave-aux" || guidance.roleLabel.includes("калибровка") || guidance.roleLabel.includes("щадяще"));
 
   return (
     <div className={`laid-ex-guidance role-${guidance.role}`}>
       <div className="laid-ex-pills">
-        <span className="laid-ex-pill is-role">{guidance.roleLabel}</span>
+        {weightHint ? (
+          <span className={`laid-ex-pill is-weight source-${weightHint.source}`}>{weightHint.label}</span>
+        ) : null}
+        {targetSetsReps ? <span className="laid-ex-pill is-reps">{targetSetsReps}</span> : null}
         <span className="laid-ex-pill is-rir">{guidance.rirLabel}</span>
         <span className="laid-ex-pill is-rest">Отдых {guidance.restLabel}</span>
         {platesText ? (
-          <span className="laid-ex-pill is-plates" title="Раскладка блинов для стандартного грифа 20 кг">
+          <span className="laid-ex-pill is-plates" title={`Раскладка блинов для грифа ${inv.barWeightKg} кг`}>
             <Dumbbell size={12} aria-hidden="true" />
             {platesText}
           </span>
         ) : null}
       </div>
-      {!hasProgressionNote ? <p className="laid-ex-detail">{guidance.detail}</p> : null}
+      {showDetail ? <p className="laid-ex-detail">{guidance.detail}</p> : null}
       {auxProgression ? (
         <div className={`laid-aux-hint kind-${auxProgression.kind}`}>
           <div className="laid-aux-hint-copy">

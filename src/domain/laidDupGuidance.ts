@@ -1,18 +1,18 @@
 import { exerciseById } from "../lib/model";
 import type { SetEntry, WorkoutExercise } from "../lib/types";
 import {
-  LAID_LAYOUT,
-  LAID_LIFT_EXERCISE,
   LAID_LIFT_LABEL,
-  LAID_LIFT_OF,
   LAID_PLAN_MARK,
   LAID_REST_SUMMARY,
   LAID_SCHEME,
+  LAID_V2_REST_SUMMARY,
   LAID_WAVE_META,
   LAID_WEEKS,
   isHeavyCompoundAux,
   laidAuxReps,
   laidOriginalIds,
+  layoutForVersion,
+  liftExerciseForDay,
   resolveLaidExerciseId,
   type LaidAuxProgressionHint,
   type LaidDay,
@@ -21,6 +21,7 @@ import {
   type LaidExerciseSpec,
   type LaidPosition,
   type LaidSubstitutions,
+  type LaidVersion,
   type LaidWeekGuide,
 } from "./laidDupData";
 
@@ -55,9 +56,10 @@ export function buildWeekLabel(
 
 export function buildWeekGuide(
   position: LaidPosition,
-  options: { light?: boolean; deload?: boolean; totalWeeks?: number } = {},
+  options: { light?: boolean; deload?: boolean; totalWeeks?: number; version?: LaidVersion } = {},
 ): LaidWeekGuide {
   const totalWeeks = options.totalWeeks ?? LAID_WEEKS;
+  const isV2 = options.version === "v2";
   if (options.deload || position.finished) {
     const displayWeek = Math.max(1, position.raw + 1);
     return {
@@ -71,17 +73,21 @@ export function buildWeekGuide(
           ? `Неделя ${displayWeek} · Разгрузка`
           : "Разгрузочная неделя",
       focusTitle: options.deload
-        ? "Разгрузочная неделя цикла (55–65 % · половина подходов)"
+        ? isV2
+          ? "Активная разгрузка DUP v2 (75 % ТМ · половина подходов)"
+          : "Разгрузочная неделя цикла (55–65 % · половина подходов)"
         : position.finished
-          ? "Цикл 9 недель завершён — время разгрузки"
+          ? "Цикл завершён — время разгрузки"
           : "Плановая разгрузка",
       summary: options.deload
-        ? "База идёт на 55–60 % (половина откатных подходов), подсобка и тренажёры — на 65 % и половине подходов с RIR 3–4. После разгрузки волны продолжаются без потери прогресса."
+        ? isV2
+          ? "Активная разгрузка цикла 7: база 2×5 (трэп-тяга 2×3) на 75 % ТМ, подсобка и тренажёры — половина подходов и −15 % веса, RIR 4–5. Сбрасывает усталость перед пиковой волной 3."
+          : "База идёт на 55–60 % (половина откатных подходов), подсобка и тренажёры — на 65 % и половине подходов с RIR 3–4. После разгрузки волны продолжаются без потери прогресса."
         : position.finished
           ? "Проведи 1 разгрузочную неделю (50–60 % от 1ПМ, половина подходов, без отказа), затем проверь или обнови максимумы и запусти новый цикл."
           : "Снизь веса до 60–85 % (включая тренажёры), сократи подходы вдвое и держи большой запас — задача сбросить накопленную усталость, не гнаться за весом.",
-      baseRir: "База: RIR 3–4 (без отказа)",
-      auxRir: "Подсобка и тренажёры: RIR 3–4",
+      baseRir: isV2 ? "База: RIR 4–5 (без отказа)" : "База: RIR 3–4 (без отказа)",
+      auxRir: isV2 ? "Подсобка и тренажёры: RIR 4–5" : "Подсобка и тренажёры: RIR 3–4",
       restSummary: "Отдых: 1,5–2 мин (веса лёгкие)",
       isDeloadWindow: true,
     };
@@ -136,23 +142,35 @@ export function buildWeekGuide(
         "Завершение 9-недельного блока. После этой недели обязательно сделай 1 разгрузочную неделю (50–60 % веса, половина подходов, RIR 4), затем обнови 1ПМ.",
     },
   };
-  const baseRirByWave: Record<1 | 2 | 3, string> = {
-    1: options.light ? "База: топ RIR 2 · откатные RIR 2–3" : "База: топ RIR 1–2 · откатные RIR 2–3",
-    2: options.light ? "База: топ RIR 1–2 · откатные RIR 2–3" : "База: топ RIR 1 · откатные RIR 2–3",
-    3: options.light ? "База: топ RIR 1 · откатные RIR 2" : "База: топ RIR 0,5–1 · откатные RIR 2",
-  };
+  const baseRirByWave: Record<1 | 2 | 3, string> = isV2
+    ? {
+        1: "База: топ RIR 2–3 · откатные RIR 2,5–3",
+        2: "База: топ RIR 1,5–2 · откатные RIR 2–2,5",
+        3: "База: топ RIR 1–1,5 · откатные RIR 1,5–2",
+      }
+    : {
+        1: options.light ? "База: топ RIR 2 · откатные RIR 2–3" : "База: топ RIR 1–2 · откатные RIR 2–3",
+        2: options.light ? "База: топ RIR 1–2 · откатные RIR 2–3" : "База: топ RIR 1 · откатные RIR 2–3",
+        3: options.light ? "База: топ RIR 1 · откатные RIR 2" : "База: топ RIR 0,5–1 · откатные RIR 2",
+      };
   const info = focusByWeek[weekNumber] ?? focusByWeek[1];
   return {
     weekNumber: totalWeeks > LAID_WEEKS ? Math.max(1, position.raw + 1) : weekNumber,
     totalWeeks,
     wave: position.wave,
     waveTitle: waveMeta.title,
-    badge: `Волна ${position.wave} · ${waveMeta.title}`,
+    badge: isV2 ? `DUP v2 · Волна ${position.wave}` : `Волна ${position.wave} · ${waveMeta.title}`,
     focusTitle: info.title,
-    summary: info.summary,
+    summary: isV2
+      ? `Умный DUP v2 (ТМ = 90 % 1ПМ, без синглов 1ПМ). Эксцентрика 2–3 с и пауза 0,5 с в растяжении; тяжёлые S-сессии разнесены по разным неделям волны.`
+      : info.summary,
     baseRir: baseRirByWave[position.wave],
-    auxRir: "Подсобка и тренажёры: RIR 1–2 (RPE 8–9)",
-    restSummary: LAID_REST_SUMMARY,
+    auxRir: isV2
+      ? position.wave === 3
+        ? "Подсобка: RIR 1–1,5 · изоляция RIR 0–1"
+        : "Подсобка: RIR 1,5–2 · изоляция RIR 1"
+      : "Подсобка и тренажёры: RIR 1–2 (RPE 8–9)",
+    restSummary: isV2 ? LAID_V2_REST_SUMMARY : LAID_REST_SUMMARY,
     isDeloadWindow: false,
   };
 }
@@ -220,7 +238,7 @@ export function buildExerciseGuidance(
     };
   }
 
-  const waveReps = laidAuxReps(day, exerciseId, plan.position.inWave, substitutions);
+  const waveReps = laidAuxReps(day, exerciseId, plan.position.inWave, substitutions, plan.version);
   if (waveReps !== null) {
     const heavyWave = waveReps <= 4;
     return {
@@ -234,7 +252,7 @@ export function buildExerciseGuidance(
     };
   }
 
-  const added = !laidOriginalIds(day, substitutions).includes(exerciseId);
+  const added = !laidOriginalIds(day, substitutions, plan.version).includes(exerciseId);
   const compound = isHeavyCompoundAux(exerciseId);
   if (compound) {
     return {
@@ -281,10 +299,54 @@ export function buildExerciseSpec(
   day: LaidDay,
   exerciseId: string,
   substitutions?: LaidSubstitutions,
+  version?: LaidVersion,
 ): LaidExerciseSpec {
-  const originalLiftId = LAID_LIFT_EXERCISE[LAID_LIFT_OF[day]];
+  const originalLiftId = liftExerciseForDay(day, version);
   const resolvedLiftId = resolveLaidExerciseId(originalLiftId, substitutions);
   if (exerciseId === resolvedLiftId) {
+    if (version === "v2") {
+      if (day === "pull2") {
+        return {
+          exerciseId,
+          role: "lift",
+          setsLabel: "1 × (10/8/6) + 3 × (12/10/8)",
+          intensityLabel: "Двойная прогрессия · топ RIR 1–2, раб. −10 % · отдых 2–2,5 мин",
+          rirLabel: "Топ RIR 1–2 · раб. RIR 1,5–2",
+          restLabel: "2–2,5 мин",
+          restSeconds: 135,
+          note: "Замена 2-й становой с пола: базовая DUP-тяга с упором грудью без нагрузки на поясницу",
+          added: false,
+          ...(resolvedLiftId !== originalLiftId ? { replacedFrom: originalLiftId } : {}),
+        };
+      }
+      if (day === "pull1") {
+        return {
+          exerciseId,
+          role: "lift",
+          setsLabel: "1 × (5/4/3) + 2 × (6/5/4)",
+          intensityLabel: "87,5–97,5 % от ТМ (90 % 1ПМ) · топ RIR 1,5–3 · отдых 3–3,5 мин",
+          rirLabel: "Топ RIR 1,5–3 · раб. RIR 2–3",
+          restLabel: "3–3,5 мин",
+          restSeconds: 195,
+          note: "Центрированная тяга с трэп-грифом снижает момент на L5/S1 и разгружает поясницу",
+          added: false,
+          ...(resolvedLiftId !== originalLiftId ? { replacedFrom: originalLiftId } : {}),
+        };
+      }
+      const workSets = day === "legs2" ? 2 : 3;
+      return {
+        exerciseId,
+        role: "lift",
+        setsLabel: `1 × (6/5–4/3) + ${workSets} × (10–8/8–6/5–4)`,
+        intensityLabel: "85–100 % от ТМ (90 % 1ПМ) · без синглов 1ПМ · отдых 2,5–3 мин",
+        rirLabel: "Топ RIR 1–3 · раб. RIR 1,5–3",
+        restLabel: "2,5–3 мин",
+        restSeconds: 180,
+        note: "Волновая схема DUP v2: H / M / S разнесены в шахматном порядке без перегрузки ЦНС",
+        added: false,
+        ...(resolvedLiftId !== originalLiftId ? { replacedFrom: originalLiftId } : {}),
+      };
+    }
     const s = LAID_SCHEME[day];
     return {
       exerciseId,
@@ -299,7 +361,7 @@ export function buildExerciseSpec(
       ...(resolvedLiftId !== originalLiftId ? { replacedFrom: originalLiftId } : {}),
     };
   }
-  const layout = LAID_LAYOUT[day];
+  const layout = layoutForVersion(version)[day];
   const aux = layout.aux.find((x) => resolveLaidExerciseId(x.exerciseId, substitutions) === exerciseId);
   if (aux) {
     const repsText = aux.byWave
@@ -431,14 +493,15 @@ export function formatDayDescription(plan: LaidDayPlan): string {
     if (plan.prescriptionMode !== "percent_1rm") {
       return [
         `${label}.`,
-        `${LAID_PLAN_MARK} разгрузка 1 × ${heavy.reps} ${repsWord(heavy.reps)} и ${work.sets} × ${work.reps} ${repsWord(work.reps)} (RIR 3–4).`,
+        `${LAID_PLAN_MARK} разгрузка 1 × ${heavy.reps} ${repsWord(heavy.reps)} и ${work.sets} × ${work.reps} ${repsWord(work.reps)} (${plan.version === "v2" ? "RIR 4–5" : "RIR 3–4"}).`,
         "Снизь рабочий вес до комфортного лёгкого и не ходи в отказ — задача недели восстановить ЦНС и суставы.",
       ].join(" ");
     }
+    const deloadRir = plan.version === "v2" ? "RIR 4–5" : "RIR 3–4";
     return [
       `${label}.`,
-      `${LAID_PLAN_MARK} разгрузка 1 × ${heavy.reps} ${repsWord(heavy.reps)} · 60 % = ${formatKg(heavy.weightKg)} кг (RIR 3–4).`,
-      `Затем ${work.sets} × ${work.reps} ${repsWord(work.reps)} · 55 % = ${formatKg(work.weightKg)} кг (RIR 3–4).`,
+      `${LAID_PLAN_MARK} разгрузка 1 × ${heavy.reps} ${repsWord(heavy.reps)} · ${formatPct(heavy.percent)} % = ${formatKg(heavy.weightKg)} кг (${deloadRir}).`,
+      `Затем ${work.sets} × ${work.reps} ${repsWord(work.reps)} · ${formatPct(work.percent)} % = ${formatKg(work.weightKg)} кг (${deloadRir}).`,
     ].join(" ");
   }
   if (plan.prescriptionMode === "calibration") {

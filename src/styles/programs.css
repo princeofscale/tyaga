@@ -2830,4 +2830,974 @@
         font-weight: 600;
         color: var(--accent-hover, var(--accent))
     }
+
+    /* ───────────── Laid DUP v3: calm gym hierarchy, container-adaptive tiles, zero clutter ───────────── */
+    dialog.modal:has(.laid-schedule, .laid-subs-modal, .laid-week-modal, .laid-modal-v2):modal {
+        overscroll-behavior: contain
+    }
+    dialog.modal:has(.laid-schedule, .laid-subs-modal, .laid-week-modal, .laid-modal-v2)::backdrop {
+        overflow: hidden;
+        overscroll-behavior: contain
+    }
+    .laid-card {
+        container: laid-card / inline-size;
+        padding: clamp(16px, 2.6cqi, 24px);
+        gap: 16px;
+        border-radius: var(--r-card);
+        border: 1px solid var(--line);
+        background: var(--surface-grad), var(--surface);
+        box-shadow: var(--shadow-card)
+    }
+    .laid-card-title-group {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        min-inline-size: 0
+    }
+    .laid-card-head {
+        align-items: flex-start;
+        gap: 10px 14px
+    }
+    .laid-card h3 {
+        font: 760 1.4rem/1.12 var(--font-display);
+        letter-spacing: -0.02em;
+        color: var(--text)
+    }
+    .laid-card .laid-week {
+        font-size: 0.84rem;
+        font-weight: 600;
+        color: var(--accent-hover, var(--accent))
+    }
+    .laid-phase-badge {
+        padding: 4px 10px;
+        border-radius: 999px;
+        border: 1px solid color-mix(in oklab, var(--accent) 44%, var(--line));
+        background: color-mix(in oklab, var(--accent) 10%, var(--bg));
+        color: var(--text-soft);
+        font-size: 0.74rem;
+        font-weight: 650;
+        line-height: 1.35;
+        white-space: nowrap
+    }
+    .laid-overview-block {
+        display: flex;
+        flex-direction: column;
+        gap: 9px;
+        padding: 12px 14px;
+        border-radius: 13px;
+        border: 1px solid var(--line);
+        background: var(--bg)
+    }
+    .laid-overview-block.is-deload {
+        border-color: color-mix(in oklab, var(--over, #f59e0b) 44%, var(--line));
+        background: linear-gradient(180deg, color-mix(in oklab, var(--over, #f59e0b) 7%, var(--bg)), var(--bg))
+    }
+    .laid-progress-segments {
+        gap: 5px
+    }
+    .laid-seg {
+        height: 6px
+    }
+    .laid-progress-meta {
+        font-size: 0.74rem;
+        color: var(--muted)
+    }
+    .laid-progress-count {
+        color: var(--text-soft);
+        font-weight: 600
+    }
+    .laid-week-guide-disclosure {
+        padding-top: 8px;
+        border-top: 1px solid var(--line-soft)
+    }
+    .laid-week-guide-summary {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        min-block-size: 44px;
+        cursor: pointer;
+        list-style: none;
+        user-select: none
+    }
+    .laid-week-guide-summary::-webkit-details-marker {
+        display: none
+    }
+    .laid-week-guide-headline {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-inline-size: 0
+    }
+    .laid-week-guide-headline strong {
+        font-size: 0.85rem;
+        font-weight: 650;
+        color: var(--text);
+        line-height: 1.35
+    }
+    .laid-guide-inline-meta {
+        font-size: 0.74rem;
+        color: var(--muted);
+        line-height: 1.35
+    }
+    .laid-disclosure-chevron {
+        flex: none;
+        color: var(--muted);
+        transition: transform 180ms ease-out
+    }
+    .laid-week-guide-disclosure[open] .laid-disclosure-chevron {
+        transform: rotate(180deg)
+    }
+    .laid-week-guide-details {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding-top: 8px
+    }
+    .laid-card-maxes {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px
+    }
+    @container laid-card (min-width: 30rem) {
+        .laid-card-maxes {
+            grid-template-columns: repeat(4, minmax(0, 1fr))
+        }
+    }
+    button.laid-mini-max {
+        text-align: start;
+        min-block-size: 48px;
+        padding: 8px 11px;
+        border-radius: 11px;
+        border: 1px solid var(--line);
+        background: var(--bg);
+        transition: border-color 140ms ease-out, background-color 140ms ease-out
+    }
+    button.laid-mini-max:hover {
+        border-color: color-mix(in oklab, var(--accent) 48%, var(--line));
+        background: var(--surface-2)
+    }
+    button.laid-mini-max strong {
+        font-size: 0.9rem;
+        font-weight: 700;
+        font-family: var(--font-mono, inherit);
+        color: var(--text)
+    }
+    button.laid-mini-max.is-mode strong {
+        font-size: 0.8rem;
+        font-family: var(--font-body, inherit);
+        color: var(--accent-hover, var(--accent))
+    }
+    .laid-days {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 10px
+    }
+    @container laid-card (min-width: 31rem) {
+        .laid-days {
+            grid-template-columns: repeat(2, minmax(0, 1fr))
+        }
+    }
+    @container laid-card (min-width: 50rem) {
+        .laid-days {
+            grid-template-columns: repeat(3, minmax(0, 1fr))
+        }
+    }
+    .laid-days li.laid-day-tile {
+        gap: 8px;
+        padding: 12px 13px;
+        border-radius: 12px;
+        border: 1px solid var(--line);
+        background: var(--bg)
+    }
+    .laid-days li.laid-day-tile.is-expanded {
+        grid-column: 1 / -1;
+        border-color: color-mix(in oklab, var(--accent) 44%, var(--line))
+    }
+    .laid-day-title b {
+        font-size: 0.94rem;
+        font-weight: 720;
+        color: var(--text)
+    }
+    .laid-day-name {
+        padding: 1px 6px;
+        border-radius: 5px;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        font-family: var(--font-mono, inherit);
+        font-size: 0.7rem;
+        font-weight: 600;
+        color: var(--muted)
+    }
+    .laid-day-plan {
+        font-size: 0.82rem;
+        color: var(--text-soft);
+        line-height: 1.4
+    }
+    .laid-day-tile-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: auto;
+        padding-top: 8px;
+        border-top: 1px solid var(--line-soft)
+    }
+    .laid-tile-btn {
+        min-block-size: 44px;
+        min-inline-size: 44px;
+        padding: 0 12px;
+        border-radius: 9px;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        color: var(--text-soft);
+        font-size: 0.82rem;
+        font-weight: 650;
+        white-space: nowrap
+    }
+    .laid-tile-btn.is-start {
+        flex: 1 1 auto;
+        min-inline-size: 0;
+        border-color: color-mix(in oklab, var(--accent) 44%, var(--line));
+        background: color-mix(in oklab, var(--accent) 11%, var(--surface));
+        color: var(--text)
+    }
+    .laid-tile-btn.is-start svg {
+        flex: none;
+        color: var(--accent-hover, var(--accent))
+    }
+    .laid-tile-btn.is-start:hover:not(:disabled) {
+        border-color: var(--accent);
+        background: color-mix(in oklab, var(--accent) 18%, var(--surface))
+    }
+    .laid-tile-btn.is-icon {
+        flex: none;
+        padding: 0;
+        inline-size: 44px
+    }
+    .laid-tile-btn.is-icon.is-active {
+        border-color: color-mix(in oklab, var(--accent) 52%, var(--line));
+        color: var(--accent-hover, var(--accent));
+        background: color-mix(in oklab, var(--accent) 10%, var(--surface))
+    }
+    .laid-tile-btn svg.is-rotated, .laid-sched-chevron.is-rotated {
+        transform: rotate(180deg)
+    }
+    .laid-day-exercises {
+        padding-top: 8px;
+        border-top: 1px solid var(--line-soft)
+    }
+    .laid-day-ex-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 6px
+    }
+    .laid-day-ex-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 7px 9px;
+        border-radius: 9px;
+        border: 1px solid var(--line-soft);
+        background: var(--surface);
+        min-inline-size: 0
+    }
+    .laid-day-ex-row.is-lift {
+        border-color: color-mix(in oklab, var(--accent) 34%, var(--line));
+        background: color-mix(in oklab, var(--accent) 6%, var(--surface))
+    }
+    .laid-day-ex-main {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        min-inline-size: 0;
+        flex: 1 1 auto
+    }
+    .laid-day-ex-name {
+        display: inline-flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: var(--text);
+        overflow-wrap: anywhere
+    }
+    .laid-ex-tag {
+        padding: 1px 6px;
+        border-radius: 5px;
+        font-size: 0.68rem;
+        font-weight: 650;
+        border: 1px solid color-mix(in oklab, var(--accent) 44%, var(--line));
+        color: var(--accent-hover, var(--accent));
+        background: var(--bg)
+    }
+    .laid-day-ex-meta {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px 10px;
+        font-size: 0.74rem;
+        font-family: var(--font-mono, inherit);
+        font-variant-numeric: tabular-nums;
+        color: var(--muted)
+    }
+    .laid-day-ex-weight {
+        color: var(--text-soft);
+        font-weight: 600
+    }
+    .laid-day-ex-weight.source-plan, .laid-day-ex-weight.source-history {
+        color: var(--text)
+    }
+    .laid-day-ex-weight.source-deload {
+        color: var(--over, #f59e0b)
+    }
+    .laid-day-ex-weight.source-none {
+        color: var(--muted);
+        font-family: var(--font-body, inherit);
+        font-weight: 500
+    }
+    .laid-day-ex-rir {
+        color: var(--accent-hover, var(--accent));
+        font-family: var(--font-body, inherit);
+        font-weight: 600
+    }
+    .laid-day-ex-swap {
+        flex: none;
+        display: inline-grid;
+        place-items: center;
+        min-inline-size: 44px;
+        min-block-size: 44px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: var(--bg);
+        color: var(--muted);
+        transition: border-color 140ms ease-out, color 140ms ease-out
+    }
+    .laid-day-ex-swap:hover {
+        border-color: var(--accent);
+        color: var(--text)
+    }
+    .laid-card-toolbar {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding-top: 4px;
+        border-top: 1px solid var(--line-soft)
+    }
+    .laid-actions-main {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 8px
+    }
+    @container laid-card (min-width: 26rem) {
+        .laid-actions-main {
+            grid-template-columns: repeat(2, minmax(0, 1fr))
+        }
+    }
+    @container laid-card (min-width: 44rem) {
+        .laid-actions-main {
+            grid-template-columns: repeat(4, minmax(0, 1fr))
+        }
+    }
+    .laid-actions-main .button {
+        min-block-size: 46px;
+        padding: 8px 12px;
+        font-size: 0.84rem;
+        font-weight: 650;
+        gap: 7px;
+        white-space: normal;
+        text-align: center
+    }
+    .laid-btn-schedule {
+        border-color: color-mix(in oklab, var(--accent) 48%, var(--line));
+        background: color-mix(in oklab, var(--accent) 13%, var(--surface-2));
+        color: var(--text);
+        box-shadow: none
+    }
+    .laid-btn-schedule svg {
+        color: var(--accent-hover, var(--accent))
+    }
+    .laid-btn-schedule:hover:not(:disabled) {
+        border-color: var(--accent);
+        background: color-mix(in oklab, var(--accent) 20%, var(--surface-2))
+    }
+    .laid-btn-tool {
+        background: var(--bg);
+        border-color: var(--line);
+        color: var(--text-soft);
+        box-shadow: none
+    }
+    .laid-btn-tool:hover:not(:disabled) {
+        background: var(--surface-2);
+        border-color: var(--line-strong);
+        color: var(--text)
+    }
+    .laid-card-utilities {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 6px 12px
+    }
+    .laid-utility-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-block-size: 44px;
+        min-inline-size: 44px;
+        padding: 4px 10px;
+        border-radius: 9px;
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--muted);
+        font-size: 0.78rem;
+        font-weight: 600;
+        transition: color 140ms ease-out, background-color 140ms ease-out, border-color 140ms ease-out
+    }
+    .laid-utility-btn:hover:not(:disabled) {
+        color: var(--text);
+        background: var(--bg);
+        border-color: var(--line)
+    }
+    .laid-utility-btn.is-danger {
+        color: color-mix(in oklab, var(--danger) 82%, var(--muted))
+    }
+    .laid-utility-btn.is-danger:hover:not(:disabled) {
+        color: var(--danger);
+        border-color: color-mix(in oklab, var(--danger) 42%, var(--line));
+        background: color-mix(in oklab, var(--danger) 8%, var(--bg))
+    }
+
+    /* Schedule modal v3 refinements */
+    .laid-sched-hero {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 12px 14px;
+        border-radius: 13px;
+        border: 1px solid var(--line);
+        background: var(--bg)
+    }
+    .laid-sched-maxes-block {
+        display: flex;
+        flex-direction: column;
+        gap: 8px
+    }
+    .laid-sched-tip {
+        margin: -4px 0 0;
+        font-size: 0.78rem;
+        color: var(--muted)
+    }
+    .laid-week-card li {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 6px;
+        padding-top: 8px
+    }
+    .laid-sched-day-trigger {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 4px;
+        width: 100%;
+        min-block-size: 46px;
+        padding: 4px 2px;
+        text-align: start;
+        border-radius: 8px;
+        transition: background-color 140ms ease-out
+    }
+    .laid-sched-day-trigger:hover {
+        background: color-mix(in oklab, var(--surface-2) 60%, transparent)
+    }
+    .laid-sched-day-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px 8px;
+        min-inline-size: 0
+    }
+    .laid-sched-day-head .laid-status {
+        margin-inline-start: auto
+    }
+    .laid-sched-chevron {
+        flex: none;
+        color: var(--muted);
+        transition: transform 180ms ease-out
+    }
+    .laid-sched-day-detail {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        padding: 8px;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: var(--surface)
+    }
+
+    /* Substitutions modal v3 refinements */
+    .laid-subs-controls {
+        display: flex;
+        flex-direction: column;
+        gap: 8px
+    }
+    .laid-subs-day-pills {
+        display: flex;
+        flex-wrap: wrap;
+        flex-wrap: balance;
+        gap: 6px
+    }
+    .laid-filter-pill {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-block-size: 44px;
+        min-inline-size: 44px;
+        padding: 4px 12px;
+        border-radius: 9px;
+        border: 1px solid var(--line);
+        background: var(--bg);
+        color: var(--text-soft);
+        font-size: 0.78rem;
+        font-weight: 600;
+        transition: border-color 140ms ease-out, background-color 140ms ease-out, color 140ms ease-out
+    }
+    .laid-filter-pill:hover {
+        border-color: var(--line-strong);
+        color: var(--text)
+    }
+    .laid-filter-pill.active {
+        border-color: color-mix(in oklab, var(--accent) 56%, var(--line));
+        background: color-mix(in oklab, var(--accent) 14%, var(--bg));
+        color: var(--text)
+    }
+    .laid-preset-pill {
+        gap: 6px;
+        border-style: dashed
+    }
+    .laid-preset-pill svg {
+        color: var(--accent)
+    }
+    .laid-preset-pill.active {
+        border-style: solid
+    }
+    .laid-volume-chips-wrap {
+        padding: 4px 0 12px;
+        border-top: 1px solid var(--line-soft)
+    }
+    .laid-update-opts-body {
+        padding: 4px 0 8px;
+        border-top: 1px solid var(--line-soft)
+    }
+    .program-library-footer {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid var(--line-soft)
+    }
+
+    /* David Laid DUP Wave Progress Chart */
+    .laid-wave-chart-disclosure {
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--bg);
+        overflow: hidden
+    }
+    .laid-wave-chart-disclosure > summary {
+        list-style: none;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        min-block-size: 46px;
+        padding: 10px 14px;
+        font-size: 0.86rem;
+        font-weight: 650;
+        color: var(--text);
+        cursor: pointer
+    }
+    .laid-wave-chart-disclosure > summary::-webkit-details-marker {
+        display: none
+    }
+    .laid-wave-chart-disclosure[open] > summary svg {
+        transform: rotate(180deg)
+    }
+    .laid-wave-chart-disclosure > summary svg {
+        color: var(--muted);
+        transition: transform 180ms ease-out
+    }
+    .laid-wave-chart-body {
+        padding: 0 12px 14px;
+        border-top: 1px solid var(--line-soft)
+    }
+    .laid-wave-chart {
+        display: grid;
+        gap: 12px;
+        padding-top: 12px;
+        min-inline-size: 0
+    }
+    .laid-wave-chart-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px
+    }
+    .laid-wave-chart-title {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.85rem;
+        color: var(--text)
+    }
+    .laid-wave-chart-title svg {
+        color: var(--accent)
+    }
+    .laid-wave-lift-tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px
+    }
+    .laid-wave-lift-btn {
+        min-block-size: 44px;
+        min-inline-size: 44px;
+        padding: 4px 10px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        color: var(--text-soft);
+        font-size: 0.76rem;
+        font-weight: 600;
+        transition: border-color 140ms ease-out, background-color 140ms ease-out, color 140ms ease-out
+    }
+    .laid-wave-lift-btn.active {
+        border-color: color-mix(in oklab, var(--accent) 56%, var(--line));
+        background: color-mix(in oklab, var(--accent) 14%, var(--surface));
+        color: var(--text)
+    }
+    .laid-wave-kpis {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 6px
+    }
+    @media (max-width: 520px) {
+        .laid-wave-kpis {
+            grid-template-columns: repeat(2, minmax(0, 1fr))
+        }
+    }
+    .laid-wave-kpi {
+        display: grid;
+        gap: 2px;
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid var(--line-soft);
+        background: var(--surface)
+    }
+    .laid-wave-kpi span {
+        font-size: 0.69rem;
+        color: var(--muted)
+    }
+    .laid-wave-kpi b {
+        font-size: 0.88rem;
+        font-variant-numeric: tabular-nums;
+        color: var(--text)
+    }
+    .laid-wave-kpi b.is-pos {
+        color: var(--accent)
+    }
+    .laid-wave-kpi b.is-neg {
+        color: var(--over, #f59e0b)
+    }
+    .laid-wave-svg-wrap {
+        width: 100%;
+        min-inline-size: 0;
+        overflow: hidden;
+        border-radius: 10px;
+        border: 1px solid var(--line-soft);
+        background: var(--surface);
+        padding: 6px 4px 4px
+    }
+    .laid-wave-svg {
+        display: block;
+        width: 100%;
+        height: auto
+    }
+    .laid-wave-band.wave-1 {
+        fill: color-mix(in oklab, var(--accent) 4%, transparent)
+    }
+    .laid-wave-band.wave-2 {
+        fill: color-mix(in oklab, var(--accent) 8%, transparent)
+    }
+    .laid-wave-band.wave-3 {
+        fill: color-mix(in oklab, var(--accent) 12%, transparent)
+    }
+    .laid-wave-band-label {
+        font-size: 9px;
+        font-weight: 700;
+        fill: var(--muted)
+    }
+    .laid-wave-grid {
+        stroke: var(--line-soft);
+        stroke-width: 1
+    }
+    .laid-wave-baseline {
+        stroke: var(--muted);
+        stroke-width: 1;
+        stroke-dasharray: 3 3;
+        opacity: 0.65
+    }
+    .laid-wave-now-line {
+        stroke: var(--accent);
+        stroke-width: 1.2;
+        stroke-dasharray: 2 3;
+        opacity: 0.5
+    }
+    .laid-wave-line-plan {
+        stroke: color-mix(in oklab, var(--text-soft) 72%, var(--accent));
+        stroke-width: 1.75;
+        stroke-dasharray: 4 3
+    }
+    .laid-wave-dot-plan {
+        fill: var(--surface);
+        stroke: color-mix(in oklab, var(--text-soft) 78%, var(--accent));
+        stroke-width: 1.75
+    }
+    .laid-wave-line-actual {
+        stroke: var(--accent);
+        stroke-width: 2.4;
+        stroke-linecap: round;
+        stroke-linejoin: round
+    }
+    .laid-wave-dot-actual {
+        fill: var(--accent);
+        stroke: var(--bg);
+        stroke-width: 1.5
+    }
+    .laid-wave-val-label {
+        font-size: 9px;
+        font-weight: 700;
+        fill: var(--text)
+    }
+    .laid-wave-axis {
+        font-size: 9px;
+        fill: var(--muted)
+    }
+    .laid-wave-axis.is-now {
+        fill: var(--accent);
+        font-weight: 750
+    }
+    .laid-wave-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 14px;
+        font-size: 0.72rem;
+        color: var(--muted)
+    }
+    .laid-wave-legend > span {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px
+    }
+    .laid-wave-legend i {
+        display: inline-block;
+        width: 14px;
+        height: 2px;
+        border-radius: 2px
+    }
+    .laid-wave-legend .swatch-plan {
+        border-top: 2px dashed color-mix(in oklab, var(--text-soft) 72%, var(--accent))
+    }
+    .laid-wave-legend .swatch-actual {
+        background: var(--accent);
+        height: 3px
+    }
+    .laid-wave-legend .swatch-tm {
+        border-top: 1.5px dashed var(--muted)
+    }
+    .laid-wave-cards {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 6px
+    }
+    @media (max-width: 520px) {
+        .laid-wave-cards {
+            grid-template-columns: 1fr
+        }
+    }
+    .laid-wave-summary-tile {
+        display: grid;
+        gap: 4px;
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid var(--line-soft);
+        background: var(--surface)
+    }
+    .laid-wave-summary-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 6px
+    }
+    .laid-wave-summary-head b {
+        font-size: 0.78rem;
+        color: var(--text)
+    }
+    .laid-wave-summary-head small {
+        font-size: 0.69rem;
+        color: var(--muted)
+    }
+    .laid-wave-summary-vals {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 4px 8px;
+        font-size: 0.74rem;
+        font-variant-numeric: tabular-nums;
+        color: var(--muted)
+    }
+    .laid-wave-summary-vals b.has-data {
+        color: var(--accent)
+    }
+    .laid-card-title-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px
+    }
+    .laid-v2-pill {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 8px;
+        border-radius: 999px;
+        border: 1px solid color-mix(in oklab, var(--accent) 48%, var(--line));
+        background: color-mix(in oklab, var(--accent) 14%, var(--surface));
+        color: var(--accent-hover, var(--accent));
+        font-size: 0.7rem;
+        font-weight: 700;
+        white-space: nowrap
+    }
+    .laid-v2-banner {
+        padding: 14px;
+        border-radius: 14px;
+        border: 1px solid color-mix(in oklab, var(--accent) 36%, var(--line));
+        background: color-mix(in oklab, var(--accent) 6%, var(--surface));
+        margin-top: 10px
+    }
+    .laid-v2-banner.is-active {
+        border-color: color-mix(in oklab, var(--accent) 62%, var(--line));
+        background: color-mix(in oklab, var(--accent) 11%, var(--surface))
+    }
+    .laid-v2-banner-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px
+    }
+    .laid-v2-banner-copy {
+        display: grid;
+        gap: 3px;
+        flex: 1 1 220px;
+        min-inline-size: 0
+    }
+    .laid-v2-eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        color: var(--accent-hover, var(--accent))
+    }
+    .laid-v2-banner-copy strong {
+        font-size: 0.94rem;
+        color: var(--text);
+        line-height: 1.3
+    }
+    .laid-v2-banner-copy small {
+        font-size: 0.78rem;
+        color: var(--text-soft);
+        line-height: 1.45
+    }
+    .laid-v2-toggle-btn {
+        min-block-size: 44px;
+        flex: none
+    }
+    .laid-v2-summary-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 10px
+    }
+    .laid-v2-bullets {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        gap: 8px
+    }
+    .laid-v2-bullets li {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        font-size: 0.82rem;
+        line-height: 1.45;
+        color: var(--text-soft)
+    }
+    .laid-v2-bullets li svg {
+        color: var(--accent);
+        flex: none;
+        margin-top: 3px
+    }
+    .laid-v2-bullets li b {
+        color: var(--text)
+    }
+    .laid-v2-upgrade-bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px 14px;
+        padding: 12px 14px;
+        border-radius: 13px;
+        border: 1px solid color-mix(in oklab, var(--accent) 42%, var(--line));
+        background: color-mix(in oklab, var(--accent) 8%, var(--bg))
+    }
+    .laid-v2-upgrade-copy {
+        display: grid;
+        gap: 2px;
+        flex: 1 1 200px;
+        min-inline-size: 0
+    }
+    .laid-v2-upgrade-copy b {
+        font-size: 0.86rem;
+        color: var(--text)
+    }
+    .laid-v2-upgrade-copy span {
+        font-size: 0.76rem;
+        line-height: 1.4;
+        color: var(--text-soft)
+    }
+    .laid-v2-upgrade-btn {
+        min-block-size: 44px;
+        padding: 8px 14px;
+        font-size: 0.82rem;
+        flex: none
+    }
+    @media (forced-colors: active) {
+        .laid-card, .laid-day-tile, .laid-btn-schedule, .laid-filter-pill.active {
+            border-color: ButtonText;
+            box-shadow: none
+        }
+        .laid-seg-fill {
+            background: Highlight
+        }
+    }
 }

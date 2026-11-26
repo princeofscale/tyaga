@@ -5,6 +5,7 @@ export type PeriodizationCheck = { ok: true; value: RoutinePeriodization } | { o
 
 const KEYS = [
   "kind",
+  "version",
   "cycleId",
   "day",
   "startMonday",
@@ -46,6 +47,11 @@ export class PeriodizationRules {
     const p = value;
     if (Object.keys(p).some((key) => !KEYS.includes(key))) return fail("Проверь периодизацию программы");
     if (p.kind !== "laid-dup") return fail("Проверь вид периодизации");
+    let version: "v1" | "v2" | undefined;
+    if (p.version !== undefined) {
+      if (p.version !== "v1" && p.version !== "v2") return fail("Проверь версию периодизации");
+      if (p.version === "v2") version = "v2";
+    }
     const day = PeriodizationRules.DAYS.find((d) => d === p.day);
     if (!day) return fail("Проверь день периодизации");
     const startMonday = p.startMonday;
@@ -124,6 +130,7 @@ export class PeriodizationRules {
       ok: true,
       value: {
         kind: "laid-dup",
+        ...(version ? { version } : {}),
         cycleId: p.cycleId.trim(),
         day,
         startMonday,

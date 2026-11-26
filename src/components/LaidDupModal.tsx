@@ -7,6 +7,7 @@ import {
   type LaidLift,
   type LaidSlotInfo,
   type LaidSubstitutions,
+  type LaidVersion,
   type LaidWeekSlot,
 } from "../domain/LaidDupPlan";
 import { ExerciseAvoidStore, SubstitutionPolicy } from "../domain/SubstitutionPolicy";
@@ -98,11 +99,12 @@ export default function LaidDupModal(props: Props) {
   const [subsOpen, setSubsOpen] = useState(false);
   const [extras, setExtras] = useState(true);
   const [light, setLight] = useState(() => !!props.minorMode);
+  const [version, setVersion] = useState<LaidVersion>(() => base?.version ?? "v1");
+  const isV2 = version === "v2";
   const [useTrainingMax, setUseTrainingMax] = useState(() => mode === "create");
   const [midDeload, setMidDeload] = useState(() => !!base?.deloadWeeks?.includes(6));
   const [rollingWeek, setRollingWeek] = useState(() => base?.weekMode === "rolling");
   const [autoEscalate, setAutoEscalate] = useState(() => !props.minorMode && !!base?.autoEscalate);
-  const spineFriendly = useMemo(() => LaidDupPlan.isSpineFriendly(substitutions), [substitutions]);
   const avoidedIds = useMemo(
     () => (props.accountId ? new ExerciseAvoidStore(props.accountId).ids() : undefined),
     [props.accountId],
@@ -125,34 +127,36 @@ export default function LaidDupModal(props: Props) {
     () => LIFTS.filter((l) => estimates[l] !== null).length,
     [estimates],
   );
+  const tmFactor = isV2 ? LaidDupPlan.V2_TM_FACTOR : LaidDupPlan.TRAINING_MAX_FACTOR;
+  const tmPctLabel = isV2 ? "90 %" : "92,5 %";
   const suggestedEstimate = (est: number) =>
-    useTrainingMax ? LaidDupPlan.trainingMaxFrom1Rm(est) : est;
+    useTrainingMax ? LaidDupPlan.trainingMaxFrom1Rm(est, tmFactor) : est;
   const allEstimatesApplied = useMemo(
     () =>
       estimateCount > 0 &&
       LIFTS.every((l) => {
         const est = estimates[l];
         if (est === null) return true;
-        const target = useTrainingMax ? LaidDupPlan.trainingMaxFrom1Rm(est) : est;
+        const target = useTrainingMax ? LaidDupPlan.trainingMaxFrom1Rm(est, tmFactor) : est;
         return values[l] === LaidDupPlan.kg(target);
       }),
-    [estimateCount, estimates, values, useTrainingMax],
+    [estimateCount, estimates, values, useTrainingMax, tmFactor],
   );
 
   const catalogSlots = useMemo(
-    () => LaidDupPlan.catalogSlots(extras, activeSubs),
-    [extras, activeSubs],
+    () => LaidDupPlan.catalogSlots(isV2 ? true : extras, activeSubs, version),
+    [isV2, extras, activeSubs, version],
   );
   const liftSlots = useMemo(() => catalogSlots.filter((s) => s.role === "lift"), [catalogSlots]);
   const auxSlots = useMemo(() => catalogSlots.filter((s) => s.role !== "lift"), [catalogSlots]);
 
   const volumeSummary = useMemo(
-    () => LaidDupPlan.weeklyMuscleVolume({ extras, substitutions: activeSubs }),
-    [extras, activeSubs],
+    () => LaidDupPlan.weeklyMuscleVolume({ version, extras: isV2 ? true : extras, substitutions: activeSubs }),
+    [version, isV2, extras, activeSubs],
   );
   const baselineVolume = useMemo(
-    () => LaidDupPlan.weeklyMuscleVolume({ extras }),
-    [extras],
+    () => LaidDupPlan.weeklyMuscleVolume({ version: "v1", extras: true }),
+    [],
   );
 
   const rhythm = useMemo(() => LaidDupPlan.matchingRhythm(slots), [slots]);
@@ -251,17 +255,18 @@ export default function LaidDupModal(props: Props) {
     try {
       if (mode === "create") {
         const createdRoutines = LaidDupPlan.routines({
+          version,
           maxes,
-          extras,
-          light,
+          extras: isV2 ? true : extras,
+          light: isV2 ? true : light,
           startMonday,
           weekdays,
           substitutions: activeSubs,
           calibrationLifts,
           painFlags,
           autoEscalate: !props.minorMode && autoEscalate,
-          weekMode: rollingWeek ? "rolling" : "calendar",
-          deloadWeeks: midDeload ? [6] : undefined,
+          weekMode: isV2 ? "rolling" : rollingWeek ? "rolling" : "calendar",
+          deloadWeeks: isV2 ? [LaidDupPlan.V2_DELOAD_WEEK] : midDeload ? [6] : undefined,
         });
         if (replaceExisting && props.routines.length > 0 && props.onReplaceRoutines) {
           await props.onReplaceRoutines(props.routines, createdRoutines);
@@ -284,7 +289,11 @@ export default function LaidDupModal(props: Props) {
         const subText = subCount > 0 ? ` Замен упражнений: ${subCount}.` : "";
         const replaceText =
           replaceExisting && props.routines.length > 0 ? " Прежние программы заменены." : "";
-        props.onDone(`Программа Лейда создана: шесть дней, ${daysLabel}.${subText}${replaceText} Расписание — в «Программах».`);
+        props.onDone(
+          isV2
+            ? `Умный DUP v2 создан: 6 дней (${daysLabel}), 10 недель с разгрузкой на 7-й и −68 % на поясницу.${subText}${replaceText}`
+            : `Программа Лейда создана: шесть дней, ${daysLabel}.${subText}${replaceText} Расписание — в «Программах».`,
+        );
       } else {
         const week = position ? position.week : 0;
         const nextCal = calibrationLifts.length ? [...new Set(calibrationLifts)] : undefined;
@@ -414,8 +423,55 @@ export default function LaidDupModal(props: Props) {
                 ) : null}
               </div>
               <p className="laid-lead">
-                1ПМ — максимум на одно повторение; вводи осторожный тренировочный максимум (92,5 % от 1ПМ). {LaidDupPlan.LOAD_NOTICE}
+                {isV2
+                  ? "Умный DUP v2: веса считаются от 90 % тренировочного максимума (ТМ), без опасных синглов 1ПМ и с разгрузкой на 7-й неделе."
+                  : `1ПМ — максимум на одно повторение; вводи осторожный тренировочный максимум (92,5 % от 1ПМ). ${LaidDupPlan.LOAD_NOTICE}`}
               </p>
+              {mode === "create" ? (
+                <div className={`laid-v2-banner${isV2 ? " is-active" : ""}`}>
+                  <div className="laid-v2-banner-head">
+                    <div className="laid-v2-banner-copy">
+                      <span className="laid-v2-eyebrow">
+                        <Sparkles size={13} aria-hidden="true" />
+                        {isV2 ? "Умный DUP v2 · Баланс и защита" : "Рекомендуемое улучшение (1 кнопка)"}
+                      </span>
+                      <strong>
+                        {isV2
+                          ? "Программа улучшена под длинные рычаги и восстановление"
+                          : "Умный DUP v2: Баланс и защита"}
+                      </strong>
+                      <small>
+                        {isV2
+                          ? "Включены ритм 3+1+3, плавающая неделя, ТМ 90 %, −68 % нагрузки на поясницу, икры/пресс/задняя дельта и разгрузка на 7-й нед."
+                          : "В один клик заменяет все настройки: −68 % на поясницу, закрытые икры/пресс/задняя дельта, без синглов 1ПМ, 57–65 мин."}
+                      </small>
+                    </div>
+                    <button
+                      type="button"
+                      className={`button ${isV2 ? "secondary" : "primary"} laid-v2-toggle-btn`}
+                      aria-pressed={isV2}
+                      onClick={() => {
+                        const next: LaidVersion = isV2 ? "v1" : "v2";
+                        setVersion(next);
+                        setSubstitutions({});
+                        if (next === "v2") {
+                          setSlots(LaidDupPlan.slotsForRhythm("3x1x3"));
+                          setExtras(true);
+                          setLight(true);
+                          setMidDeload(true);
+                          setRollingWeek(true);
+                        } else {
+                          setLight(!!props.minorMode);
+                          setMidDeload(false);
+                          setRollingWeek(false);
+                        }
+                      }}
+                    >
+                      {isV2 ? "Вернуться к оригиналу" : "Улучшить программу"}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
               {props.minorMode ? (
                 <p className="tiny laid-deload-hint">
                   Включён безопасный режим (до 18 лет): облегчённый формат без синглов 95–97,5 % включён по умолчанию, автоэскалация 1ПМ отключена. Рекомендуется контроль техники с тренером.
@@ -441,16 +497,16 @@ export default function LaidDupModal(props: Props) {
                       type="button"
                       aria-pressed={useTrainingMax}
                       className={`laid-mode-chip${useTrainingMax ? " active" : ""}`}
-                      title="Считать по 92,5 % от расчётного 1ПМ, чтобы не словить перетрен в волнах 2–3"
+                      title={`Считать по ${tmPctLabel} от расчётного 1ПМ, чтобы не словить перетрен в волнах 2–3`}
                       onClick={() => setUseTrainingMax((v) => !v)}
                     >
-                      {useTrainingMax ? "ТМ 92,5 % · вкл" : "100 % от 1ПМ"}
+                      {useTrainingMax ? `ТМ ${tmPctLabel} · вкл` : "100 % от 1ПМ"}
                     </button>
                   ) : null}
                   {estimateCount >= 2 && !allEstimatesApplied ? (
                     <button type="button" className="laid-fill-all-btn" onClick={applyAllEstimates}>
                       <Sparkles size={13} aria-hidden="true" />
-                      <span>{useTrainingMax ? "Заполнить ТМ (92,5 %)" : "Заполнить из истории"}</span>
+                      <span>{useTrainingMax ? `Заполнить ТМ (${tmPctLabel})` : "Заполнить из истории"}</span>
                     </button>
                   ) : null}
                 </div>
@@ -727,171 +783,129 @@ export default function LaidDupModal(props: Props) {
               </p>
             )}
 
-            {/* Section 3: Program Options (clean grouped list) & Exercise Substitutions */}
+            {/* Section 3: Program Options (clean 1-button DUP v2 summary or minimal original toggles) */}
             {mode === "create" ? (
               <>
-                <section className="laid-section laid-settings-card" aria-labelledby={`${uid}-opts-title`}>
-                  <h3 id={`${uid}-opts-title`} className="laid-section-title">
-                    Параметры
-                  </h3>
-                  <div className="laid-switches-grouped">
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={extras}
-                      className="laid-switch laid-switch-row"
-                      onClick={() => setExtras(!extras)}
-                    >
-                      <span className="laid-switch-text">
-                        Добавить к оригиналу: задняя дельта, отведения, икры, пресс
-                        <small>
-                          {extras
-                            ? `+${sets.added} ${setsWord(sets.added)} в неделю (${sets.base + sets.added} всего); добавленное помечено.`
-                            : `Без добавок: ${sets.base} ${setsWord(sets.base)} в неделю.`}
-                        </small>
-                      </span>
-                      <span className="laid-switch-control" aria-hidden="true">
-                        <span className="laid-switch-state">{extras ? "Вкл" : "Выкл"}</span>
-                        <span className="laid-switch-track">
-                          <m.span className="laid-switch-thumb" layout transition={reduced ? { duration: 0 } : SPRING_THUMB} />
-                        </span>
-                      </span>
-                    </button>
-
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={light}
-                      className="laid-switch laid-switch-row"
-                      onClick={() => setLight(!light)}
-                    >
-                      <span className="laid-switch-text">
-                        Облегчённо: вместо одного повторения — три
-                        <small>Синглы (95–97,5 %) → тройки (90–92,5 %), двойки тяги → 4 × 4.</small>
-                      </span>
-                      <span className="laid-switch-control" aria-hidden="true">
-                        <span className="laid-switch-state">{light ? "Вкл" : "Выкл"}</span>
-                        <span className="laid-switch-track">
-                          <m.span className="laid-switch-thumb" layout transition={reduced ? { duration: 0 } : SPRING_THUMB} />
-                        </span>
-                      </span>
-                    </button>
-
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={spineFriendly}
-                      className="laid-switch laid-switch-row"
-                      onClick={() =>
-                        setSubstitutions((prev) => LaidDupPlan.toggleSpineFriendly(prev, !spineFriendly))
-                      }
-                    >
-                      <span className="laid-switch-text">
-                        Щадящая поясница (−18 осевых подх./нед)
-                        <small>
-                          Мёртвая → сгибания лёжа · Ятс → тяга блока сидя · выпады → жим ногами. Сейчас осевых: {volumeSummary.axialSets} подх./нед.
-                        </small>
-                      </span>
-                      <span className="laid-switch-control" aria-hidden="true">
-                        <span className="laid-switch-state">{spineFriendly ? "Вкл" : "Выкл"}</span>
-                        <span className="laid-switch-track">
-                          <m.span className="laid-switch-thumb" layout transition={reduced ? { duration: 0 } : SPRING_THUMB} />
-                        </span>
-                      </span>
-                    </button>
-
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={midDeload}
-                      className="laid-switch laid-switch-row"
-                      onClick={() => setMidDeload(!midDeload)}
-                    >
-                      <span className="laid-switch-text">
-                        Разгрузка после волны 2 (неделя 7)
-                        <small>
-                          Вставляет разгрузочную неделю (55–65 %, половина подходов, RIR 3–4); волна 3 сдвигается на недели 8–10.
-                        </small>
-                      </span>
-                      <span className="laid-switch-control" aria-hidden="true">
-                        <span className="laid-switch-state">{midDeload ? "Вкл" : "Выкл"}</span>
-                        <span className="laid-switch-track">
-                          <m.span className="laid-switch-thumb" layout transition={reduced ? { duration: 0 } : SPRING_THUMB} />
-                        </span>
-                      </span>
-                    </button>
-
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={rollingWeek}
-                      className="laid-switch laid-switch-row"
-                      onClick={() => setRollingWeek(!rollingWeek)}
-                    >
-                      <span className="laid-switch-text">
-                        Плавающая неделя (по факту 6 тренировок)
-                        <small>
-                          Новая неделя DUP начинается после выполнения 6 тренировок цикла — пропуск дня не «сжигает» волну.
-                        </small>
-                      </span>
-                      <span className="laid-switch-control" aria-hidden="true">
-                        <span className="laid-switch-state">{rollingWeek ? "Вкл" : "Выкл"}</span>
-                        <span className="laid-switch-track">
-                          <m.span className="laid-switch-thumb" layout transition={reduced ? { duration: 0 } : SPRING_THUMB} />
-                        </span>
-                      </span>
-                    </button>
-
-                    {!props.minorMode ? (
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={autoEscalate}
-                        className="laid-switch laid-switch-row"
-                        onClick={() => setAutoEscalate(!autoEscalate)}
-                      >
-                        <span className="laid-switch-text">
-                          Автоповышение 1ПМ внутри цикла (+5 %)
-                          <small>
-                            {autoEscalate
-                              ? "Веса волн будут автоматически расти при росте расчётного 1ПМ на ≥5 %."
-                              : "Выкл (рекомендуется): при росте 1ПМ появится подсказка с кнопкой, без скрытых изменений."}
-                          </small>
-                        </span>
-                        <span className="laid-switch-control" aria-hidden="true">
-                          <span className="laid-switch-state">{autoEscalate ? "Вкл" : "Выкл"}</span>
-                          <span className="laid-switch-track">
-                            <m.span className="laid-switch-thumb" layout transition={reduced ? { duration: 0 } : SPRING_THUMB} />
+                {isV2 ? (
+                  <section className="laid-section laid-settings-card laid-v2-summary-card" aria-labelledby={`${uid}-opts-title`}>
+                    <div className="laid-v2-summary-head">
+                      <h3 id={`${uid}-opts-title`} className="laid-section-title">
+                        Что улучшено в «Умном DUP v2»
+                      </h3>
+                      <span className="laid-v2-pill">124 подх. · 14 осевых</span>
+                    </div>
+                    <ul className="laid-v2-bullets">
+                      {LaidDupPlan.V2_SUMMARY_BULLETS.map((item) => (
+                        <li key={item.title}>
+                          <Check size={14} aria-hidden="true" />
+                          <span>
+                            <b>{item.title}:</b> {item.detail}
                           </span>
-                        </span>
-                      </button>
-                    ) : null}
+                        </li>
+                      ))}
+                    </ul>
                     {props.routines.length > 0 && props.onReplaceRoutines ? (
+                      <div className="laid-switches-grouped" style={{ marginTop: 10 }}>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={replaceExisting}
+                          className="laid-switch laid-switch-row"
+                          onClick={() => setReplaceExisting(!replaceExisting)}
+                        >
+                          <span className="laid-switch-text">
+                            Заменить текущие программы ({props.routines.length})
+                            <small>
+                              {replaceExisting
+                                ? "Старые программы удалятся разом, история тренировок останется."
+                                : "Текущие программы останутся, к ним добавятся 6 дней DUP v2."}
+                            </small>
+                          </span>
+                          <span className="laid-switch-control" aria-hidden="true">
+                            <span className="laid-switch-state">{replaceExisting ? "Заменить" : "Добавить"}</span>
+                            <span className="laid-switch-track">
+                              <m.span className="laid-switch-thumb" layout transition={reduced ? { duration: 0 } : SPRING_THUMB} />
+                            </span>
+                          </span>
+                        </button>
+                      </div>
+                    ) : null}
+                  </section>
+                ) : (
+                  <section className="laid-section laid-settings-card" aria-labelledby={`${uid}-opts-title`}>
+                    <h3 id={`${uid}-opts-title`} className="laid-section-title">
+                      Параметры оригинала
+                    </h3>
+                    <div className="laid-switches-grouped">
                       <button
                         type="button"
                         role="switch"
-                        aria-checked={replaceExisting}
+                        aria-checked={extras}
                         className="laid-switch laid-switch-row"
-                        onClick={() => setReplaceExisting(!replaceExisting)}
+                        onClick={() => setExtras(!extras)}
                       >
                         <span className="laid-switch-text">
-                          Заменить текущие программы ({props.routines.length})
+                          Добавить к оригиналу: задняя дельта, отведения, икры, пресс
                           <small>
-                            {replaceExisting
-                              ? "Старые программы удалятся разом, история тренировок останется."
-                              : "Текущие программы останутся, к ним добавятся 6 дней Лейда."}
+                            {extras
+                              ? `+${sets.added} ${setsWord(sets.added)} в неделю (${sets.base + sets.added} всего); добавленное помечено.`
+                              : `Без добавок: ${sets.base} ${setsWord(sets.base)} в неделю.`}
                           </small>
                         </span>
                         <span className="laid-switch-control" aria-hidden="true">
-                          <span className="laid-switch-state">{replaceExisting ? "Заменить" : "Добавить"}</span>
+                          <span className="laid-switch-state">{extras ? "Вкл" : "Выкл"}</span>
                           <span className="laid-switch-track">
                             <m.span className="laid-switch-thumb" layout transition={reduced ? { duration: 0 } : SPRING_THUMB} />
                           </span>
                         </span>
                       </button>
-                    ) : null}
-                  </div>
-                </section>
+
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={light}
+                        className="laid-switch laid-switch-row"
+                        onClick={() => setLight(!light)}
+                      >
+                        <span className="laid-switch-text">
+                          Облегчённо: вместо одного повторения — три
+                          <small>Синглы (95–97,5 %) → тройки (90–92,5 %), двойки тяги → 4 × 4.</small>
+                        </span>
+                        <span className="laid-switch-control" aria-hidden="true">
+                          <span className="laid-switch-state">{light ? "Вкл" : "Выкл"}</span>
+                          <span className="laid-switch-track">
+                            <m.span className="laid-switch-thumb" layout transition={reduced ? { duration: 0 } : SPRING_THUMB} />
+                          </span>
+                        </span>
+                      </button>
+
+                      {props.routines.length > 0 && props.onReplaceRoutines ? (
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={replaceExisting}
+                          className="laid-switch laid-switch-row"
+                          onClick={() => setReplaceExisting(!replaceExisting)}
+                        >
+                          <span className="laid-switch-text">
+                            Заменить текущие программы ({props.routines.length})
+                            <small>
+                              {replaceExisting
+                                ? "Старые программы удалятся разом, история тренировок останется."
+                                : "Текущие программы останутся, к ним добавятся 6 дней Лейда."}
+                            </small>
+                          </span>
+                          <span className="laid-switch-control" aria-hidden="true">
+                            <span className="laid-switch-state">{replaceExisting ? "Заменить" : "Добавить"}</span>
+                            <span className="laid-switch-track">
+                              <m.span className="laid-switch-thumb" layout transition={reduced ? { duration: 0 } : SPRING_THUMB} />
+                            </span>
+                          </span>
+                        </button>
+                      ) : null}
+                    </div>
+                  </section>
+                )}
 
                 {/* Section 4: Exercise Substitutions Disclosure (injuries / gym adaptation) */}
                 <details
@@ -1045,11 +1059,17 @@ export default function LaidDupModal(props: Props) {
                 </AnimatePresence>
               </>
             ) : (
-              <section className="laid-section laid-settings-card" aria-labelledby={`${uid}-cycle-opts-title`}>
-                <h3 id={`${uid}-cycle-opts-title`} className="laid-section-title">
-                  Параметры цикла
-                </h3>
-                <div className="laid-switches-grouped">
+              <details className="laid-disclosure laid-update-opts" open={mode === "restart"}>
+                <summary>
+                  <span className="laid-disclosure-label">
+                    <span>Дополнительные параметры цикла</span>
+                    <small>
+                      {rollingWeek ? "Плавающая неделя" : "Календарные недели"}
+                      {!props.minorMode ? (autoEscalate ? " · авто +5 %" : " · 1ПМ вручную") : ""}
+                    </small>
+                  </span>
+                </summary>
+                <div className="laid-switches-grouped laid-update-opts-body">
                   {mode === "restart" ? (
                     <button
                       type="button"
@@ -1115,7 +1135,7 @@ export default function LaidDupModal(props: Props) {
                     </button>
                   ) : null}
                 </div>
-              </section>
+              </details>
             )}
 
             {/* Section 5: Compact Preview */}
@@ -1141,7 +1161,8 @@ export default function LaidDupModal(props: Props) {
                       .sort((a, b) => (mode === "create" ? weekdays[a] - weekdays[b] : cycleWeekdays[a] - cycleWeekdays[b]))
                       .map((day) => {
                         const plan = LaidDupPlan.day(day, previewWeek, maxes, {
-                          light: mode === "create" ? light : (base?.light ?? false),
+                          version: mode === "create" ? version : base?.version,
+                          light: mode === "create" ? (isV2 ? true : light) : (base?.light ?? false),
                           substitutions: mode === "create" ? activeSubs : base?.substitutions,
                           calibrationLifts: mode === "create" ? calibrationLifts : base?.calibrationLifts,
                           painFlags: mode === "create" ? painFlags : base?.painFlags,
@@ -1195,6 +1216,8 @@ export default function LaidDupModal(props: Props) {
           currentExercise={swapCurrentEx}
           originalExercise={swapOriginalEx}
           showCompatibilityFor={swapSlot.role === "lift" ? swapOriginalEx : undefined}
+          workouts={props.workouts}
+          today={today}
           personal={props.personal}
           avoidedIds={avoidedIds}
           excludeIds={swapExcludeIds}

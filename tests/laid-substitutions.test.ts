@@ -5,8 +5,9 @@ import { PeriodizationRules } from "../src/domain/PeriodizationRules";
 import { TrainingProgram } from "../src/domain/TrainingProgram";
 import { TrainingVolume } from "../src/domain/TrainingVolume";
 import { BiomechanicsEngine } from "../src/domain/BiomechanicsEngine";
+import { ExerciseAlternativesFinder } from "../src/domain/ExerciseAlternatives";
 import { InputError, validPeriodization } from "../server/validation";
-import { makeExerciseEntry, makeSets } from "../src/lib/model";
+import { exerciseById, makeExerciseEntry, makeSets } from "../src/lib/model";
 import type { LaidMaxes, Workout } from "../src/lib/types";
 
 const MAXES: LaidMaxes = { squat: 120, bench: 100, deadlift: 160, ohp: 65 };
@@ -223,4 +224,82 @@ test("withSubstitutions обновляет уже активный цикл с �
   assert.equal(restoredPull1.exercises[0].exerciseId, "deadlift-bar");
   assert.equal(restoredPull1.exercises[1].exerciseId, "deadlift-stiff");
   assert.equal(LAID_WEEKS, 9);
+});
+
+test("Замена разведений гантелей на бабочку и превью дня с известными весами, повторами и RIR по неделям", () => {
+  const fly = exerciseById("fly-db-flat")!;
+  const alternatives = ExerciseAlternativesFinder.findAlternatives(fly);
+  assert.ok(
+    alternatives.some((a) => a.exercise.id === "pec-deck-fly"),
+    "пек-дек («бабочка») должен предлагаться среди топовых альтернатив для разведений гантелей лёжа",
+  );
+
+  const cycle = LaidDupPlan.routines({
+    maxes: { squat: 100, bench: 80, deadlift: 140, ohp: 60 },
+    extras: true,
+    light: false,
+    startMonday: START,
+    substitutions: { "fly-db-flat": "pec-deck-fly" },
+    deloadWeeks: [6],
+  });
+  const push1 = cycle.find((r) => r.periodization!.day === "push1")!;
+  const workouts = [doneWorkout("2026-11-05", [["pec-deck-fly", 45, 10]])];
+
+  // Неделя 1 (волна 1): база по % DUP, бабочка — вес из истории, push-press — 3 × 4
+  const week1 = LaidDupPlan.dayExercisesPreview(push1, 0, workouts, "2026-11-10");
+  const bench = week1.find((x) => x.exerciseId === "bench")!;
+  const pecDeck = week1.find((x) => x.exerciseId === "pec-deck-fly")!;
+  const pushPressW1 = week1.find((x) => x.exerciseId === "push-press")!;
+
+  assert.equal(bench.setsRepsLabel, "1×1 + 4×4");
+  assert.equal(bench.weightLabel, "75 / 67,5 кг");
+  assert.equal(bench.rirLabel, "Топ 1–2 · раб. 2–3");
+
+  assert.equal(pecDeck.originalId, "fly-db-flat");
+  assert.equal(pecDeck.isReplaced, true);
+  assert.equal(pecDeck.setsRepsLabel, "3 × 10");
+  assert.equal(pecDeck.weightLabel, "45 кг");
+  assert.equal(pecDeck.weightSource, "history");
+  assert.equal(pecDeck.rirLabel, "RIR 1–2");
+
+  assert.equal(pushPressW1.setsRepsLabel, "3 × 4");
+
+  // Неделя 2 (волна 1): волновая подсобка сдвигается на 3 × 8
+  const week2 = LaidDupPlan.dayExercisesPreview(push1, 1, workouts, "2026-11-17");
+  assert.equal(week2.find((x) => x.exerciseId === "push-press")!.setsRepsLabel, "3 × 8");
+
+  // Разгрузочная неделя (индекс 6): вес бабочки снижен до 65 % (29,5 кг), подходы уполовинены, RIR 3–4
+  const deloadWeek = LaidDupPlan.dayExercisesPreview(push1, 6, workouts, "2026-12-22");
+  const pecDeckDeload = deloadWeek.find((x) => x.exerciseId === "pec-deck-fly")!;
+  assert.equal(pecDeckDeload.setsRepsLabel, "1 × 10");
+  assert.equal(pecDeckDeload.weightSource, "deload");
+  assert.match(pecDeckDeload.weightLabel, /29,5 кг \(65 %\)/);
+  assert.equal(pecDeckDeload.rirLabel, "RIR 3–4");
+});
+
+test("waveProgress считает плановые пики и фактический e1RM по волнам 1 → 2 → 3", () => {
+  const cycle = LaidDupPlan.routines({
+    maxes: { squat: 100, bench: 80, deadlift: 140, ohp: 60 },
+    extras: true,
+    light: false,
+    startMonday: START,
+  });
+
+  const workouts = [
+    doneWorkout("2026-11-10", [["bench", 75, 3]]), // Неделя 1 (Волна 1): e1RM = 75 * (1 + 3/30) = 82.5
+    doneWorkout("2026-12-02", [["bench", 80, 3]]), // Неделя 4 (Волна 2): e1RM = 80 * 1.1 = 88
+  ];
+
+  const series = LaidDupPlan.waveProgress(cycle, workouts, "2026-12-05");
+  assert.equal(series.length, 4);
+
+  const bench = series.find((s) => s.lift === "bench")!;
+  assert.equal(bench.weeks.length, 9);
+  assert.equal(bench.startMaxKg, 80);
+  assert.equal(bench.bestE1rm, 88);
+  assert.equal(bench.deltaKg, 8);
+  assert.equal(bench.waves[0].bestE1rm, 82.5);
+  assert.equal(bench.waves[1].bestE1rm, 88);
+  assert.equal(bench.waves[2].bestE1rm, null);
+  assert.ok((bench.waves[2].plannedPeakKg ?? 0) >= (bench.waves[0].plannedPeakKg ?? 0));
 });

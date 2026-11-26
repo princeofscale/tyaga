@@ -315,11 +315,18 @@ export class TrainingProgram {
     const day = p.day;
     const subs = p.substitutions;
     const totalWeeks = LaidDupPlan.totalWeeks(p);
+    const isV2 = p.version === "v2";
     const week = LaidDupPlan.weekLabel(plan.position, { isDeload: plan.isDeload, totalWeeks });
     const notesParts = [
       workout.notes,
       week,
-      ...(plan.isDeload ? ["Разгрузочная неделя (55–65 %, половина подходов, RIR 3–4)."] : []),
+      ...(plan.isDeload
+        ? [
+            isV2
+              ? "Активная разгрузка DUP v2 (75 % ТМ на базе, −15 % веса и −50 % подходов в подсобке, RIR 4–5)."
+              : "Разгрузочная неделя (55–65 %, половина подходов, RIR 3–4).",
+          ]
+        : []),
     ].filter(Boolean);
     return {
       ...workout,
@@ -334,6 +341,7 @@ export class TrainingProgram {
           const working = entry.sets.filter((s) => !s.warmup);
           const keep = Math.max(1, Math.floor(working.length * 0.5));
           const keptIds = new Set(working.slice(0, keep).map((s) => s.id));
+          const factor = isV2 ? 0.85 : 0.65;
           const sets = entry.sets
             .filter((s) => s.warmup || keptIds.has(s.id))
             .map((s) =>
@@ -341,19 +349,21 @@ export class TrainingProgram {
                 ? s
                 : {
                     ...s,
-                    weight: scalableWeight && s.weight > 0 ? Math.round(s.weight * 0.65 * 2) / 2 : s.weight,
-                    rir: 4,
+                    weight: scalableWeight && s.weight > 0 ? Math.round(s.weight * factor * 2) / 2 : s.weight,
+                    rir: isV2 ? 5 : 4,
                   },
             );
           return {
             ...entry,
             sets,
-            progressionNote: "Разгрузочная неделя: 65 % рабочего веса, половина подходов, RIR 3–4 (без отказа).",
+            progressionNote: isV2
+              ? "Активная разгрузка DUP v2: −15 % веса, половина подходов, RIR 4–5 (без отказа)."
+              : "Разгрузочная неделя: 65 % рабочего веса, половина подходов, RIR 3–4 (без отказа).",
           };
         }
-        const reps = LaidDupPlan.auxReps(day, entry.exerciseId, plan.position.inWave, subs);
+        const reps = LaidDupPlan.auxReps(day, entry.exerciseId, plan.position.inWave, subs, p.version);
         if (reps !== null) {
-          // Волновая подсобка (push press 4/8/12, наклонный жим 12/4/8): если подходы взялись из истории
+          // Волновая подсобка (push press 4/8/12, наклонный жим 12/4/8 или 12/6/8 в v2): если подходы взялись из истории
           // с другим числом повторений, подстраиваем повторы под текущую неделю волны, а пустые (без истории) не выдумываем.
           const sets = entry.sets.map((s) =>
             !s.warmup && s.reps > 0 && s.reps !== reps ? { ...s, reps } : s,
@@ -369,7 +379,7 @@ export class TrainingProgram {
         }
         return {
           ...entry,
-          progressionNote: LaidDupPlan.isAdded(day, entry.exerciseId, subs) ? "Добавлено к оригиналу Лейда: в его таблице этого нет." : undefined,
+          progressionNote: LaidDupPlan.isAdded(day, entry.exerciseId, subs, p.version) ? "Добавлено к оригиналу Лейда: в его таблице этого нет." : undefined,
         };
       }),
     };

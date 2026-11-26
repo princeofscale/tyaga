@@ -149,6 +149,8 @@ export type LaidMaxes = { squat: number; bench: number; deadlift: number; ohp: n
  */
 export type RoutinePeriodization = {
   kind: "laid-dup";
+  /** Версия шаблона: `v1` (оригинальная таблица Лейда) или `v2` («Умный DUP v2: Баланс и защита»). */
+  version?: "v1" | "v2";
   /** Общий для шести программ цикла: по нему находятся остальные дни и обновляются максимумы. */
   cycleId: string;
   day: LaidDay;

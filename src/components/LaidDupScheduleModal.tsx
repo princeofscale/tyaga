@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
-import { ArrowLeftRight, ArrowUpDown, ShieldCheck } from "lucide-react";
+import { ArrowLeftRight, ArrowUpDown, ChevronDown, ShieldCheck, SlidersHorizontal } from "lucide-react";
 import { LaidDupPlan } from "../domain/LaidDupPlan";
 import { BiomechanicsEngine } from "../domain/BiomechanicsEngine";
 import { DAY_NAMES } from "../domain/TrainingProgram";
@@ -9,6 +9,7 @@ import { entryName, exerciseById } from "../lib/model";
 import type { Routine, Workout } from "../lib/types";
 import Modal from "./Modal";
 import { LaidStatus } from "./LaidStatus";
+import LaidWaveProgressChart from "./LaidWaveProgressChart";
 
 const SPRING_TAB = { type: "spring" as const, stiffness: 460, damping: 35 };
 
@@ -36,12 +37,12 @@ type ScheduleProps = {
   busy: boolean;
   onClose: () => void;
   onEditDays?: () => void;
-  onEditSubstitutions?: () => void;
+  onEditSubstitutions?: (focusOriginalId?: string) => void;
   onUpdate: () => void;
   onRecalc: () => void;
 };
 
-/** «Расписание цикла»: максимумы, фильтр по волнам, карточки недель (включая разгрузочные), разбор упражнений и периодизации. */
+/** «Расписание цикла»: максимумы, волны, карточки недель с раскрытием состава дня (веса, повторы, RIR и замены). */
 export function LaidDupSchedule({
   cycle,
   workouts,
@@ -60,7 +61,10 @@ export function LaidDupSchedule({
   const estimates = useMemo(() => LaidDupPlan.estimates(workouts, today, subs), [workouts, today, subs]);
   const suggestion = useMemo(() => LaidDupPlan.suggestion(first, workouts, today), [first, workouts, today]);
   const bioAudit = useMemo(() => BiomechanicsEngine.auditLaidCycle(cycle, workouts, today), [cycle, workouts, today]);
+  const waveSeries = useMemo(() => LaidDupPlan.waveProgress(cycle, workouts, today), [cycle, workouts, today]);
+  const hasWaveActuals = useMemo(() => waveSeries.some((s) => s.bestE1rm !== null), [waveSeries]);
   const [waveFilter, setWaveFilter] = useState<"all" | 1 | 2 | 3>("all");
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const current = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -82,12 +86,15 @@ export function LaidDupSchedule({
   return (
     <Modal title={`Расписание на ${totalWeeks} нед.`} wide onClose={onClose}>
       <div className="laid-schedule">
-        <p className="laid-week">
-          {position.beforeStart
-            ? `Старт ${dateLabel(first.startMonday)} · неделя 1 из ${totalWeeks} · волна 1`
-            : LaidDupPlan.weekLabel(position, { isDeload: isCurrentDeload, totalWeeks })}
-          {first.weekMode === "rolling" ? " · плавающая неделя" : ""}
-        </p>
+        <div className="laid-sched-hero">
+          <p className="laid-week">
+            {position.beforeStart
+              ? `Старт ${dateLabel(first.startMonday)} · неделя 1 из ${totalWeeks} · волна 1`
+              : LaidDupPlan.weekLabel(position, { isDeload: isCurrentDeload, totalWeeks })}
+            {first.weekMode === "rolling" ? " · плавающая неделя" : ""}
+          </p>
+          <p className="laid-explain">{EXPLAIN.join(" ")}</p>
+        </div>
 
         {position.finished ? (
           <div className="laid-suggest" role="status">
@@ -99,42 +106,61 @@ export function LaidDupSchedule({
           </div>
         ) : null}
 
-        <ul className="laid-maxes" aria-label="Максимумы">
-          {lifts.map((lift, i) => {
-            const liftMode = LaidDupPlan.liftModeOf(first, lift);
-            return (
-              <m.li
-                key={lift}
-                initial={reduced ? false : { opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.2, delay: reduced ? 0 : i * 0.03 }}
-              >
-                <b>{LaidDupPlan.liftLabel(lift, subs)}</b>
-                <span>
-                  {liftMode === "calibration"
-                    ? "Калибровка"
-                    : liftMode === "pain"
-                      ? "Щадяще"
-                      : liftMode === "rir_range"
-                        ? "По RIR"
-                        : `${LaidDupPlan.kg(activeMaxes[lift])} кг`}
-                </span>
-                <small>
-                  {liftMode === "calibration"
-                    ? "подбор веса · RIR 2–3"
-                    : liftMode === "pain"
-                      ? "боль · RIR 2–3 без синглов"
-                      : liftMode === "rir_range"
-                        ? "работа по RIR 1–2"
-                        : estimates[lift] !== null
-                          ? `по истории ≈ ${LaidDupPlan.kg(estimates[lift]!)} кг`
-                          : "истории нет"}
-                </small>
-              </m.li>
-            );
-          })}
-        </ul>
-        <p className="tiny laid-window">«По истории» — лучшая оценка 1ПМ (Эпли) по подходам {LaidDupPlan.windowText(LaidDupPlan.ESTIMATE_DAYS)}.</p>
+        <section className="laid-sched-maxes-block" aria-label="Рабочие максимумы">
+          <ul className="laid-maxes" aria-label="Максимумы">
+            {lifts.map((lift, i) => {
+              const liftMode = LaidDupPlan.liftModeOf(first, lift);
+              return (
+                <m.li
+                  key={lift}
+                  initial={reduced ? false : { opacity: 0, y: 5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.18, delay: reduced ? 0 : i * 0.025 }}
+                >
+                  <b>{LaidDupPlan.liftLabel(lift, subs)}</b>
+                  <span>
+                    {liftMode === "calibration"
+                      ? "Калибровка"
+                      : liftMode === "pain"
+                        ? "Щадяще"
+                        : liftMode === "rir_range"
+                          ? "По RIR"
+                          : `${LaidDupPlan.kg(activeMaxes[lift])} кг`}
+                  </span>
+                  <small>
+                    {liftMode === "calibration"
+                      ? "подбор веса · RIR 2–3"
+                      : liftMode === "pain"
+                        ? "боль · RIR 2–3"
+                        : liftMode === "rir_range"
+                          ? "работа по RIR 1–2"
+                          : estimates[lift] !== null
+                            ? `история ≈ ${LaidDupPlan.kg(estimates[lift]!)} кг`
+                            : "истории нет"}
+                  </small>
+                </m.li>
+              );
+            })}
+          </ul>
+          <p className="tiny laid-window">
+            «История» — лучшая оценка 1ПМ (Эпли) {LaidDupPlan.windowText(LaidDupPlan.ESTIMATE_DAYS)}.{" "}
+            {LaidDupPlan.NOTICE}
+            {first.light ? " Облегчённый режим: вместо синглов — тройки, вместо двоек тяги — 4 × 4." : ""}
+          </p>
+        </section>
+
+        <details className="laid-wave-chart-disclosure" open={hasWaveActuals}>
+          <summary>
+            <span>График прогресса по волнам (1 → 2 → 3)</span>
+            <ChevronDown size={15} aria-hidden="true" />
+          </summary>
+          <div className="laid-wave-chart-body">
+            <LaidWaveProgressChart
+              series={waveSeries}
+              currentWeekIndex={position.beforeStart ? 0 : Math.min(totalWeeks - 1, Math.max(0, rawWeek))}
+            />
+          </div>
+        </details>
 
         <AnimatePresence initial={false}>
           {suggestion.length ? (
@@ -158,15 +184,6 @@ export function LaidDupSchedule({
             </m.div>
           ) : null}
         </AnimatePresence>
-
-        <p className="laid-explain">{EXPLAIN.join(" ")}</p>
-        <p className="tiny">
-          {LaidDupPlan.NOTICE}{" "}
-          {first.autoEscalate
-            ? LaidDupPlan.AUTO_NOTICE
-            : "Обновление 1ПМ внутри цикла — по кнопке, без скрытых изменений."}
-          {first.light ? " Включён облегчённый режим: вместо одного повторения — три, двойки тяги заменены на 4 × 4 (не по оригиналу)." : ""}
-        </p>
 
         <div className="laid-wave-tabs" role="group" aria-label="Фильтр по волнам">
           {(
@@ -218,6 +235,8 @@ export function LaidDupSchedule({
           ) : null}
         </AnimatePresence>
 
+        <p className="laid-sched-tip">Нажми на любой день в неделе, чтобы увидеть все упражнения, рабочие веса и RIR.</p>
+
         <ol className="laid-weeks">
           <AnimatePresence mode="popLayout" initial={false}>
             {visibleWeeks.map((week) => {
@@ -234,15 +253,20 @@ export function LaidDupSchedule({
               const wave = weekPos.wave;
               const inWave = weekPos.inWave;
               const maxes = LaidDupPlan.maxesFor(first, weekPos.week);
-              const wGuide = LaidDupPlan.weekGuide(weekPos, { light: first.light, deload: isWeekDeload, totalWeeks });
+              const wGuide = LaidDupPlan.weekGuide(weekPos, {
+                light: first.light,
+                deload: isWeekDeload,
+                totalWeeks,
+                version: first.version,
+              });
               return (
                 <m.li
                   key={week}
                   layout={!reduced}
-                  initial={reduced ? false : { opacity: 0, scale: 0.98 }}
+                  initial={reduced ? false : { opacity: 0, scale: 0.99 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.98 }}
-                  transition={{ duration: 0.2 }}
+                  exit={{ opacity: 0, scale: 0.99 }}
+                  transition={{ duration: 0.18 }}
                   className={`laid-week-card${isCurrent ? " current" : ""}${isWeekDeload ? " is-deload" : ""}`}
                   aria-current={isCurrent && !position.beforeStart ? "step" : undefined}
                   ref={(node) => {
@@ -258,18 +282,23 @@ export function LaidDupSchedule({
                     </small>
                     {isCurrent && !position.beforeStart ? <span className="laid-now">сейчас</span> : null}
                   </h4>
-                  <p className="laid-week-card-focus">{wGuide.focusTitle} · {wGuide.baseRir}</p>
+                  <p className="laid-week-card-focus">
+                    {wGuide.focusTitle} · {wGuide.baseRir}
+                  </p>
                   <ul>
                     {cycle.map((r) => {
                       const p = r.periodization!;
                       const plan = LaidDupPlan.day(p.day, week, maxes, {
+                        version: p.version,
                         light: p.light,
                         substitutions: p.substitutions,
                         calibrationLifts: p.calibrationLifts,
                         painFlags: p.painFlags,
                         deloadWeeks: p.deloadWeeks,
                       });
-                      const waveAux = isWeekDeload ? null : LaidDupPlan.waveAuxSummary(p.day, inWave, p.substitutions);
+                      const waveAux = isWeekDeload
+                        ? null
+                        : LaidDupPlan.waveAuxSummary(p.day, inWave, p.substitutions, p.version);
                       const isPercent = plan.prescriptionMode === "percent_1rm";
                       const meterRatio = isWeekDeload
                         ? 0.3
@@ -285,24 +314,72 @@ export function LaidDupSchedule({
                             : plan.painFlag
                               ? "Щадяще"
                               : "RIR 1–2";
+                      const rowKey = `${week}:${r.id}`;
+                      const isOpen = expandedKey === rowKey;
+                      const preview = isOpen ? LaidDupPlan.dayExercisesPreview(r, week, workouts, today) : [];
                       return (
-                        <li key={r.id}>
-                          <b>{LaidDupPlan.SHORT[p.day]}</b>
-                          <span className="laid-day-weekday">
-                            {r.days.length ? r.days.map((d) => DAY_NAMES[d]).join("·") : "—"}
-                          </span>
-                          <span className="laid-pct-tag">{intensityTag}</span>
-                          <LaidStatus status={LaidDupPlan.dayStatus(r, workouts, week, today)} />
-                          <span className="laid-plan-line">{LaidDupPlan.line(plan)}</span>
-                          {waveAux ? <small className="laid-wave-aux">{waveAux} · RIR 1–2 (RPE 8–9)</small> : null}
-                          <span className="laid-intensity-bar" aria-hidden="true">
-                            <m.span
-                              className={`laid-intensity-fill reps-${plan.heavy.reps}`}
-                              initial={reduced ? false : { scaleX: 0 }}
-                              animate={{ scaleX: meterRatio }}
-                              transition={{ duration: 0.3 }}
-                            />
-                          </span>
+                        <li key={r.id} className={isOpen ? "is-open" : undefined}>
+                          <button
+                            type="button"
+                            className="laid-sched-day-trigger"
+                            aria-expanded={isOpen}
+                            onClick={() => setExpandedKey(isOpen ? null : rowKey)}
+                          >
+                            <span className="laid-sched-day-head">
+                              <b>{LaidDupPlan.SHORT[p.day]}</b>
+                              <span className="laid-day-weekday">
+                                {r.days.length ? r.days.map((d) => DAY_NAMES[d]).join("·") : "—"}
+                              </span>
+                              <span className="laid-pct-tag">{intensityTag}</span>
+                              <LaidStatus status={LaidDupPlan.dayStatus(r, workouts, week, today)} />
+                              <ChevronDown
+                                size={15}
+                                className={`laid-sched-chevron${isOpen ? " is-rotated" : ""}`}
+                                aria-hidden="true"
+                              />
+                            </span>
+                            <span className="laid-plan-line">{LaidDupPlan.line(plan)}</span>
+                            {waveAux ? <small className="laid-wave-aux">{waveAux} · RIR 1–2</small> : null}
+                            <span className="laid-intensity-bar" aria-hidden="true">
+                              <m.span
+                                className={`laid-intensity-fill reps-${plan.heavy.reps}`}
+                                initial={reduced ? false : { scaleX: 0 }}
+                                animate={{ scaleX: meterRatio }}
+                                transition={{ duration: 0.28 }}
+                              />
+                            </span>
+                          </button>
+
+                          {isOpen ? (
+                            <div className="laid-sched-day-detail">
+                              {preview.map((item) => (
+                                <div key={item.exerciseId} className={`laid-day-ex-row${item.role === "lift" ? " is-lift" : ""}`}>
+                                  <div className="laid-day-ex-main">
+                                    <span className="laid-day-ex-name">
+                                      {item.name}
+                                      {item.isReplaced ? <span className="laid-ex-tag is-replaced">замена</span> : null}
+                                    </span>
+                                    <span className="laid-day-ex-meta">
+                                      <span>{item.setsRepsLabel}</span>
+                                      <span className={`laid-day-ex-weight source-${item.weightSource}`}>{item.weightLabel}</span>
+                                      <span className="laid-day-ex-rir">{item.rirLabel}</span>
+                                    </span>
+                                  </div>
+                                  {onEditSubstitutions ? (
+                                    <button
+                                      type="button"
+                                      className="laid-day-ex-swap"
+                                      aria-label={`Заменить ${item.name}`}
+                                      title="Заменить упражнение в цикле"
+                                      onClick={() => onEditSubstitutions(item.originalId)}
+                                    >
+                                      <ArrowLeftRight size={14} aria-hidden="true" />
+                                    </button>
+                                  ) : null}
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
                         </li>
                       );
                     })}
@@ -344,7 +421,7 @@ export function LaidDupSchedule({
                   </h4>
                   <ul>
                     {r.exercises.map((e) => {
-                      const spec = LaidDupPlan.exerciseSpec(day, e.exerciseId, daySubs);
+                      const spec = LaidDupPlan.exerciseSpec(day, e.exerciseId, daySubs, r.periodization!.version);
                       const replacedName = spec.replacedFrom ? exerciseById(spec.replacedFrom)?.name ?? spec.replacedFrom : null;
                       return (
                         <li key={e.exerciseId}>
@@ -369,21 +446,22 @@ export function LaidDupSchedule({
           </div>
         </details>
 
-        <div className="laid-actions">
+        <div className="laid-actions laid-sticky-footer">
           {onEditDays ? (
             <button type="button" className="button secondary" onClick={onEditDays}>
-              <ArrowUpDown size={16} aria-hidden="true" />
+              <ArrowUpDown size={15} aria-hidden="true" />
               Дни недели
             </button>
           ) : null}
           {onEditSubstitutions ? (
-            <button type="button" className="button secondary" onClick={onEditSubstitutions}>
-              <ArrowLeftRight size={16} aria-hidden="true" />
+            <button type="button" className="button secondary" onClick={() => onEditSubstitutions()}>
+              <ArrowLeftRight size={15} aria-hidden="true" />
               Замены
             </button>
           ) : null}
           <button type="button" className="button secondary" onClick={onUpdate}>
-            {position.finished ? "Начать новый цикл" : "Обновить максимумы"}
+            <SlidersHorizontal size={15} aria-hidden="true" />
+            {position.finished ? "Новый цикл" : "Максимумы"}
           </button>
           <button type="button" className="button primary" onClick={onClose}>
             Закрыть

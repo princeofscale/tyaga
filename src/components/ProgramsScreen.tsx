@@ -68,7 +68,7 @@ export default function ProgramsScreen(props: Props) {
   const [laid, setLaid] = useState<{ mode: "create" | "update" | "restart"; cycleId?: string } | null>(null);
   const [schedule, setSchedule] = useState<string | null>(null);
   const [weekEditor, setWeekEditor] = useState<string | null>(null);
-  const [subsEditor, setSubsEditor] = useState<string | null>(null);
+  const [subsEditor, setSubsEditor] = useState<{ cycleId: string; focusOriginalId?: string } | null>(null);
   const [swapIndex, setSwapIndex] = useState<number | null>(null);
   const [adjustment, setAdjustment] = useState<Pick<ScheduledTraining, "routine" | "originalDate"> | null>(null);
   const [calendarNotice, setCalendarNotice] = useState("");
@@ -289,6 +289,31 @@ export default function ProgramsScreen(props: Props) {
       setBusy(false);
     }
   }
+  /** Автокоррекция TM (DUP v2 гистерезис): точечное обновление максимумов с текущей недели. */
+  async function applyTmAutoreg(
+    cycle: Routine[],
+    updates: Array<{ lift: "squat" | "bench" | "deadlift" | "ohp"; toMax: number }>,
+  ) {
+    if (!updates.length) return;
+    const first = cycle[0].periodization!;
+    const maxes = { ...first.maxes };
+    for (const u of updates) maxes[u.lift] = u.toMax;
+    const state = LaidDupPlan.cycleState(cycle, props.workouts, today);
+    const from = state.position.beforeStart ? 0 : state.position.week;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      for (const r of cycle) {
+        await props.onSave({ ...r, periodization: LaidDupPlan.withMaxes(r.periodization!, maxes, from) });
+      }
+      setNotice(`TM обновлён по топ-сетам DUP v2 (с недели ${from + 1}).`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось обновить TM");
+    } finally {
+      setBusy(false);
+    }
+  }
   /** «Можно обновить максимум»: новые максимумы по свежим подходам, пересчёт плана с текущей недели. */
   async function recalc(cycle: Routine[]) {
     const first = cycle[0].periodization!;
@@ -334,6 +359,22 @@ export default function ProgramsScreen(props: Props) {
     }
   }
   /** Вставить или отменить разгрузочную неделю в действующем цикле Лейда. */
+  async function upgradeLaidCycleToV2(cycle: Routine[]) {
+    setBusy(true);
+    setError("");
+    try {
+      const upgraded = LaidDupPlan.upgradeCycleToV2(cycle);
+      for (const r of upgraded) await props.onSave(r);
+      setNotice(
+        "Цикл обновлён до «Умного DUP v2»: ритм 3+1+3, −68 % на поясницу, закрыты икры/пресс/задняя дельта и разгрузка на 7-й неделе.",
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось улучшить цикл");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function toggleLaidDeloadWeek(cycle: Routine[], rawWeek: number, enable: boolean) {
     const updated = LaidDupPlan.withDeloadWeek(cycle, rawWeek, enable);
     if (!updated.length) return;
@@ -513,24 +554,6 @@ export default function ProgramsScreen(props: Props) {
         <header className="section-heading routine-heading">
           <h2 id="saved-programs-title">Сохранённые программы</h2>
           <div className="routine-heading-actions">
-            {props.routines.length >= 2 ? (
-              <m.button
-                type="button"
-                className="button secondary bulk-delete-btn"
-                disabled={busy}
-                whileTap={reduceMotion ? undefined : { scale: 0.98 }}
-                onClick={() => {
-                  setError("");
-                  setDeletingGroup({
-                    title: `все программы (${props.routines.length})`,
-                    routines: props.routines,
-                  });
-                }}
-              >
-                <Trash2 size={16} aria-hidden="true" />
-                Удалить все ({props.routines.length})
-              </m.button>
-            ) : null}
             <m.button
               type="button"
               className="button primary"
@@ -557,7 +580,7 @@ export default function ProgramsScreen(props: Props) {
               busy={busy}
               onSchedule={() => setSchedule(plan.cycleId)}
               onEditDays={() => setWeekEditor(plan.cycleId)}
-              onEditSubstitutions={() => setSubsEditor(plan.cycleId)}
+              onEditSubstitutions={(focusOriginalId) => setSubsEditor({ cycleId: plan.cycleId, focusOriginalId })}
               onUpdate={() => setLaid({
                 mode: isFinished ? "restart" : "update",
                 cycleId: plan.cycleId,
@@ -570,6 +593,8 @@ export default function ProgramsScreen(props: Props) {
               onEditDay={(r) => open(r)}
               onGraduateCalibration={(grads, fromWeek) => void graduateLaidCalibration(cycle, grads, fromWeek)}
               onToggleDeloadWeek={(w, enable) => void toggleLaidDeloadWeek(cycle, w, enable)}
+              onUpgradeToV2={() => void upgradeLaidCycleToV2(cycle)}
+              onApplyTmUpdates={(updates) => void applyTmAutoreg(cycle, updates)}
               onDeleteCycle={() => {
                 setError("");
                 setDeletingGroup({
@@ -657,6 +682,25 @@ export default function ProgramsScreen(props: Props) {
                 </div>
               </details>
             ) : null}
+            {props.routines.length >= 2 ? (
+              <div className="program-library-footer">
+                <button
+                  type="button"
+                  className="laid-utility-btn is-danger bulk-delete-btn"
+                  disabled={busy}
+                  onClick={() => {
+                    setError("");
+                    setDeletingGroup({
+                      title: `все программы (${props.routines.length})`,
+                      routines: props.routines,
+                    });
+                  }}
+                >
+                  <Trash2 size={14} aria-hidden="true" />
+                  Удалить все программы ({props.routines.length})
+                </button>
+              </div>
+            ) : null}
           </>
         ) : <p className="program-empty">Нет сохранённых программ. Создай свою или выбери шаблон.</p>}
       </section>
@@ -728,10 +772,10 @@ export default function ProgramsScreen(props: Props) {
             setSchedule(null);
             setWeekEditor(id);
           }}
-          onEditSubstitutions={() => {
+          onEditSubstitutions={(focusOriginalId) => {
             const id = cycleById(schedule)[0].periodization!.cycleId;
             setSchedule(null);
-            setSubsEditor(id);
+            setSubsEditor({ cycleId: id, focusOriginalId });
           }}
           onUpdate={() => {
             const cycle = cycleById(schedule);
@@ -753,15 +797,16 @@ export default function ProgramsScreen(props: Props) {
           onClose={() => setWeekEditor(null)}
         />
       ) : null}
-      {subsEditor && cycleById(subsEditor) ? (
+      {subsEditor && cycleById(subsEditor.cycleId) ? (
         <LaidSubstitutionsModal
-          cycle={cycleById(subsEditor)}
+          cycle={cycleById(subsEditor.cycleId)}
           workouts={props.workouts}
           personal={props.personal}
           accountId={props.accountId}
           minorMode={props.minorMode}
           today={today}
-          onSave={(subs, maxes, opts) => saveLaidSubstitutions(cycleById(subsEditor), subs, maxes, opts)}
+          initialFocusOriginalId={subsEditor.focusOriginalId}
+          onSave={(subs, maxes, opts) => saveLaidSubstitutions(cycleById(subsEditor.cycleId), subs, maxes, opts)}
           onClose={() => setSubsEditor(null)}
         />
       ) : null}
@@ -1210,6 +1255,8 @@ export default function ProgramsScreen(props: Props) {
       {editor && swapIndex !== null && editor.exercises[swapIndex] && exerciseForEntry(editor.exercises[swapIndex]) ? (
         <ExerciseSwapModal
           currentExercise={exerciseForEntry(editor.exercises[swapIndex])!}
+          workouts={props.workouts}
+          today={today}
           personal={props.personal}
           excludeIds={editor.exercises.filter((_, i) => i !== swapIndex).map((e) => e.exerciseId)}
           requireWeighted={laidLift === editor.exercises[swapIndex].exerciseId}

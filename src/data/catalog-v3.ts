@@ -851,4 +851,93 @@ export const CATALOG_V3: Exercise[] = [
     limitations:
       "Длина шага, направление (вперёд или назад) и положение штанги меняют механику и нагрузку на колено. Выпады с гантелями («lunge-reverse») — другой вариант: их вес не переносится.",
   }),
+  entry({
+    id: "trap-bar-deadlift",
+    name: "Становая тяга с трэп-грифом",
+    nameEn: "Trap-bar deadlift",
+    familyId: "hip-hinge",
+    equipment: "gym",
+    recording: bar,
+    variant:
+      "Гексагональный трэп-гриф, нейтральный хват внутри рамы, подъём с пола до полного выпрямления; общий вес грифа и блинов.",
+    jointActions: ["Разгибание бедра", "Разгибание колена"],
+    primary: ["gluteus-maximus", "quadriceps-vasti", ...hamstrings],
+    assistant: ["adductor-magnus", "trapezius-upper"],
+    stabilizer: ["erector-spinae", "rectus-abdominis", "obliques"],
+    moderate: ["adductor-magnus"],
+    evidence: ["deadlift-review"],
+    tip: "Центр тяжести внутри рамы: грудь вверх, спина нейтральна, полная остановка на полу в каждом повторении.",
+    limitations:
+      "Высота рукоятей (высокие vs низкие) меняет наклон корпуса и вклад квадрицепсов — держи одинаковый вариант рукоятей в цикле. Вес не переносится напрямую на классическую становую со штангой.",
+  }),
+  entry({
+    id: "hack-squat",
+    name: "Гакк-присед в тренажёре",
+    nameEn: "Machine hack squat",
+    familyId: "squat",
+    equipment: "gym",
+    recording: machine,
+    variant:
+      "Спина прижата к платформе тренажёра, глубокое сгибание коленей без отрыва таза; вес блинов или стека конкретной машины.",
+    jointActions: ["Разгибание колена", "Разгибание бедра"],
+    primary: ["quadriceps-vasti", "rectus-femoris"],
+    assistant: ["gluteus-maximus", "adductor-magnus"],
+    stabilizer: ["rectus-abdominis"],
+    moderate: ["adductor-magnus"],
+    tip: "Прижми поясницу к спинке, опускайся плавно 2–3 с в максимальное сгибание колена с паузой 0,5 с внизу.",
+    limitations:
+      "Угол наклона салазок и вес каретки различаются в разных тренажёрах, поэтому оценка 1ПМ отключена, а вес сравнивай только на одном тренажёре.",
+  }),
+  entry({
+    id: "row-chest-supported",
+    name: "Тяга с упором грудью (Т-гриф / тренажёр)",
+    nameEn: "Chest-supported row",
+    familyId: "horizontal-row",
+    equipment: "gym",
+    recording: machine,
+    variant:
+      "Грудная клетка фиксирована на подушке, тяга рукоятей к корпусу с полной протракцией и ретракцией лопаток; вес блинов или стека.",
+    jointActions: ["Разгибание плеча", "Ретракция лопатки", "Сгибание локтя"],
+    primary: ["latissimus-dorsi", ...retractors],
+    assistant: [...flexors, "teres-major", "deltoid-posterior"],
+    stabilizer: ["trapezius-lower"],
+    moderate: ["deltoid-posterior"],
+    tip: "Не отрывай грудь от подушки; веди локти под углом 45–60° и делай короткую паузу в пике сокращения.",
+    limitations:
+      "Рычаг и угол наклона тренажёра зависят от модели — записывай рабочий вес конкретной станции; оценка 1ПМ отключена.",
+  }),
+  entry({
+    id: "cable-crunch",
+    name: "Скручивания на верхнем блоке на коленях",
+    nameEn: "Kneeling cable crunch",
+    familyId: "trunk-flexion",
+    equipment: "gym",
+    recording: machine,
+    variant:
+      "На коленях перед верхним блоком с канатом у головы, сгибание позвоночника («рёбра к тазу») при неподвижном тазе; вес стека.",
+    jointActions: ["Сгибание позвоночника"],
+    primary: ["rectus-abdominis"],
+    assistant: ["obliques"],
+    stabilizer: ["latissimus-dorsi"],
+    moderate: ["obliques"],
+    tip: "Скручивай именно позвоночник, подтягивая рёбра к тазу; не садись тазом на пятки и не тяни руками.",
+    limitations:
+      "Профиль блока и угол корпуса меняют реальную нагрузку — вес сравнивай на одном тренажёре.",
+  }),
+  entry({
+    id: "calf-legpress",
+    name: "Жим носками в тренажёре для жима ногами 45°",
+    nameEn: "Leg-press calf raise",
+    familyId: "plantarflexion",
+    equipment: "gym",
+    recording: machine,
+    variant:
+      "Носки на нижнем крае платформы жима ногами, колени почти прямые, полная амплитуда голеностопа; вес блинов платформы.",
+    jointActions: ["Подошвенное сгибание голеностопа"],
+    primary: ["gastrocnemius", "soleus"],
+    evidence: ["calf-position"],
+    tip: "Опускай пятки в глубокое растяжение с паузой 1 с, без пружинящего отбива; колени держи слегка мягкими, но прямыми.",
+    limitations:
+      "Масса каретки и угол наклона зависят от тренажёра — вес сравнивай только в пределах одной машины.",
+  }),
 ];

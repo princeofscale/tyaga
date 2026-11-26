@@ -1,6 +1,17 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
-import { ArrowLeftRight, ArrowUpDown, CalendarDays, Pencil, Play, RotateCcw, Sparkles, Trash2 } from "lucide-react";
+import {
+  ArrowLeftRight,
+  ArrowUpDown,
+  CalendarDays,
+  ChevronDown,
+  Pencil,
+  Play,
+  RotateCcw,
+  SlidersHorizontal,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
 import {
   LaidDupPlan,
   LAID_WEEKS,
@@ -18,7 +29,7 @@ type CardProps = {
   busy: boolean;
   onSchedule: () => void;
   onEditDays: () => void;
-  onEditSubstitutions?: () => void;
+  onEditSubstitutions?: (focusOriginalId?: string) => void;
   onUpdate: () => void;
   /** Подсказка «Можно обновить максимум»: пересчитать план с текущей недели. */
   onRecalc: () => void;
@@ -30,11 +41,15 @@ type CardProps = {
   onGraduateCalibration?: (graduations: LaidCalibrationGraduation[], fromWeek: number) => void;
   /** Вставить или отменить разгрузочную неделю цикла. */
   onToggleDeloadWeek?: (rawWeek: number, enable: boolean) => void;
+  /** В один клик улучшить существующий классический цикл до «Умного DUP v2». */
+  onUpgradeToV2?: () => void;
+  /** Применить автокоррекцию TM (DUP v2 гистерезис) с текущей недели. */
+  onApplyTmUpdates?: (updates: Array<{ lift: "squat" | "bench" | "deadlift" | "ohp"; toMax: number }>) => void;
   /** Удалить весь 6-дневный цикл разом. */
   onDeleteCycle?: () => void;
 };
 
-/** Карточка программы Лейда на экране «Программы»: прогресс волн, суть текущей недели, RIR, максимумы, кликабельные дни недели. */
+/** Карточка программы Лейда на экране «Программы»: спокойная иерархия, волна, RIR, состав дня с весами и быстрые действия. */
 export function LaidDupCard({
   cycle,
   workouts,
@@ -49,14 +64,18 @@ export function LaidDupCard({
   onEditDay,
   onGraduateCalibration,
   onToggleDeloadWeek,
+  onUpgradeToV2,
+  onApplyTmUpdates,
   onDeleteCycle,
 }: CardProps) {
   const reduced = useReducedMotion();
+  const [expandedDayId, setExpandedDayId] = useState<string | null>(null);
   const state = useMemo(() => LaidDupPlan.cycleState(cycle, workouts, today), [cycle, workouts, today]);
   const { first, rawWeek, totalWeeks, isCurrentDeload, position, activeMaxes, statusWeek, weekGuide } = state;
   const subs = first.substitutions;
   const subCount = subs ? Object.keys(subs).length : 0;
   const suggestion = useMemo(() => LaidDupPlan.suggestion(first, workouts, today), [first, workouts, today]);
+  const tmAutoreg = useMemo(() => LaidDupPlan.tmAutoregSuggestions(first, workouts, today), [first, workouts, today]);
   const calibrationReady = useMemo(
     () => LaidDupPlan.calibrationReady(first, workouts, today),
     [first, workouts, today],
@@ -74,16 +93,36 @@ export function LaidDupCard({
   );
   const doneCount = statuses.filter((s) => s.state === "done").length;
 
+  const expandedRoutine = expandedDayId ? cycle.find((r) => r.id === expandedDayId) ?? null : null;
+  const expandedPreview = useMemo(
+    () =>
+      expandedRoutine
+        ? LaidDupPlan.dayExercisesPreview(expandedRoutine, statusWeek, workouts, today)
+        : [],
+    [expandedRoutine, statusWeek, workouts, today],
+  );
+
   return (
     <m.section
       className="laid-card panel"
       aria-label="Программа Дэвида Лейда"
-      initial={reduced ? false : { opacity: 0, y: 10 }}
+      initial={reduced ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25 }}
+      transition={{ duration: 0.22 }}
     >
-      <div className="laid-card-head">
-        <h3>Дэвид Лейд · DUP</h3>
+      <header className="laid-card-head">
+        <div className="laid-card-title-group">
+          <div className="laid-card-title-row">
+            <h3>{first.version === "v2" ? "Умный DUP v2 · Баланс и защита" : "Дэвид Лейд · DUP"}</h3>
+            {first.version === "v2" ? <span className="laid-v2-pill">DUP v2</span> : null}
+          </div>
+          <p className="laid-week" aria-live="polite">
+            {position.beforeStart
+              ? `Старт ${dateLabel(first.startMonday)} · неделя 1 из ${totalWeeks} · волна 1`
+              : LaidDupPlan.weekLabel(position, { isDeload: isCurrentDeload, totalWeeks })}
+            {first.weekMode === "rolling" ? " · плавающая" : ""}
+          </p>
+        </div>
         <span className={`laid-phase-badge${isCurrentDeload || position.finished ? " is-deload" : ""}`}>
           {position.finished
             ? "Цикл закончен"
@@ -91,17 +130,28 @@ export function LaidDupCard({
               ? `Неделя ${rawWeek + 1} · Разгрузка`
               : `Волна ${position.wave} · ${waveMeta.title}`}
         </span>
-      </div>
+      </header>
 
-      <p className="laid-week" aria-live="polite">
-        {position.beforeStart
-          ? `Старт ${dateLabel(first.startMonday)} · неделя 1 из ${totalWeeks} · волна 1`
-          : LaidDupPlan.weekLabel(position, { isDeload: isCurrentDeload, totalWeeks })}
-        {first.weekMode === "rolling" ? " · плавающая неделя" : ""}
-      </p>
+      {first.version !== "v2" && onUpgradeToV2 ? (
+        <div className="laid-v2-upgrade-bar">
+          <div className="laid-v2-upgrade-copy">
+            <b>Улучшить до «Умного DUP v2»</b>
+            <span>−68 % на поясницу, икры/пресс/задняя дельта, без синглов 1ПМ, разгрузка на 7-й нед.</span>
+          </div>
+          <button
+            type="button"
+            className="button secondary laid-v2-upgrade-btn"
+            disabled={busy}
+            onClick={onUpgradeToV2}
+          >
+            <Sparkles size={14} aria-hidden="true" />
+            Улучшить
+          </button>
+        </div>
+      ) : null}
 
-      <div className="laid-progress" aria-hidden="true">
-        <div className="laid-progress-segments">
+      <div className={`laid-overview-block${weekGuide.isDeloadWindow ? " is-deload" : ""}`}>
+        <div className="laid-progress-segments" aria-hidden="true">
           {Array.from({ length: totalWeeks }, (_, idx) => {
             const segDeload = LaidDupPlan.isDeloadWeek(first, idx);
             const stateSeg = position.beforeStart
@@ -123,55 +173,67 @@ export function LaidDupCard({
                     className="laid-seg-fill"
                     initial={reduced ? false : { scaleX: 0 }}
                     animate={{ scaleX: 1 }}
-                    transition={{ duration: 0.28, delay: reduced ? 0 : idx * 0.03 }}
+                    transition={{ duration: 0.26, delay: reduced ? 0 : idx * 0.025 }}
                   />
                 ) : null}
               </span>
             );
           })}
         </div>
+
         <div className="laid-progress-meta">
           <span>
             {totalWeeks > LAID_WEEKS ? `3 волны + разгрузка (${totalWeeks} нед.)` : "В1 (1–3) · В2 (4–6) · В3 (7–9)"}
             {restDay !== null ? ` · выходной ${DAY_NAMES[restDay]}` : ""}
           </span>
-          <span>
-            На неделе: {doneCount}/{cycle.length}
+          <span className="laid-progress-count">
+            {doneCount}/{cycle.length} на неделе
           </span>
         </div>
-      </div>
 
-      <div className={`laid-week-guide${weekGuide.isDeloadWindow ? " is-deload" : ""}`}>
-        <div className="laid-week-guide-top">
-          <strong>Суть недели: {weekGuide.focusTitle}</strong>
-        </div>
-        <p className="laid-week-guide-copy">{weekGuide.summary}</p>
-        <div className="laid-guide-rules" aria-label="Ориентиры RIR и отдыха">
-          <span className="laid-guide-chip is-accent">{weekGuide.baseRir}</span>
-          <span className="laid-guide-chip">{weekGuide.auxRir}</span>
-          <span className="laid-guide-chip">{weekGuide.restSummary}</span>
-        </div>
+        <details className="laid-week-guide-disclosure">
+          <summary className="laid-week-guide-summary">
+            <span className="laid-week-guide-headline">
+              <strong>{weekGuide.focusTitle}</strong>
+              <span className="laid-guide-inline-meta">
+                {weekGuide.baseRir} · {weekGuide.auxRir.replace("Подсобка и тренажёры: ", "Подсобка: ")}
+              </span>
+            </span>
+            <ChevronDown size={16} className="laid-disclosure-chevron" aria-hidden="true" />
+          </summary>
+          <div className="laid-week-guide-details">
+            <p className="laid-week-guide-copy">{weekGuide.summary}</p>
+            <div className="laid-guide-rules" aria-label="Ориентиры RIR и отдыха">
+              <span className="laid-guide-chip is-accent">{weekGuide.baseRir}</span>
+              <span className="laid-guide-chip">{weekGuide.auxRir}</span>
+              <span className="laid-guide-chip">{weekGuide.restSummary}</span>
+            </div>
+          </div>
+        </details>
       </div>
 
       <div className="laid-card-maxes" aria-label="Рабочие максимумы цикла">
         {(["squat", "bench", "deadlift", "ohp"] as const).map((lift) => {
           const liftMode = LaidDupPlan.liftModeOf(first, lift);
           return (
-            <span
+            <button
               key={lift}
+              type="button"
               className={`laid-mini-max${LaidDupPlan.isLiftSubstituted(lift, subs) ? " is-replaced" : ""}${liftMode !== "percent_1rm" ? " is-mode" : ""}`}
+              onClick={onUpdate}
+              title="Нажми, чтобы обновить максимумы"
             >
               <small>{LaidDupPlan.liftLabel(lift, subs)}</small>
-              <b>
+              <strong>
                 {liftMode === "calibration"
-                  ? "Калибровка · RIR 2–3"
+                  ? "Калибровка"
                   : liftMode === "pain"
-                    ? "Щадяще · RIR 2–3"
+                    ? "Щадяще"
                     : liftMode === "rir_range"
-                      ? "По RIR 1–2"
+                      ? "По RIR"
                       : `${LaidDupPlan.kg(activeMaxes[lift])} кг`}
-              </b>
-            </span>
+              </strong>
+            </button>
           );
         })}
       </div>
@@ -181,61 +243,100 @@ export function LaidDupCard({
           const p = r.periodization!;
           const status = statuses[idx];
           const dayPlan = LaidDupPlan.day(p.day, rawWeek, activeMaxes, {
+            version: p.version,
             light: p.light,
             substitutions: p.substitutions,
             calibrationLifts: p.calibrationLifts,
             painFlags: p.painFlags,
             deloadWeeks: p.deloadWeeks,
           });
-          const waveAux = LaidDupPlan.waveAuxSummary(p.day, position.inWave, p.substitutions);
+          const waveAux = dayPlan.isDeload
+            ? null
+            : LaidDupPlan.waveAuxSummary(p.day, position.inWave, p.substitutions, p.version);
+          const isExpanded = expandedDayId === r.id;
+
           return (
             <m.li
               key={r.id}
-              className={`laid-day-tile ${status.state}${dayPlan.isDeload ? " is-deload" : ""}`}
+              className={`laid-day-tile ${status.state}${dayPlan.isDeload ? " is-deload" : ""}${isExpanded ? " is-expanded" : ""}`}
               initial={reduced ? false : { opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.2, delay: reduced ? 0 : idx * 0.03 }}
+              transition={{ duration: 0.18, delay: reduced ? 0 : idx * 0.025 }}
             >
               <div className="laid-day-top">
                 <span className="laid-day-title">
                   <b>{LaidDupPlan.SHORT[p.day]}</b>
-                  <span className="laid-day-name">{r.days.length ? r.days.map((d) => DAY_NAMES[d]).join(" · ") : "любой день"}</span>
+                  <span className="laid-day-name">{r.days.length ? r.days.map((d) => DAY_NAMES[d]).join("·") : "—"}</span>
                 </span>
                 <LaidStatus status={status} />
               </div>
+
               <span className="laid-day-plan">{LaidDupPlan.compactLine(dayPlan)}</span>
-              <small className="laid-day-sub">
-                {dayPlan.isDeload
-                  ? "Разгрузка: 65 % и половина подходов · RIR 3–4"
-                  : waveAux
-                    ? `${waveAux} · подсобка RIR 1–2`
-                    : "Подсобка и тренажёры: RIR 1–2"}
-              </small>
-              {onStartDay || onEditDay ? (
-                <div className="laid-day-tile-actions">
-                  {onStartDay ? (
-                    <button
-                      type="button"
-                      className="laid-tile-btn is-start"
-                      disabled={busy}
-                      onClick={() => onStartDay(r)}
-                    >
-                      <Play size={13} aria-hidden="true" />
-                      <span>Начать</span>
-                    </button>
-                  ) : null}
-                  {onEditDay ? (
-                    <button
-                      type="button"
-                      className="laid-tile-btn"
-                      disabled={busy}
-                      aria-label={`Править ${LaidDupPlan.SHORT[p.day]}`}
-                      onClick={() => onEditDay(r)}
-                    >
-                      <Pencil size={13} aria-hidden="true" />
-                      <span>Править</span>
-                    </button>
-                  ) : null}
+              {waveAux ? <small className="laid-day-sub">{waveAux}</small> : null}
+
+              <div className="laid-day-tile-actions">
+                {onStartDay ? (
+                  <button
+                    type="button"
+                    className="laid-tile-btn is-start"
+                    disabled={busy}
+                    onClick={() => onStartDay(r)}
+                  >
+                    <Play size={14} aria-hidden="true" />
+                    <span>Начать</span>
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className={`laid-tile-btn is-icon${isExpanded ? " is-active" : ""}`}
+                  aria-expanded={isExpanded}
+                  aria-label={`Состав и веса: ${LaidDupPlan.SHORT[p.day]}`}
+                  title="Состав дня, веса и RIR"
+                  onClick={() => setExpandedDayId(isExpanded ? null : r.id)}
+                >
+                  <ChevronDown size={16} className={isExpanded ? "is-rotated" : ""} aria-hidden="true" />
+                </button>
+                {onEditDay ? (
+                  <button
+                    type="button"
+                    className="laid-tile-btn is-icon"
+                    disabled={busy}
+                    aria-label={`Править ${LaidDupPlan.SHORT[p.day]}`}
+                    title={`Править ${LaidDupPlan.SHORT[p.day]}`}
+                    onClick={() => onEditDay(r)}
+                  >
+                    <Pencil size={15} aria-hidden="true" />
+                  </button>
+                ) : null}
+              </div>
+
+              {isExpanded ? (
+                <div className="laid-day-exercises" role="region" aria-label={`Упражнения: ${LaidDupPlan.SHORT[p.day]}`}>
+                  <ul className="laid-day-ex-list">
+                    {expandedPreview.map((item) => (
+                      <li key={item.exerciseId} className={`laid-day-ex-row${item.role === "lift" ? " is-lift" : ""}`}>
+                        <div className="laid-day-ex-main">
+                          <span className="laid-day-ex-name">{item.name}</span>
+                          <span className="laid-day-ex-meta">
+                            <span>{item.setsRepsLabel}</span>
+                            <span className={`laid-day-ex-weight source-${item.weightSource}`}>{item.weightLabel}</span>
+                            <span className="laid-day-ex-rir">{item.rirLabel}</span>
+                          </span>
+                        </div>
+                        {onEditSubstitutions ? (
+                          <button
+                            type="button"
+                            className="laid-day-ex-swap"
+                            aria-label={`Заменить ${item.name}`}
+                            title="Заменить упражнение в цикле"
+                            onClick={() => onEditSubstitutions(item.originalId)}
+                          >
+                            <ArrowLeftRight size={14} aria-hidden="true" />
+                          </button>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               ) : null}
             </m.li>
@@ -258,11 +359,11 @@ export function LaidDupCard({
             {cycleSummary.lifts.map((item) => (
               <li key={item.lift}>
                 <small>{item.name}</small>
-                <b>
+                <strong>
                   {item.bestE1rm !== null
                     ? `${LaidDupPlan.kg(item.bestE1rm)} кг`
                     : `${LaidDupPlan.kg(item.startMax)} кг`}
-                </b>
+                </strong>
                 <span>
                   {item.deltaKg !== null && item.deltaKg !== 0
                     ? `${item.deltaKg > 0 ? "+" : ""}${LaidDupPlan.kg(item.deltaKg)} кг`
@@ -293,7 +394,7 @@ export function LaidDupCard({
               {calibrationReady
                 .map(
                   (g) =>
-                    `${g.exerciseName} → ТМ ${LaidDupPlan.kg(g.suggestedTm)} кг (92,5 % от 1ПМ ${LaidDupPlan.kg(g.estimated1Rm)} кг)`,
+                    `${g.exerciseName} → ТМ ${LaidDupPlan.kg(g.suggestedTm)} кг (1ПМ ${LaidDupPlan.kg(g.estimated1Rm)} кг)`,
                 )
                 .join("; ")}
               .
@@ -312,7 +413,38 @@ export function LaidDupCard({
           </m.div>
         ) : null}
 
-        {suggestion.length ? (
+        {tmAutoreg.length > 0 && onApplyTmUpdates ? (
+          <m.div
+            key="tm-autoreg"
+            className="laid-suggest"
+            role="status"
+            initial={reduced ? false : { opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.2 }}
+          >
+            <p>
+              <b>Автокоррекция TM (DUP v2):</b>{" "}
+              {tmAutoreg
+                .map(
+                  (u) =>
+                    `${LaidDupPlan.liftLabel(u.lift, subs)} ${LaidDupPlan.kg(u.fromMax)} → ${LaidDupPlan.kg(u.toMax)} кг (${u.changePct > 0 ? "+" : ""}${Math.round(u.changePct * 1000) / 10} %)`,
+                )
+                .join("; ")}
+              .
+            </p>
+            <button
+              type="button"
+              className="button secondary"
+              disabled={busy}
+              onClick={() =>
+                onApplyTmUpdates(tmAutoreg.map((u) => ({ lift: u.lift, toMax: u.toMax })))
+              }
+            >
+              Применить TM с недели {position.beforeStart ? 1 : position.week + 1}
+            </button>
+          </m.div>
+        ) : suggestion.length ? (
           <m.div
             key="suggest"
             className="laid-suggest"
@@ -334,79 +466,81 @@ export function LaidDupCard({
         ) : null}
       </AnimatePresence>
 
-      <div className="laid-actions">
-        <m.button
-          type="button"
-          className="button primary"
-          whileTap={reduced ? undefined : { scale: 0.985 }}
-          onClick={onSchedule}
-        >
-          <CalendarDays size={16} aria-hidden="true" />
-          Расписание ({totalWeeks} нед.)
-        </m.button>
-        <m.button
-          type="button"
-          className="button secondary"
-          whileTap={reduced ? undefined : { scale: 0.985 }}
-          onClick={onEditDays}
-        >
-          <ArrowUpDown size={16} aria-hidden="true" />
-          Дни недели
-        </m.button>
-        {onEditSubstitutions ? (
+      <div className="laid-card-toolbar">
+        <div className="laid-actions-main">
           <m.button
             type="button"
-            className="button secondary"
+            className="button secondary laid-btn-schedule"
             whileTap={reduced ? undefined : { scale: 0.985 }}
-            onClick={onEditSubstitutions}
+            onClick={onSchedule}
           >
-            <ArrowLeftRight size={16} aria-hidden="true" />
-            {subCount > 0 ? `Замены (${subCount})` : "Замены"}
+            <CalendarDays size={16} aria-hidden="true" />
+            <span>Расписание ({totalWeeks} нед.)</span>
           </m.button>
-        ) : null}
-        <m.button
-          type="button"
-          className="button secondary"
-          whileTap={reduced ? undefined : { scale: 0.985 }}
-          onClick={onUpdate}
-        >
-          {position.finished ? "Начать новый цикл" : "Обновить максимумы"}
-        </m.button>
-        {onToggleDeloadWeek && !position.beforeStart && rawWeek <= 12 ? (
           <m.button
             type="button"
-            className="button secondary"
-            disabled={busy}
+            className="button secondary laid-btn-tool"
             whileTap={reduced ? undefined : { scale: 0.985 }}
-            onClick={() => onToggleDeloadWeek(rawWeek, !isCurrentDeload)}
+            onClick={onEditDays}
           >
-            <RotateCcw size={15} aria-hidden="true" />
-            {isCurrentDeload
-              ? `Убрать разгрузку нед. ${rawWeek + 1}`
-              : position.finished
-                ? `Начать разгрузку (нед. ${rawWeek + 1})`
-                : `Вставить разгрузку (нед. ${rawWeek + 1})`}
+            <ArrowUpDown size={15} aria-hidden="true" />
+            <span>Дни недели</span>
           </m.button>
-        ) : null}
-        {onDeleteCycle ? (
+          {onEditSubstitutions ? (
+            <m.button
+              type="button"
+              className="button secondary laid-btn-tool"
+              whileTap={reduced ? undefined : { scale: 0.985 }}
+              onClick={() => onEditSubstitutions()}
+            >
+              <ArrowLeftRight size={15} aria-hidden="true" />
+              <span>{subCount > 0 ? `Замены (${subCount})` : "Замены"}</span>
+            </m.button>
+          ) : null}
           <m.button
             type="button"
-            className="button secondary laid-delete-cycle-btn"
-            disabled={busy}
+            className="button secondary laid-btn-tool"
             whileTap={reduced ? undefined : { scale: 0.985 }}
-            onClick={onDeleteCycle}
+            onClick={onUpdate}
           >
-            <Trash2 size={15} aria-hidden="true" />
-            Удалить цикл ({cycle.length})
+            <SlidersHorizontal size={15} aria-hidden="true" />
+            <span>{position.finished ? "Начать новый цикл" : "Обновить максимумы"}</span>
           </m.button>
+        </div>
+
+        {(onToggleDeloadWeek && !position.beforeStart && rawWeek <= 12) || onDeleteCycle ? (
+          <div className="laid-card-utilities">
+            {onToggleDeloadWeek && !position.beforeStart && rawWeek <= 12 ? (
+              <button
+                type="button"
+                className="laid-utility-btn"
+                disabled={busy}
+                onClick={() => onToggleDeloadWeek(rawWeek, !isCurrentDeload)}
+              >
+                <RotateCcw size={14} aria-hidden="true" />
+                <span>
+                  {isCurrentDeload
+                    ? `Убрать разгрузку нед. ${rawWeek + 1}`
+                    : position.finished
+                      ? `Разгрузка (нед. ${rawWeek + 1})`
+                      : `Вставить разгрузку (нед. ${rawWeek + 1})`}
+                </span>
+              </button>
+            ) : null}
+            {onDeleteCycle ? (
+              <button
+                type="button"
+                className="laid-utility-btn is-danger"
+                disabled={busy}
+                onClick={onDeleteCycle}
+              >
+                <Trash2 size={14} aria-hidden="true" />
+                <span>Удалить цикл</span>
+              </button>
+            ) : null}
+          </div>
         ) : null}
       </div>
-      <p className="tiny">
-        {LaidDupPlan.NOTICE}{" "}
-        {first.autoEscalate
-          ? LaidDupPlan.AUTO_NOTICE
-          : "Обновление 1ПМ внутри цикла — по кнопке, без скрытых изменений."}
-      </p>
     </m.section>
   );
 }

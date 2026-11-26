@@ -1,10 +1,11 @@
 import { useState, useMemo } from "react";
 import { ArrowLeftRight, Search, X, Sparkles, ChevronRight, Shield, RotateCcw } from "lucide-react";
-import type { Exercise } from "../lib/types";
+import type { Exercise, Workout } from "../lib/types";
 import { EXERCISES } from "../lib/catalog";
 import { ExerciseAlternativesFinder, type DetectedEquipment } from "../domain/ExerciseAlternatives";
 import { ExerciseLabels } from "../domain/ExerciseLabels";
 import { BiomechanicsEngine } from "../domain/BiomechanicsEngine";
+import { LaidDupPlan } from "../domain/LaidDupPlan";
 import {
   AVOID_REASON_LABELS,
   INJURY_DISCLAIMER,
@@ -42,6 +43,8 @@ export default function ExerciseSwapModal({
   personal,
   originalExercise,
   onReset,
+  workouts,
+  today,
 }: {
   currentExercise: Exercise;
   onSwap: (newExercise: Exercise) => void;
@@ -60,6 +63,9 @@ export default function ExerciseSwapModal({
   personal?: Exercise[];
   originalExercise?: Exercise;
   onReset?: () => void;
+  /** История тренировок: показывает знакомый рабочий вес на тренажёре/упражнении прямо в списке замен. */
+  workouts?: readonly Workout[];
+  today?: string;
 }) {
   const [search, setSearch] = useState("");
   const [selectedEquip, setSelectedEquip] = useState<"all" | DetectedEquipment>("all");
@@ -92,11 +98,11 @@ export default function ExerciseSwapModal({
   );
 
   const equipFilters: { id: "all" | DetectedEquipment; label: string }[] = [
-    { id: "all", label: "Все снаряды" },
+    { id: "all", label: "Все" },
+    { id: "machine", label: "Тренажёр" },
+    { id: "cable", label: "Блок" },
     { id: "dumbbell", label: "Гантели" },
     { id: "barbell", label: "Штанга" },
-    { id: "cable", label: "Блок / Кроссовер" },
-    { id: "machine", label: "Тренажёр" },
     ...(requireWeighted ? [] : [{ id: "bodyweight" as const, label: "Свой вес" }]),
   ];
 
@@ -122,6 +128,19 @@ export default function ExerciseSwapModal({
       .slice(0, 14);
   }, [search, pool, selectedEquip, injuryZone]);
 
+  const historyLabels = useMemo(() => {
+    const map = new Map<string, string>();
+    if (!workouts?.length) return map;
+    const ids = search.trim()
+      ? searchResults.map((e) => e.id)
+      : filteredSuggested.map((a) => a.exercise.id);
+    for (const id of ids) {
+      const last = LaidDupPlan.lastWorkingSetSummary(workouts, id, today);
+      if (last) map.set(id, last.label);
+    }
+    return map;
+  }, [workouts, today, search, searchResults, filteredSuggested]);
+
   function commitSwap(exercise: Exercise) {
     if (showScopePicker && onSwapWithScope) {
       onSwapWithScope(exercise, scope, scope === "avoid" ? avoidReason : undefined);
@@ -134,43 +153,65 @@ export default function ExerciseSwapModal({
   return (
     <Modal title={title} onClose={onClose} wide>
       <div className="exercise-swap-dialog-v2">
-        {subtitle ? <p className="swap-scope-note">{subtitle}</p> : null}
-
-        {/* Comparison Header Card */}
-        <div className="swap-comparison-banner">
-          <div className="swap-banner-col current">
-            <span className="swap-banner-tag">Текущее упражнение</span>
+        {/* Compact current exercise strip */}
+        <div className="swap-current-strip">
+          <div className="swap-current-copy">
+            <span className="swap-banner-tag">Меняем</span>
             <strong className="swap-ex-name">{currentExercise.name}</strong>
             <span className="swap-ex-meta">
               {ExerciseLabels.meta(currentExercise)}
+              {subtitle ? ` · ${subtitle}` : ""}
             </span>
           </div>
+          {originalExercise && originalExercise.id !== currentExercise.id && onReset ? (
+            <button
+              type="button"
+              className="swap-reset-btn"
+              onClick={() => {
+                onReset();
+                onClose();
+              }}
+            >
+              <RotateCcw size={13} aria-hidden="true" />
+              <span>Вернуть: {originalExercise.name}</span>
+            </button>
+          ) : null}
+        </div>
 
-          <div className="swap-banner-arrow">
-            <ArrowLeftRight size={22} className="text-accent" />
-          </div>
+        {/* Search Bar right at top for immediate typing ("бабочка", "пек-дек", etc.) */}
+        <div className="swap-search-field">
+          <Search size={16} className="search-icon" aria-hidden="true" />
+          <input
+            type="search"
+            placeholder="Поиск по каталогу (например, бабочка, пек-дек, жим ногами)..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          {search && (
+            <button
+              type="button"
+              className="clear-search-btn"
+              onClick={() => setSearch("")}
+              aria-label="Очистить"
+            >
+              <X size={14} aria-hidden="true" />
+            </button>
+          )}
+        </div>
 
-          <div className="swap-banner-col target">
-            <span className="swap-banner-tag accent">Выбери замену</span>
-            <span className="swap-banner-instruction">
-              {requireWeighted
-                ? "С весом отягощения · несовместимые со 95 % синглом перейдут в калибровку/RIR"
-                : "С теми же целевыми пучками мышц"}
-            </span>
-            {originalExercise && originalExercise.id !== currentExercise.id && onReset ? (
-              <button
-                type="button"
-                className="swap-reset-btn"
-                onClick={() => {
-                  onReset();
-                  onClose();
-                }}
-              >
-                <RotateCcw size={13} aria-hidden="true" />
-                <span>Вернуть: {originalExercise.name}</span>
-              </button>
-            ) : null}
-          </div>
+        {/* Equipment Filter Chips */}
+        <div className="swap-equip-filters" role="group" aria-label="Фильтр по снаряду">
+          {equipFilters.map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              className={`swap-filter-pill ${selectedEquip === f.id ? "active" : ""}`}
+              aria-pressed={selectedEquip === f.id}
+              onClick={() => setSelectedEquip(f.id)}
+            >
+              {f.label}
+            </button>
+          ))}
         </div>
 
         {/* 4-Level Swap Scope Picker (when swapping in an active workout) */}
@@ -209,65 +250,40 @@ export default function ExerciseSwapModal({
           </div>
         ) : null}
 
-        {/* Injury / Discomfort Zone Filters */}
-        <div className="swap-injury-bar" role="group" aria-label="Щадящий фильтр по зоне">
-          <span className="swap-injury-label">
-            <Shield size={13} aria-hidden="true" />
-            Беречь зону:
-          </span>
-          {INJURY_ZONES.map((z) => {
-            const active = injuryZone === z.id;
-            return (
-              <button
-                key={z.id}
-                type="button"
-                className={`swap-filter-pill swap-filter-spine${active ? " active" : ""}`}
-                aria-pressed={active}
-                title={z.hint}
-                onClick={() => setInjuryZone(active ? null : z.id)}
-              >
-                {z.short}
-              </button>
-            );
-          })}
-        </div>
-        {injuryZone ? <p className="tiny muted swap-disclaimer">{INJURY_DISCLAIMER}</p> : null}
-
-        {/* Equipment Filter Chips */}
-        <div className="swap-equip-filters">
-          {equipFilters.map((f) => (
-            <button
-              key={f.id}
-              type="button"
-              className={`swap-filter-pill ${selectedEquip === f.id ? "active" : ""}`}
-              aria-pressed={selectedEquip === f.id}
-              onClick={() => setSelectedEquip(f.id)}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Search Bar */}
-        <div className="swap-search-field">
-          <Search size={16} className="search-icon" />
-          <input
-            type="search"
-            placeholder="Поиск по всему каталогу упражнений..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          {search && (
-            <button
-              type="button"
-              className="clear-search-btn"
-              onClick={() => setSearch("")}
-              aria-label="Очистить"
-            >
-              <X size={14} />
-            </button>
-          )}
-        </div>
+        {/* Collapsible Injury / Discomfort Zone Filters */}
+        <details className="laid-disclosure swap-injury-disclosure" open={!!injuryZone}>
+          <summary>
+            <span className="swap-injury-label">
+              <Shield size={14} aria-hidden="true" />
+              <span>Беречь зону (при дискомфорте / травме)</span>
+            </span>
+            {injuryZone ? (
+              <span className="laid-custom-badge is-filled">
+                {INJURY_ZONES.find((z) => z.id === injuryZone)?.short}
+              </span>
+            ) : null}
+          </summary>
+          <div className="swap-injury-body">
+            <div className="swap-injury-bar" role="group" aria-label="Щадящий фильтр по зоне">
+              {INJURY_ZONES.map((z) => {
+                const active = injuryZone === z.id;
+                return (
+                  <button
+                    key={z.id}
+                    type="button"
+                    className={`swap-filter-pill swap-filter-spine${active ? " active" : ""}`}
+                    aria-pressed={active}
+                    title={z.hint}
+                    onClick={() => setInjuryZone(active ? null : z.id)}
+                  >
+                    {z.short}
+                  </button>
+                );
+              })}
+            </div>
+            {injuryZone ? <p className="tiny muted swap-disclaimer">{INJURY_DISCLAIMER}</p> : null}
+          </div>
+        </details>
 
         {/* Alternatives List */}
         {search.trim() ? (
@@ -282,8 +298,9 @@ export default function ExerciseSwapModal({
                 {searchResults.map((e) => {
                   const lowAxial = isCurrentAxial && BiomechanicsEngine.loadClass(e) !== "axial_compound";
                   const compat = showCompatibilityFor
-                    ? SubstitutionPolicy.classify(showCompatibilityFor, e, { hasOwnHistory: false })
+                    ? SubstitutionPolicy.classify(showCompatibilityFor, e, { hasOwnHistory: historyLabels.has(e.id) })
                     : null;
+                  const lastLabel = historyLabels.get(e.id);
                   return (
                     <button
                       key={e.id}
@@ -300,10 +317,11 @@ export default function ExerciseSwapModal({
                         <span className="swap-card-sub">
                           {ExerciseLabels.muscles(e.primary)}
                           {lowAxial ? " · без осевой" : ""}
+                          {lastLabel ? ` · прошлый: ${lastLabel}` : ""}
                         </span>
                       </div>
                       <div className="swap-card-action">
-                        <ChevronRight size={18} />
+                        <ChevronRight size={18} aria-hidden="true" />
                       </div>
                     </button>
                   );
@@ -314,18 +332,21 @@ export default function ExerciseSwapModal({
         ) : (
           <div className="swap-results-section">
             <div className="swap-section-headline">
-              <Sparkles size={15} className="text-accent" />
-              <span>Анатомические альтернативы с тем же фокусом ({filteredSuggested.length})</span>
+              <Sparkles size={15} className="text-accent" aria-hidden="true" />
+              <span>Похожие по мышцам ({filteredSuggested.length})</span>
             </div>
             {filteredSuggested.length === 0 ? (
-              <p className="tiny muted empty-swap-msg">Нет подходящих альтернатив для выбранного фильтра — попробуй поиск выше</p>
+              <p className="tiny muted empty-swap-msg">Нет подходящих вариантов для выбранного снаряда — попробуй поиск выше</p>
             ) : (
               <div className="swap-cards-grid">
                 {filteredSuggested.map((alt) => {
                   const lowAxial = isCurrentAxial && BiomechanicsEngine.loadClass(alt.exercise) !== "axial_compound";
                   const compat = showCompatibilityFor
-                    ? SubstitutionPolicy.classify(showCompatibilityFor, alt.exercise, { hasOwnHistory: false })
+                    ? SubstitutionPolicy.classify(showCompatibilityFor, alt.exercise, {
+                        hasOwnHistory: historyLabels.has(alt.exercise.id),
+                      })
                     : null;
+                  const lastLabel = historyLabels.get(alt.exercise.id);
                   return (
                     <button
                       key={alt.exercise.id}
@@ -343,11 +364,12 @@ export default function ExerciseSwapModal({
                           <span className="reason-text">
                             {alt.reason}
                             {lowAxial ? " · без осевой" : ""}
+                            {lastLabel ? ` · прошлый: ${lastLabel}` : ""}
                           </span>
                         </div>
                       </div>
                       <div className="swap-card-action">
-                        <ArrowLeftRight size={16} className="text-accent" />
+                        <ArrowLeftRight size={16} className="text-accent" aria-hidden="true" />
                       </div>
                     </button>
                   );

@@ -83,7 +83,7 @@ export function LaidWeekScheduleModal({ cycle, allRoutines, today, onSave, onClo
           </p>
         ) : null}
 
-        <div className="laid-actions">
+        <div className="laid-actions laid-sticky-footer">
           <button type="button" className="button primary" disabled={busy || !changed} onClick={() => void handleSave()}>
             {busy ? "Сохраняем…" : "Сохранить расписание"}
           </button>
