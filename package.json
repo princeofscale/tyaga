@@ -28,18 +28,18 @@
     "pretest": "node scripts/build-worker.mjs"
   },
   "dependencies": {
-    "@capacitor/android": "^8.5.3",
+    "@capacitor/android": "^8.6.2",
     "@capacitor/core": "^8.5.3",
-    "@capacitor/filesystem": "^8.1.4",
+    "@capacitor/filesystem": "^8.1.5",
     "@capacitor/share": "^8.0.3",
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
     "fflate": "^0.8.3",
     "lucide-react": "^0.468.0",
-    "motion": "^14.0.0",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1",
+    "motion": "^14.14.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "saxes": "^6.0.0",
-    "sql.js": "^1.14.2"
+    "sql.js": "^1.17.0"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.5.3",
@@ -48,7 +48,7 @@
     "@playwright/test": "^1.63.0",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
-    "@types/sql.js": "^1.4.11",
+    "@types/sql.js": "^1.16.0",
     "@vitejs/plugin-react": "^4.7.0",
     "drizzle-kit": "^0.31.4",
     "drizzle-orm": "^0.44.5",
