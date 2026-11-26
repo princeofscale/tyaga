@@ -5,6 +5,7 @@ import {
   type WarmupStep,
 } from "../domain/WarmupLadderCalculator";
 import { DecimalInput } from "../domain/DecimalInput";
+import { GymInventoryStore } from "../domain/GymInventory";
 import { NumberField } from "./NumberField";
 
 export function WarmupModal({
@@ -15,9 +16,11 @@ export function WarmupModal({
   defaultReps?: number;
   onClose: () => void;
 }) {
-  const [targetWeight, setTargetWeight] = useState(() => WarmupLadderCalculator.clampTargetWeight(defaultWeight, 20));
+  const [barWeight, setBarWeight] = useState<number>(() => GymInventoryStore.read().barWeightKg);
+  const [targetWeight, setTargetWeight] = useState(() =>
+    WarmupLadderCalculator.clampTargetWeight(defaultWeight, GymInventoryStore.read().barWeightKg),
+  );
   const [targetReps, setTargetReps] = useState(() => WarmupLadderCalculator.clampReps(defaultReps));
-  const [barWeight, setBarWeight] = useState(20);
 
   const steps: WarmupStep[] = useMemo(
     () => WarmupLadderCalculator.generateLadder(targetWeight, targetReps, barWeight),

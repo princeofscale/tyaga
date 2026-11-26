@@ -108,6 +108,11 @@ export function BodyweightModal({
     void entries;
     return tracker.getWeeklyRate();
   }, [entries, tracker]);
+  const neatVerdict = useMemo(() => {
+    void entries;
+    void goal;
+    return tracker.getNeatVerdict(today);
+  }, [entries, goal, tracker, today]);
   const trend = useMemo(() => {
     void entries;
     return tracker.getTrend();
@@ -401,6 +406,20 @@ export function BodyweightModal({
             {rate.label === "Мало данных" ? "От 3 замеров за 7 дней" : rate.label}
           </span>
         </article>
+      </section>
+
+      <section
+        className={`bw-neat-card status-${neatVerdict.status}`}
+        aria-label="Анти-NEAT оценка темпа за 14 дней"
+      >
+        <div className="bw-neat-head">
+          <span className="bw-neat-badge">{neatVerdict.badge}</span>
+          {neatVerdict.kcalDeltaHint ? (
+            <span className="bw-neat-kcal">{neatVerdict.kcalDeltaHint}</span>
+          ) : null}
+        </div>
+        <strong className="bw-neat-title">{neatVerdict.headline}</strong>
+        <p className="bw-neat-detail">{neatVerdict.detail}</p>
       </section>
 
       {/* График + Форма записи */}

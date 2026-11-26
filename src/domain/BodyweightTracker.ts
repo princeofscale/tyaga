@@ -39,6 +39,26 @@ export interface BodyweightGoal {
   startWeightKg: number | null;
 }
 
+export type BodyweightNeatStatus =
+  | "insufficient"
+  | "neat_plateau"
+  | "optimal_gain"
+  | "too_fast"
+  | "loss_slow"
+  | "loss_optimal"
+  | "loss_fast";
+
+export interface BodyweightNeatVerdict {
+  status: BodyweightNeatStatus;
+  goalMode: "gain" | "loss" | "neutral";
+  rateKgPerWeek: number | null;
+  ratePctPerWeek: number | null;
+  badge: string;
+  headline: string;
+  detail: string;
+  kcalDeltaHint: string | null;
+}
+
 export class BodyweightTracker {
   private storageKey: string;
   private goalKey: string;
@@ -280,6 +300,146 @@ export class BodyweightTracker {
         label: "Удержание веса",
       };
     }
+  }
+
+  /**
+   * 14-day anti-NEAT trend check (target lean bulk window: 0.25–0.5% body mass/week).
+   * Uses two 7-day rolling averages when available, or linear regression over the last 14–21 days.
+   */
+  public getNeatVerdict(today = localDate(new Date(), this.timeZone)): BodyweightNeatVerdict {
+    const entries = this.getEntries().filter((e) => e.date <= today);
+    const goal = this.getGoal();
+    const latest = entries.at(-1);
+    const currentKg = latest?.weightKg ?? null;
+    const goalMode: "gain" | "loss" | "neutral" =
+      currentKg !== null && goal.targetWeightKg !== null
+        ? goal.targetWeightKg > currentKg + 0.5
+          ? "gain"
+          : goal.targetWeightKg < currentKg - 0.5
+            ? "loss"
+            : "neutral"
+        : "neutral";
+
+    const fmtNum = (n: number) => n.toFixed(2).replace(".", ",");
+    const fmtSign = (n: number) => `${n > 0 ? "+" : ""}${fmtNum(n)}`;
+
+    const recent7Start = addCalendarDays(today, -6);
+    const prev7Start = addCalendarDays(today, -13);
+    const recent7 = entries.filter((e) => e.date >= recent7Start && e.date <= today);
+    const prev7 = entries.filter((e) => e.date >= prev7Start && e.date < recent7Start);
+
+    let rateKgPerWeek: number | null = null;
+
+    if (recent7.length >= 2 && prev7.length >= 2) {
+      const avgRecent = recent7.reduce((s, e) => s + e.weightKg, 0) / recent7.length;
+      const avgPrev = prev7.reduce((s, e) => s + e.weightKg, 0) / prev7.length;
+      rateKgPerWeek = Math.round((avgRecent - avgPrev) * 100) / 100;
+    } else {
+      const window21 = entries.filter((e) => e.date >= addCalendarDays(today, -20));
+      const spanDays =
+        window21.length >= 2
+          ? (Date.parse(window21[window21.length - 1].date) - Date.parse(window21[0].date)) / 86400000
+          : 0;
+      if (window21.length >= 3 && spanDays >= 7) {
+        const xs = window21.map((e) => (Date.parse(e.date) - Date.parse(window21[0].date)) / 86400000);
+        const meanX = xs.reduce((a, b) => a + b, 0) / xs.length;
+        const meanY = window21.reduce((a, e) => a + e.weightKg, 0) / window21.length;
+        const num = window21.reduce((a, e, i) => a + (xs[i] - meanX) * (e.weightKg - meanY), 0);
+        const den = xs.reduce((a, x) => a + (x - meanX) ** 2, 0);
+        if (den > 0) rateKgPerWeek = Math.round((num / den) * 7 * 100) / 100;
+      }
+    }
+
+    if (rateKgPerWeek === null || currentKg === null) {
+      return {
+        status: "insufficient",
+        goalMode,
+        rateKgPerWeek: null,
+        ratePctPerWeek: null,
+        badge: "Нужно 14 дн.",
+        headline: "Анти-NEAT контроль темпа",
+        detail:
+          "Взвешивайся утром натощак 3+ раза в неделю в течение 14 дней — покажу чистый темп (цель сухого набора: 0,25–0,5 %/нед) и момент, когда нужно поднять калории.",
+        kcalDeltaHint: null,
+      };
+    }
+
+    const ratePctPerWeek = Math.round((rateKgPerWeek / currentKg) * 10000) / 100;
+    const rateText = `${fmtSign(rateKgPerWeek)} кг/нед`;
+    const pctText = `${fmtSign(ratePctPerWeek)} %/нед`;
+
+    if (goalMode === "loss") {
+      if (ratePctPerWeek > -0.25) {
+        return {
+          status: "loss_slow",
+          goalMode,
+          rateKgPerWeek,
+          ratePctPerWeek,
+          badge: "Плато снижения",
+          headline: "Вес снижается медленнее 0,25 %/нед",
+          detail: `За 14 дней темп ${rateText} (${pctText}). Урежь суточную калорийность на 100–150 ккал или добавь ~1500 шагов в день.`,
+          kcalDeltaHint: "−100…150 ккал/сут",
+        };
+      }
+      if (ratePctPerWeek < -1.0) {
+        return {
+          status: "loss_fast",
+          goalMode,
+          rateKgPerWeek,
+          ratePctPerWeek,
+          badge: "Слишком быстро",
+          headline: "Снижение быстрее 1 %/нед — риск потери мышц",
+          detail: `За 14 дней темп ${rateText} (${pctText}). Слегка подними калории (+150 ккал), чтобы сохранить силовые и мышечную массу.`,
+          kcalDeltaHint: "+150 ккал/сут",
+        };
+      }
+      return {
+        status: "loss_optimal",
+        goalMode,
+        rateKgPerWeek,
+        ratePctPerWeek,
+        badge: "Оптимум",
+        headline: `Ровное снижение (${pctText})`,
+        detail: `Темп ${rateText} укладывается в безопасное окно 0,25–1 %/нед. Держи текущий дефицит и белок 1,8–2,2 г/кг.`,
+        kcalDeltaHint: "Без изменений",
+      };
+    }
+
+    // Gain or neutral (hypertrophy / lean bulk reference 0.25–0.5%/week)
+    if (ratePctPerWeek < 0.25) {
+      return {
+        status: "neat_plateau",
+        goalMode,
+        rateKgPerWeek,
+        ratePctPerWeek,
+        badge: "Плато · NEAT",
+        headline: "Темп ниже 0,25 %/нед — подними профицит",
+        detail: `За 14 дней темп ${rateText} (${pctText}). При наборе у эктоморфов адаптивный NEAT часто рассеивает профицит — добавь +150–250 ккал за счёт углеводов и жиров, программу менять не нужно.`,
+        kcalDeltaHint: "+150…250 ккал/сут",
+      };
+    }
+    if (rateKgPerWeek > 0.7 || ratePctPerWeek > 0.55) {
+      return {
+        status: "too_fast",
+        goalMode,
+        rateKgPerWeek,
+        ratePctPerWeek,
+        badge: "Выше оптимума",
+        headline: "Набор слишком быстрый — притормози профицит",
+        detail: `За 14 дней темп ${rateText} (${pctText}). Выше 0,5 %/нед (или 0,7 кг/нед) избыток уходит в жир — срежь ~100–150 ккал и перепроверь тренд через 2 недели.`,
+        kcalDeltaHint: "−100…150 ккал/сут",
+      };
+    }
+    return {
+      status: "optimal_gain",
+      goalMode,
+      rateKgPerWeek,
+      ratePctPerWeek,
+      badge: "Сухой набор",
+      headline: `Идеальный темп набора (${pctText})`,
+      detail: `За 14 дней ${rateText} — точно в целевом окне 0,25–0,5 % массы тела в неделю. Держи текущие калории и белок 1,6–2,2 г/кг.`,
+      kcalDeltaHint: "Держать курс",
+    };
   }
 
   public getStats(): BodyweightStats | null {

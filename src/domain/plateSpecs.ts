@@ -20,13 +20,20 @@ export const OLYMPIC_PLATES: PlateSpec[] = [
   { weight: 1.25, color: "#9ca3af", borderColor: "#6b7280", textColor: "#18181b", width: 13, height: 68, name: "1.25 кг (Хром)" },
 ];
 
-export function calculatePlatesGreedy(totalWeight: number, barWeight: number): {
+export function calculatePlatesGreedy(
+  totalWeight: number,
+  barWeight: number,
+  allowedWeights?: readonly number[],
+): {
   plates: PlateSpec[];
   weightPerSide: number;
   actualLoaded: number;
   remainder: number;
 } {
-  const inventory = OLYMPIC_PLATES.slice(0, PlateLoadingCalculator.MAX_PLATE_TYPES);
+  const allowed = allowedWeights ? new Set(allowedWeights) : null;
+  const inventory = OLYMPIC_PLATES
+    .filter((spec) => !allowed || allowed.has(spec.weight))
+    .slice(0, PlateLoadingCalculator.MAX_PLATE_TYPES);
   const specsByWeight = new Map<number, PlateSpec>(inventory.map((spec) => [spec.weight, spec]));
   const result = PlateLoadingCalculator.calculate(totalWeight, barWeight, [...specsByWeight.keys()]);
   return { ...result, plates: result.plates.map((weight) => specsByWeight.get(weight)!) };

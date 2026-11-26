@@ -1,6 +1,16 @@
 import { Suspense, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
-import { Download, RotateCcw, Shield, Sparkles } from "lucide-react";
+import { Download, Dumbbell, RotateCcw, Shield, Sparkles } from "lucide-react";
 import { AVOID_REASON_LABELS, ExerciseAvoidStore } from "../../domain/SubstitutionPolicy";
+import {
+  GYM_BAR_OPTIONS,
+  GYM_MIN_PLATE_OPTIONS,
+  GymInventoryStore,
+  type GymInventory,
+} from "../../domain/GymInventory";
+import {
+  BiomechanicsProfileStore,
+  type BiomechanicsProfile,
+} from "../../domain/BiomechanicsProfile";
 import {
   DEFAULT_SETTINGS,
   MUSCLES,
@@ -42,7 +52,6 @@ import {
   OneRepMaxCalculator,
   PersonalExerciseEditor,
   PlateCalculator,
-  PoseAnalysisPanel,
   RestNotificationSettings,
   VolumeLandmarksModal,
   WarmupModal,
@@ -52,7 +61,6 @@ import type { ProductView } from "../navigation/AppChrome";
 
 export type AppModalId =
   | "machines"
-  | "technique"
   | "tools"
   | "backup"
   | "rest_notifications"
@@ -84,6 +92,115 @@ const ModalFallback = () => (
     Загружаем…
   </div>
 );
+
+function GymInventorySettings() {
+  const [inv, setInv] = useState<GymInventory>(() => GymInventoryStore.read());
+  const update = (patch: Partial<GymInventory>) => {
+    setInv((prev) => GymInventoryStore.save({ ...prev, ...patch }));
+  };
+  return (
+    <section className="settings-inventory" aria-label="Инвентарь зала">
+      <div className="settings-inventory-head">
+        <Dumbbell size={14} aria-hidden="true" />
+        <b>Инвентарь зала</b>
+        <small>для калькулятора блинов и разминки</small>
+      </div>
+      <div className="settings-inventory-row">
+        <span>Гриф по умолчанию</span>
+        <div className="settings-pill-group" role="group" aria-label="Вес грифа по умолчанию">
+          {GYM_BAR_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              className={`settings-pill${inv.barWeightKg === opt.value ? " active" : ""}`}
+              aria-pressed={inv.barWeightKg === opt.value}
+              onClick={() => update({ barWeightKg: opt.value })}
+            >
+              {opt.short}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="settings-inventory-row">
+        <span>Минимальный блин</span>
+        <div className="settings-pill-group" role="group" aria-label="Минимальный блин">
+          {GYM_MIN_PLATE_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              className={`settings-pill${inv.minPlateKg === opt.value ? " active" : ""}`}
+              aria-pressed={inv.minPlateKg === opt.value}
+              onClick={() => update({ minPlateKg: opt.value })}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function BiomechanicsProfileSettings() {
+  const [profile, setProfile] = useState<BiomechanicsProfile>(() => BiomechanicsProfileStore.read());
+  const [shoulderInput, setShoulderInput] = useState(() =>
+    profile.biacromialCm !== null ? String(profile.biacromialCm) : "",
+  );
+  const grip = BiomechanicsProfileStore.optimalBenchGripCm(profile.biacromialCm);
+
+  const toggleLongLevers = (checked: boolean) => {
+    setProfile((prev) => BiomechanicsProfileStore.save({ ...prev, longLevers: checked }));
+  };
+
+  const updateShoulder = (raw: string) => {
+    setShoulderInput(raw);
+    const cleaned = raw.trim().replace(",", ".");
+    const parsed = cleaned === "" ? null : Number(cleaned);
+    if (parsed === null || (Number.isFinite(parsed) && parsed >= 30 && parsed <= 60)) {
+      setProfile((prev) => BiomechanicsProfileStore.save({ ...prev, biacromialCm: parsed }));
+    }
+  };
+
+  return (
+    <section className="settings-inventory" aria-label="Антропометрия и длинные рычаги">
+      <label className="settings-safety-toggle" style={{ marginTop: 0 }}>
+        <input
+          type="checkbox"
+          checked={profile.longLevers}
+          onChange={(e) => toggleLongLevers(e.target.checked)}
+        />
+        <span>
+          <b>Длинные рычаги (высокий рост / эктоморф)</b>
+          <small>
+            Показывает короткую 1-строчную подсказку по технике в базовых упражнениях (хват, углы, пауза в растяжении).
+          </small>
+        </span>
+      </label>
+      {profile.longLevers ? (
+        <div className="settings-inventory-row">
+          <label>
+            Ширина плеч по акромионам, см (опционально)
+            <input
+              type="number"
+              min="30"
+              max="60"
+              step="0.5"
+              inputMode="decimal"
+              placeholder="Например, 40"
+              value={shoulderInput}
+              onChange={(e) => updateShoulder(e.target.value)}
+            />
+          </label>
+          <small className="tiny">
+            {grip
+              ? `Оптимальный хват в жиме лёжа (1,4–1,5×): ${grip.min}–${grip.max} см между указательными пальцами.`
+              : "Если указать ширину плеч (30–60 см), рассчитаю безопасный хват для жима лёжа в см."}
+          </small>
+        </div>
+      ) : null}
+    </section>
+  );
+}
 
 function AvoidedExercisesManager({ accountId }: { accountId: string }) {
   const [items, setItems] = useState(() => new ExerciseAvoidStore(accountId).read());
@@ -336,6 +453,8 @@ export function AppModals({
               />
             </label>
           </div>
+          <GymInventorySettings />
+          <BiomechanicsProfileSettings />
           <label className="settings-safety-toggle">
             <input
               type="checkbox"
@@ -711,14 +830,6 @@ export function AppModals({
           </Suspense>
         </Modal>
       ) : null}
-
-      {modal === "technique" && (
-        <Modal title="Анализ техники по видео" onClose={() => setModal(null)} wide>
-          <Suspense fallback={<p role="status">Открываем анализ видео…</p>}>
-            <PoseAnalysisPanel />
-          </Suspense>
-        </Modal>
-      )}
 
       {modal === "machines" && (
         <Modal title="Мои тренажёры" onClose={() => setModal(null)} wide>

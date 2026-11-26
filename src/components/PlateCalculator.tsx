@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { Dumbbell, Minus, Plus, Check } from "lucide-react";
 import { DecimalInput } from "../domain/DecimalInput";
+import { GymInventoryStore } from "../domain/GymInventory";
 import { PlateLoadingCalculator } from "../domain/PlateLoadingCalculator";
 import { calculatePlatesGreedy, type PlateSpec } from "../domain/plateSpecs";
 
@@ -18,14 +19,16 @@ export default function PlateCalculator({
   /** Что именно изменится: «к подходу 1», «к 4 подходам»; null — менять нечего (кнопка выключена); не задано — «к подходу». */
   applyScope?: string | null;
 }) {
+  const [inventory] = useState(() => GymInventoryStore.read());
   const [targetWeight, setTargetWeight] = useState(() => PlateLoadingCalculator.clampWeight(
     initialWeight || 60, 0, PlateLoadingCalculator.MAX_TOTAL_WEIGHT_KG, 60,
   ));
-  const [barWeight, setBarWeight] = useState(20);
+  const [barWeight, setBarWeight] = useState<number>(() => inventory.barWeightKg);
+  const allowedPlates = useMemo(() => GymInventoryStore.allowedPlateWeights(inventory), [inventory]);
 
   const { plates, weightPerSide, actualLoaded } = useMemo(
-    () => calculatePlatesGreedy(targetWeight, barWeight),
-    [targetWeight, barWeight],
+    () => calculatePlatesGreedy(targetWeight, barWeight, allowedPlates),
+    [targetWeight, barWeight, allowedPlates],
   );
 
   const adjustWeight = (delta: number) => {
