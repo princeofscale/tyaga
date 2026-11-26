@@ -100,12 +100,22 @@ test("Главная, чистые Инструменты и активная т
   await nav(page, "История").click();
   await expect(page.locator(".resume-pill")).toContainText("05:20");
 
-  // 4. Мобилка 320px и 390px без переполнения и мелких кнопок
+  // 4. Мобилка 320px и 390px без переполнения и мелких кнопок + квадратный логотип + компактная нижняя плашка + превью тренировки
   await nav(page, "Сегодня").click();
+  await expect(page.locator(".wprev-card")).toBeVisible();
+  await expect(page.locator(".wprev-body-svg")).toHaveCount(2);
+  await expect(page.locator(".wprev-muscle-row").first()).toBeVisible();
   await page.setViewportSize({ width: 320, height: 640 });
   expect(await overflow(page)).toBeLessThanOrEqual(1);
   expect(await smallTargets(page)).toEqual([]);
   expect((await clipped(page, "main")).wide).toEqual([]);
+  const brandBox = await page.locator(".mobile-brand .brand-mark").boundingBox();
+  expect(brandBox).not.toBeNull();
+  expect(Math.abs(brandBox!.width - brandBox!.height)).toBeLessThanOrEqual(1);
+  expect(brandBox!.width).toBeGreaterThanOrEqual(30);
+  const barBox = await page.locator("aside.sidebar").boundingBox();
+  expect(barBox).not.toBeNull();
+  expect(barBox!.height).toBeLessThanOrEqual(68);
   if (process.env.SHOTS) {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.screenshot({ path: `${process.env.SHOTS}/today-390.png`, fullPage: true });

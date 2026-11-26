@@ -6,7 +6,7 @@
     --accent-dim: color-mix(in oklab, var(--accent) 68%, var(--surface));
     --sat: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
     --sab: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
-    --tabbar: 64px;
+    --tabbar: 56px;
     --journal-gutter: clamp(20px, 3vw, 44px);
     --journal-gap: clamp(16px, 1.8vw, 24px);
     --in-oklab:  ;

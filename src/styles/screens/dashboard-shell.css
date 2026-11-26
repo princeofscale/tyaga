@@ -1648,11 +1648,16 @@
             padding: 6px var(--journal-gutter)
         }
         .mobile-brand .brand-mark {
-            width: 19px
+            width: 32px;
+            height: 32px;
+            border-radius: 9px;
+            flex-shrink: 0;
+            display: inline-grid;
+            place-items: center
         }
         .mobile-brand .brand-mark svg {
-            width: 18px;
-            height: 18px
+            width: 17px;
+            height: 17px
         }
         .journal-profile {
             position: static;
@@ -1848,13 +1853,15 @@
         color: var(--text)
     }
     .brand-mark {
+        display: inline-grid;
+        place-items: center;
+        flex-shrink: 0;
         width: 34px;
         height: 34px;
         border-radius: 10px;
-        background: linear-gradient(135deg var(--in-oklab), color-mix(in oklab, var(--accent) 26%, var(--surface-2)), var(--surface));
-        border: 1px solid color-mix(in oklab, var(--accent) 42%, var(--line));
-        color: var(--accent);
-        box-shadow: 0 4px 16px -6px color-mix(in oklab, var(--accent) 45%, transparent)
+        background: color-mix(in oklab, var(--accent) 16%, var(--surface-2));
+        border: 1px solid color-mix(in oklab, var(--accent) 36%, var(--line));
+        color: var(--accent)
     }
     .journal-tab-marker {
         inset: 9px auto 9px 2px;
@@ -2110,5 +2117,218 @@
     .hero-laid-rir {
         font-size: 0.73rem;
         color: var(--muted)
+    }
+    /* Превью тренировки: силуэт мышц, прогноз недельного объёма (было -> станет) и EWMA */
+    .wprev-card {
+        display: grid;
+        gap: 12px;
+        margin-bottom: 14px;
+        padding: 13px 14px;
+        border-radius: 14px;
+        background: color-mix(in oklab, var(--bg) 72%, var(--surface));
+        border: 1px solid var(--line);
+        min-width: 0
+    }
+    .wprev-top {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: 12px;
+        align-items: center
+    }
+    .wprev-silhouettes {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 6px 8px;
+        border-radius: 12px;
+        background: var(--bg);
+        border: 1px solid var(--line-soft, var(--line))
+    }
+    .wprev-body-svg {
+        width: 44px;
+        height: 78px;
+        display: block
+    }
+    .wprev-head {
+        fill: color-mix(in oklab, var(--muted) 26%, transparent)
+    }
+    .wprev-zone.is-idle {
+        fill: color-mix(in oklab, var(--muted) 22%, transparent)
+    }
+    .wprev-zone.is-primary {
+        fill: var(--accent)
+    }
+    .wprev-zone.is-secondary {
+        fill: color-mix(in oklab, var(--accent) 55%, var(--over, #f59e0b))
+    }
+    .wprev-summary {
+        display: grid;
+        gap: 6px;
+        min-width: 0
+    }
+    .wprev-eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--accent)
+    }
+    .wprev-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px
+    }
+    .wprev-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 3px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        color: var(--text-soft);
+        font-size: 0.72rem;
+        font-weight: 650;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap
+    }
+    .wprev-chip.tier-high,
+    .wprev-chip.is-caution {
+        border-color: color-mix(in oklab, var(--over, #f59e0b) 45%, var(--line));
+        color: var(--over, #f59e0b)
+    }
+    .wprev-chip.is-ready {
+        border-color: color-mix(in oklab, var(--accent) 34%, var(--line));
+        color: var(--text)
+    }
+    .wprev-sub {
+        margin: 0;
+        font-size: 0.74rem;
+        color: var(--muted);
+        font-variant-numeric: tabular-nums
+    }
+    .wprev-muscles {
+        display: grid;
+        gap: 9px;
+        min-width: 0
+    }
+    .wprev-muscle-row {
+        display: grid;
+        gap: 5px;
+        min-width: 0
+    }
+    .wprev-muscle-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 4px 8px;
+        font-size: 0.78rem
+    }
+    .wprev-muscle-name {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 5px;
+        min-width: 0
+    }
+    .wprev-muscle-name b {
+        color: var(--text);
+        font-weight: 650
+    }
+    .wprev-muscle-name small {
+        font-size: 0.68rem;
+        color: var(--muted)
+    }
+    .wprev-muscle-name small.is-tired {
+        color: var(--over, #f59e0b);
+        font-weight: 700
+    }
+    .wprev-muscle-nums {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.74rem;
+        color: var(--muted);
+        font-variant-numeric: tabular-nums
+    }
+    .wprev-muscle-nums b {
+        color: var(--text)
+    }
+    .wprev-added {
+        font-style: normal;
+        font-weight: 750;
+        color: var(--accent)
+    }
+    .wprev-phase {
+        padding: 1px 6px;
+        border-radius: 999px;
+        font-size: 0.66rem;
+        font-weight: 700;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        color: var(--muted)
+    }
+    .wprev-phase.is-growth {
+        border-color: color-mix(in oklab, var(--accent) 40%, var(--line));
+        color: var(--accent-hover, var(--accent))
+    }
+    .wprev-phase.is-over {
+        border-color: color-mix(in oklab, var(--danger, #ef4444) 48%, var(--line));
+        color: var(--danger, #ef4444)
+    }
+    .wprev-phase.is-high {
+        border-color: color-mix(in oklab, var(--over, #f59e0b) 42%, var(--line));
+        color: var(--over, #f59e0b)
+    }
+    .wprev-bar-track {
+        position: relative;
+        height: 6px;
+        border-radius: 999px;
+        background: var(--surface-2, var(--bg-soft));
+        overflow: hidden
+    }
+    .wprev-bar-before {
+        position: absolute;
+        inset: 0 auto 0 0;
+        background: color-mix(in oklab, var(--text) 34%, transparent);
+        border-radius: 999px 0 0 999px
+    }
+    .wprev-bar-added {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        background: var(--accent);
+        border-radius: 0 999px 999px 0
+    }
+    .wprev-bar-added.is-over {
+        background: var(--danger, #ef4444)
+    }
+    .wprev-bar-mev {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 1.5px;
+        background: color-mix(in oklab, var(--text) 55%, transparent);
+        opacity: 0.7
+    }
+    .wprev-toggle {
+        justify-self: start;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        min-block-size: 40px;
+        font-size: 0.78rem
+    }
+    @media (max-width: 340px) {
+        .wprev-top {
+            grid-template-columns: 1fr;
+            gap: 10px
+        }
+        .wprev-silhouettes {
+            justify-self: start
+        }
     }
 }

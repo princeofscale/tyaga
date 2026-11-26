@@ -255,8 +255,8 @@
             align-items: stretch;
             width: auto;
             height: auto;
-            min-height: calc(var(--tabbar) + var(--sab));
-            padding: 5px max(4px, env(safe-area-inset-right)) calc(5px + var(--sab)) max(4px, env(safe-area-inset-left));
+            min-height: 0;
+            padding: 4px max(4px, env(safe-area-inset-right)) calc(4px + var(--sab)) max(4px, env(safe-area-inset-left));
             border-inline-end: 0;
             overflow: visible
         }
@@ -266,7 +266,7 @@
             grid-auto-flow: column;
             gap: 1px;
             min-width: 0;
-            padding: 1px 2px;
+            padding: 0 2px;
             overflow-x: auto;
             scrollbar-width: thin;
             scrollbar-color: var(--line-strong) transparent;
@@ -277,10 +277,10 @@
         }
         .sidebar .nav-item {
             min-width: 44px;
-            min-height: 52px;
-            padding: 5px 2px 4px;
-            gap: 4px;
-            border-radius: 7px
+            min-height: 46px;
+            padding: 4px 2px 5px;
+            gap: 3px;
+            border-radius: 9px
         }
         .sidebar .nav-item span:not(.journal-tab-marker) {
             font-size: clamp(.56rem, .2rem + 1.82vw, .72rem)
@@ -332,11 +332,13 @@
     }
     @media (max-width: 960px) {
         .sidebar {
-            background: rgba(11, 13, 20, 0.92);
-            backdrop-filter: blur(22px);
-            -webkit-backdrop-filter: blur(22px);
+            background: rgba(11, 13, 20, 0.94);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-inline-end: 0;
             border-top: 1px solid var(--line);
-            box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.45)
+            padding: 4px max(4px, env(safe-area-inset-right)) calc(4px + var(--sab)) max(4px, env(safe-area-inset-left));
+            box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.4)
         }
     }
     @media (forced-colors: active) {

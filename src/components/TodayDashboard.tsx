@@ -27,6 +27,7 @@ import { elapsedMs, type Draft } from "../lib/draft";
 import { entryName, fmt, localDate, workingSets, type Routine, type Workout } from "../lib/model";
 import { quantity, quantityWord } from "../lib/quantity";
 import WeeklyActivityBar from "./WeeklyActivityBar";
+import WorkoutPreviewCard from "./WorkoutPreviewCard";
 
 function formatClock(seconds: number): string {
   const s = Math.max(0, Math.floor(seconds));
@@ -273,11 +274,11 @@ export default function TodayDashboard({
           </div>
         </section>
 
-        {preview ? (
+        {active && active.exercises.length > 0 ? (
           <section className="plan-preview" aria-labelledby="preview-title">
             <div className="today-section-head">
-              <h2 id="preview-title">План тренировки</h2>
-              {preview.length > limit ? (
+              <h2 id="preview-title">{draft ? "Сейчас в работе" : "План тренировки"}</h2>
+              {preview && preview.length > limit ? (
                 <button
                   type="button"
                   className="text-button plan-preview-toggle"
@@ -288,50 +289,61 @@ export default function TodayDashboard({
                 </button>
               ) : null}
             </div>
-            <ol className="plan-exercises">
-              {(showAllPreview ? preview : preview.slice(0, limit)).map((exercise, index) => {
-                const laidRow =
-                  todayLaid?.exerciseRows[index]?.exerciseId === exercise.exerciseId
-                    ? todayLaid.exerciseRows[index]
-                    : null;
-                const firstWork = exercise.sets.find((set) => !set.warmup);
-                const weight = firstWork?.weight;
-                const rir = firstWork?.rir;
-                return (
-                  <li key={`${exercise.exerciseId}:${index}`}>
-                    <span className="plan-number" aria-hidden="true">
-                      {String(index + 1).padStart(2, "0")}
-                    </span>
-                    <span className="plan-exercise-name">{entryName(exercise)}</span>
-                    {laidRow ? (
-                      <b>
-                        {laidRow.setsRepsLabel} · {laidRow.weightLabel}
-                        <small className="plan-source">{laidRow.rirLabel}</small>
-                      </b>
-                    ) : (
-                      <b>
-                        {PlanLine.sets(exercise)}
-                        {weight ? ` · ${fmt(weight)} кг` : ""}
-                        {rir !== null && rir !== undefined ? ` · RIR ${rir}` : ""}
-                        {weight ? (
-                          <small className="plan-source">
-                            {sources[index] === "history" ? "вес из истории" : "по плану"}
-                          </small>
-                        ) : null}
-                      </b>
-                    )}
-                  </li>
-                );
-              })}
-            </ol>
-            {preview.length > limit && !showAllPreview ? (
-              <button
-                type="button"
-                className="text-button plan-more-btn"
-                onClick={() => setShowAllPreview(true)}
-              >
-                Показать ещё {quantity(preview.length - limit, "упражнение", "упражнения", "упражнений")}
-              </button>
+            <WorkoutPreviewCard
+              planned={active}
+              history={workouts}
+              today={todayKey}
+              timeZone={timeZone}
+              bodyMassKg={bodyMassKg}
+            />
+            {preview ? (
+              <>
+                <ol className="plan-exercises">
+                  {(showAllPreview ? preview : preview.slice(0, limit)).map((exercise, index) => {
+                    const laidRow =
+                      todayLaid?.exerciseRows[index]?.exerciseId === exercise.exerciseId
+                        ? todayLaid.exerciseRows[index]
+                        : null;
+                    const firstWork = exercise.sets.find((set) => !set.warmup);
+                    const weight = firstWork?.weight;
+                    const rir = firstWork?.rir;
+                    return (
+                      <li key={`${exercise.exerciseId}:${index}`}>
+                        <span className="plan-number" aria-hidden="true">
+                          {String(index + 1).padStart(2, "0")}
+                        </span>
+                        <span className="plan-exercise-name">{entryName(exercise)}</span>
+                        {laidRow ? (
+                          <b>
+                            {laidRow.setsRepsLabel} · {laidRow.weightLabel}
+                            <small className="plan-source">{laidRow.rirLabel}</small>
+                          </b>
+                        ) : (
+                          <b>
+                            {PlanLine.sets(exercise)}
+                            {weight ? ` · ${fmt(weight)} кг` : ""}
+                            {rir !== null && rir !== undefined ? ` · RIR ${rir}` : ""}
+                            {weight ? (
+                              <small className="plan-source">
+                                {sources[index] === "history" ? "вес из истории" : "по плану"}
+                              </small>
+                            ) : null}
+                          </b>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ol>
+                {preview.length > limit && !showAllPreview ? (
+                  <button
+                    type="button"
+                    className="text-button plan-more-btn"
+                    onClick={() => setShowAllPreview(true)}
+                  >
+                    Показать ещё {quantity(preview.length - limit, "упражнение", "упражнения", "упражнений")}
+                  </button>
+                ) : null}
+              </>
             ) : null}
           </section>
         ) : null}

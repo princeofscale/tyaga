@@ -544,7 +544,7 @@
         :root {
             --journal-gutter: 16px;
             --journal-gap: 16px;
-            --tabbar: 66px
+            --tabbar: 56px
         }
     }
     dialog.modal:has(> :is(.exercise-library, .exercise-technique)) {
