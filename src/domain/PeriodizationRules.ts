@@ -16,6 +16,9 @@ const KEYS = [
   "substitutions",
   "calibrationLifts",
   "painFlags",
+  "autoEscalate",
+  "weekMode",
+  "deloadWeeks",
 ];
 const LIFTS = ["bench", "deadlift", "ohp", "squat"] as const;
 const MAX_SUBSTITUTIONS = 30;
@@ -96,6 +99,27 @@ export class PeriodizationRules {
     if (calibrationLifts === null) return fail("Проверь список калибровки");
     const painFlags = checkLiftList(p.painFlags, "Проверь пометки боли");
     if (painFlags === null) return fail("Проверь пометки боли");
+    let autoEscalate: boolean | undefined;
+    if (p.autoEscalate !== undefined) {
+      if (typeof p.autoEscalate !== "boolean") return fail("Проверь настройку автообновления максимумов");
+      if (p.autoEscalate) autoEscalate = true;
+    }
+    let weekMode: "calendar" | "rolling" | undefined;
+    if (p.weekMode !== undefined) {
+      if (p.weekMode !== "calendar" && p.weekMode !== "rolling") return fail("Проверь режим счёта недель");
+      if (p.weekMode === "rolling") weekMode = "rolling";
+    }
+    let deloadWeeks: number[] | undefined;
+    if (p.deloadWeeks !== undefined) {
+      if (!Array.isArray(p.deloadWeeks) || p.deloadWeeks.length > 3) return fail("Проверь разгрузочные недели цикла");
+      const seen = new Set<number>();
+      for (const item of p.deloadWeeks) {
+        if (!whole(item, 0, 12)) return fail("Проверь разгрузочные недели цикла");
+        seen.add(item);
+      }
+      if (seen.size !== p.deloadWeeks.length) return fail("Проверь разгрузочные недели цикла");
+      if (seen.size > 0) deloadWeeks = [...seen].sort((a, b) => a - b);
+    }
     return {
       ok: true,
       value: {
@@ -111,6 +135,9 @@ export class PeriodizationRules {
         ...(substitutions ? { substitutions } : {}),
         ...(calibrationLifts ? { calibrationLifts } : {}),
         ...(painFlags ? { painFlags } : {}),
+        ...(autoEscalate ? { autoEscalate } : {}),
+        ...(weekMode ? { weekMode } : {}),
+        ...(deloadWeeks ? { deloadWeeks } : {}),
       },
     };
   }

@@ -115,11 +115,16 @@ export default function ProgramWeek({
                     const { routine, originalDate } = slot;
                     const moved = date !== originalDate;
                     const startsToday = isToday && !done;
+                    const laidCycle = LaidDupPlan.cycleOf(routines as Routine[], routine);
+                    const laidSlotPlan = laidCycle.length
+                      ? LaidDupPlan.planFor(routine, originalDate, { workouts, cycle: laidCycle })
+                      : null;
+                    const isLaidDeload = !!laidSlotPlan?.isDeload;
                     return (
                       <div className={`calendar-slot${done ? "" : " adjustable"}`} key={`${routine.id}:${originalDate}`}>
                         <button
                           type="button"
-                          className={`day-session${done ? " completed" : ""}${startsToday ? " is-start" : ""}`}
+                          className={`day-session${done ? " completed" : ""}${startsToday ? " is-start" : ""}${isLaidDeload ? " is-deload" : ""}`}
                           disabled={!!done && !onOpenWorkout}
                           onClick={() => {
                             if (done) onOpenWorkout?.(done);
@@ -130,8 +135,15 @@ export default function ProgramWeek({
                           <b>{startsToday ? <Play size={11} fill="currentColor" aria-hidden="true" /> : null}{routine.name}</b>
                           <small>
                             {done ? <Check size={13} aria-hidden="true" /> : null}
-                            <span>{done ? "Записано" : moved ? `С ${dateLabel(originalDate)}`
-                              : quantity(routine.exercises.length, "упражнение", "упражнения", "упражнений")}</span>
+                            <span>
+                              {done
+                                ? "Записано"
+                                : isLaidDeload
+                                  ? "Разгрузка · 55–65 %"
+                                  : moved
+                                    ? `С ${dateLabel(originalDate)}`
+                                    : quantity(routine.exercises.length, "упражнение", "упражнения", "упражнений")}
+                            </span>
                           </small>
                         </button>
                         {!done ? (

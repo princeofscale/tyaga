@@ -303,7 +303,8 @@
     }
     .set-actions {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) 52px;
+        /* min-content: на 320 px подпись «Подход» не должна обрезаться узкой колонкой */
+        grid-template-columns: minmax(min-content, 1fr) 52px;
         gap: 6px
     }
     .rest-bar {
@@ -1514,7 +1515,8 @@
         min-height: 0
     }
     .workout-screen .set-actions:has(.warmup-add) {
-        grid-template-columns: minmax(0, 1fr) auto 52px
+        /* min-content: подпись «Подход» не обрезается на 320 px, когда рядом кнопка разминки */
+        grid-template-columns: minmax(min-content, 1fr) auto 52px
     }
     .workout-screen .add-set.warmup-add {
         width: auto;
@@ -2898,7 +2900,8 @@
         border: 1px solid var(--line);
         background: var(--bg);
         color: var(--text-soft);
-        min-block-size: 44px
+        min-block-size: 44px;
+        white-space: nowrap
     }
     .workout-screen .add-set:hover:not(:disabled) {
         border-color: var(--accent);
@@ -3249,5 +3252,193 @@
         font-size: 0.8rem;
         line-height: 1.5;
         color: var(--text-soft, var(--muted));
+    }
+    .workout-phase-banner {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 13px 15px;
+        border-radius: 14px;
+        border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--line));
+        background: linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--accent) 9%, var(--surface)),
+            var(--surface)
+        );
+    }
+    .workout-phase-banner.is-deload {
+        border-color: color-mix(in srgb, var(--over, #f0b429) 48%, var(--line));
+        background: linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--over, #f0b429) 10%, var(--surface)),
+            var(--surface)
+        );
+    }
+    .workout-phase-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px 10px;
+    }
+    .workout-phase-pill {
+        display: inline-flex;
+        align-items: center;
+        padding: 3px 9px;
+        border-radius: 999px;
+        border: 1px solid color-mix(in srgb, var(--accent) 48%, var(--line));
+        background: var(--bg);
+        color: var(--accent-hover, var(--accent));
+        font-size: 0.74rem;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+    }
+    .workout-phase-banner.is-deload .workout-phase-pill {
+        border-color: color-mix(in srgb, var(--over, #f0b429) 55%, var(--line));
+        color: var(--over, #f0b429);
+    }
+    .workout-phase-head strong {
+        font-size: 0.94rem;
+        color: var(--text);
+    }
+    .workout-phase-summary {
+        margin: 0;
+        font-size: 0.82rem;
+        line-height: 1.5;
+        color: var(--text-soft, var(--muted));
+    }
+    .workout-phase-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    .workout-phase-chips > span {
+        padding: 4px 9px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: var(--bg);
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--text-soft, var(--text));
+    }
+    .laid-ex-guidance {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: var(--bg);
+    }
+    .laid-ex-guidance.role-lift {
+        border-color: color-mix(in srgb, var(--accent) 42%, var(--line));
+    }
+    .laid-ex-pills {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+    }
+    .laid-ex-pill {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 8px;
+        border-radius: 6px;
+        font-size: 0.74rem;
+        font-weight: 650;
+        line-height: 1.4;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        color: var(--text-soft, var(--text));
+    }
+    .laid-ex-pill.is-role {
+        color: var(--muted);
+    }
+    .laid-ex-pill.is-rir {
+        border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+        color: var(--accent-hover, var(--accent));
+    }
+    .laid-ex-pill.is-rest {
+        font-variant-numeric: tabular-nums;
+    }
+    .laid-ex-detail {
+        margin: 0;
+        font-size: 0.78rem;
+        line-height: 1.45;
+        color: var(--muted);
+    }
+    .laid-aux-hint {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding-top: 6px;
+        border-top: 1px dashed var(--line);
+    }
+    .laid-aux-hint-copy {
+        display: grid;
+        gap: 2px;
+        min-width: 0;
+        flex: 1 1 200px;
+    }
+    .laid-aux-hint-copy strong {
+        font-size: 0.79rem;
+        color: var(--text);
+    }
+    .laid-aux-hint.kind-raise_weight .laid-aux-hint-copy strong {
+        color: var(--accent-hover, var(--accent));
+    }
+    .laid-aux-hint.kind-consolidate .laid-aux-hint-copy strong {
+        color: var(--over, #f0b429);
+    }
+    .laid-aux-hint-copy span {
+        font-size: 0.74rem;
+        line-height: 1.4;
+        color: var(--muted);
+    }
+    .workout-readiness-bar .readiness-hint {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+    }
+    .workout-readiness-bar .readiness-hint p {
+        margin: 0;
+        flex: 1 1 220px;
+    }
+    .readiness-apply-btn {
+        min-height: 36px;
+        padding: 6px 12px;
+        font-size: 0.78rem;
+        white-space: nowrap;
+    }
+    .readiness-applied-pill {
+        display: inline-flex;
+        align-items: center;
+        padding: 4px 10px;
+        border-radius: 999px;
+        border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+        background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+        color: var(--accent-hover, var(--accent));
+        font-size: 0.74rem;
+        font-weight: 700;
+    }
+    .laid-ex-pill.is-plates {
+        gap: 4px;
+        font-variant-numeric: tabular-nums;
+        color: var(--text);
+        border-color: color-mix(in srgb, var(--text) 20%, var(--line));
+    }
+    .gym-guidance-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    .gym-smart-warmup-btn {
+        align-self: flex-start;
+        min-height: 36px;
+        padding: 6px 12px;
+        font-size: 0.78rem;
     }
 }

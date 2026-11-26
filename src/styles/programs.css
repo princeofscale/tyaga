@@ -2511,4 +2511,323 @@
         border-top: 1px solid var(--line);
         background: var(--surface)
     }
+    .laid-week-guide {
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
+        padding: 11px 13px;
+        border-radius: 12px;
+        border: 1px solid color-mix(in srgb, var(--accent) 36%, var(--line));
+        background: linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--accent) 7%, var(--bg)),
+            var(--bg)
+        )
+    }
+    .laid-week-guide.is-deload {
+        border-color: color-mix(in srgb, var(--over, #f0b429) 46%, var(--line));
+        background: linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--over, #f0b429) 9%, var(--bg)),
+            var(--bg)
+        )
+    }
+    .laid-week-guide-top strong {
+        font-size: 0.88rem;
+        line-height: 1.35;
+        color: var(--text)
+    }
+    .laid-week-guide-copy {
+        margin: 0;
+        font-size: 0.81rem;
+        line-height: 1.48;
+        color: var(--text-soft)
+    }
+    .laid-guide-rules {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px
+    }
+    .laid-guide-chip {
+        display: inline-flex;
+        align-items: center;
+        padding: 3px 8px;
+        border-radius: 7px;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        font-size: 0.74rem;
+        font-weight: 600;
+        color: var(--text-soft)
+    }
+    .laid-guide-chip.is-accent {
+        border-color: color-mix(in srgb, var(--accent) 42%, var(--line));
+        color: var(--accent-hover, var(--accent))
+    }
+    .laid-mini-max.is-mode {
+        border-style: dashed;
+        border-color: color-mix(in srgb, var(--accent) 42%, var(--line))
+    }
+    .laid-mini-max.is-mode b {
+        font-size: 0.78rem;
+        font-family: var(--font-body, inherit);
+        color: var(--accent-hover, var(--accent))
+    }
+    .laid-day-sub {
+        font-size: 0.72rem;
+        color: var(--muted);
+        line-height: 1.35
+    }
+    .laid-week-card-focus {
+        margin: 4px 0 8px;
+        font-size: 0.76rem;
+        line-height: 1.4;
+        color: var(--muted)
+    }
+    .laid-delete-cycle-btn {
+        color: var(--danger);
+        border-color: color-mix(in srgb, var(--danger) 35%, var(--line))
+    }
+    .routine-heading-actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px
+    }
+    .bulk-delete-btn {
+        color: var(--danger);
+        border-color: color-mix(in srgb, var(--danger) 35%, var(--line))
+    }
+    .bulk-delete-list {
+        list-style: none;
+        margin: 10px 0 14px;
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: var(--bg);
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        max-height: 180px;
+        overflow-y: auto;
+        font-size: 0.84rem;
+        color: var(--text-soft)
+    }
+    .laid-section-head-actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px
+    }
+    .laid-phase-badge.is-deload {
+        border-color: color-mix(in srgb, var(--over, #f0b429) 55%, var(--line));
+        color: var(--over, #f0b429)
+    }
+    .laid-seg.is-deload {
+        background: color-mix(in srgb, var(--over, #f0b429) 24%, var(--line))
+    }
+    .laid-seg.is-deload .laid-seg-fill {
+        background: var(--over, #f0b429)
+    }
+    .laid-week-card.is-deload {
+        border-color: color-mix(in srgb, var(--over, #f0b429) 46%, var(--line));
+        background: linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--over, #f0b429) 8%, var(--surface)),
+            var(--surface)
+        )
+    }
+    .laid-day-tile.is-deload {
+        border-color: color-mix(in srgb, var(--over, #f0b429) 42%, var(--line))
+    }
+    .laid-day-tile-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 6px;
+        padding-top: 6px;
+        border-top: 1px solid var(--line-soft, var(--line))
+    }
+    .laid-tile-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        /* цели касания: не меньше 44 px по обеим осям (WCAG 2.5.5 / mobile) */
+        min-block-size: 44px;
+        min-inline-size: 44px;
+        padding: 4px 12px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        color: var(--text-soft);
+        font-size: 0.76rem;
+        font-weight: 600;
+        transition: border-color 140ms ease-out, background-color 140ms ease-out, color 140ms ease-out
+    }
+    .laid-tile-btn:hover:not(:disabled) {
+        border-color: var(--accent);
+        color: var(--text)
+    }
+    .laid-tile-btn.is-start {
+        flex: 1;
+        border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+        background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+        color: var(--accent-hover, var(--accent))
+    }
+    .laid-tile-btn.is-start:hover:not(:disabled) {
+        background: color-mix(in srgb, var(--accent) 18%, var(--surface))
+    }
+    .laid-calibration-banner {
+        border-color: color-mix(in srgb, var(--accent) 48%, var(--line));
+        background: linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--accent) 9%, var(--bg)),
+            var(--bg)
+        )
+    }
+    .laid-routines-disclosure {
+        margin-top: 14px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--surface);
+        overflow: clip
+    }
+    .laid-routines-summary {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-block-size: 48px;
+        padding: 12px 14px;
+        cursor: pointer;
+        list-style: none;
+        user-select: none;
+        font-size: 0.88rem;
+        font-weight: 650;
+        color: var(--text-soft)
+    }
+    .laid-routines-summary::-webkit-details-marker {
+        display: none
+    }
+    .laid-routines-summary::before {
+        content: "";
+        flex: none;
+        inline-size: 8px;
+        block-size: 8px;
+        border-inline-end: 2px solid currentColor;
+        border-block-end: 2px solid currentColor;
+        transform: rotate(-45deg);
+        transition: transform 200ms ease-out
+    }
+    .laid-routines-disclosure[open] > .laid-routines-summary::before {
+        transform: rotate(45deg)
+    }
+    .laid-routines-summary:hover {
+        color: var(--text);
+        background: var(--surface-2)
+    }
+    .laid-routines-summary-label {
+        flex: 1;
+        min-inline-size: 0
+    }
+    .laid-routines-summary-count {
+        flex: none;
+        padding: 2px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: var(--bg);
+        font-size: 0.74rem;
+        font-weight: 650;
+        color: var(--muted);
+        font-variant-numeric: tabular-nums
+    }
+    .laid-routines-disclosure-body {
+        padding: 0 14px 14px
+    }
+    @media (prefers-reduced-motion: no-preference) {
+        .laid-routines-disclosure {
+            interpolate-size: allow-keywords
+        }
+        .laid-routines-disclosure::details-content {
+            contain: layout;
+            block-size: 0;
+            overflow: clip;
+            transition: block-size 280ms ease, content-visibility 280ms ease allow-discrete
+        }
+        .laid-routines-disclosure[open]::details-content {
+            block-size: auto
+        }
+    }
+    .day-session.is-deload {
+        border-color: color-mix(in srgb, var(--over, #f0b429) 48%, var(--line));
+        background: color-mix(in srgb, var(--over, #f0b429) 8%, var(--surface))
+    }
+    .day-session.is-deload small {
+        color: var(--over, #f0b429);
+        font-weight: 600
+    }
+    .laid-cycle-summary {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 12px 14px;
+        border-radius: 12px;
+        border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--line));
+        background: linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--accent) 8%, var(--bg)),
+            var(--bg)
+        )
+    }
+    .laid-cycle-summary-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 6px 10px;
+        font-size: 0.84rem
+    }
+    .laid-cycle-summary-head strong {
+        color: var(--text)
+    }
+    .laid-cycle-summary-head span {
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: var(--accent-hover, var(--accent));
+        font-variant-numeric: tabular-nums
+    }
+    .laid-summary-lifts {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin: 0;
+        padding: 0;
+        list-style: none
+    }
+    @media (min-width: 560px) {
+        .laid-summary-lifts {
+            grid-template-columns: repeat(4, minmax(0, 1fr))
+        }
+    }
+    .laid-summary-lifts li {
+        display: grid;
+        gap: 2px;
+        padding: 8px 10px;
+        border-radius: 9px;
+        border: 1px solid var(--line);
+        background: var(--surface)
+    }
+    .laid-summary-lifts small {
+        font-size: 0.72rem;
+        color: var(--muted)
+    }
+    .laid-summary-lifts b {
+        font-size: 0.9rem;
+        color: var(--text);
+        font-variant-numeric: tabular-nums
+    }
+    .laid-summary-lifts span {
+        font-size: 0.74rem;
+        font-weight: 600;
+        color: var(--accent-hover, var(--accent))
+    }
 }

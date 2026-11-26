@@ -1,7 +1,7 @@
 import { MuscleParticipation } from "../domain/MuscleParticipation";
 import { ExecutionIdentity } from "../domain/ExecutionIdentity";
 import { PreviousSets } from "../domain/PreviousSets";
-import { DeloadEngine, type DeloadMode } from "../domain/DeloadEngine";
+import { DELOAD_PRESETS, DeloadEngine, type DeloadMode } from "../domain/DeloadEngine";
 import { SetCompleteness, type MissingField } from "../domain/SetCompleteness";
 import { WorkoutUndo } from "../domain/WorkoutUndo";
 import { WorkoutFlow, type WorkoutSetPosition } from "../domain/WorkoutFlow";
@@ -42,7 +42,7 @@ import RoomBadge from "./RoomBadge";
 import { useLiveRoom } from "../lib/liveRoomContext";
 import Modal from "./Modal";
 import { audioHaptics } from "../lib/audioHaptics";
-import type { Exercise } from "../lib/types";
+import type { Exercise, Routine } from "../lib/types";
 import { detectExerciseEquipment } from "../domain/ExerciseAlternatives";
 import {
   MUSCLES,
@@ -74,7 +74,10 @@ import { ExerciseAvoidStore, type AvoidReason, type SwapScope } from "../domain/
 import { useWakeLock } from "../hooks/useWakeLock";
 import { setsWord } from "../lib/quantity";
 import type { DeloadPlanRecord } from "../domain/DeloadPlan";
+import LaidExerciseGuidanceBar from "./LaidExerciseGuidanceBar";
 import WorkoutGym from "./WorkoutGym";
+import WorkoutPhaseBanner from "./WorkoutPhaseBanner";
+import WorkoutReadinessBar from "./WorkoutReadinessBar";
 
 type Props = {
   focusRequest?: {exerciseId:string;setId:string;id:string}|null;
@@ -104,6 +107,8 @@ type Props = {
   deloadMode?: DeloadMode;
   /** Действующая разгрузка: строка и «Подставить 85 %» на свободной тренировке (R07-REQ05). */
   deloadPlan?: DeloadPlanRecord | null;
+  /** Сохранённые программы: нужны для контекста DUP Лейда (неделя, целевой RIR, отдых по упражнениям) и цикла разгрузки. */
+  routines?: Routine[];
 };
 const GYM_MODE_KEY = "tyaga_workout_view_mode";
 const gymSelectionKey = (workoutId: string) => `${GYM_MODE_KEY}:set:${workoutId}`;
@@ -426,6 +431,7 @@ export default function WorkoutView({
   onSwapInProgram,
   deloadMode,
   deloadPlan,
+  routines,
 }: Props) {
   const [keepAwake, setKeepAwake] = useState(() => {
     try {
@@ -455,6 +461,11 @@ export default function WorkoutView({
     level: "normal" | "worse" | "hard";
   } | null>(null);
   const readiness = readinessChoice && readinessChoice.workoutId === workoutId ? readinessChoice.level : null;
+  const [readinessApplied, setReadinessApplied] = useState<{
+    workoutId: string;
+    level: "worse" | "hard";
+  } | null>(null);
+  const appliedReadiness = readinessApplied && readinessApplied.workoutId === workoutId ? readinessApplied.level : null;
   const [preferGym, setPreferGym] = useState(savedGymMode);
   const [gymSelection, setGymSelection] = useState<{ workoutId: string; setId: string | null } | null>(null);
   // View state belongs to this tab, not to the shared workout draft.
@@ -580,9 +591,43 @@ export default function WorkoutView({
       ),
     [history, exercises, workoutId, draft?.workout.date, draft?.workout.name, settings.timeZone],
   );
-  // QA-R06-02: в разгрузочной тренировке «прошлое» масштабируется от последнего НЕразгрузочного результата упражнения:
-  // иначе вторая разгрузочная тренировка недели берёт уже сниженный вес и снижает его второй раз (95 → 80 → 67,5).
-  const inDeload = !!draft && DeloadEngine.isDeloadName(draft.workout.name);
+  const activeRoutine = useMemo(
+    () => (draft?.workout.routineId && routines ? routines.find((r) => r.id === draft.workout.routineId) : undefined),
+    [draft?.workout.routineId, routines],
+  );
+  const activeLaidCycle = useMemo(
+    () => (activeRoutine && routines ? LaidDupPlan.cycleOf(routines, activeRoutine) : []),
+    [activeRoutine, routines],
+  );
+  const activeLaidPeriodization = useMemo(
+    () => (activeRoutine ? LaidDupPlan.periodizationOf(activeRoutine) : undefined),
+    [activeRoutine],
+  );
+  const activeLaidPlan = useMemo(
+    () =>
+      activeRoutine && draft
+        ? LaidDupPlan.planFor(activeRoutine, draft.workout.programDate ?? draft.workout.date, {
+            workouts: history,
+            cycle: activeLaidCycle,
+          })
+        : null,
+    [activeRoutine, draft, history, activeLaidCycle],
+  );
+  // QA-R06-02 + периодическая/вставленная разгрузка: «прошлое» масштабируется от последнего
+  // НЕразгрузочного результата упражнения, включая тренажёры (machine_stack), а не предлагает полный прошлый вес.
+  const isPeriodicDeload = !!draft && (/Разгрузочная неделя/i.test(draft.workout.notes) || !!activeLaidPlan?.isDeload);
+  const inDeload = !!draft && (DeloadEngine.isDeloadName(draft.workout.name) || isPeriodicDeload);
+  const activeLaidGuide = useMemo(
+    () =>
+      activeLaidPlan
+        ? LaidDupPlan.weekGuide(activeLaidPlan.position, {
+            light: activeLaidPeriodization?.light,
+            deload: inDeload,
+            totalWeeks: LaidDupPlan.totalWeeks(activeLaidPeriodization),
+          })
+        : null,
+    [activeLaidPlan, activeLaidPeriodization, inDeload],
+  );
   const deloadBase = useMemo(() => {
     if (!inDeload) return new Map<string, { working: SetEntry[]; warmup: SetEntry[] }>();
     const regular = DeloadEngine.regular(history);
@@ -650,8 +695,18 @@ export default function WorkoutView({
       </div>
     );
   const w = draft.workout;
-  // R06-REQ02: в разгрузочной тренировке «прошлые» числа подставляются с разгрузочным весом, а не с полным.
-  const deloadNow: DeloadMode | undefined = DeloadEngine.isDeloadName(w.name) ? (deloadMode ?? "volume") : undefined;
+  // R06-REQ02 + периодическая разгрузка: в разгрузочной тренировке «прошлые» числа подставляются с разгрузочным весом и RIR, а не с полным.
+  const deloadNow: DeloadMode | undefined = DeloadEngine.isDeloadName(w.name)
+    ? (deloadMode ?? "volume")
+    : isPeriodicDeload
+      ? "recovery"
+      : undefined;
+  const periodicFactor = isPeriodicDeload && !DeloadEngine.isDeloadName(w.name)
+    ? (activeRoutine?.cycle?.weightFactor ?? 0.7)
+    : null;
+  const periodicDeloadRir = isPeriodicDeload && !DeloadEngine.isDeloadName(w.name)
+    ? (activeRoutine?.cycle?.deloadRir ?? 4)
+    : null;
   // `set` — когда «прошлое» искали по ключу подхода (контекст выполнения на уровне подхода): база ищется по тому же ключу (QA-R06-12).
   const deloaded = (entry: WorkoutExercise, previous: SetEntry | undefined, index: number, warmup = false, set?: SetEntry): SetEntry | undefined => {
     if (!previous || !deloadNow) return previous;
@@ -659,7 +714,70 @@ export default function WorkoutView({
     const source = PreviousSets.pick(warmup ? (base?.warmup ?? []) : (base?.working ?? []), index);
     // Нет неразгрузочной базы: «прошлое» уже из разгрузки — второй раз вес не снижаем.
     if (!source) return previous;
-    return { ...source, weight: DeloadEngine.scaleLoad(source.weight, exerciseForEntry(entry)?.recording.loadMode, deloadNow) };
+    const loadMode = exerciseForEntry(entry)?.recording.loadMode;
+    const weight =
+      periodicFactor !== null
+        ? DeloadEngine.isScalable(loadMode)
+          ? Math.min(source.weight, Math.max(0, Math.round((source.weight * periodicFactor) / 2.5) * 2.5))
+          : source.weight
+        : DeloadEngine.scaleLoad(source.weight, loadMode, deloadNow);
+    const rir = warmup
+      ? source.rir
+      : periodicDeloadRir !== null
+        ? periodicDeloadRir
+        : DELOAD_PRESETS[deloadNow].targetRir;
+    return { ...source, weight, rir };
+  };
+  const applyReadinessAdjustment = (level: "worse" | "hard") => {
+    if (appliedReadiness) return;
+    const factor = level === "worse" ? 0.95 : 0.9;
+    const targetRir = level === "worse" ? 2 : 3;
+    let adjustedSets = 0;
+    let trimmedSets = 0;
+    const nextExercises = w.exercises.map((entry) => {
+      const def = exerciseForEntry(entry);
+      const loadMode = def?.recording.loadMode;
+      const timedEx = def?.recording.type === "duration";
+      const scalable = !timedEx && DeloadEngine.isScalable(loadMode);
+      const step = loadMode === "total_external" ? 2.5 : 0.5;
+      let sets = entry.sets.map((s) => {
+        if (s.done || s.warmup) return s;
+        const nextWeight =
+          scalable && s.weight > 0
+            ? Math.max(step, Math.round((s.weight * factor) / step) * step)
+            : s.weight;
+        if (nextWeight !== s.weight) adjustedSets++;
+        return {
+          ...s,
+          weight: Math.round(nextWeight * 100) / 100,
+          ...(!timedEx && (s.rir === null || s.rir < targetRir) ? { rir: targetRir } : {}),
+        };
+      });
+      if (level === "hard") {
+        const workingCount = sets.filter((s) => !s.warmup).length;
+        if (workingCount >= 3) {
+          let lastUndoneIdx = -1;
+          for (let i = sets.length - 1; i >= 0; i--) {
+            if (!sets[i].warmup && !sets[i].done) {
+              lastUndoneIdx = i;
+              break;
+            }
+          }
+          if (lastUndoneIdx !== -1) {
+            sets = sets.filter((_, i) => i !== lastUndoneIdx);
+            trimmedSets++;
+          }
+        }
+      }
+      return { ...entry, sets };
+    });
+    setWorkout({ ...w, exercises: nextExercises });
+    setReadinessApplied({ workoutId: w.id, level });
+    onToast?.(
+      level === "worse"
+        ? `Смягчили оставшиеся подходы (−5 % веса, RIR ${targetRir}${adjustedSets ? `, подходов: ${adjustedSets}` : ""}).`
+        : `Включён щадящий режим (−10 % веса, RIR ${targetRir}${trimmedSets ? `, убрано подходов: ${trimmedSets}` : ""}).`,
+    );
   };
   const setWorkout = (workout: Workout) => update({ ...draft, workout });
   const patchExercise = (ei: number, patch: Partial<WorkoutExercise>) =>
@@ -683,12 +801,23 @@ export default function WorkoutView({
     }
 
     const targetEx = w.exercises[ei];
-    const next = patch.done ? flow.after(targetEx.sets[si].id)?.position : undefined;
+    const targetSet = targetEx.sets[si];
+    const next = patch.done ? flow.after(targetSet.id)?.position : undefined;
     const isSupersetTransition =
       patch.done &&
       targetEx?.supersetId &&
       w.exercises[ei + 1]?.supersetId === targetEx.supersetId;
-    const effectiveRest = isSupersetTransition ? 15 : restSeconds;
+    const workingIdx = targetEx.sets.slice(0, si).filter((s) => !s.warmup).length;
+    const laidRest =
+      activeLaidPlan && activeLaidPeriodization && !targetSet.warmup
+        ? LaidDupPlan.restSecondsForSet(activeLaidPeriodization.day, targetEx.exerciseId, activeLaidPlan, {
+            isTopSet: workingIdx === 0,
+            reps: targetSet.reps || undefined,
+            substitutions: activeLaidPeriodization.substitutions,
+            deload: inDeload,
+          })
+        : null;
+    const effectiveRest = isSupersetTransition ? 15 : (laidRest ?? restSeconds);
 
     const shouldAutoResume =
       !draft.editing &&
@@ -783,7 +912,7 @@ export default function WorkoutView({
   const zone = w.timeZone ?? settings.timeZone;
   const retroLabel = draft.editing ? null : BackdatedWorkout.label(draft, settings.timeZone);
   const deloadLine =
-    !draft.editing && !DeloadEngine.isDeloadName(w.name) ? DeloadHint.line(deloadPlan, localDate(new Date(), zone)) : null;
+    !draft.editing && !inDeload ? DeloadHint.line(deloadPlan, localDate(new Date(), zone)) : null;
   const applyDeload = () => {
     if (!deloadPlan) return;
     const regular = DeloadEngine.regular(history);
@@ -882,8 +1011,32 @@ export default function WorkoutView({
     const last = (set.warmup ? comparable?.warmup : comparable?.working)?.[comparableIndex];
     const lastText = previousLabel(entry, last);
     const fromLast = deloaded(entry, last, comparableIndex, set.warmup, set);
+    const shownPrevText = deloadNow && fromLast ? previousLabel(entry, fromLast) : lastText;
     const isActive = !gym && activeSetKey === set.id;
     const isLaidTopSet = !gym && !set.warmup && kindIndex === 0 && LaidDupPlan.hasPlanWeight(entry);
+    const laidGuidance =
+      activeLaidPlan && activeLaidPeriodization
+        ? LaidDupPlan.exerciseGuidance(
+            activeLaidPeriodization.day,
+            entry.exerciseId,
+            activeLaidPlan,
+            activeLaidPeriodization.substitutions,
+            { deload: inDeload },
+          )
+        : null;
+    const rirPlaceholder = set.warmup
+      ? "—"
+      : inDeload
+        ? String(periodicDeloadRir ?? (deloadNow ? DELOAD_PRESETS[deloadNow].targetRir : 4))
+        : laidGuidance
+          ? laidGuidance.role === "lift" && activeLaidPlan?.prescriptionMode === "percent_1rm"
+            ? kindIndex === 0
+              ? activeLaidPlan.position.wave === 3
+                ? "1"
+                : "1–2"
+              : "2–3"
+            : laidGuidance.rirPlaceholder
+          : "—";
     const missing = needs?.setId === set.id && SetCompleteness.missing(exercise, set) === needs.field
       ? needs.field
       : null;
@@ -912,7 +1065,7 @@ export default function WorkoutView({
             step="0.5"
             inputMode="decimal"
             value={assistance ? (set.assistanceKg ?? 0) : set.weight || ""}
-            placeholder={last ? `${last.weight}` : "0"}
+            placeholder={fromLast ? `${fromLast.weight}` : last ? `${last.weight}` : "0"}
             {...invalid("weight")}
             {...fieldProps(ei, si)}
             onChange={(event) => {
@@ -947,7 +1100,7 @@ export default function WorkoutView({
             step={timed ? "0.01" : "0.5"}
             inputMode="decimal"
             value={timed ? (set.distanceKm ?? "") : (set.rir ?? "")}
-            placeholder="—"
+            placeholder={timed ? "—" : rirPlaceholder}
             {...fieldProps(ei, si)}
             onChange={(event) => changeSet(ei, si, timed
               ? { distanceKm: event.target.value === "" ? undefined : Number(event.target.value) }
@@ -997,7 +1150,7 @@ export default function WorkoutView({
               if (fromLast) changeSet(ei, si, PreviousSets.patch(fromLast, { timed, assistance }), true);
             }}
           >
-            {gym ? `Прошлый: ${lastText}` : wrapSafe(lastText)}
+            {gym ? `Прошлый: ${shownPrevText}` : wrapSafe(shownPrevText)}
           </button>}
           {gym ? <div className="gym-set-fields">{fields}</div> : fields}
           <button
@@ -1175,41 +1328,19 @@ export default function WorkoutView({
           </div>
         </div>
         {!readOnly && !draft.editing && !gymMode && workoutId ? (
-          <div className="workout-readiness-bar" role="group" aria-label="Самочувствие перед тренировкой">
-            <span className="readiness-label">Самочувствие</span>
-            <div className="readiness-chips">
-              {(
-                [
-                  { id: "normal", label: "Нормально" },
-                  { id: "worse", label: "Хуже обычного" },
-                  { id: "hard", label: "Тяжело сегодня" },
-                ] as const
-              ).map((opt) => (
-                <button
-                  key={opt.id}
-                  type="button"
-                  className={`readiness-chip${readiness === opt.id ? " active" : ""}${opt.id !== "normal" ? " is-caution" : ""}`}
-                  aria-pressed={readiness === opt.id}
-                  onClick={() =>
-                    setReadinessChoice((cur) =>
-                      cur?.workoutId === workoutId && cur.level === opt.id
-                        ? null
-                        : { workoutId, level: opt.id },
-                    )
-                  }
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-            {readiness === "worse" || readiness === "hard" ? (
-              <p className="readiness-hint" role="status">
-                {readiness === "worse"
-                  ? "Держи RIR 2–3, не гонись за рекордом и при необходимости срежь 1 рабочий подход."
-                  : "Сегодня в приоритете техника и RIR 2–4: снизь вес на 5–10 % или оставь 1–2 подхода в запасе."}
-              </p>
-            ) : null}
-          </div>
+          <WorkoutReadinessBar
+            readiness={readiness}
+            appliedReadiness={appliedReadiness}
+            saving={saving}
+            onSelect={(level) =>
+              setReadinessChoice((cur) =>
+                cur?.workoutId === workoutId && cur.level === level
+                  ? null
+                  : { workoutId, level },
+              )
+            }
+            onApply={applyReadinessAdjustment}
+          />
         ) : null}
         {deloadLine ? (
           <div className="deload-hint" role="status">
@@ -1339,6 +1470,14 @@ export default function WorkoutView({
             {modeSwitch}
           </div>
         ) : null}
+        {!draft.editing ? (
+          <WorkoutPhaseBanner
+            laidGuide={activeLaidGuide}
+            inDeload={inDeload}
+            periodicDeloadRir={periodicDeloadRir}
+            deloadNow={deloadNow}
+          />
+        ) : null}
         {!w.exercises.length ? (
           <p className="workout-empty-clean">
             Добавь первое упражнение
@@ -1350,6 +1489,81 @@ export default function WorkoutView({
             selected={gymSetId}
             onSelect={selectGymSet}
             editor={({ entry, exerciseIndex, setIndex }) => renderSet(entry, exerciseIndex, setIndex, true)}
+            headerExtra={({ entry, exerciseIndex }) => {
+              const exDef = exerciseForEntry(entry);
+              const isLaidTopLift = !!activeLaidPlan && entry.exerciseId === activeLaidPlan.liftExerciseId;
+              const gymGuidance =
+                activeLaidPlan && activeLaidPeriodization
+                  ? LaidDupPlan.exerciseGuidance(
+                      activeLaidPeriodization.day,
+                      entry.exerciseId,
+                      activeLaidPlan,
+                      activeLaidPeriodization.substitutions,
+                      { deload: inDeload },
+                    )
+                  : null;
+              const gymBefore =
+                ExecutionIdentity.split(entry).length === 1
+                  ? previous.get(ExecutionIdentity.key(entry))
+                  : undefined;
+              const gymAuxProg =
+                activeLaidPlan && !inDeload && !isLaidTopLift && gymBefore?.working?.length
+                  ? LaidDupPlan.auxProgressionHint(entry, gymBefore.working)
+                  : null;
+              const gymTopWeight =
+                isLaidTopLift && exDef?.recording.loadMode === "total_external"
+                  ? (entry.sets.find((s) => !s.warmup && s.weight > 0)?.weight ?? null)
+                  : null;
+              const gymWarmups = !entry.sets.some((s) => s.warmup)
+                ? isLaidTopLift && !inDeload
+                  ? new WarmupPlanner(entry).createForTopSet(20)
+                  : new WarmupPlanner(entry).create()
+                : [];
+              if (!gymGuidance && !entry.progressionNote && !gymWarmups.length) return null;
+              return (
+                <div className="gym-guidance-stack">
+                  {gymGuidance ? (
+                    <LaidExerciseGuidanceBar
+                      guidance={gymGuidance}
+                      hasProgressionNote={!!entry.progressionNote}
+                      auxProgression={gymAuxProg}
+                      topSetPlateWeightKg={gymTopWeight}
+                      onApplyAuxWeight={(nextKg) => {
+                        const targetMin = entry.repMin ?? entry.sets.find((s) => !s.warmup)?.reps ?? 10;
+                        patchExercise(exerciseIndex, {
+                          sets: entry.sets.map((s) =>
+                            s.warmup || s.done ? s : { ...s, weight: nextKg, reps: targetMin },
+                          ),
+                        });
+                      }}
+                    />
+                  ) : null}
+                  {entry.progressionNote && !entry.progressionNote.includes("правило программы") ? (
+                    <div className={`progression-banner${LaidDupPlan.hasPlanWeight(entry) ? " laid-plan-banner" : ""}`}>
+                      <TrendingUp size={15} className="text-accent" aria-hidden="true" />
+                      <span>{entry.progressionNote}</span>
+                    </div>
+                  ) : null}
+                  {gymWarmups.length > 0 ? (
+                    <button
+                      type="button"
+                      className="button secondary gym-smart-warmup-btn"
+                      onClick={() => {
+                        patchExercise(exerciseIndex, { sets: [...gymWarmups, ...entry.sets] });
+                        selectGymSet(gymWarmups[0].id);
+                      }}
+                    >
+                      <Flame size={15} aria-hidden="true" />
+                      <span>
+                        {isLaidTopLift && !inDeload
+                          ? `Лесенка разминки под топ-сет (${gymWarmups.length} подх.)`
+                          : `Добавить разминку (${gymWarmups.length} подх.)`}
+                      </span>
+                    </button>
+                  ) : null}
+                </div>
+              );
+            }}
             onAddSet={addSet}
             onRemoveSet={removeGymSet}
             onRemoveExercise={removeGymExercise}
@@ -1448,7 +1662,33 @@ export default function WorkoutView({
             </div>
           ) : null;
 
-          const canWarmup = !we.sets.some((s) => s.warmup) && new WarmupPlanner(we).create().length > 0;
+          const isLaidTopLift = !!activeLaidPlan && we.exerciseId === activeLaidPlan.liftExerciseId;
+          const canWarmup =
+            !we.sets.some((s) => s.warmup) &&
+            (isLaidTopLift && !inDeload
+              ? new WarmupPlanner(we).createForTopSet(20).length > 0
+              : new WarmupPlanner(we).create().length > 0);
+          const topSetPlateWeightKg =
+            isLaidTopLift && spec.loadMode === "total_external"
+              ? (we.sets.find((s) => !s.warmup && s.weight > 0)?.weight ?? null)
+              : null;
+          const cardGuidance =
+            activeLaidPlan && activeLaidPeriodization
+              ? LaidDupPlan.exerciseGuidance(
+                  activeLaidPeriodization.day,
+                  we.exerciseId,
+                  activeLaidPlan,
+                  activeLaidPeriodization.substitutions,
+                  { deload: inDeload },
+                )
+              : null;
+          const auxProgression =
+            activeLaidPlan &&
+            !inDeload &&
+            we.exerciseId !== activeLaidPlan.liftExerciseId &&
+            before?.working?.length
+              ? LaidDupPlan.auxProgressionHint(we, before.working)
+              : null;
           let working = 0;
           return (
             <Fragment key={`${we.exerciseId}-${ei}`}>
@@ -1558,6 +1798,23 @@ export default function WorkoutView({
                   <Info size={14} aria-hidden="true" />
                   {hint}
                 </p>
+              ) : null}
+
+              {cardGuidance ? (
+                <LaidExerciseGuidanceBar
+                  guidance={cardGuidance}
+                  hasProgressionNote={!!we.progressionNote}
+                  auxProgression={auxProgression}
+                  topSetPlateWeightKg={topSetPlateWeightKg}
+                  onApplyAuxWeight={(nextKg) => {
+                    const targetMin = we.repMin ?? we.sets.find((s) => !s.warmup)?.reps ?? 10;
+                    patchExercise(ei, {
+                      sets: we.sets.map((s) =>
+                        s.warmup || s.done ? s : { ...s, weight: nextKg, reps: targetMin },
+                      ),
+                    });
+                  }}
+                />
               ) : null}
 
               {we.progressionNote && !we.progressionNote.includes("правило программы") ? (
@@ -1670,16 +1927,25 @@ export default function WorkoutView({
                   <button
                     type="button"
                     className="add-set warmup-add"
-                    aria-label="Добавить 3 разминочных"
-                    title="Три разминочных подхода: 40 / 60 / 80% рабочего веса — проверь и поправь"
+                    aria-label={isLaidTopLift && !inDeload ? "Добавить лесенку разминки под топ-сет" : "Добавить 3 разминочных"}
+                    title={
+                      isLaidTopLift && !inDeload
+                        ? "Прогрессивная разминка под тяжёлый топ-сет (гриф → 50 % → 70 % → 82 % → 90 %)"
+                        : "Три разминочных подхода: 40 / 60 / 80% рабочего веса — проверь и поправь"
+                    }
                     onClick={() =>
                       patchExercise(ei, {
-                        sets: [...new WarmupPlanner(we).create(), ...we.sets],
+                        sets: [
+                          ...(isLaidTopLift && !inDeload
+                            ? new WarmupPlanner(we).createForTopSet(20)
+                            : new WarmupPlanner(we).create()),
+                          ...we.sets,
+                        ],
                       })
                     }
                   >
                     <Flame size={15} />
-                    Разминка
+                    {isLaidTopLift && !inDeload ? "Разминка DUP" : "Разминка"}
                   </button>
                 ) : null}
                 <button

@@ -373,15 +373,23 @@ async function appWith(page: Page, routines: Routine[], workouts: Workout[] = []
 }
 const card = (page: Page, exercise: string) => page.locator("article.exercise-card").filter({ has: page.getByRole("heading", { name: exercise, exact: true }) });
 const weightOf = (page: Page, exercise: string, n: number) => page.getByLabel(`${exercise}, подход ${n}, вес`, { exact: true });
+/** Раскрыть спойлер «Отдельные дни цикла Лейда» на экране «Программы». */
+async function openLaidDays(page: Page) {
+  const disclosure = page.locator("details.laid-routines-disclosure").first();
+  await disclosure.waitFor({ state: "attached", timeout: 15_000 }).catch(() => {});
+  if (await disclosure.count()) await disclosure.evaluate((el) => ((el as HTMLDetailsElement).open = true));
+}
 async function startProgram(page: Page, name: string) {
   await nav(page, "Программы").click();
+  await openLaidDays(page);
   await page.locator("article.routine-card").filter({ has: page.getByRole("heading", { name, exact: true }) }).getByRole("button", { name: "Начать", exact: true }).click();
 }
 const HISTORY = () => [
   doneWorkout("Жим раньше", "2026-11-03", [["bench", 90, 3, 2], ["fly-db-flat", 12.5, 11, 2]]),
   doneWorkout("Верх раньше", "2026-11-04", [["bench", 70, 8, 2]]),
 ];
-const PLAN_NOTE = "Вес по плану недели. Поправить — в строке подхода.";
+/** Плашка плана недели на самом подходе (её помечает класс laid-plan-banner). */
+const PLAN_NOTE = ".progression-banner.laid-plan-banner";
 const PLUS = "+2.5 кг";
 
 for (const size of SIZES) {
@@ -393,12 +401,12 @@ for (const size of SIZES) {
     const bench = card(page, BENCH);
     await expect(weightOf(page, BENCH, 1)).toHaveValue("75");
     await expect(weightOf(page, BENCH, 2)).toHaveValue("67.5");
-    await expect(bench.getByText(PLAN_NOTE)).toBeVisible();
+    await expect(bench.locator(PLAN_NOTE)).toBeVisible();
     await expect(bench.getByRole("button", { name: /Повторить прошлые/ })).toHaveCount(0);
     await expect(bench.getByRole("button", { name: PLUS, exact: true })).toHaveCount(0);
     // вспомогательное с весом из истории: кнопки есть и работают
     const fly = card(page, "Разведения гантелей лёжа");
-    await expect(fly.getByText(PLAN_NOTE)).toHaveCount(0);
+    await expect(fly.locator(PLAN_NOTE)).toHaveCount(0);
     await expect(fly.getByRole("button", { name: PLUS, exact: true })).toBeVisible();
     await fly.getByRole("button", { name: /Повторить прошлые: 12,5 × 11/ }).click();
     await expect(weightOf(page, "Разведения гантелей лёжа", 1)).toHaveValue("12.5");
@@ -429,7 +437,7 @@ test("R11-REQ01: базовое упражнение остальных дней
   for (const [name, exercise] of [["Лейд · Ноги 1", "Приседания со штангой"], ["Лейд · Ноги 2", "Приседания со штангой"], ["Лейд · Тяга 1", "Становая тяга со штангой"], ["Лейд · Тяга 2", "Становая тяга со штангой"], ["Лейд · Жим 2", "Жим штанги стоя"]] as const) {
     await startProgram(page, name);
     const lift = card(page, exercise);
-    await expect(lift.getByText(PLAN_NOTE), name).toBeVisible();
+    await expect(lift.locator(PLAN_NOTE), name).toBeVisible();
     await expect(lift.getByRole("button", { name: /Повторить прошлые/ }), name).toHaveCount(0);
     await expect(lift.getByRole("button", { name: PLUS, exact: true }), name).toHaveCount(0);
     await page.getByRole("button", { name: "Отмена", exact: true }).click();
@@ -678,6 +686,7 @@ test("R11-REQ04 / 2 + QA-05: копия программы Лейда — у ж�
   test.setTimeout(120_000);
   await appWith(page, sixRoutines(), HISTORY());
   await programs(page);
+  await openLaidDays(page);
   await page.getByRole("button", { name: "Копировать программу Лейд · Жим 1", exact: true }).click();
   const d = dlg(page);
   await expect(d.getByRole("heading", { name: "Программа" }).first()).toBeVisible();
@@ -887,6 +896,7 @@ test("R11-QA-05: копия Лейда — если вес из истории �
   // жим 75 × 1 в истории: тот же вес, что у плана недели 1 (75)
   await appWith(page, sixRoutines(), [doneWorkout("Жим раньше", "2026-11-03", [["bench", 75, 1, 1]])]);
   await programs(page);
+  await openLaidDays(page);
   await page.getByRole("button", { name: "Копировать программу Лейд · Жим 1", exact: true }).click();
   const d = dlg(page);
   await expect(d.getByText(/Начнёшь с веса из истории: 75 кг/)).toHaveCount(0);

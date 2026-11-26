@@ -8,6 +8,7 @@ type Props = {
   selected: string | null;
   onSelect: (setId: string) => void;
   editor: (position: WorkoutSetPosition) => ReactNode;
+  headerExtra?: (position: WorkoutSetPosition) => ReactNode;
   onAddSet: (exerciseIndex: number, warmup: boolean) => void;
   onRemoveSet: (position: WorkoutSetPosition) => void;
   onRemoveExercise: (exerciseIndex: number) => void;
@@ -49,7 +50,7 @@ function SetGroup({ positions, warmup, selected, onSelect }: {
   );
 }
 
-export default function WorkoutGym({ flow, selected, onSelect, editor, onAddSet, onRemoveSet, onRemoveExercise, onAddExercise }: Props) {
+export default function WorkoutGym({ flow, selected, onSelect, editor, headerExtra, onAddSet, onRemoveSet, onRemoveExercise, onAddExercise }: Props) {
   const [expanded, setExpanded] = useState(false);
   const listId = useId();
   const disclosure = useRef<HTMLButtonElement>(null);
@@ -142,6 +143,7 @@ export default function WorkoutGym({ flow, selected, onSelect, editor, onAddSet,
           <SetGroup positions={group.positions.filter(({ set }) => set.warmup)} warmup selected={set.id} onSelect={onSelect} />
           <SetGroup positions={group.positions.filter(({ set }) => !set.warmup)} warmup={false} selected={set.id} onSelect={onSelect} />
         </div>
+        {headerExtra?.(current)}
         {editor(current)}
         <div className="gym-next-set" data-state={next?.wrapped ? "skipped" : next ? "next" : set.done ? "complete" : "last"}>
           {next ? (

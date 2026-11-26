@@ -3,11 +3,13 @@ import type { Muscle, Routine, Workout } from "../lib/types";
 import { AnalyticsFacts } from "./AnalyticsFacts";
 import { BiomechanicsEngine, type LaidCycleAudit, type WeeklyBiomechanicsReport } from "./BiomechanicsEngine";
 import { DeloadEngine } from "./DeloadEngine";
+import type { DeloadPlanRecord } from "./DeloadPlan";
 import { LaidDupPlan } from "./LaidDupPlan";
 import { MuscleReadiness, type MuscleReadinessItem } from "./MuscleReadiness";
 import { PersonalRecordsCalculator, type BalanceRatios } from "./PersonalRecords";
 import { ExerciseAvoidStore } from "./SubstitutionPolicy";
 import { TrainingCalendar } from "./TrainingCalendar";
+import { TrainingProgram } from "./TrainingProgram";
 import { VolumeLandmarksCalculator } from "./VolumeLandmarks";
 import { exerciseById } from "../lib/model";
 
@@ -66,6 +68,8 @@ export interface SmartCoachReport {
   rirDrift: number | null;
   /** Упражнения, скрытые по причине дискомфорта/боли (до пересмотра) или помеченные painFlags. */
   painFlagsSummary: { count: number; names: string[] };
+  /** Активна ли сейчас разгрузочная неделя (ручная разгрузка, периодическая 5-я неделя или неделя 10 после Лейда). */
+  activeDeload: { active: boolean; reason: string } | null;
   biomechanics: WeeklyBiomechanicsReport;
   readiness: MuscleReadinessItem[];
   ratios: BalanceRatios;
@@ -88,6 +92,7 @@ export class SmartCoach {
     timeZone?: string,
     now = new Date(),
     accountId?: string,
+    deload?: DeloadPlanRecord | null,
   ): SmartCoachReport {
     const bio = BiomechanicsEngine.analyzeWeek(workouts, today, { timeZone, now });
     const readiness = MuscleReadiness.fromWorkouts(workouts, today, timeZone);
@@ -210,12 +215,44 @@ export class SmartCoach {
     }
     liftTrends.sort((a, b) => Math.abs(b.changePct) - Math.abs(a.changePct));
 
-    // Аудит цикла Дэвида Лейда, если активен
+    // Аудит цикла Дэвида Лейда и проверка активной разгрузочной недели
     const laidCycles = LaidDupPlan.cycles(routines);
     const laidAudit = laidCycles.length > 0 ? BiomechanicsEngine.auditLaidCycle(laidCycles[0], workouts, today) : null;
+    const isManualDeload = !!deload && deload.until >= today;
+    const periodicDeloadRoutine = routines.find(
+      (r) => !LaidDupPlan.periodizationOf(r) && new TrainingProgram(r).isDeload(workouts, today),
+    );
+    const laidStates = laidCycles.map((c) => ({ cycle: c, state: LaidDupPlan.cycleState(c, workouts, today) }));
+    const laidDeloadEntry = laidStates.find((x) => x.state.isCurrentDeload);
+    const laidFinishedEntry = laidStates.find((x) => !x.state.isCurrentDeload && x.state.position.finished);
+    const activeDeload: SmartCoachReport["activeDeload"] = isManualDeload
+      ? { active: true, reason: `Включена разгрузка до ${deload!.until}` }
+      : laidDeloadEntry
+        ? {
+            active: true,
+            reason: `Разгрузочная неделя цикла Дэвида Лейда (неделя ${laidDeloadEntry.state.rawWeek + 1})`,
+          }
+        : periodicDeloadRoutine
+          ? { active: true, reason: `Плановая разгрузочная неделя программы «${periodicDeloadRoutine.name}»` }
+          : laidFinishedEntry
+            ? { active: true, reason: "Цикл Дэвида Лейда (9 нед.) завершён — рекомендована разгрузочная неделя (неделя 10)" }
+            : null;
+    const isDeloadWeek = !!activeDeload?.active;
 
     // Генерация приоритетных инсайтов
     const insights: CoachInsight[] = [];
+
+    if (isDeloadWeek && activeDeload) {
+      insights.push({
+        id: "active-deload",
+        category: "balance",
+        severity: "info",
+        title: "Разгрузочная неделя по плану",
+        detail: `${activeDeload.reason}. Рабочие веса снижаются (включая тренажёры — 60–85 %), подходы режутся примерно вдвое, целевой запас RIR 3–4.`,
+        action: "Не гонись за прошлым весом и не ходи в отказ — задача недели сбросить усталость перед следующей волной.",
+        metric: "RIR 3–4",
+      });
+    }
 
     // 1. Перегрузка по ACWR
     if (acwr !== null && acwr > 1.45) {
@@ -289,8 +326,8 @@ export class SmartCoach {
       }
     }
 
-    // 4. Недогруженность по ACWR или отстающим группам
-    if (acwr !== null && acwr < 0.7 && acuteSets < 18) {
+    // 4. Недогруженность по ACWR или отстающим группам (в разгрузочную неделю спад объёма — норма, не предупреждаем)
+    if (!isDeloadWeek && acwr !== null && acwr < 0.7 && acuteSets < 18) {
       insights.push({
         id: "acwr-underload",
         category: "underload",
@@ -302,7 +339,7 @@ export class SmartCoach {
       });
     }
 
-    if (underloadedMuscles.length > 0 && acuteSets >= 10) {
+    if (!isDeloadWeek && underloadedMuscles.length > 0 && acuteSets >= 10) {
       const list = underloadedMuscles.slice(0, 3).map((m) => `${m.name} (${m.sets})`).join(", ");
       insights.push({
         id: "muscle-underload",
@@ -420,7 +457,11 @@ export class SmartCoach {
     let statusLabel = "Оптимальный режим";
     let headline = "Нагрузка и восстановление в балансе — можно спокойно прогрессировать.";
 
-    if (!hasData) {
+    if (isDeloadWeek) {
+      status = "optimal";
+      statusLabel = "Разгрузочная неделя";
+      headline = "Идёт разгрузка по плану — держи 60–85 % веса (включая тренажёры), половину подходов и RIR 3–4.";
+    } else if (!hasData) {
       status = "no_data";
       statusLabel = "Жду тренировки";
       headline = "Запиши 1–2 тренировки с весом и RIR — здесь появится разбор нагрузки, перегруза и прогресса.";
@@ -443,29 +484,39 @@ export class SmartCoach {
     const focusLabels = (freshGroups.length ? freshGroups : readiness.slice().sort((a, b) => b.ratio - a.ratio))
       .slice(0, 2)
       .map((g) => g.label);
-    const nextSession: NextSessionSuggestion = !hasData
+    const nextSession: NextSessionSuggestion = isDeloadWeek
       ? {
-          focusLabels: ["Всё тело"],
-          recommendedRir: "RIR 2–3",
-          headline: "Начни с базовой тренировки",
-          reason: "Отметь веса и RIR — со второй сессии алгоритм подстроится под твой темп.",
+          focusLabels: focusLabels.length ? focusLabels : ["Разгрузка"],
+          recommendedRir: "RIR 3–4",
+          headline: laidFinishedEntry
+            ? "Разгрузка после 9 недель Лейда"
+            : "Разгрузочная тренировка по плану",
+          reason:
+            "Снизь рабочие веса до 60–85 % (включая тренажёры), сократи подходы вдвое и не ходи в отказ — прошлый рабочий вес сейчас не цель.",
         }
-      : status === "overloaded"
+      : !hasData
         ? {
-            focusLabels: focusLabels.length ? focusLabels : ["Лёгкое восстановление"],
-            recommendedRir: "RIR 3–4",
-            headline: `Разгрузочный акцент: ${focusLabels.join(" + ")}`,
-            reason: "Сократи рабочие подходы на 30–50 % и не ходи в отказ, чтобы сбросить накопленную усталость.",
+            focusLabels: ["Всё тело"],
+            recommendedRir: "RIR 2–3",
+            headline: "Начни с базовой тренировки",
+            reason: "Отметь веса и RIR — со второй сессии алгоритм подстроится под твой темп.",
           }
-        : {
-            focusLabels,
-            recommendedRir: "RIR 1–2",
-            headline: `Свежие зоны: ${focusLabels.join(" + ")}`,
-            reason:
-              underloadedMuscles.length > 0
-                ? `Группы готовы к работе; дополнительно стоит добрать объём на ${underloadedMuscles[0].name.toLowerCase()}.`
-                : "Эти мышечные группы полностью восстановились и готовы к прогрессии веса.",
-          };
+        : status === "overloaded"
+          ? {
+              focusLabels: focusLabels.length ? focusLabels : ["Лёгкое восстановление"],
+              recommendedRir: "RIR 3–4",
+              headline: `Разгрузочный акцент: ${focusLabels.join(" + ")}`,
+              reason: "Сократи рабочие подходы на 30–50 % и не ходи в отказ, чтобы сбросить накопленную усталость.",
+            }
+          : {
+              focusLabels,
+              recommendedRir: "RIR 1–2",
+              headline: `Свежие зоны: ${focusLabels.join(" + ")}`,
+              reason:
+                underloadedMuscles.length > 0
+                  ? `Группы готовы к работе; дополнительно стоит добрать объём на ${underloadedMuscles[0].name.toLowerCase()}.`
+                  : "Эти мышечные группы полностью восстановились и готовы к прогрессии веса.",
+            };
 
     // Сортируем инсайты по важности
     const sevRank: Record<CoachSeverity, number> = { critical: 0, warn: 1, good: 2, info: 3 };
@@ -490,6 +541,7 @@ export class SmartCoach {
       planAdherence,
       rirDrift,
       painFlagsSummary,
+      activeDeload,
       biomechanics: bio,
       readiness,
       ratios,

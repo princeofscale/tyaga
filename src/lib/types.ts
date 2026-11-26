@@ -166,6 +166,12 @@ export type RoutinePeriodization = {
   calibrationLifts?: (keyof LaidMaxes)[];
   /** Базовые лифты с пометкой дискомфорта/боли: блокирует автоповышение 1ПМ и синглы 95%. */
   painFlags?: (keyof LaidMaxes)[];
+  /** Разрешить тихое автоповышение 1ПМ посреди цикла при росте +5 % (по умолчанию выкл. — только ручная подсказка). */
+  autoEscalate?: boolean;
+  /** Счёт недель: календарный от понедельника старта (`calendar`) или плавающий по факту закрытия 6 дней (`rolling`). */
+  weekMode?: "calendar" | "rolling";
+  /** Встроенные или вставленные разгрузочные недели цикла (0-based индексы недель, например `[6]` — разгрузка после волны 2). */
+  deloadWeeks?: number[];
 };
 /** One adjustment to the recurring schedule. A null destination skips that occurrence. */
 export type RoutineOccurrenceOverride = { from: string; to: string | null };

@@ -39,9 +39,19 @@ async function laidApp(page: Page, options: { routines?: Routine[]; workouts?: W
   await page.reload();
   return { store, puts };
 }
+/** Шесть дней цикла живут под спойлером «Отдельные дни цикла Лейда» — раскрываем его, чтобы карточки были видны. */
+const openLaidDays = async (page: Page) => {
+  const disclosure = page.locator("details.laid-routines-disclosure").first();
+  await disclosure.waitFor({ state: "attached", timeout: 15_000 }).catch(() => {});
+  if (!(await disclosure.count())) return;
+  await disclosure.evaluate((el) => {
+    (el as HTMLDetailsElement).open = true;
+  });
+};
 const openPrograms = async (page: Page) => {
   await nav(page, "Программы").click();
   await expect(page.getByRole("heading", { name: "Сохранённые программы" })).toBeVisible();
+  await openLaidDays(page);
 };
 /** Подмена даты: часы страницы показывают `iso`, приложение перезагружается. */
 const setToday = async (page: Page, iso: string) => {
@@ -109,8 +119,8 @@ for (const size of SIZES) {
     await page.getByRole("button", { name: /Дэвид Лейд · DUP · 9 недель · 6 дней/ }).click();
     const d = dialog(page);
     for (const label of ["1ПМ: присед", "1ПМ: жим лёжа", "1ПМ: становая", "1ПМ: армейский жим"]) await expect(d.getByLabel(label)).toBeVisible();
-    await expect(d).toContainText("1ПМ — максимум на одно повторение; вводи осторожное число");
-    await expect(d).toContainText("Шесть тренировок в неделю и тяжёлые подходы — вводи осторожные максимумы");
+    await expect(d).toContainText("1ПМ — максимум на одно повторение; вводи осторожный тренировочный максимум (92,5 % от 1ПМ)");
+    await expect(d).toContainText("Шесть тренировок в неделю и тяжёлые подходы — вводи осторожный тренировочный максимум (90–95 % от реального 1ПМ)");
     await expect(d).toContainText("Веса восстановлены по опубликованной таблице и округлены; официальный калькулятор может дать другие числа");
     // сегодня вторник: по умолчанию «с понедельника этой недели»
     await expect(d.getByRole("button", { name: /^с понедельника этой недели/ })).toHaveAttribute("aria-pressed", "true");
@@ -140,7 +150,7 @@ for (const size of SIZES) {
   });
 }
 
-test("R10-REQ02: «Создать программу» — шесть программ с русскими названиями, днями Пн–Сб, общей настройкой и выбранным стартом", async ({ page }) => {
+test("R10-REQ02: «Создать программу» — шесть программ с русскими названиями, ритмом 3 + 1 + 3 по умолчанию, общей настройкой и выбранным стартом", async ({ page }) => {
   test.setTimeout(90_000);
   const { puts } = await laidApp(page);
   await openPrograms(page);
@@ -149,10 +159,12 @@ test("R10-REQ02: «Создать программу» — шесть прогр
   await dialog(page).getByRole("button", { name: /^со следующего понедельника/ }).click();
   await dialog(page).getByRole("button", { name: "Создать программу", exact: true }).click();
   await expect(dialog(page)).toHaveCount(0);
+  await openLaidDays(page);
   for (const name of ["Лейд · Ноги 1", "Лейд · Жим 1", "Лейд · Тяга 1", "Лейд · Ноги 2", "Лейд · Жим 2", "Лейд · Тяга 2"])
     await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
   expect(puts).toHaveLength(6);
-  expect(puts.map((r) => r.days)).toEqual([[0], [1], [2], [3], [4], [5]]);
+  // по умолчанию — 3 + 1 + 3: Пн, Вт, Ср, Пт, Сб, Вс (четверг — выходной)
+  expect(puts.map((r) => r.days)).toEqual([[0], [1], [2], [4], [5], [6]]);
   expect(new Set(puts.map((r) => r.periodization!.cycleId)).size).toBe(1);
   for (const r of puts) {
     expect(r.periodization).toMatchObject({ kind: "laid-dup", startMonday: "2026-11-16", maxes: MAXES, maxesFromWeek: 0, extras: true, light: false });
@@ -167,31 +179,41 @@ test("R10-REQ02: «Создать программу» — шесть прогр
   await expect(card(page, "Лейд · Ноги 1")).toContainText("Приседания со штангой");
 });
 
-test("R10-REQ02: «Пн уже занят программой …» — окно говорит об этом до создания; наложение разрешено", async ({ page }) => {
+test("R10-REQ02: «Пн уже занят программой …» — окно говорит об этом до создания; наложение разрешено, четверг свободен", async ({ page }) => {
   const mine = { ...TrainingProgram.empty(), id: "mine", name: "Моя тяга", days: [0, 3], exercises: [TrainingProgram.starter("full")[0].exercises[0]], revision: 1 };
   await laidApp(page, { routines: [mine] });
   await openPrograms(page);
   await page.getByRole("button", { name: /Дэвид Лейд · DUP/ }).click();
   const taken = dialog(page).getByRole("list", { name: "Занятые дни" });
   await expect(taken).toContainText("Пн уже занят программой «Моя тяга»: обе будут в плане недели.");
-  await expect(taken).toContainText("Чт уже занят программой «Моя тяга»: обе будут в плане недели.");
   await expect(taken).not.toContainText("Вт уже занят");
+  // 3 + 1 + 3: четверг — выходной, поэтому «Моя тяга» в четверг никому не мешает
+  await expect(taken).not.toContainText("Чт уже занят");
   await fillMaxes(page);
   await dialog(page).getByRole("button", { name: "Создать программу", exact: true }).click();
   await expect(dialog(page)).toHaveCount(0);
+  await openLaidDays(page);
   await expect(page.getByRole("heading", { name: "Лейд · Ноги 1", exact: true })).toBeVisible();
 });
 
-test("R10-REQ02: «по истории ≈ N кг (Эпли)» подставляет число; без истории подсказки нет", async ({ page }) => {
+test("R10-REQ02: подсказка по истории подставляет тренировочный максимум (92,5 %), а в режиме 100 % — оценку Эпли", async ({ page }) => {
   const history = doneWorkout("Жим", "2026-11-02", [["bench", 100, 8, 3]]);
   await laidApp(page, { workouts: [history] });
   await openPrograms(page);
   await page.getByRole("button", { name: /Дэвид Лейд · DUP/ }).click();
   const d = dialog(page);
-  const hint = d.getByRole("button", { name: "по истории ≈ 126,7 кг (Эпли)" });
+  // по умолчанию включён тренировочный максимум: 92,5 % от оценки Эпли
+  const hint = d.getByRole("button", { name: /^ТМ 92,5 % ≈ 117,5 кг \(1ПМ 126,7\)$/ });
   await expect(hint).toBeVisible();
-  await expect(d.getByRole("button", { name: /^по истории/ })).toHaveCount(1);
+  await expect(d.getByRole("button", { name: /^ТМ 92,5 % ≈/ })).toHaveCount(1);
   await hint.click();
+  await expect(d.getByLabel("1ПМ: жим лёжа")).toHaveValue("117,5");
+  // выключили тренировочный максимум — подсказка возвращается к чистой оценке Эпли
+  await d.getByRole("button", { name: /^ТМ 92,5 % · вкл$/ }).click();
+  await d.getByLabel("1ПМ: жим лёжа").fill("");
+  const plain = d.getByRole("button", { name: "по истории ≈ 126,7 кг (Эпли)" });
+  await expect(plain).toBeVisible();
+  await plain.click();
   await expect(d.getByLabel("1ПМ: жим лёжа")).toHaveValue("126,7");
 });
 
@@ -233,7 +255,7 @@ test("R10-REQ02: Лейд уже есть — повторное нажатие 
   await expect(page.locator(".laid-notice")).toContainText("Максимумы обновлены");
   // «Создать ещё раз» добавляет второй цикл — только по явному выбору
   await page.getByRole("button", { name: /Дэвид Лейд · DUP/ }).click();
-  await dialog(page).getByRole("button", { name: "Создать ещё раз", exact: true }).click();
+  await dialog(page).getByRole("button", { name: "Добавить ещё один", exact: true }).click();
   await expect(dialog(page).getByLabel("1ПМ: присед")).toHaveValue("");
 });
 
@@ -244,7 +266,8 @@ test("R10-REQ03: критерий 3 — Ноги 1, Жим 1, Тяга 2 нед�
   expect(await startAndRead(page, "Лейд · Ноги 1", "Приседания со штангой")).toEqual(["85×5", "65×12", "65×12", "65×12", "65×12"]);
   await expect(page.getByText("Тяжёлый подход: 1 × 5 повторений · 85 % от 1ПМ (100 кг) = 85 кг.")).toBeVisible();
   await expect(page.getByText("Затем 4 × 12 повторений · 65 % = 65 кг.")).toBeVisible();
-  await expect(page.getByLabel("Заметка").or(page.locator("textarea")).first()).toHaveValue(/Неделя 1 из 9 · волна 1/);
+  // план недели теперь читается в самом экране (плашка фазы + заметка упражнения), а не дублируется в поле заметок
+  await expect(page.getByText(/Неделя 1 из 9 · волна 1\. Тяжёлый подход/).first()).toBeVisible();
   await expect(page.getByText("Добавлено к оригиналу Лейда: в его таблице этого нет.").first()).toBeVisible();
   await expect(page.getByText("Добавлено к оригиналу Лейда: в его таблице этого нет.")).toHaveCount(2);
   // вспомогательное: без выдуманных чисел — вес пуст
@@ -262,19 +285,19 @@ test("R10-REQ03: подмена даты — неделя 2, 5, 9 и 10 меня
   const legs = "Приседания со штангой";
   await setToday(page, "2026-11-17");
   expect(await startAndRead(page, "Лейд · Ноги 1", legs)).toEqual(["95×1", "85×4", "85×4", "85×4", "85×4"]);
-  await expect(page.locator("textarea").first()).toHaveValue(/Неделя 2 из 9 · волна 1/);
+  await expect(page.getByText(/Неделя 2 из 9 · волна 1\./).first()).toBeVisible();
   await discard(page);
   await setToday(page, "2026-12-07");
   expect(await startAndRead(page, "Лейд · Ноги 1", legs)).toEqual(["97.5×1", "85×4", "85×4", "85×4", "85×4"]);
-  await expect(page.locator("textarea").first()).toHaveValue(/Неделя 5 из 9 · волна 2/);
+  await expect(page.getByText(/Неделя 5 из 9 · волна 2\./).first()).toBeVisible();
   await discard(page);
   await setToday(page, "2027-01-04");
   expect(await startAndRead(page, "Лейд · Ноги 1", legs)).toEqual(["92.5×3", "77.5×8", "77.5×8", "77.5×8", "77.5×8"]);
-  await expect(page.locator("textarea").first()).toHaveValue(/Неделя 9 из 9 · волна 3/);
+  await expect(page.getByText(/Неделя 9 из 9 · волна 3\./).first()).toBeVisible();
   await discard(page);
   await setToday(page, "2027-01-11");
   expect(await startAndRead(page, "Лейд · Ноги 1", legs)).toEqual(["92.5×3", "77.5×8", "77.5×8", "77.5×8", "77.5×8"]);
-  await expect(page.locator("textarea").first()).toHaveValue(/цикл закончен — обнови максимумы/);
+  await expect(page.getByText(/цикл закончен — обнови максимумы/).first()).toBeVisible();
 });
 
 test("R10-REQ03: пропущенный день не ломает следующий; «Сегодня» и карточка показывают «Пропущена» / «Сделана 10 нояб.»", async ({ page }) => {
@@ -312,9 +335,9 @@ for (const size of SIZES) {
     expect(await smallTargets(page)).toEqual([]);
     expect(await overflow(page)).toBeLessThanOrEqual(1);
     expect((await clipped(page)).wide).toEqual([]);
-    await page.getByRole("button", { name: "Расписание на 9 недель", exact: true }).click();
+    await page.getByRole("button", { name: "Расписание (9 нед.)", exact: true }).click();
     const d = dialog(page);
-    await expect(d.getByRole("heading", { name: "Расписание на 9 недель" })).toBeVisible();
+    await expect(d.getByRole("heading", { name: "Расписание на 9 нед." })).toBeVisible();
     await expect(d).toContainText("Неделя 1 из 9 · волна 1");
     // восстановленные веса — честная оговорка, объяснение DUP не длиннее пяти предложений
     await expect(d).toContainText("Веса восстановлены по опубликованной таблице и округлены");
@@ -374,7 +397,7 @@ test("R10-REQ04: на неделе 10 расписание говорит «ци
   await openPrograms(page);
   const lead = page.getByLabel("Программа Дэвида Лейда");
   await expect(lead).toContainText("Неделя 10 · схема недели 9 · цикл закончен — обнови максимумы");
-  await lead.getByRole("button", { name: "Расписание на 9 недель", exact: true }).click();
+  await lead.getByRole("button", { name: "Расписание (9 нед.)", exact: true }).click();
   await expect(dialog(page)).toContainText("цикл закончен — обнови максимумы");
   await dialog(page).getByRole("button", { name: "Начать новый цикл", exact: true }).first().click();
   const d = dialog(page);
@@ -403,7 +426,7 @@ test("R10-REQ04: «Можно обновить максимум» — оценк
   for (const r of puts) expect(r.periodization).toMatchObject({ maxes: { ...MAXES, bench: 90 }, maxesFromWeek: 1, earlier: [{ fromWeek: 0, maxes: MAXES }] });
   await expect(lead.locator(".laid-suggest")).toHaveCount(0);
   // жим лёжа на этой неделе — от новых 90, а прошлая неделя осталась по 80
-  await lead.getByRole("button", { name: "Расписание на 9 недель", exact: true }).click();
+  await lead.getByRole("button", { name: "Расписание (9 нед.)", exact: true }).click();
   const weeks = dialog(page).locator(".laid-week-card");
   await expect(weeks.nth(0).locator("li", { hasText: "Жим 1" })).toContainText("1 × 1 × 75 кг");
   await expect(weeks.nth(1).locator("li", { hasText: "Жим 1" })).toContainText("1 × 3 × 80 кг · 4 × 8 × 67,5 кг");
@@ -463,8 +486,8 @@ test("QA-R10-03: «Блины» на Лейде применяют вес тол
   test.setTimeout(90_000);
   await laidApp(page, { routines: sixRoutines() });
   expect(await startAndRead(page, "Лейд · Ноги 1", "Приседания со штангой")).toEqual(["85×5", "65×12", "65×12", "65×12", "65×12"]);
-  await page.getByText("Ещё для упражнения", { exact: true }).first().click();
-  await page.getByRole("button", { name: "Блины", exact: true }).first().click();
+  // кнопка «Блины» стоит прямо в шапке упражнения (без меню «Ещё для упражнения»)
+  await page.getByRole("button", { name: "Блины: Приседания со штангой", exact: true }).first().click();
   const calc = dialog(page);
   await expect(calc.getByRole("button", { name: "Применить 85 кг к подходу 1", exact: true })).toBeVisible();
   await calc.getByRole("button", { name: "Плюс 2,5 кг", exact: true }).click();
@@ -601,7 +624,7 @@ test("QA-R10-05: фиолетовая тема — акцентный текст
   const card = await worst();
   expect(card.seen, "проверены неделя, фаза и статусы карточки").toBeGreaterThanOrEqual(2);
   expect(card.out).toEqual([]);
-  await page.getByRole("button", { name: "Расписание на 9 недель" }).click();
+  await page.getByRole("button", { name: "Расписание (9 нед.)" }).click();
   await expect(dialog(page)).toBeVisible();
   await dialog(page).getByText("Состав дней: оригинал и добавленное").click();
   const schedule = await worst();
@@ -610,27 +633,42 @@ test("QA-R10-05: фиолетовая тема — акцентный текст
 });
 
 // ───────────── Доработка 2 ─────────────
-/** Только для теста: бандл подменяется на лету — подпись вкладки превращается в выражение, бросающее ошибку, пока в странице стоит флаг. */
+/**
+ * Только для теста: бандл подменяется на лету — подпись вкладки превращается в выражение, бросающее ошибку,
+ * пока в странице стоит флаг.
+ * Каждая вкладка теперь ленивая и обёрнута собственной границей ошибок, поэтому сбой тела вкладки
+ * показывает панель «Не удалось открыть вкладку» и оставляет навигацию живой — корневая панель
+ * ловит только сбой оболочки (её проверяют отдельные тесты ниже).
+ */
+// Подпись выбирается внутри тела вкладки: сбой шапки ловит корневая граница (её проверяют тесты
+// с SHELL_LITERAL), а нам нужен именно сбой ленивой вкладки. У «Сегодня» и «Упражнений» подходящего
+// литерала в теле нет — их границы покрывает тест «сбой внутри вкладки-компонента» ниже.
 const FAULTS: { tab: string; literal: string }[] = [
-  { tab: "Сегодня", literal: 'children:"Сегодня"' },
   { tab: "История", literal: 'children:"История тренировок"' },
   { tab: "Прогресс", literal: 'children:"Прогресс"' },
-  { tab: "Упражнения", literal: 'children:"Упражнения"' },
 ];
+/** Литерал оболочки (заголовок шапки): сбой здесь обязан поймать корневая граница. */
+const SHELL_LITERAL = 'children:"Сегодня"';
 async function injectFault(page: Page) {
-  await page.route("**/assets/index-*.js", async (route) => {
+  // чанки: подписи вкладок живут и в index-*.js, и в App-*.js — патчим любой JS-чанк
+  await page.route("**/assets/*.js", async (route) => {
     const response = await route.fetch();
     let body = await response.text();
-    for (const { tab, literal } of FAULTS) {
+    const patch = (literal: string, tab: string) => {
       const text = literal.slice(literal.indexOf('"') + 1, -1);
-      body = body.replace(literal, `children:(window.__fault===${JSON.stringify(tab)}?(()=>{throw new Error("fault-${tab}")})():"${text}")`);
-    }
+      body = body.replace(
+        literal,
+        `children:(window.__fault===${JSON.stringify(tab)}?(()=>{throw new Error("fault-${tab}")})():${JSON.stringify(text)})`,
+      );
+    };
+    patch(SHELL_LITERAL, "Сегодня");
+    for (const { tab, literal } of FAULTS) patch(literal, tab);
     await route.fulfill({ response, body });
   });
 }
 for (const size of [{ width: 390, height: 844 }, { width: 1440, height: 900 }]) {
   for (const { tab } of FAULTS) {
-    test(`QA-R10-09: сбой в теле «${tab}» — приложение не пустое, есть «Выйти из аккаунта», «Попробовать снова» открывает вкладку ${size.width}×${size.height}`, async ({ page }) => {
+    test(`QA-R10-09: сбой в теле «${tab}» — панель вкладки, живая навигация и «Попробовать снова» ${size.width}×${size.height}`, async ({ page }) => {
       test.setTimeout(90_000);
       await page.setViewportSize(size);
       const consoleErrors: string[] = [];
@@ -641,27 +679,25 @@ for (const size of [{ width: 390, height: 844 }, { width: 1440, height: 900 }]) 
       if (tab === "Сегодня") await nav(page, "История").click();
       await page.evaluate((name) => ((window as unknown as { __fault: string }).__fault = name), tab);
       await nav(page, tab).click();
-      const panel = page.getByRole("alert").filter({ hasText: "Не удалось открыть приложение" });
+      const panel = page.getByRole("alert").filter({ hasText: "Не удалось открыть вкладку" });
       await expect(panel).toBeVisible();
+      // приложение не пустое и навигация жива
       await expect(page.locator("body")).not.toBeEmpty();
+      await expect(nav(page, "Сегодня")).toBeVisible();
       // ошибка не проглочена
-      expect(consoleErrors.join("\n")).toContain("Приложение не открылось");
+      expect(consoleErrors.join("\n")).toContain("Вкладка не открылась");
       // стиль панели: отступы, ничего не вылезает, цели касания ≥ 44 px
       expect(await overflow(page)).toBeLessThanOrEqual(1);
       expect(await smallTargets(page)).toEqual([]);
       const box = await panel.boundingBox();
       expect(box!.x).toBeGreaterThanOrEqual(8);
-      // «Попробовать снова» при сохраняющемся сбое: «Сегодня» — панель остаётся; остальные вкладки — приложение открывается на «Сегодня», а вкладка со сбоем снова даёт панель
+      // «Попробовать снова» при сохраняющемся сбое — панель возвращается
       await panel.getByRole("button", { name: "Попробовать снова", exact: true }).click();
-      if (tab !== "Сегодня") {
-        await expect(nav(page, "Сегодня")).toBeVisible();
-        await nav(page, tab).click();
-      }
       await expect(panel).toBeVisible();
-      // сбой устранён — приложение открывается
+      // сбой устранён — вкладка открывается
       await page.evaluate(() => delete (window as unknown as { __fault?: string }).__fault);
       await panel.getByRole("button", { name: "Попробовать снова", exact: true }).click();
-      await expect(page.getByRole("alert").filter({ hasText: "Не удалось открыть приложение" })).toHaveCount(0);
+      await expect(page.getByRole("alert").filter({ hasText: "Не удалось открыть вкладку" })).toHaveCount(0);
       await expect(nav(page, "Сегодня")).toBeVisible();
     });
   }
@@ -778,7 +814,7 @@ test.describe("Motion UI & улучшенный план Лейда (без redu
 
     const lead = page.getByLabel("Программа Дэвида Лейда");
     await expect(lead.locator(".laid-card-maxes")).toContainText("140 кг");
-    await lead.getByRole("button", { name: "Расписание на 9 недель", exact: true }).click();
+    await lead.getByRole("button", { name: "Расписание (9 нед.)", exact: true }).click();
     const sched = dialog(page);
     await sched.getByRole("button", { name: "Волна 3", exact: true }).click();
     await expect(sched.locator(".laid-wave-banner")).toContainText("Пик силы");

@@ -21,7 +21,7 @@ import Select from "./Select";
 import { ExerciseLibrary } from "./chunks";
 import { DeloadPlan, type DeloadPlanRecord } from "../domain/DeloadPlan";
 import { dateLabel } from "../lib/calendar";
-import { LaidDupPlan, type LaidDay, type LaidLift, type LaidSubstitutions } from "../domain/LaidDupPlan";
+import { LaidDupPlan, type LaidCalibrationGraduation, type LaidDay, type LaidLift, type LaidSubstitutions } from "../domain/LaidDupPlan";
 import LaidDupModal from "./LaidDupModal";
 import { LaidDupCard, LaidDupSchedule, LaidSubstitutionsModal, LaidWeekScheduleModal } from "./LaidDupPanel";
 import ScheduleOccurrenceModal from "./ScheduleOccurrenceModal";
@@ -40,6 +40,8 @@ type Props = {
   onFavorite: (id: string) => void;
   onSave: (r: Routine) => Promise<Routine>;
   onDelete: (r: Routine) => Promise<void>;
+  onDeleteMany?: (routines: Routine[]) => Promise<void>;
+  onReplaceRoutines?: (toDelete: Routine[], toCreate: Routine[]) => Promise<void>;
   onStart: (r: Routine, slot?: ScheduledTraining) => void;
   onOpenWorkout?: (workout: Workout) => void;
   /** Действующая разгрузка на неделю (R04-REQ02) и её отмена. */
@@ -56,6 +58,11 @@ export default function ProgramsScreen(props: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState<Routine | null>(null);
+  const [deletingGroup, setDeletingGroup] = useState<{ title: string; routines: Routine[] } | null>(null);
+  const [templateChoice, setTemplateChoice] = useState<{
+    id: Parameters<typeof TrainingProgram.starter>[0] | "v2";
+    name: string;
+  } | null>(null);
   const [picker, setPicker] = useState(false);
   /** R10: окно Лейда (создать / обновить максимумы / новый цикл), расписание на 9 недель и настройка дней недели; цикл — по общему cycleId. */
   const [laid, setLaid] = useState<{ mode: "create" | "update" | "restart"; cycleId?: string } | null>(null);
@@ -116,6 +123,14 @@ export default function ProgramsScreen(props: Props) {
   const today = localDate(new Date(), props.timeZone);
   const hasCycle = props.routines.some((r) => !!r.cycle);
   const laidCycles = useMemo(() => LaidDupPlan.cycles(props.routines), [props.routines]);
+  const nonLaidRoutines = useMemo(
+    () => props.routines.filter((r) => !LaidDupPlan.periodizationOf(r)),
+    [props.routines],
+  );
+  const laidRoutines = useMemo(
+    () => LaidDupPlan.ordered(props.routines.filter((r) => !!LaidDupPlan.periodizationOf(r))),
+    [props.routines],
+  );
   const cycleById = (id?: string) => laidCycles.find((c) => c[0].periodization!.cycleId === id) ?? laidCycles[0];
   /** isDeload walks the whole history per routine, so it stays off the keystroke path. */
   const deloadRoutineIds = useMemo(
@@ -281,8 +296,8 @@ export default function ProgramsScreen(props: Props) {
     if (!suggestion.length) return;
     const maxes = { ...first.maxes };
     for (const s of suggestion) maxes[s.lift] = s.to;
-    const position = LaidDupPlan.position(LaidDupPlan.weekOf(first.startMonday, today));
-    const from = position.beforeStart ? 0 : position.week;
+    const state = LaidDupPlan.cycleState(cycle, props.workouts, today);
+    const from = state.position.beforeStart ? 0 : state.position.week;
     setBusy(true);
     setError("");
     setNotice("");
@@ -295,20 +310,85 @@ export default function ProgramsScreen(props: Props) {
       setBusy(false);
     }
   }
+  /** Автовыпуск из «Калибровки по RIR»: применить ТМ 92,5 % и включить проценты DUP. */
+  async function graduateLaidCalibration(
+    cycle: Routine[],
+    graduations: LaidCalibrationGraduation[],
+    fromWeek: number,
+  ) {
+    const updated = LaidDupPlan.graduateCalibration(cycle, graduations, fromWeek);
+    if (!updated.length) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      for (const r of updated) await props.onSave(r);
+      const summary = graduations
+        .map((g) => `${g.exerciseName}: ТМ ${LaidDupPlan.kg(g.suggestedTm)} кг`)
+        .join(", ");
+      setNotice(`Проценты DUP включены (${summary}). Новые веса действуют с недели ${fromWeek + 1}.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось завершить калибровку");
+    } finally {
+      setBusy(false);
+    }
+  }
+  /** Вставить или отменить разгрузочную неделю в действующем цикле Лейда. */
+  async function toggleLaidDeloadWeek(cycle: Routine[], rawWeek: number, enable: boolean) {
+    const updated = LaidDupPlan.withDeloadWeek(cycle, rawWeek, enable);
+    if (!updated.length) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      for (const r of updated) await props.onSave(r);
+      setNotice(
+        enable
+          ? `Неделя ${rawWeek + 1} переведена в разгрузку (55–65 %, половина подходов, RIR 3–4). Следующие волны сдвинулись автоматически.`
+          : `Разгрузка на неделе ${rawWeek + 1} отменена — возвращён обычный план волны.`,
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось обновить разгрузочную неделю");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function deleteRoutinesBatch(routinesToDelete: Routine[]) {
+    if (props.onDeleteMany) {
+      await props.onDeleteMany(routinesToDelete);
+    } else {
+      for (const r of routinesToDelete) await props.onDelete(r);
+    }
+  }
+  async function replaceRoutinesBatch(toDelete: Routine[], toCreate: Routine[]) {
+    if (props.onReplaceRoutines) {
+      await props.onReplaceRoutines(toDelete, toCreate);
+    } else {
+      for (const r of toCreate) await props.onSave(r);
+      for (const r of toDelete) await props.onDelete(r);
+    }
+  }
   async function starter(
     kind: Parameters<typeof TrainingProgram.starter>[0] | "v2",
+    mode: "add" | "replace" = "add",
   ) {
     setBusy(true);
     setError("");
+    setNotice("");
     try {
       const routines =
         kind === "v2"
           ? TrainingProgram.programV2()
           : TrainingProgram.starter(kind);
-      // Same names are skipped, so a repeated click adds what is missing only.
-      for (const r of routines)
-        if (!props.routines.some((old) => old.name === r.name))
-          await props.onSave(r);
+      if (mode === "replace" && props.routines.length > 0) {
+        await replaceRoutinesBatch(props.routines, routines);
+        setNotice(`Программа заменена: установлено тренировок — ${routines.length}. История тренировок сохранена.`);
+      } else {
+        // Same names are skipped, so a repeated click adds what is missing only.
+        for (const r of routines)
+          if (!props.routines.some((old) => old.name === r.name))
+            await props.onSave(r);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось добавить пример");
     } finally {
@@ -432,20 +512,42 @@ export default function ProgramsScreen(props: Props) {
       <section className="program-library" aria-labelledby="saved-programs-title">
         <header className="section-heading routine-heading">
           <h2 id="saved-programs-title">Сохранённые программы</h2>
-          <m.button
-            type="button"
-            className="button primary"
-            whileTap={reduceMotion ? undefined : { scale: 0.98 }}
-            onClick={() => open({ ...TrainingProgram.empty(), name: "" })}
-          >
-            <Plus size={18} aria-hidden="true" />
-            Создать программу
-          </m.button>
+          <div className="routine-heading-actions">
+            {props.routines.length >= 2 ? (
+              <m.button
+                type="button"
+                className="button secondary bulk-delete-btn"
+                disabled={busy}
+                whileTap={reduceMotion ? undefined : { scale: 0.98 }}
+                onClick={() => {
+                  setError("");
+                  setDeletingGroup({
+                    title: `все программы (${props.routines.length})`,
+                    routines: props.routines,
+                  });
+                }}
+              >
+                <Trash2 size={16} aria-hidden="true" />
+                Удалить все ({props.routines.length})
+              </m.button>
+            ) : null}
+            <m.button
+              type="button"
+              className="button primary"
+              whileTap={reduceMotion ? undefined : { scale: 0.98 }}
+              onClick={() => open({ ...TrainingProgram.empty(), name: "" })}
+            >
+              <Plus size={18} aria-hidden="true" />
+              Создать программу
+            </m.button>
+          </div>
         </header>
-        {error && !editor && !deleting ? <p className="error-banner" role="alert">{error}</p> : null}
+        {error && !editor && !deleting && !deletingGroup ? <p className="error-banner" role="alert">{error}</p> : null}
         {notice && !editor ? <p className="progression-note laid-notice" role="status">{notice}</p> : null}
         {laidCycles.map((cycle) => {
-          const plan = cycle[0].periodization!;
+          const state = LaidDupPlan.cycleState(cycle, props.workouts, today);
+          const plan = state.first;
+          const isFinished = !state.isCurrentDeload && state.position.finished;
           return (
             <LaidDupCard
               key={plan.cycleId}
@@ -457,47 +559,105 @@ export default function ProgramsScreen(props: Props) {
               onEditDays={() => setWeekEditor(plan.cycleId)}
               onEditSubstitutions={() => setSubsEditor(plan.cycleId)}
               onUpdate={() => setLaid({
-                mode: LaidDupPlan.position(LaidDupPlan.weekOf(plan.startMonday, today)).finished ? "restart" : "update",
+                mode: isFinished ? "restart" : "update",
                 cycleId: plan.cycleId,
               })}
               onRecalc={() => void recalc(cycle)}
+              onStartDay={(r) => {
+                const slot = TrainingCalendar.onDate([r], today).find((item) => !TrainingCalendar.completed(item, props.workouts));
+                props.onStart(r, slot);
+              }}
+              onEditDay={(r) => open(r)}
+              onGraduateCalibration={(grads, fromWeek) => void graduateLaidCalibration(cycle, grads, fromWeek)}
+              onToggleDeloadWeek={(w, enable) => void toggleLaidDeloadWeek(cycle, w, enable)}
+              onDeleteCycle={() => {
+                setError("");
+                setDeletingGroup({
+                  title: `цикл «Дэвид Лейд · DUP» (${cycle.length} дн.)`,
+                  routines: cycle,
+                });
+              }}
             />
           );
         })}
         {props.routines.length ? (
-          <div className="routine-grid">
-            {LaidDupPlan.ordered(props.routines).map((r) => (
-              <ProgramRoutineCard
-                key={r.id}
-                routine={r}
-                workouts={props.workouts}
-                timeZone={props.timeZone}
-                today={today}
-                deload={deloadRoutineIds.has(r.id)}
-                onEdit={() => open(r)}
-                onStart={() => {
-                  const slot = TrainingCalendar.onDate([r], today).find((item) => !TrainingCalendar.completed(item, props.workouts));
-                  props.onStart(r, slot);
-                }}
-                onCopy={() => {
-                  const plan = LaidDupPlan.planFor(r, today);
-                  open({
-                    ...r,
-                    exercises: plan
-                      ? r.exercises.map((e) => (e.exerciseId === plan.liftExerciseId ? { ...e, sets: LaidDupPlan.liftSets(plan) } : e))
-                      : r.exercises,
-                    periodization: undefined,
-                    occurrenceOverrides: undefined,
-                    id: crypto.randomUUID(),
-                    revision: 0,
-                    name: (r.name + " (копия)").slice(0, 120),
-                  });
-                  setPendingNote(plan ? laidCopyNotice(plan.position.week + 1) : "");
-                }}
-                onDelete={() => { setDeleting(r); setError(""); }}
-              />
-            ))}
-          </div>
+          <>
+            {nonLaidRoutines.length > 0 ? (
+              <div className="routine-grid">
+                {nonLaidRoutines.map((r) => (
+                  <ProgramRoutineCard
+                    key={r.id}
+                    routine={r}
+                    workouts={props.workouts}
+                    timeZone={props.timeZone}
+                    today={today}
+                    deload={deloadRoutineIds.has(r.id)}
+                    onEdit={() => open(r)}
+                    onStart={() => {
+                      const slot = TrainingCalendar.onDate([r], today).find((item) => !TrainingCalendar.completed(item, props.workouts));
+                      props.onStart(r, slot);
+                    }}
+                    onCopy={() => {
+                      open({
+                        ...r,
+                        periodization: undefined,
+                        occurrenceOverrides: undefined,
+                        id: crypto.randomUUID(),
+                        revision: 0,
+                        name: (r.name + " (копия)").slice(0, 120),
+                      });
+                      setPendingNote("");
+                    }}
+                    onDelete={() => { setDeleting(r); setError(""); }}
+                  />
+                ))}
+              </div>
+            ) : null}
+            {laidRoutines.length > 0 ? (
+              <details className="laid-routines-disclosure">
+                <summary className="laid-routines-summary">
+                  <span className="laid-routines-summary-label">Отдельные дни цикла Лейда (шаблоны и копирование)</span>
+                  <span className="laid-routines-summary-count">{laidRoutines.length} дн.</span>
+                </summary>
+                <div className="laid-routines-disclosure-body">
+                  <div className="routine-grid">
+                    {laidRoutines.map((r) => (
+                      <ProgramRoutineCard
+                        key={r.id}
+                        routine={r}
+                        workouts={props.workouts}
+                        timeZone={props.timeZone}
+                        today={today}
+                        deload={deloadRoutineIds.has(r.id)}
+                        onEdit={() => open(r)}
+                        onStart={() => {
+                          const slot = TrainingCalendar.onDate([r], today).find((item) => !TrainingCalendar.completed(item, props.workouts));
+                          props.onStart(r, slot);
+                        }}
+                        onCopy={() => {
+                          const cycle = LaidDupPlan.cycleOf(props.routines, r);
+                          const plan = LaidDupPlan.planFor(r, today, { workouts: props.workouts, cycle });
+                          open({
+                            ...r,
+                            exercises: plan
+                              ? r.exercises.map((e) => (e.exerciseId === plan.liftExerciseId ? { ...e, sets: LaidDupPlan.liftSets(plan) } : e))
+                              : r.exercises,
+                            periodization: undefined,
+                            occurrenceOverrides: undefined,
+                            id: crypto.randomUUID(),
+                            revision: 0,
+                            name: (r.name + " (копия)").slice(0, 120),
+                          });
+                          setPendingNote(plan ? laidCopyNotice(plan.position.week + 1) : "");
+                        }}
+                        onDelete={() => { setDeleting(r); setError(""); }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </details>
+            ) : null}
+          </>
         ) : <p className="program-empty">Нет сохранённых программ. Создай свою или выбери шаблон.</p>}
       </section>
       <section className="starter-plans" aria-labelledby="starter-plans-title">
@@ -520,8 +680,15 @@ export default function ProgramsScreen(props: Props) {
               disabled={busy}
               whileTap={reduceMotion ? undefined : { scale: 0.985 }}
               onClick={() => {
-                if (template.id === "laid") { setNotice(""); setLaid({ mode: "create" }); }
-                else void starter(template.id);
+                if (template.id === "laid") {
+                  setNotice("");
+                  setLaid({ mode: "create" });
+                } else if (props.routines.length > 0) {
+                  setError("");
+                  setTemplateChoice({ id: template.id, name: template.name });
+                } else {
+                  void starter(template.id, "add");
+                }
               }}
             >
               <span><b>{template.name}</b><small>{template.note}</small></span>
@@ -543,6 +710,7 @@ export default function ProgramsScreen(props: Props) {
           minorMode={props.minorMode}
           today={today}
           onSave={props.onSave}
+          onReplaceRoutines={replaceRoutinesBatch}
           onClose={() => setLaid(null)}
           onDone={setNotice}
           onSwitch={(mode) => setLaid({ mode, cycleId: laidCycles[0]?.[0].periodization!.cycleId })}
@@ -1183,23 +1351,143 @@ export default function ProgramsScreen(props: Props) {
               {error}
             </p>
           ) : null}
-          <button
-            className="button danger full-width"
-            disabled={busy}
-            onClick={async () => {
-              setBusy(true);
-              try {
-                await props.onDelete(deleting);
-                setDeleting(null);
-              } catch (e) {
-                setError(e instanceof Error ? e.message : "Ошибка удаления");
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            Удалить программу
-          </button>
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="button secondary"
+              data-autofocus=""
+              disabled={busy}
+              onClick={() => setDeleting(null)}
+            >
+              Отмена
+            </button>
+            <button
+              type="button"
+              className="button danger"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  await props.onDelete(deleting);
+                  setDeleting(null);
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : "Ошибка удаления");
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              {busy ? "Удаляем…" : "Удалить программу"}
+            </button>
+          </div>
+        </Modal>
+      ) : null}
+      {deletingGroup ? (
+        <Modal
+          title="Удалить программы разом?"
+          onClose={() => {
+            if (busy) return false;
+            setDeletingGroup(null);
+          }}
+        >
+          <p>
+            Будут удалены {deletingGroup.title}. Вся сохранённая история тренировок останется на месте.
+          </p>
+          <ul className="bulk-delete-list" aria-label="Удаляемые программы">
+            {deletingGroup.routines.map((r) => (
+              <li key={r.id}>{r.name}</li>
+            ))}
+          </ul>
+          {error ? (
+            <p className="error-banner" role="alert">
+              {error}
+            </p>
+          ) : null}
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="button secondary"
+              data-autofocus=""
+              disabled={busy}
+              onClick={() => setDeletingGroup(null)}
+            >
+              Отмена
+            </button>
+            <button
+              type="button"
+              className="button danger"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                setError("");
+                try {
+                  const count = deletingGroup.routines.length;
+                  await deleteRoutinesBatch(deletingGroup.routines);
+                  setDeletingGroup(null);
+                  setNotice(`Удалено программ: ${count}. История тренировок сохранена.`);
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : "Ошибка удаления программ");
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              {busy ? "Удаляем…" : `Удалить (${deletingGroup.routines.length})`}
+            </button>
+          </div>
+        </Modal>
+      ) : null}
+      {templateChoice ? (
+        <Modal
+          title={`Установить «${templateChoice.name}»?`}
+          onClose={() => {
+            if (busy) return false;
+            setTemplateChoice(null);
+          }}
+        >
+          <p>
+            У тебя уже есть сохранённые программы ({props.routines.length}). Можно заменить их разом на «{templateChoice.name}» или добавить шаблон к текущим. История тренировок сохранится.
+          </p>
+          {error ? (
+            <p className="error-banner" role="alert">
+              {error}
+            </p>
+          ) : null}
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="button primary"
+              disabled={busy}
+              onClick={async () => {
+                const chosen = templateChoice;
+                setTemplateChoice(null);
+                await starter(chosen.id, "replace");
+              }}
+            >
+              Заменить текущие ({props.routines.length})
+            </button>
+            <button
+              type="button"
+              className="button secondary"
+              disabled={busy}
+              onClick={async () => {
+                const chosen = templateChoice;
+                setTemplateChoice(null);
+                await starter(chosen.id, "add");
+              }}
+            >
+              Добавить к текущим
+            </button>
+            <button
+              type="button"
+              className="button secondary"
+              data-autofocus=""
+              disabled={busy}
+              onClick={() => setTemplateChoice(null)}
+            >
+              Отмена
+            </button>
+          </div>
         </Modal>
       ) : null}
     </div>

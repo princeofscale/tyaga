@@ -293,6 +293,7 @@ export class DeloadEngine {
 
       return {
         ...e,
+        progressionNote: `Разгрузка (${config.name.toLowerCase()}): ${Math.round(config.intensityMultiplier * 100)} % рабочего веса, сокращённый объём, целевой запас RIR ${config.targetRir} — без отказа.`,
         sets: [...warmups.map((w) => ({ ...w, done: false })), ...scaledWorking],
       };
     });

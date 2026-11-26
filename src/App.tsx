@@ -472,8 +472,12 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
     if (!cycles.length) return;
     const due: { cycle: Routine[]; update: LaidAutoUpdate }[] = [];
     for (const cycle of cycles) {
-      const next = LaidDupPlan.autoMaxes(cycle[0].periodization!, workouts, today, {
-        maxJumpFactor: 1.05,
+      // Тихое автоповышение 1ПМ внутри цикла работает только при явном согласии (`autoEscalate: true`).
+      // По умолчанию на карточке цикла показывается подсказка с кнопкой «Пересчитать с недели X».
+      if (!cycle[0].periodization?.autoEscalate) continue;
+      // тот же расчёт, что и в подсказке на карточке: пользователь видит ровно те числа,
+      // которые приложение применит само (иначе автопересчёт молча занижал бы результат)
+      const next = LaidDupPlan.autoMaxes(cycle[0].periodization, workouts, today, {
         minorMode: settings.minorMode,
       });
       if (next) due.push({ cycle, update: next });
@@ -521,14 +525,17 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
     (routine: Routine, slot?: ScheduledTraining) => {
       const program = new TrainingProgram(routine);
       const date = slot?.date ?? today;
+      const phaseDate = slot?.originalDate ?? date;
       const base = deload ? DeloadEngine.regular(workouts) : workouts;
+      const laidCycle = LaidDupPlan.cycleOf(product.routines, routine);
+      const laidPlan = LaidDupPlan.planFor(routine, phaseDate, { workouts: base, cycle: laidCycle });
       return DeloadPlan.workout(
-        program.start(base, timeZone, date, slot?.originalDate),
+        program.start(base, timeZone, date, slot?.originalDate, { cycle: laidCycle }),
         deload,
-        program.isDeload(workouts, slot?.originalDate ?? date),
+        program.isDeload(workouts, phaseDate) || !!laidPlan?.isDeload,
       );
     },
-    [deload, workouts, timeZone, today],
+    [deload, workouts, product.routines, timeZone, today],
   );
   const todaySlots = useMemo(
     () => TrainingCalendar.onDate(product.routines, today),
@@ -821,6 +828,71 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
       routines: p.routines.filter((r) => r.id !== routine.id),
     }));
     setToast("Программа удалена");
+  };
+
+  const deleteRoutines = async (routinesToDelete: Routine[]) => {
+    const deletedIds = new Set<string>();
+    try {
+      for (const routine of routinesToDelete) {
+        await productService.deleteRoutine(routine);
+        deletedIds.add(routine.id);
+      }
+    } finally {
+      if (deletedIds.size > 0) {
+        setProduct((p) => ({
+          ...p,
+          routines: p.routines.filter((r) => !deletedIds.has(r.id)),
+        }));
+      }
+    }
+    if (deletedIds.size > 0) {
+      setToast(
+        deletedIds.size === 1
+          ? "Программа удалена"
+          : `Удалено программ: ${deletedIds.size}`,
+      );
+    }
+  };
+
+  const replaceRoutines = async (toDelete: Routine[], toCreate: Routine[]) => {
+    const deleteFirst = product.routines.length + toCreate.length > 50;
+    const deletedIds = new Set<string>();
+    const created: Routine[] = [];
+    try {
+      if (deleteFirst) {
+        for (const r of toDelete) {
+          await productService.deleteRoutine(r);
+          deletedIds.add(r.id);
+        }
+        for (const r of toCreate) {
+          const res = await productService.saveRoutine(r);
+          created.push(res.routine);
+        }
+      } else {
+        for (const r of toCreate) {
+          const res = await productService.saveRoutine(r);
+          created.push(res.routine);
+        }
+        for (const r of toDelete) {
+          await productService.deleteRoutine(r);
+          deletedIds.add(r.id);
+        }
+      }
+    } finally {
+      if (created.length > 0 || deletedIds.size > 0) {
+        setProduct((p) => {
+          const createdIds = new Set(created.map((r) => r.id));
+          return {
+            ...p,
+            routines: [
+              ...created,
+              ...p.routines.filter((r) => !deletedIds.has(r.id) && !createdIds.has(r.id)),
+            ],
+          };
+        });
+      }
+    }
+    setToast("Программа заменена");
   };
 
   const createPersonal = () => {
@@ -1375,6 +1447,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                           : undefined
                       }
                       deloadLine={DeloadHint.line(deload, today)}
+                      deload={deload}
                       load={{
                         done: weekDone,
                         goal: weekGoal,
@@ -1467,6 +1540,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                       <WorkoutView
                         deloadMode={deload?.mode}
                         deloadPlan={deload}
+                        routines={product.routines}
                         focusRequest={restNotification.focus}
                         notificationError={restNotification.error}
                         draft={draft}
@@ -1504,9 +1578,9 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                               lift && avoidReason === "pain"
                                 ? [...new Set([...(p.painFlags ?? []), lift])]
                                 : p.painFlags;
-                            const pos = LaidDupPlan.position(LaidDupPlan.weekOf(p.startMonday, today));
+                            const state = LaidDupPlan.cycleState(cycle, workouts, today);
                             const updated = LaidDupPlan.withSubstitutions(cycle, curSubs, {
-                              fromWeek: pos.beforeStart ? 0 : pos.week,
+                              fromWeek: state.position.beforeStart ? 0 : state.position.week,
                               painFlags,
                             });
                             void (async () => {
@@ -1599,6 +1673,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                       customExercises={product.customExercises}
                       settings={settings}
                       today={today}
+                      deload={deload}
                       progressTab={progressTab}
                       onProgressTabChange={setProgressTab}
                       weekOffset={weekOffset}
@@ -1663,6 +1738,8 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                         onFavorite={(id) => void favoriteExercise(id)}
                         onSave={saveRoutine}
                         onDelete={deleteRoutine}
+                        onDeleteMany={deleteRoutines}
+                        onReplaceRoutines={replaceRoutines}
                         onStart={(routine, slot) => {
                           const occurrence =
                             slot ??

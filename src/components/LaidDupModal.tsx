@@ -38,6 +38,8 @@ type Props = {
   onDone: (message: string) => void;
   /** «Обновить максимумы» из окна «Создать ещё раз». */
   onSwitch?: (mode: Mode) => void;
+  /** Заменить выбранные старые программы новыми (удаление старых разом после создания новых). */
+  onReplaceRoutines?: (toDelete: Routine[], toCreate: Routine[]) => Promise<void>;
 };
 
 const LIFTS: LaidLift[] = ["squat", "bench", "deadlift", "ohp"];
@@ -65,8 +67,18 @@ export default function LaidDupModal(props: Props) {
   const base = cycle?.[0]?.periodization;
   const sets = useMemo(() => LaidDupPlan.weeklySets(), []);
   const [ask, setAsk] = useState(mode === "create" && !!props.existing);
+  const [replaceExisting, setReplaceExisting] = useState<boolean>(
+    () => mode === "create" && !!props.existing,
+  );
   const [values, setValues] = useState<Record<LaidLift, string>>(() =>
-    Object.fromEntries(LIFTS.map((l) => [l, base ? LaidDupPlan.kg(base.maxes[l]) : ""])) as Record<LaidLift, string>,
+    Object.fromEntries(
+      LIFTS.map((l) => [
+        l,
+        base && !base.calibrationLifts?.includes(l) && !base.painFlags?.includes(l)
+          ? LaidDupPlan.kg(base.maxes[l])
+          : "",
+      ]),
+    ) as Record<LaidLift, string>,
   );
   const [substitutions, setSubstitutions] = useState<LaidSubstitutions>(() =>
     base?.substitutions ? { ...base.substitutions } : {},
@@ -81,11 +93,16 @@ export default function LaidDupModal(props: Props) {
   const [appliedLift, setAppliedLift] = useState<LaidLift | null>(null);
   const [shown, setShown] = useState(false);
   const [start, setStart] = useState<"this" | "next">(() => LaidDupPlan.defaultStart(today));
-  const [slots, setSlots] = useState<LaidWeekSlot[]>(() => LaidDupPlan.slotsForRhythm("6x1"));
+  const [slots, setSlots] = useState<LaidWeekSlot[]>(() => LaidDupPlan.slotsForRhythm("3x1x3"));
   const [customOpen, setCustomOpen] = useState(false);
   const [subsOpen, setSubsOpen] = useState(false);
   const [extras, setExtras] = useState(true);
   const [light, setLight] = useState(() => !!props.minorMode);
+  const [useTrainingMax, setUseTrainingMax] = useState(() => mode === "create");
+  const [midDeload, setMidDeload] = useState(() => !!base?.deloadWeeks?.includes(6));
+  const [rollingWeek, setRollingWeek] = useState(() => base?.weekMode === "rolling");
+  const [autoEscalate, setAutoEscalate] = useState(() => !props.minorMode && !!base?.autoEscalate);
+  const spineFriendly = useMemo(() => LaidDupPlan.isSpineFriendly(substitutions), [substitutions]);
   const avoidedIds = useMemo(
     () => (props.accountId ? new ExerciseAvoidStore(props.accountId).ids() : undefined),
     [props.accountId],
@@ -108,11 +125,18 @@ export default function LaidDupModal(props: Props) {
     () => LIFTS.filter((l) => estimates[l] !== null).length,
     [estimates],
   );
+  const suggestedEstimate = (est: number) =>
+    useTrainingMax ? LaidDupPlan.trainingMaxFrom1Rm(est) : est;
   const allEstimatesApplied = useMemo(
     () =>
       estimateCount > 0 &&
-      LIFTS.every((l) => estimates[l] === null || values[l] === LaidDupPlan.kg(estimates[l]!)),
-    [estimateCount, estimates, values],
+      LIFTS.every((l) => {
+        const est = estimates[l];
+        if (est === null) return true;
+        const target = useTrainingMax ? LaidDupPlan.trainingMaxFrom1Rm(est) : est;
+        return values[l] === LaidDupPlan.kg(target);
+      }),
+    [estimateCount, estimates, values, useTrainingMax],
   );
 
   const catalogSlots = useMemo(
@@ -148,10 +172,14 @@ export default function LaidDupModal(props: Props) {
   const filledCount = checks.filter((c) => c.error === null).length;
   const maxes = valid ? (Object.fromEntries(checks.map((c) => [c.lift, c.value!])) as LaidMaxes) : null;
   const startMonday = LaidDupPlan.startMonday(today, start);
-  const position = base ? LaidDupPlan.position(LaidDupPlan.weekOf(base.startMonday, today)) : null;
+  const cycleState = useMemo(
+    () => (cycle?.length ? LaidDupPlan.cycleState(cycle, props.workouts, today) : null),
+    [cycle, props.workouts, today],
+  );
+  const position = cycleState?.position ?? null;
 
   const taken = useMemo(() => {
-    if (mode !== "create") return [] as string[];
+    if (mode !== "create" || replaceExisting) return [] as string[];
     return [...LaidDupPlan.DAYS]
       .sort((a, b) => weekdays[a] - weekdays[b])
       .flatMap((day) => {
@@ -159,7 +187,7 @@ export default function LaidDupModal(props: Props) {
         const names = props.routines.filter((r) => r.days.includes(weekday)).map((r) => `«${r.name}»`);
         return names.length ? [`${DAY_NAMES[weekday]} уже занят программой ${names.join(", ")}: обе будут в плане недели.`] : [];
       });
-  }, [mode, props.routines, weekdays]);
+  }, [mode, props.routines, weekdays, replaceExisting]);
 
   function applySubstitution(originalId: string, nextId: string | null) {
     setSubstitutions((prev) => {
@@ -204,7 +232,7 @@ export default function LaidDupModal(props: Props) {
     setValues((prev) => {
       const next = { ...prev };
       for (const lift of LIFTS) {
-        if (estimates[lift] !== null) next[lift] = LaidDupPlan.kg(estimates[lift]!);
+        if (estimates[lift] !== null) next[lift] = LaidDupPlan.kg(suggestedEstimate(estimates[lift]!));
       }
       return next;
     });
@@ -222,7 +250,7 @@ export default function LaidDupModal(props: Props) {
     let saved = 0;
     try {
       if (mode === "create") {
-        for (const r of LaidDupPlan.routines({
+        const createdRoutines = LaidDupPlan.routines({
           maxes,
           extras,
           light,
@@ -231,9 +259,18 @@ export default function LaidDupModal(props: Props) {
           substitutions: activeSubs,
           calibrationLifts,
           painFlags,
-        })) {
-          await props.onSave(r);
-          saved++;
+          autoEscalate: !props.minorMode && autoEscalate,
+          weekMode: rollingWeek ? "rolling" : "calendar",
+          deloadWeeks: midDeload ? [6] : undefined,
+        });
+        if (replaceExisting && props.routines.length > 0 && props.onReplaceRoutines) {
+          await props.onReplaceRoutines(props.routines, createdRoutines);
+          saved = createdRoutines.length;
+        } else {
+          for (const r of createdRoutines) {
+            await props.onSave(r);
+            saved++;
+          }
         }
         const restDay = LaidDupPlan.restWeekday(slots);
         const daysLabel =
@@ -245,15 +282,34 @@ export default function LaidDupModal(props: Props) {
                 ? `свой порядок (выходной ${DAY_NAMES[restDay]})`
                 : "свой порядок";
         const subText = subCount > 0 ? ` Замен упражнений: ${subCount}.` : "";
-        props.onDone(`Программа Лейда создана: шесть дней, ${daysLabel}.${subText} Расписание — в «Программах».`);
+        const replaceText =
+          replaceExisting && props.routines.length > 0 ? " Прежние программы заменены." : "";
+        props.onDone(`Программа Лейда создана: шесть дней, ${daysLabel}.${subText}${replaceText} Расписание — в «Программах».`);
       } else {
         const week = position ? position.week : 0;
+        const nextCal = calibrationLifts.length ? [...new Set(calibrationLifts)] : undefined;
+        const nextPain = painFlags.length ? [...new Set(painFlags)] : undefined;
         for (const r of cycle ?? []) {
           const p = r.periodization!;
-          const next =
+          const baseNext =
             mode === "restart"
               ? { ...p, startMonday, maxes, maxesFromWeek: 0, earlier: undefined }
               : LaidDupPlan.withMaxes(p, maxes, position && !position.beforeStart ? week : 0);
+          const next = {
+            ...baseNext,
+            ...(nextCal ? { calibrationLifts: nextCal } : {}),
+            ...(nextPain ? { painFlags: nextPain } : {}),
+          };
+          if (mode === "restart") {
+            if (midDeload) next.deloadWeeks = [6];
+            else delete next.deloadWeeks;
+          }
+          if (rollingWeek) next.weekMode = "rolling";
+          else delete next.weekMode;
+          if (!props.minorMode && autoEscalate) next.autoEscalate = true;
+          else delete next.autoEscalate;
+          if (!nextCal) delete next.calibrationLifts;
+          if (!nextPain) delete next.painFlags;
           await props.onSave({ ...r, periodization: next });
           saved++;
         }
@@ -287,13 +343,34 @@ export default function LaidDupModal(props: Props) {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.2 }}
         >
-          <p className="laid-lead">Программа Лейда уже есть. Повторное создание добавит ещё шесть программ.</p>
+          <p className="laid-lead">
+            Программа Лейда уже есть. Можно обновить её максимумы, заменить текущий цикл новым (все 6 дней разом) или добавить ещё один цикл.
+          </p>
           <div className="laid-actions">
             <button type="button" className="button primary" onClick={() => props.onSwitch?.("update")}>
               Обновить максимумы
             </button>
-            <button type="button" className="button secondary" onClick={() => setAsk(false)}>
-              Создать ещё раз
+            {props.onReplaceRoutines ? (
+              <button
+                type="button"
+                className="button secondary"
+                onClick={() => {
+                  setReplaceExisting(true);
+                  setAsk(false);
+                }}
+              >
+                Заменить текущий цикл
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="button secondary"
+              onClick={() => {
+                setReplaceExisting(false);
+                setAsk(false);
+              }}
+            >
+              Добавить ещё один
             </button>
           </div>
         </m.div>
@@ -323,9 +400,12 @@ export default function LaidDupModal(props: Props) {
             {/* Compact program summary header */}
             <div className="laid-hero-strip">
               <div className="laid-hero-pills" aria-label="Параметры цикла">
-                <span className="laid-pill">9 недель</span>
+                <span className="laid-pill">{midDeload && mode === "create" ? "10 недель (с разгрузкой)" : "9 недель"}</span>
                 <span className="laid-pill">6 дней/нед</span>
                 <span className="laid-pill">3 волны DUP</span>
+                {mode === "create" && rollingWeek ? (
+                  <span className="laid-pill is-accent">Плавающая неделя</span>
+                ) : null}
                 {mode === "create" ? (
                   <span className="laid-pill">{volumeSummary.totalSets} подх./нед</span>
                 ) : null}
@@ -334,7 +414,7 @@ export default function LaidDupModal(props: Props) {
                 ) : null}
               </div>
               <p className="laid-lead">
-                1ПМ — максимум на одно повторение; вводи осторожное число. {LaidDupPlan.LOAD_NOTICE}
+                1ПМ — максимум на одно повторение; вводи осторожный тренировочный максимум (92,5 % от 1ПМ). {LaidDupPlan.LOAD_NOTICE}
               </p>
               {props.minorMode ? (
                 <p className="tiny laid-deload-hint">
@@ -349,26 +429,40 @@ export default function LaidDupModal(props: Props) {
               <div className="laid-section-head">
                 <div className="laid-section-title-group">
                   <h3 id={`${uid}-maxes-title`} className="laid-section-title">
-                    Рабочие максимумы (1ПМ)
+                    {useTrainingMax ? "Тренировочные максимумы (ТМ)" : "Рабочие максимумы (1ПМ)"}
                   </h3>
                   <span className="laid-section-counter" aria-live="polite">
                     {filledCount}/4
                   </span>
                 </div>
-                {estimateCount >= 2 && !allEstimatesApplied ? (
-                  <button type="button" className="laid-fill-all-btn" onClick={applyAllEstimates}>
-                    <Sparkles size={13} aria-hidden="true" />
-                    <span>Заполнить из истории</span>
-                  </button>
-                ) : null}
+                <div className="laid-section-head-actions">
+                  {estimateCount > 0 ? (
+                    <button
+                      type="button"
+                      aria-pressed={useTrainingMax}
+                      className={`laid-mode-chip${useTrainingMax ? " active" : ""}`}
+                      title="Считать по 92,5 % от расчётного 1ПМ, чтобы не словить перетрен в волнах 2–3"
+                      onClick={() => setUseTrainingMax((v) => !v)}
+                    >
+                      {useTrainingMax ? "ТМ 92,5 % · вкл" : "100 % от 1ПМ"}
+                    </button>
+                  ) : null}
+                  {estimateCount >= 2 && !allEstimatesApplied ? (
+                    <button type="button" className="laid-fill-all-btn" onClick={applyAllEstimates}>
+                      <Sparkles size={13} aria-hidden="true" />
+                      <span>{useTrainingMax ? "Заполнить ТМ (92,5 %)" : "Заполнить из истории"}</span>
+                    </button>
+                  ) : null}
+                </div>
               </div>
 
               <div className="laid-fields">
                 {LIFTS.map((lift, i) => {
                   const c = checks[i];
                   const estimate = estimates[lift];
+                  const targetEst = estimate !== null ? suggestedEstimate(estimate) : null;
                   const message = shown && c.error ? c.error : "";
-                  const isApplied = appliedLift === lift && values[lift] === (estimate !== null ? LaidDupPlan.kg(estimate) : "");
+                  const isApplied = appliedLift === lift && targetEst !== null && values[lift] === LaidDupPlan.kg(targetEst);
                   const origId = LaidDupPlan.LIFT_EXERCISE[lift];
                   const resolvedId = LaidDupPlan.liftExerciseId(lift, activeSubs);
                   const isReplaced = resolvedId !== origId;
@@ -471,47 +565,49 @@ export default function LaidDupModal(props: Props) {
                             </m.p>
                           ) : null}
                         </AnimatePresence>
-                        {estimate !== null && !isCalibrating && !isPain ? (
+                        {estimate !== null && targetEst !== null && !isCalibrating && !isPain ? (
                           <div className="laid-estimate-row">
                             <m.button
                               type="button"
                               className={`laid-estimate${isApplied ? " applied" : ""}`}
                               whileTap={reduced ? undefined : { scale: 0.97 }}
                               onClick={() => {
-                                setValues({ ...values, [lift]: LaidDupPlan.kg(estimate) });
+                                setValues({ ...values, [lift]: LaidDupPlan.kg(targetEst) });
                                 setAppliedLift(lift);
                               }}
                             >
                               {isApplied ? <Check size={13} aria-hidden="true" /> : <Sparkles size={13} aria-hidden="true" />}
-                              <span>по истории ≈ {LaidDupPlan.kg(estimate)} кг (Эпли)</span>
+                              <span>
+                                {useTrainingMax
+                                  ? `ТМ 92,5 % ≈ ${LaidDupPlan.kg(targetEst)} кг (1ПМ ${LaidDupPlan.kg(estimate)})`
+                                  : `по истории ≈ ${LaidDupPlan.kg(estimate)} кг (Эпли)`}
+                              </span>
                             </m.button>
                             <small className="laid-estimate-window">
                               {LaidDupPlan.windowText(LaidDupPlan.ESTIMATE_DAYS)}
                             </small>
                           </div>
                         ) : null}
-                        {mode === "create" ? (
-                          <div className="laid-lift-mode-row">
+                        <div className="laid-lift-mode-row">
+                          <button
+                            type="button"
+                            aria-pressed={isCalibrating}
+                            className={`laid-mode-chip${isCalibrating ? " active" : ""}`}
+                            onClick={() => toggleCalibration(lift)}
+                          >
+                            {isCalibrating ? "Калибровка по RIR: вкл" : "Не знаю 1ПМ"}
+                          </button>
+                          {isReplaced || isPain || mode !== "create" ? (
                             <button
                               type="button"
-                              aria-pressed={isCalibrating}
-                              className={`laid-mode-chip${isCalibrating ? " active" : ""}`}
-                              onClick={() => toggleCalibration(lift)}
+                              aria-pressed={isPain}
+                              className={`laid-mode-chip is-pain${isPain ? " active" : ""}`}
+                              onClick={() => togglePainFlag(lift)}
                             >
-                              {isCalibrating ? "Калибровка: вкл" : "Не знаю 1ПМ"}
+                              {isPain ? "Щадяще (боль)" : "Травма / боль"}
                             </button>
-                            {isReplaced || isPain ? (
-                              <button
-                                type="button"
-                                aria-pressed={isPain}
-                                className={`laid-mode-chip is-pain${isPain ? " active" : ""}`}
-                                onClick={() => togglePainFlag(lift)}
-                              >
-                                {isPain ? "Щадяще (боль)" : "Травма / боль"}
-                              </button>
-                            ) : null}
-                          </div>
-                        ) : null}
+                          ) : null}
+                        </div>
                       </div>
                     </div>
                   );
@@ -564,14 +660,14 @@ export default function LaidDupModal(props: Props) {
                       {(
                         [
                           {
-                            id: "6x1" as const,
-                            label: "Пн–Сб подряд · выходной Вс",
-                            sub: "Без паузы внутри недели",
+                            id: "3x1x3" as const,
+                            label: "3 + 1 + 3 · выходной Чт (рекомендуется)",
+                            sub: "Разгружает поясницу перед Ногами 2",
                           },
                           {
-                            id: "3x1x3" as const,
-                            label: "3 + 1 + 3 · выходной Чт",
-                            sub: "Отдых перед Ногами 2",
+                            id: "6x1" as const,
+                            label: "Пн–Сб подряд · выходной Вс",
+                            sub: "Классика без паузы внутри недели",
                           },
                         ] as const
                       ).map((opt) => {
@@ -680,6 +776,120 @@ export default function LaidDupModal(props: Props) {
                         </span>
                       </span>
                     </button>
+
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={spineFriendly}
+                      className="laid-switch laid-switch-row"
+                      onClick={() =>
+                        setSubstitutions((prev) => LaidDupPlan.toggleSpineFriendly(prev, !spineFriendly))
+                      }
+                    >
+                      <span className="laid-switch-text">
+                        Щадящая поясница (−18 осевых подх./нед)
+                        <small>
+                          Мёртвая → сгибания лёжа · Ятс → тяга блока сидя · выпады → жим ногами. Сейчас осевых: {volumeSummary.axialSets} подх./нед.
+                        </small>
+                      </span>
+                      <span className="laid-switch-control" aria-hidden="true">
+                        <span className="laid-switch-state">{spineFriendly ? "Вкл" : "Выкл"}</span>
+                        <span className="laid-switch-track">
+                          <m.span className="laid-switch-thumb" layout transition={reduced ? { duration: 0 } : SPRING_THUMB} />
+                        </span>
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={midDeload}
+                      className="laid-switch laid-switch-row"
+                      onClick={() => setMidDeload(!midDeload)}
+                    >
+                      <span className="laid-switch-text">
+                        Разгрузка после волны 2 (неделя 7)
+                        <small>
+                          Вставляет разгрузочную неделю (55–65 %, половина подходов, RIR 3–4); волна 3 сдвигается на недели 8–10.
+                        </small>
+                      </span>
+                      <span className="laid-switch-control" aria-hidden="true">
+                        <span className="laid-switch-state">{midDeload ? "Вкл" : "Выкл"}</span>
+                        <span className="laid-switch-track">
+                          <m.span className="laid-switch-thumb" layout transition={reduced ? { duration: 0 } : SPRING_THUMB} />
+                        </span>
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={rollingWeek}
+                      className="laid-switch laid-switch-row"
+                      onClick={() => setRollingWeek(!rollingWeek)}
+                    >
+                      <span className="laid-switch-text">
+                        Плавающая неделя (по факту 6 тренировок)
+                        <small>
+                          Новая неделя DUP начинается после выполнения 6 тренировок цикла — пропуск дня не «сжигает» волну.
+                        </small>
+                      </span>
+                      <span className="laid-switch-control" aria-hidden="true">
+                        <span className="laid-switch-state">{rollingWeek ? "Вкл" : "Выкл"}</span>
+                        <span className="laid-switch-track">
+                          <m.span className="laid-switch-thumb" layout transition={reduced ? { duration: 0 } : SPRING_THUMB} />
+                        </span>
+                      </span>
+                    </button>
+
+                    {!props.minorMode ? (
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={autoEscalate}
+                        className="laid-switch laid-switch-row"
+                        onClick={() => setAutoEscalate(!autoEscalate)}
+                      >
+                        <span className="laid-switch-text">
+                          Автоповышение 1ПМ внутри цикла (+5 %)
+                          <small>
+                            {autoEscalate
+                              ? "Веса волн будут автоматически расти при росте расчётного 1ПМ на ≥5 %."
+                              : "Выкл (рекомендуется): при росте 1ПМ появится подсказка с кнопкой, без скрытых изменений."}
+                          </small>
+                        </span>
+                        <span className="laid-switch-control" aria-hidden="true">
+                          <span className="laid-switch-state">{autoEscalate ? "Вкл" : "Выкл"}</span>
+                          <span className="laid-switch-track">
+                            <m.span className="laid-switch-thumb" layout transition={reduced ? { duration: 0 } : SPRING_THUMB} />
+                          </span>
+                        </span>
+                      </button>
+                    ) : null}
+                    {props.routines.length > 0 && props.onReplaceRoutines ? (
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={replaceExisting}
+                        className="laid-switch laid-switch-row"
+                        onClick={() => setReplaceExisting(!replaceExisting)}
+                      >
+                        <span className="laid-switch-text">
+                          Заменить текущие программы ({props.routines.length})
+                          <small>
+                            {replaceExisting
+                              ? "Старые программы удалятся разом, история тренировок останется."
+                              : "Текущие программы останутся, к ним добавятся 6 дней Лейда."}
+                          </small>
+                        </span>
+                        <span className="laid-switch-control" aria-hidden="true">
+                          <span className="laid-switch-state">{replaceExisting ? "Заменить" : "Добавить"}</span>
+                          <span className="laid-switch-track">
+                            <m.span className="laid-switch-thumb" layout transition={reduced ? { duration: 0 } : SPRING_THUMB} />
+                          </span>
+                        </span>
+                      </button>
+                    ) : null}
                   </div>
                 </section>
 
@@ -834,7 +1044,79 @@ export default function LaidDupModal(props: Props) {
                   ) : null}
                 </AnimatePresence>
               </>
-            ) : null}
+            ) : (
+              <section className="laid-section laid-settings-card" aria-labelledby={`${uid}-cycle-opts-title`}>
+                <h3 id={`${uid}-cycle-opts-title`} className="laid-section-title">
+                  Параметры цикла
+                </h3>
+                <div className="laid-switches-grouped">
+                  {mode === "restart" ? (
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={midDeload}
+                      className="laid-switch laid-switch-row"
+                      onClick={() => setMidDeload(!midDeload)}
+                    >
+                      <span className="laid-switch-text">
+                        Разгрузка после волны 2 (неделя 7)
+                        <small>Вставляет разгрузочную неделю (55–65 %, половина подходов, RIR 3–4).</small>
+                      </span>
+                      <span className="laid-switch-control" aria-hidden="true">
+                        <span className="laid-switch-state">{midDeload ? "Вкл" : "Выкл"}</span>
+                        <span className="laid-switch-track">
+                          <m.span className="laid-switch-thumb" layout transition={reduced ? { duration: 0 } : SPRING_THUMB} />
+                        </span>
+                      </span>
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={rollingWeek}
+                    className="laid-switch laid-switch-row"
+                    onClick={() => setRollingWeek(!rollingWeek)}
+                  >
+                    <span className="laid-switch-text">
+                      Плавающая неделя (по факту 6 тренировок)
+                      <small>
+                        Новая неделя DUP начинается после выполнения 6 тренировок цикла — пропуск дня не «сжигает» волну.
+                      </small>
+                    </span>
+                    <span className="laid-switch-control" aria-hidden="true">
+                      <span className="laid-switch-state">{rollingWeek ? "Вкл" : "Выкл"}</span>
+                      <span className="laid-switch-track">
+                        <m.span className="laid-switch-thumb" layout transition={reduced ? { duration: 0 } : SPRING_THUMB} />
+                      </span>
+                    </span>
+                  </button>
+                  {!props.minorMode ? (
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={autoEscalate}
+                      className="laid-switch laid-switch-row"
+                      onClick={() => setAutoEscalate(!autoEscalate)}
+                    >
+                      <span className="laid-switch-text">
+                        Автоповышение 1ПМ внутри цикла (+5 %)
+                        <small>
+                          {autoEscalate
+                            ? "Веса волн растут автоматически при росте расчётного 1ПМ на ≥5 %."
+                            : "Выкл: при росте 1ПМ появится подсказка с кнопкой, без скрытых изменений."}
+                        </small>
+                      </span>
+                      <span className="laid-switch-control" aria-hidden="true">
+                        <span className="laid-switch-state">{autoEscalate ? "Вкл" : "Выкл"}</span>
+                        <span className="laid-switch-track">
+                          <m.span className="laid-switch-thumb" layout transition={reduced ? { duration: 0 } : SPRING_THUMB} />
+                        </span>
+                      </span>
+                    </button>
+                  ) : null}
+                </div>
+              </section>
+            )}
 
             {/* Section 5: Compact Preview */}
             <AnimatePresence initial={false}>
@@ -852,7 +1134,7 @@ export default function LaidDupModal(props: Props) {
                     <p className="field-caption">
                       Неделя {previewWeek + 1} по этим максимумам · волна {previewWave}
                     </p>
-                    <span className="laid-preview-meta">отдых 3:00</span>
+                    <span className="laid-preview-meta">отдых: база 3–5 мин · подсобка 1–3 мин</span>
                   </div>
                   <ul className="laid-preview-grid">
                     {[...LaidDupPlan.DAYS]

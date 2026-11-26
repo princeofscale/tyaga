@@ -11,6 +11,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { SmartCoach, type CoachInsightCategory } from "../domain/SmartCoach";
+import type { DeloadPlanRecord } from "../domain/DeloadPlan";
 import { fmt, type Routine, type Workout } from "../lib/model";
 import "../styles/progress.css";
 
@@ -31,19 +32,21 @@ export default function SmartCoachPanel({
   today,
   timeZone,
   accountId,
+  deload,
 }: {
   workouts: Workout[];
   routines: Routine[];
   today: string;
   timeZone?: string;
   accountId?: string;
+  deload?: DeloadPlanRecord | null;
 }) {
   const reduced = useReducedMotion();
   const [filter, setFilter] = useState<"all" | CoachInsightCategory>("all");
 
   const report = useMemo(
-    () => SmartCoach.analyze(workouts, routines, today, timeZone, undefined, accountId),
-    [workouts, routines, today, timeZone, accountId],
+    () => SmartCoach.analyze(workouts, routines, today, timeZone, undefined, accountId, deload),
+    [workouts, routines, today, timeZone, accountId, deload],
   );
 
   const visibleInsights = useMemo(

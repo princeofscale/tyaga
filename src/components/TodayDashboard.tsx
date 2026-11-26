@@ -21,6 +21,8 @@ import { PersonalRecordsCalculator } from "../domain/PersonalRecords";
 import { BackdatedWorkout } from "../domain/BackdatedWorkout";
 import { WorkoutFlow } from "../domain/WorkoutFlow";
 import { SmartCoach } from "../domain/SmartCoach";
+import { LaidDupPlan } from "../domain/LaidDupPlan";
+import type { DeloadPlanRecord } from "../domain/DeloadPlan";
 import { SupplementsStore, type SupplementsState } from "../domain/Supplements";
 import { elapsedMs, type Draft } from "../lib/draft";
 import { entryName, fmt, localDate, workingSets, type Routine, type Workout } from "../lib/model";
@@ -89,6 +91,7 @@ type Props = {
   hasPrograms: boolean;
   nextProgram?: string;
   deloadLine?: string | null;
+  deload?: DeloadPlanRecord | null;
   load: { done: number; goal: number; growthZones?: number; maintenanceZones?: number; totalZones?: number };
   onStart: () => void;
   onOpenWorkout: (workout: Workout) => void;
@@ -119,6 +122,7 @@ export default function TodayDashboard({
   hasPrograms,
   nextProgram,
   deloadLine,
+  deload,
   load,
   onStart,
   onOpenWorkout,
@@ -164,13 +168,25 @@ export default function TodayDashboard({
     [workouts, timeZone],
   );
   const coach = useMemo(
-    () => SmartCoach.analyze(workouts, routines, todayKey, timeZone),
-    [workouts, routines, todayKey, timeZone],
+    () => SmartCoach.analyze(workouts, routines, todayKey, timeZone, undefined, undefined, deload),
+    [workouts, routines, todayKey, timeZone, deload],
   );
   const supSummary = useMemo(
     () => (supplements ? SupplementsStore.summary(supplements, todayKey) : null),
     [supplements, todayKey],
   );
+  const todayLaid = useMemo(() => {
+    const rid = active?.routineId ?? finished?.routineId;
+    if (!rid) return null;
+    const routine = routines.find((r) => r.id === rid);
+    if (!routine || !LaidDupPlan.periodizationOf(routine)) return null;
+    const cycle = LaidDupPlan.cycleOf(routines, routine);
+    if (!cycle.length) return null;
+    const state = LaidDupPlan.cycleState(cycle, workouts, todayKey);
+    const dayPlan = LaidDupPlan.planFor(routine, active?.programDate ?? todayKey, { workouts, cycle });
+    if (!dayPlan) return null;
+    return { state, dayPlan };
+  }, [active?.routineId, active?.programDate, finished?.routineId, routines, workouts, todayKey]);
 
   return (
     <div className="today-dashboard">
@@ -195,6 +211,15 @@ export default function TodayDashboard({
                     ? `${finished.exercises.length} упр. · ${workingSets([finished])} раб. подх.`
                     : "Выбери упражнения и запиши подходы."}
             </p>
+            {todayLaid ? (
+              <div className={`hero-laid-strip${todayLaid.state.isCurrentDeload ? " is-deload" : ""}`}>
+                <span className="hero-laid-pill">
+                  Неделя {todayLaid.state.weekGuide.weekNumber} из {todayLaid.state.totalWeeks} · {todayLaid.state.weekGuide.badge}
+                </span>
+                <span className="hero-laid-line">{LaidDupPlan.compactLine(todayLaid.dayPlan)}</span>
+                <small className="hero-laid-rir">{todayLaid.state.weekGuide.baseRir}</small>
+              </div>
+            ) : null}
             {draft && draftTotalSets > 0 ? (
               <div className="hero-draft-progress" aria-hidden="true">
                 <m.span

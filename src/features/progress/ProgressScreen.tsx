@@ -30,6 +30,7 @@ import {
   type WorkoutExercise,
 } from "../../lib/model";
 import { MuscleCoverage } from "../../domain/MuscleCoverage";
+import type { DeloadPlanRecord } from "../../domain/DeloadPlan";
 import { StrengthExercises } from "../../domain/StrengthExercises";
 import { ProgressSeries } from "../../domain/ProgressSeries";
 import { ExecutionIdentity } from "../../domain/ExecutionIdentity";
@@ -74,6 +75,7 @@ export interface ProgressScreenProps {
   customExercises: Exercise[];
   settings: Settings;
   today: string;
+  deload?: DeloadPlanRecord | null;
   progressTab: ProgressTab;
   onProgressTabChange: (tab: ProgressTab) => void;
   weekOffset: number;
@@ -96,6 +98,7 @@ export default function ProgressScreen({
   customExercises,
   settings,
   today,
+  deload,
   progressTab,
   onProgressTabChange,
   weekOffset,
@@ -318,6 +321,7 @@ export default function ProgressScreen({
           today={today}
           timeZone={settings.timeZone}
           accountId={accountId}
+          deload={deload}
         />
       ) : null}
       {progressTab === "analytics" ? (

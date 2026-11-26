@@ -138,8 +138,13 @@ export class TrainingProgram {
     timeZone: string,
   ) {
     return WorkoutReference.latest(
-      // QA-R06-13: разгрузочные тренировки («[Разгрузка]» в названии) не бывают базой веса — ни при цикле, ни после «Применить разгрузку».
-      history.filter((w) => !DeloadEngine.isDeloadName(w.name) && (!skipDeload || !this.isDeload(history, w.programDate ?? w.date))),
+      // QA-R06-13: разгрузочные тренировки («[Разгрузка]» в названии или разгрузочная неделя) не бывают базой веса.
+      history.filter(
+        (w) =>
+          !DeloadEngine.isDeloadName(w.name) &&
+          !w.notes?.toLowerCase().includes("разгрузочная неделя") &&
+          (!skipDeload || !this.isDeload(history, w.programDate ?? w.date)),
+      ),
       plan,
       undefined,
       today,
@@ -187,12 +192,13 @@ export class TrainingProgram {
     timeZone: string,
     today = localDate(new Date(), timeZone),
     programDate?: string,
+    options?: { cycle?: readonly Routine[] },
   ): Workout {
     const r = this.routine;
     const workout = makeWorkout([], [], timeZone);
     // A move changes the training day, not the plan phase (including Laid's independent cycle).
     const phaseDate = programDate ?? today;
-    const laid = LaidDupPlan.planFor(r, phaseDate);
+    const laid = LaidDupPlan.planFor(r, phaseDate, { workouts: history, cycle: options?.cycle });
     const cycle = laid ? undefined : r.cycle;
     const deload = !laid && this.isDeload(history, phaseDate);
     const built: Workout = {
@@ -308,13 +314,43 @@ export class TrainingProgram {
     const p = this.routine.periodization!;
     const day = p.day;
     const subs = p.substitutions;
-    const week = LaidDupPlan.weekLabel(plan.position);
+    const totalWeeks = LaidDupPlan.totalWeeks(p);
+    const week = LaidDupPlan.weekLabel(plan.position, { isDeload: plan.isDeload, totalWeeks });
+    const notesParts = [
+      workout.notes,
+      week,
+      ...(plan.isDeload ? ["Разгрузочная неделя (55–65 %, половина подходов, RIR 3–4)."] : []),
+    ].filter(Boolean);
     return {
       ...workout,
-      notes: [workout.notes, week].filter(Boolean).join("\n\n"),
+      notes: notesParts.join("\n\n"),
       exercises: workout.exercises.map((entry) => {
         if (entry.exerciseId === plan.liftExerciseId)
           return { ...entry, sets: LaidDupPlan.liftSets(plan), repMin: undefined, repMax: undefined, progressionNote: LaidDupPlan.describe(plan) };
+        if (plan.isDeload) {
+          const def = exerciseForEntry(entry);
+          const loadMode = def?.recording.loadMode;
+          const scalableWeight = loadMode !== "bodyweight" && loadMode !== "assisted_bodyweight" && def?.recording.type !== "duration";
+          const working = entry.sets.filter((s) => !s.warmup);
+          const keep = Math.max(1, Math.floor(working.length * 0.5));
+          const keptIds = new Set(working.slice(0, keep).map((s) => s.id));
+          const sets = entry.sets
+            .filter((s) => s.warmup || keptIds.has(s.id))
+            .map((s) =>
+              s.warmup
+                ? s
+                : {
+                    ...s,
+                    weight: scalableWeight && s.weight > 0 ? Math.round(s.weight * 0.65 * 2) / 2 : s.weight,
+                    rir: 4,
+                  },
+            );
+          return {
+            ...entry,
+            sets,
+            progressionNote: "Разгрузочная неделя: 65 % рабочего веса, половина подходов, RIR 3–4 (без отказа).",
+          };
+        }
         const reps = LaidDupPlan.auxReps(day, entry.exerciseId, plan.position.inWave, subs);
         if (reps !== null) {
           // Волновая подсобка (push press 4/8/12, наклонный жим 12/4/8): если подходы взялись из истории

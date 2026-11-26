@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 
 /** Запас на случай, если animationend не придёт (вкладка в фоне, анимации отключены стилями). */
@@ -6,6 +6,7 @@ const EXIT_FALLBACK_MS = 260;
 
 export default function Modal({ title, children, onClose, wide = false }: { title: string; children: ReactNode; onClose: () => void | false; wide?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
   const callback = useRef(onClose); callback.current = onClose;
   const [closing, setClosing] = useState(false);
   const finished = useRef(false);
@@ -13,7 +14,7 @@ export default function Modal({ title, children, onClose, wide = false }: { titl
   useEffect(() => {
     const dialog = ref.current!;
     dialog.showModal();
-    // showModal() ставит фокус на первую кнопку («Закрыть окно»); поле, помеченное data-autofocus, забирает его себе.
+    // showModal() ставит фокус на первую кнопку («Закрыть окно»); элемент, помеченный data-autofocus, забирает его себе.
     dialog.querySelector<HTMLElement>('[data-autofocus]')?.focus();
     return () => { window.clearTimeout(timer.current); if (dialog.open) dialog.close(); };
   }, []);
@@ -37,11 +38,11 @@ export default function Modal({ title, children, onClose, wide = false }: { titl
     window.clearTimeout(timer.current);
     timer.current = window.setTimeout(finish, EXIT_FALLBACK_MS);
   }, [finish]);
-  return <dialog ref={ref} className={`modal ${wide ? 'modal-wide' : ''} ${closing ? 'closing' : ''}`} aria-label={title}
+  return <dialog ref={ref} className={`modal ${wide ? 'modal-wide' : ''} ${closing ? 'closing' : ''}`} aria-labelledby={titleId}
     onCancel={e => { e.preventDefault(); e.stopPropagation(); requestClose(); }}
     onClick={e => { if (e.target === e.currentTarget) requestClose(); }}
     onAnimationEnd={e => { if (closing && e.target === e.currentTarget) finish(); }}>
-    <div className="modal-head"><h2>{title}</h2><button className="icon-button" onClick={requestClose} aria-label="Закрыть окно"><X size={20} /></button></div>
+    <div className="modal-head"><h2 id={titleId}>{title}</h2><button className="icon-button" onClick={requestClose} aria-label="Закрыть окно"><X size={20} /></button></div>
     {children}
   </dialog>;
 }
