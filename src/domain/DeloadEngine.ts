@@ -4,15 +4,126 @@ import { workingSets as workingSetsText } from "../lib/quantity";
 /**
  * DeloadEngine
  *
- * Recorded-workload summary and optional deload templates.
- * Set counts alone do not establish fatigue or an individual need for a deload.
+ * v1: Recorded-workload summary and optional deload templates (kept for backward compatibility).
+ * v2: Dual-EWMA fatigue model (axial/CNS τ=4d + local/muscular τ=10d) with multi-signal
+ * reactive deload triggers (S1..S5), long-lever biomechanics & energy-status modifiers.
  */
 
-import type { Workout, SetEntry } from "../lib/types";
+import type { Exercise, Workout, SetEntry } from "../lib/types";
 import { exerciseForEntry } from "../lib/catalog";
 import { addCalendarDays, browserTimeZone, localDate } from "../lib/calendar";
 
 export type DeloadMode = "volume" | "intensity" | "recovery";
+
+export type DeloadModeV2 =
+  | "none"
+  | "local_micro_deload"
+  | "volume_deload"
+  | "intensity_taper"
+  | "pivot_recovery";
+
+export type EnergyStatus =
+  | "deficit"
+  | "maintenance"
+  | "optimal_surplus"
+  | "high_surplus"
+  | "unknown";
+
+export type DeloadSignalId =
+  | "S1_e1rm_drop"
+  | "S2_rir_drift"
+  | "S3_ewma_overload"
+  | "S4_rep_drop"
+  | "S5_pain";
+
+export interface DeloadEvaluateV2Options {
+  now?: Date;
+  today?: string;
+  timeZone?: string;
+  isLongLimbed?: boolean;
+  energyStatus?: EnergyStatus;
+  currentBodyweightKg?: number;
+  painFlagsCount?: number;
+  corePainRepeated?: boolean;
+}
+
+export interface DeloadEvaluationV2 {
+  status: "optimal" | "productive_overreach" | "deload_recommended";
+  recommendedMode: DeloadModeV2;
+  axialUtilization: number;
+  localUtilization: number;
+  ewmaAxial: number;
+  ewmaLocal: number;
+  capAxial: number;
+  capLocal: number;
+  triggeredSignals: DeloadSignalId[];
+  affectedExerciseIds: string[];
+  e1rmDropExercises: Array<{ exerciseId: string; dropPct: number }>;
+  rirDrift: number | null;
+  protocolParams: {
+    durationDays: number;
+    weightMultiplier: number;
+    volumeMultiplier: number;
+    targetRIRFloor: number;
+  } | null;
+  summary: string;
+}
+
+const HIGH_AXIAL_IDS = new Set([
+  "squat",
+  "deadlift-bar",
+  "trap-bar-deadlift",
+  "rdl",
+  "db-rdl",
+  "deadlift-stiff",
+  "good-morning",
+  "row-bent-bar",
+  "row-yates",
+]);
+
+const MODERATE_AXIAL_IDS = new Set([
+  "bench",
+  "incline-bar",
+  "incline-db",
+  "flat-db-press",
+  "ohp-bar",
+  "ohp-db",
+  "push-press",
+  "dip-weighted",
+  "lunge-bar",
+  "bulgarian-split-squat",
+  "goblet",
+  "row-db",
+]);
+
+const LOW_AXIAL_IDS = new Set([
+  "hack-squat",
+  "legpress",
+  "pullup",
+  "chinup",
+  "pullup-assisted",
+  "lat-pulldown",
+  "row-cable",
+  "row-chest-supported",
+  "chest-press-machine",
+]);
+
+const HIGH_AXIAL_FAMILIES = new Set(["squat", "hip-hinge", "spinal-extension"]);
+
+const ENERGY_CAPACITY_MULTIPLIER: Record<EnergyStatus, number> = {
+  deficit: 0.8,
+  maintenance: 0.9,
+  optimal_surplus: 1.1,
+  high_surplus: 1.15,
+  unknown: 1.0,
+};
+
+const ALPHA_AXIAL = 2 / (4 + 1); // 0.40 (τ = 4 days)
+const ALPHA_LOCAL = 2 / (10 + 1); // ~0.1818 (τ = 10 days)
+const BASE_CAP_AXIAL = 28.0;
+const BASE_CAP_LOCAL = 26.0;
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
 
 export interface DeloadConfig {
   mode: DeloadMode;
@@ -303,6 +414,357 @@ export class DeloadEngine {
       id: `workout-deload-${Date.now()}`,
       name: DeloadEngine.isDeloadName(workout.name) ? workout.name : `${workout.name}${DeloadEngine.SUFFIX}`,
       exercises: deloadExercises,
+    };
+  }
+
+  /** Классификация осевой нагрузки упражнения для модели EWMA v2: 1.5 / 1.0 / 0.5 / 0.15. */
+  public static axialLoadMultiplier(exercise: Exercise | undefined): number {
+    if (!exercise) return 0.5;
+    if (HIGH_AXIAL_IDS.has(exercise.id)) return 1.5;
+    if (LOW_AXIAL_IDS.has(exercise.id)) return 0.5;
+    if (MODERATE_AXIAL_IDS.has(exercise.id)) return 1.0;
+    if (
+      HIGH_AXIAL_FAMILIES.has(exercise.familyId) &&
+      exercise.recording.loadMode === "total_external"
+    ) {
+      return 1.5;
+    }
+    const isMultiJoint =
+      exercise.jointActions.length >= 2 ||
+      exercise.primary.length >= 2 ||
+      (exercise.secondary.length > 0 && exercise.recording.loadMode !== "machine_stack");
+    if (!isMultiJoint) return 0.15;
+    if (exercise.recording.loadMode === "machine_stack") return 0.5;
+    return 1.0;
+  }
+
+  /**
+   * Модуль 4 (v2): двухкомпонентная EWMA-модель усталости (осевая τ=4д, локальная τ=10д)
+   * и многофакторная матрица реактивной разгрузки (S1..S5) без ложных срабатываний на DUP v2.
+   */
+  public static evaluateV2(
+    workouts: Workout[],
+    options: DeloadEvaluateV2Options = {},
+  ): DeloadEvaluationV2 {
+    const now = options.now ?? new Date();
+    const timeZone = options.timeZone ?? browserTimeZone();
+    const today = options.today ?? localDate(now, timeZone);
+    const isLongLimbed = options.isLongLimbed === true;
+    const energyStatus: EnergyStatus = options.energyStatus ?? "unknown";
+    const currentBodyweightKg = options.currentBodyweightKg ?? 75;
+    const painFlagsCount = options.painFlagsCount ?? 0;
+    const corePainRepeated = options.corePainRepeated === true;
+
+    const kEnergy = ENERGY_CAPACITY_MULTIPLIER[energyStatus];
+    const capAxial = round2(BASE_CAP_AXIAL * kEnergy);
+    const capLocal = round2(BASE_CAP_LOCAL * kEnergy);
+
+    // 1. Собираем дневные суммы нагрузок за последние 35 дней (включая дни отдыха с L = 0)
+    const ewmaStart = addCalendarDays(today, -34);
+    const ewmaWorkouts = new AnalyticsFacts(workouts, {
+      from: ewmaStart,
+      through: today,
+      now,
+      timeZone,
+    }).workouts();
+
+    const dailyLoad = new Map<string, { axial: number; local: number }>();
+    let totalRecentWorkingSets = 0;
+    let heavyLowRepSets = 0;
+    const last14Start = addCalendarDays(today, -13);
+
+    for (const w of ewmaWorkouts) {
+      let dayAxial = 0;
+      let dayLocal = 0;
+      const inLast14 = w.date >= last14Start && w.date <= today;
+      for (const e of w.exercises) {
+        const def = exerciseForEntry(e);
+        const mExAxial = DeloadEngine.axialLoadMultiplier(def);
+        const mBio = isLongLimbed && mExAxial >= 1.5 ? 1.2 : 1.0;
+        const localScale = mExAxial > 0.2 ? 1.0 : 0.6;
+        for (const s of e.sets) {
+          if (!s.done || s.warmup) continue;
+          const mRir =
+            s.rir === 0
+              ? 1.35
+              : s.rir !== null && Number.isFinite(s.rir) && s.rir <= 2
+                ? 1.0
+                : 0.7;
+          const mRepsAxial = s.reps <= 5 ? 1.25 : s.reps <= 10 ? 1.0 : 0.75;
+          const mRepsLocal = s.reps <= 5 ? 0.85 : s.reps <= 12 ? 1.0 : 1.15;
+          dayAxial += mRir * mRepsAxial * mExAxial * mBio;
+          dayLocal += mRir * mRepsLocal * localScale;
+          if (inLast14) {
+            totalRecentWorkingSets++;
+            if (s.reps <= 5 && mExAxial >= 1.0) heavyLowRepSets++;
+          }
+        }
+      }
+      const prev = dailyLoad.get(w.date) ?? { axial: 0, local: 0 };
+      dailyLoad.set(w.date, { axial: prev.axial + dayAxial, local: prev.local + dayLocal });
+    }
+
+    let ewmaAxial = 0;
+    let ewmaLocal = 0;
+    for (let i = 34; i >= 0; i--) {
+      const dayIso = addCalendarDays(today, -i);
+      const load = dailyLoad.get(dayIso) ?? { axial: 0, local: 0 };
+      ewmaAxial = load.axial * ALPHA_AXIAL + ewmaAxial * (1 - ALPHA_AXIAL);
+      ewmaLocal = load.local * ALPHA_LOCAL + ewmaLocal * (1 - ALPHA_LOCAL);
+    }
+
+    const axialUtilization = capAxial > 0 ? round2(ewmaAxial / capAxial) : 0;
+    const localUtilization = capLocal > 0 ? round2(ewmaLocal / capLocal) : 0;
+
+    // 2. Анализ сигналов S1 (RIR-нормализованный спад e1RM >= 2.5%), S2 (RIR-дрейф <= -1.0), S4 (спад повторов)
+    const recent7Start = addCalendarDays(today, -6);
+    const prior21Start = addCalendarDays(today, -27);
+    const prior21End = addCalendarDays(today, -7);
+    const prior42Start = addCalendarDays(today, -41);
+    const prior42End = addCalendarDays(today, -14);
+
+    const recent7Workouts = new AnalyticsFacts(workouts, {
+      from: recent7Start,
+      through: today,
+      now,
+      timeZone,
+    }).workouts();
+    const prior21Workouts = new AnalyticsFacts(workouts, {
+      from: prior21Start,
+      through: prior21End,
+      now,
+      timeZone,
+    }).workouts();
+    const recent14Workouts = new AnalyticsFacts(workouts, {
+      from: last14Start,
+      through: today,
+      now,
+      timeZone,
+    }).workouts();
+    const prior28Workouts = new AnalyticsFacts(workouts, {
+      from: prior42Start,
+      through: prior42End,
+      now,
+      timeZone,
+    }).workouts();
+
+    // S1: RIR-нормализованный e1RM (среднее лучших по сессиям за 7д vs пик за предыдущие 21д)
+    const collectSessionE1rms = (list: Workout[]) => {
+      const byEx = new Map<string, number[]>();
+      for (const w of list) {
+        if (DeloadEngine.isDeloadName(w.name)) continue;
+        const sessionBest = new Map<string, number>();
+        for (const e of w.exercises) {
+          const def = exerciseForEntry(e);
+          if (!def?.recording.e1rmEligible) continue;
+          for (const s of e.sets) {
+            if (!s.done || s.warmup) continue;
+            const est = OneRepMaxFormulas.estimateV2({
+              weight: s.weight,
+              reps: s.reps,
+              rir: s.rir,
+              loadMode: def.recording.loadMode,
+              currentBodyweightKg: e.bodyMassKg ?? currentBodyweightKg,
+              isWarmup: s.warmup,
+              e1rmEligible: def.recording.e1rmEligible,
+            });
+            if (est.isExcludedFromTrend || est.e1rm <= 0) continue;
+            // Требуем доверие >= 0.7 при наличии RIR (или >= 0.4 при fallback RIR)
+            const minConf = est.isFallbackRIR ? 0.4 : 0.7;
+            if (est.confidence < minConf) continue;
+            const prev = sessionBest.get(e.exerciseId) ?? 0;
+            if (est.e1rm > prev) sessionBest.set(e.exerciseId, est.e1rm);
+          }
+        }
+        for (const [exId, best] of sessionBest) {
+          const arr = byEx.get(exId) ?? [];
+          arr.push(best);
+          byEx.set(exId, arr);
+        }
+      }
+      return byEx;
+    };
+
+    const recent7E1rm = collectSessionE1rms(recent7Workouts);
+    const prior21E1rm = collectSessionE1rms(prior21Workouts);
+    const e1rmDropExercises: Array<{ exerciseId: string; dropPct: number }> = [];
+    for (const [exId, recentVals] of recent7E1rm) {
+      const priorVals = prior21E1rm.get(exId);
+      if (!priorVals?.length || !recentVals.length) continue;
+      const recentAvg = recentVals.reduce((a, b) => a + b, 0) / recentVals.length;
+      const priorPeak = Math.max(...priorVals);
+      const changePct = ((recentAvg - priorPeak) / priorPeak) * 100;
+      if (changePct <= -2.5) {
+        e1rmDropExercises.push({ exerciseId: exId, dropPct: Math.round(changePct * 10) / 10 });
+      }
+    }
+
+    // S2: RIR-дрейф на сопоставимом или меньшем весе (последние 14 дн. vs предыдущие 15–42 дн.)
+    const collectRirAndReps = (list: Workout[]) => {
+      const byEx = new Map<
+        string,
+        { rirSum: number; rirCount: number; weightSum: number; repSum: number; setCount: number }
+      >();
+      let globalRirSum = 0;
+      let globalRirCount = 0;
+      for (const w of list) {
+        if (DeloadEngine.isDeloadName(w.name)) continue;
+        for (const e of w.exercises) {
+          const cur = byEx.get(e.exerciseId) ?? {
+            rirSum: 0,
+            rirCount: 0,
+            weightSum: 0,
+            repSum: 0,
+            setCount: 0,
+          };
+          for (const s of e.sets) {
+            if (!s.done || s.warmup) continue;
+            cur.weightSum += s.weight;
+            cur.repSum += s.reps;
+            cur.setCount++;
+            if (s.rir !== null && Number.isFinite(s.rir)) {
+              cur.rirSum += s.rir;
+              cur.rirCount++;
+              globalRirSum += s.rir;
+              globalRirCount++;
+            }
+          }
+          if (cur.setCount > 0) byEx.set(e.exerciseId, cur);
+        }
+      }
+      return {
+        byEx,
+        globalAvgRir: globalRirCount >= 4 ? globalRirSum / globalRirCount : null,
+      };
+    };
+
+    const cur14 = collectRirAndReps(recent14Workouts);
+    const prev28 = collectRirAndReps(prior28Workouts);
+    const rirDriftExercises: string[] = [];
+    const repDropExercises: string[] = [];
+
+    for (const [exId, c] of cur14.byEx) {
+      const p = prev28.byEx.get(exId);
+      if (!p) continue;
+      const curAvgW = c.weightSum / c.setCount;
+      const prevAvgW = p.weightSum / p.setCount;
+      // Сопоставимый или меньший вес (допуск +2.5% на округление)
+      const comparableOrLowerWeight = prevAvgW <= 0 || curAvgW <= prevAvgW * 1.025;
+      if (c.rirCount >= 2 && p.rirCount >= 2 && comparableOrLowerWeight) {
+        const exDrift = c.rirSum / c.rirCount - p.rirSum / p.rirCount;
+        if (exDrift <= -1.0) rirDriftExercises.push(exId);
+      }
+      // S4: спад средних повторов >= 2 на сопоставимом или большем весе
+      if (c.setCount >= 2 && p.setCount >= 2 && curAvgW >= prevAvgW * 0.975) {
+        const repDelta = c.repSum / c.setCount - p.repSum / p.setCount;
+        if (repDelta <= -2.0) repDropExercises.push(exId);
+      }
+    }
+
+    const globalRirDrift =
+      cur14.globalAvgRir !== null && prev28.globalAvgRir !== null
+        ? Math.round((cur14.globalAvgRir - prev28.globalAvgRir) * 10) / 10
+        : null;
+
+    const s1 = e1rmDropExercises.length > 0;
+    const s2 =
+      rirDriftExercises.length >= 2 ||
+      (globalRirDrift !== null && globalRirDrift <= -1.0 && rirDriftExercises.length >= 1);
+    const s3 = axialUtilization >= 1.0 || localUtilization >= 1.0;
+    const s4 = repDropExercises.length >= 2;
+    const s5 = painFlagsCount >= 2 || corePainRepeated;
+
+    const triggeredSignals: DeloadSignalId[] = [];
+    if (s1) triggeredSignals.push("S1_e1rm_drop");
+    if (s2) triggeredSignals.push("S2_rir_drift");
+    if (s3) triggeredSignals.push("S3_ewma_overload");
+    if (s4) triggeredSignals.push("S4_rep_drop");
+    if (s5) triggeredSignals.push("S5_pain");
+
+    const affectedSet = new Set<string>([
+      ...e1rmDropExercises.map((x) => x.exerciseId),
+      ...rirDriftExercises,
+    ]);
+    const affectedExerciseIds = [...affectedSet];
+    const heavyLowRepShare =
+      totalRecentWorkingSets > 0 ? heavyLowRepSets / totalRecentWorkingSets : 0;
+
+    // 3. Выбор 1 из 4 режимов разгрузки (многофакторная матрица)
+    let recommendedMode: DeloadModeV2 = "none";
+    let status: DeloadEvaluationV2["status"] = "optimal";
+    let protocolParams: DeloadEvaluationV2["protocolParams"] = null;
+    let summary = "Нагрузка в продуктивном коридоре — можно прогрессировать по плану.";
+
+    if ((s5 && (s1 || s2 || s3 || s4)) || (s1 && s2 && s3)) {
+      recommendedMode = "pivot_recovery";
+      status = "deload_recommended";
+      protocolParams = {
+        durationDays: 7,
+        weightMultiplier: 0.65,
+        volumeMultiplier: 0.5,
+        targetRIRFloor: 4,
+      };
+      summary = s5
+        ? "Накопленная усталость на фоне болевых сигналов — нужен восстановительный Pivot-блок на 7 дней."
+        : "Совпали 3 маркера перегрузки (EWMA + спад e1RM + RIR-дрейф) — показан восстановительный блок.";
+    } else if (s3 && axialUtilization >= 1.1 && s1 && heavyLowRepShare >= 0.35) {
+      recommendedMode = "intensity_taper";
+      status = "deload_recommended";
+      protocolParams = {
+        durationDays: 6,
+        weightMultiplier: 0.85,
+        volumeMultiplier: 0.4,
+        targetRIRFloor: 3,
+      };
+      summary = "Высокая осевая усталость на тяжёлой базе — показан тапер (−60 % подходов, 85 % веса).";
+    } else if (
+      (s3 && (s1 || s2 || s4)) ||
+      (s1 && s2 && (affectedExerciseIds.length >= 2 || (globalRirDrift !== null && globalRirDrift <= -1.0)))
+    ) {
+      recommendedMode = "volume_deload";
+      status = "deload_recommended";
+      protocolParams = {
+        durationDays: 7,
+        weightMultiplier: 0.9,
+        volumeMultiplier: 0.5,
+        targetRIRFloor: 3,
+      };
+      summary = "Зафиксирован спад производительности и/или RIR-дрейф — нужна объёмная разгрузка (−50 % подходов, 90 % веса, RIR 3+).";
+    } else if (
+      (s1 || rirDriftExercises.length === 1) &&
+      affectedExerciseIds.length === 1 &&
+      axialUtilization < 0.9 &&
+      localUtilization < 0.9
+    ) {
+      recommendedMode = "local_micro_deload";
+      status = "deload_recommended";
+      protocolParams = {
+        durationDays: 7,
+        weightMultiplier: 0.7,
+        volumeMultiplier: 0.7,
+        targetRIRFloor: 3,
+      };
+      summary = "Локальная просадка только в 1 движении при нормальном общем фоне — достаточно локальной микро-разгрузки на 7 дней.";
+    } else if (axialUtilization >= 0.85 || localUtilization >= 0.85) {
+      status = "productive_overreach";
+      summary = "Высокая продуктивная нагрузка без спада силы — держи целевой RIR и следи за восстановлением.";
+    }
+
+    return {
+      status,
+      recommendedMode,
+      axialUtilization,
+      localUtilization,
+      ewmaAxial: round2(ewmaAxial),
+      ewmaLocal: round2(ewmaLocal),
+      capAxial,
+      capLocal,
+      triggeredSignals,
+      affectedExerciseIds,
+      e1rmDropExercises,
+      rirDrift: globalRirDrift,
+      protocolParams,
+      summary,
     };
   }
 }

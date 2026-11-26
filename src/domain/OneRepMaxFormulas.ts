@@ -1,10 +1,143 @@
+export type E1RMLoadMode =
+  | "total_external"
+  | "per_implement"
+  | "machine_stack"
+  | "bodyweight"
+  | "added_bodyweight"
+  | "assisted_bodyweight"
+  | "legacy_unspecified";
+
+export interface E1RMInput {
+  weight: number;
+  reps: number;
+  rir: number | null;
+  loadMode: E1RMLoadMode;
+  currentBodyweightKg: number;
+  isWarmup: boolean;
+  e1rmEligible: boolean;
+}
+
+export interface E1RMResult {
+  e1rm: number;
+  effectiveWeight: number;
+  effectiveReps: number;
+  confidence: number;
+  isFallbackRIR: boolean;
+  isExcludedFromTrend: boolean;
+}
+
 /**
  * Формулы расчётного 1ПМ и биомеханическая оценка усилия подхода (повторы + RIR).
  * Основная формула приложения — Эпли: по ней считаются «Прогресс», «Зал личных рекордов»
- * и калькулятор. Остальные показываются как сравнение.
+ * и калькулятор. Для Умного Коуча v2 и авторегуляции используется кусочная RIR-калиброванная модель `estimateV2`.
  */
 export class OneRepMaxFormulas {
   static readonly PRIMARY = "Epley" as const;
+
+  /**
+   * Модуль 1 (v2): точный RIR-нормализованный расчёт e1RM и доверительного веса (Helms/Zourdos/Refalo).
+   * Детерминированная кусочная модель (1 / Brzycki 1..5 / Epley 5..10 / сглаженная 10..18).
+   */
+  static estimateV2(input: E1RMInput): E1RMResult {
+    const empty: E1RMResult = {
+      e1rm: 0,
+      effectiveWeight: 0,
+      effectiveReps: 0,
+      confidence: 0,
+      isFallbackRIR: false,
+      isExcludedFromTrend: true,
+    };
+    if (
+      input.isWarmup ||
+      !input.e1rmEligible ||
+      !Number.isFinite(input.reps) ||
+      input.reps <= 0 ||
+      !Number.isFinite(input.weight) ||
+      input.weight < 0
+    ) {
+      return empty;
+    }
+
+    const bw =
+      Number.isFinite(input.currentBodyweightKg) && input.currentBodyweightKg > 0
+        ? input.currentBodyweightKg
+        : 75;
+
+    let effectiveWeight: number;
+    switch (input.loadMode) {
+      case "total_external":
+      case "machine_stack":
+        effectiveWeight = input.weight;
+        break;
+      case "per_implement":
+        effectiveWeight = input.weight * 2;
+        break;
+      case "bodyweight":
+        effectiveWeight = bw;
+        break;
+      case "added_bodyweight":
+        effectiveWeight = bw + input.weight;
+        break;
+      case "assisted_bodyweight":
+        effectiveWeight = Math.max(1, bw - input.weight);
+        break;
+      default:
+        return empty;
+    }
+
+    if (!Number.isFinite(effectiveWeight) || effectiveWeight <= 0) {
+      return empty;
+    }
+
+    const isFallbackRIR = input.rir === null || !Number.isFinite(input.rir);
+    let rirAdj: number;
+    let clampedRawRir: number | null = null;
+    if (isFallbackRIR) {
+      rirAdj = input.reps <= 3 ? 0.0 : input.reps <= 10 ? 1.5 : 2.0;
+    } else {
+      clampedRawRir = Math.max(0, Math.min(6, input.rir!));
+      rirAdj = clampedRawRir <= 3 ? clampedRawRir : 3 + (clampedRawRir - 3) * 0.75;
+    }
+
+    const effectiveReps = Math.round((input.reps + rirAdj) * 100) / 100;
+    const isExcludedFromTrend = effectiveReps > 18;
+
+    let rawE1rm = 0;
+    if (!isExcludedFromTrend) {
+      if (effectiveReps <= 1) {
+        rawE1rm = effectiveWeight;
+      } else if (effectiveReps <= 5) {
+        rawE1rm = effectiveWeight / (1.0278 - 0.0278 * effectiveReps);
+      } else if (effectiveReps <= 10) {
+        rawE1rm = effectiveWeight * (1 + 0.0333 * effectiveReps);
+      } else {
+        // 10 < R_tot <= 18
+        rawE1rm = effectiveWeight * (1 + 0.0333 * 10) * (1 + 0.025 * (effectiveReps - 10));
+      }
+    }
+
+    const cBase =
+      input.reps <= 6 ? 1.0 : input.reps <= 10 ? 0.85 : input.reps <= 15 ? 0.6 : 0.25;
+    const cRir = isFallbackRIR
+      ? 0.45
+      : clampedRawRir! <= 2
+        ? 1.0
+        : clampedRawRir! === 3
+          ? 0.85
+          : 0.6;
+    const confidence = isExcludedFromTrend
+      ? 0.05
+      : Math.max(0.05, Math.min(1.0, Math.round(cBase * cRir * 1000) / 1000));
+
+    return {
+      e1rm: isExcludedFromTrend ? 0 : OneRepMaxFormulas.round(rawE1rm),
+      effectiveWeight: OneRepMaxFormulas.round(effectiveWeight),
+      effectiveReps,
+      confidence,
+      isFallbackRIR,
+      isExcludedFromTrend,
+    };
+  }
 
   /** Эпли без округления: 1 повтор — сам вес. Не округлять здесь: аналитика сравнивает значения. */
   static epley(weight: number, reps: number): number {
