@@ -13,9 +13,47 @@ import {
 } from "../src/domain/KinematicTypesV4";
 
 export interface AgentProviderEnv {
+  AI?: {
+    run(model: string, inputs: Record<string, unknown>): Promise<unknown>;
+  };
   OPENAI_API_KEY?: string;
   OPENAI_BASE_URL?: string;
   OPENAI_MODEL?: string;
+}
+
+const WORKERS_AI_TEXT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+const WORKERS_AI_VISION_MODEL = "@cf/meta/llama-4-scout-17b-16e-instruct";
+
+function extractJsonObject(raw: unknown): LlmExtractedPayload | null {
+  if (!raw) return null;
+  if (typeof raw === "object" && !Array.isArray(raw)) {
+    const obj = raw as Record<string, unknown>;
+    if (Array.isArray(obj.actions) && obj.geometry && obj.profile) {
+      return obj as unknown as LlmExtractedPayload;
+    }
+    if (obj.response !== undefined) return extractJsonObject(obj.response);
+    if (Array.isArray(obj.choices)) {
+      const first = obj.choices[0] as { message?: { content?: unknown } } | undefined;
+      if (first?.message?.content !== undefined) return extractJsonObject(first.message.content);
+    }
+    return null;
+  }
+  if (typeof raw !== "string") return null;
+  const cleaned = raw
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+  if (start < 0 || end <= start) return null;
+  try {
+    const parsed = JSON.parse(cleaned.slice(start, end + 1)) as LlmExtractedPayload;
+    if (!parsed || !Array.isArray(parsed.actions) || !parsed.geometry || !parsed.profile) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
 }
 
 interface LlmExtractedPayload {
@@ -90,12 +128,21 @@ export class BiomechanicsAgentService {
       }
     }
 
-    // 2. Tier 2: Онлайн LLM/VLM через OpenAI-совместимый Structured Output (или Cloudflare AI Gateway)
+    // 2. Tier 2A: Онлайн LLM/VLM через OpenAI-совместимый Structured Output (если задан ключ)
     if (this.providerEnv.OPENAI_API_KEY) {
       const llmRes = await this.tryLlmExtraction(queryText, req, t0);
       if (llmRes) {
         await this.persistCache(alias, req.machineBrandHint, llmRes);
         return llmRes;
+      }
+    }
+
+    // 2. Tier 2B: Встроенный Cloudflare Workers AI (env.AI — бесплатно, без сторонних ключей!)
+    if (this.providerEnv.AI) {
+      const cfRes = await this.tryWorkersAiExtraction(queryText, req, t0);
+      if (cfRes) {
+        await this.persistCache(alias, req.machineBrandHint, cfRes);
+        return cfRes;
       }
     }
 
@@ -382,6 +429,111 @@ export class BiomechanicsAgentService {
             displayName: req.locale === "en" ? extracted.displayNameEn : extracted.displayNameRu,
             rationale: extracted.rationale,
             source: req.imageBase64 ? "vlm_v4" : "llm_v4",
+            modelUsed: model,
+            confidence: extracted.confidence,
+            descriptor,
+            solved: verified.correctedResult,
+            verification: {
+              passed: verified.passed,
+              status: verified.status,
+              violations: verified.violations,
+            },
+            clarifyingQuestions:
+              extracted.confidence < 0.8
+                ? BiomechanicalMuscleAgent.buildClarifyingQuestions(extracted.missingParams)
+                : [],
+            latencyMs: Date.now() - t0,
+            solverVersion: SOLVER_VERSION_V4,
+          };
+        }
+
+        if (attempt === 0) {
+          const hint = verified.violations.map((v) => `${v.code}: ${v.detail}`).join("; ");
+          const retried = await runCall(hint);
+          if (!retried) return null;
+          extracted = retried;
+        }
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async tryWorkersAiExtraction(
+    queryText: string,
+    req: AgentResolveRequest,
+    t0: number,
+  ): Promise<AgentResolveResponse | null> {
+    const ai = this.providerEnv.AI;
+    if (!ai) return null;
+
+    const hasPhoto = Boolean(req.imageBase64 && req.imageBase64.startsWith("data:image/"));
+    const model = hasPhoto ? WORKERS_AI_VISION_MODEL : WORKERS_AI_TEXT_MODEL;
+
+    const runCall = async (retryHint?: string): Promise<LlmExtractedPayload | null> => {
+      const textPrompt = [
+        `Exercise / Machine: ${queryText}`,
+        req.machineBrandHint ? `Brand/Model: ${req.machineBrandHint}` : "",
+        req.executionProfile ? `ExecutionProfile: ${JSON.stringify(req.executionProfile)}` : "",
+        retryHint ? `PREVIOUS VERIFIER ERROR (FIX THIS): ${retryHint}` : "",
+        hasPhoto
+          ? `Return ONLY valid JSON matching schema: ${JSON.stringify(TYAGA_V4_JSON_SCHEMA.schema)}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      const userContent = hasPhoto
+        ? [
+            { type: "text", text: textPrompt },
+            { type: "image_url", image_url: { url: req.imageBase64 } },
+          ]
+        : textPrompt;
+
+      const inputs: Record<string, unknown> = {
+        messages: [
+          { role: "system", content: TYAGA_V4_SYSTEM_PROMPT },
+          { role: "user", content: userContent },
+        ],
+        temperature: 0,
+        max_tokens: 700,
+      };
+      if (!hasPhoto) {
+        inputs.response_format = {
+          type: "json_schema",
+          json_schema: TYAGA_V4_JSON_SCHEMA.schema,
+        };
+      }
+
+      const raw = await ai.run(model, inputs);
+      return extractJsonObject(raw);
+    };
+
+    try {
+      let extracted = await runCall();
+      if (!extracted) return null;
+
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const actionsRecord: KinematicDescriptor["actions"] = {};
+        for (const item of extracted.actions) {
+          actionsRecord[item.action] = item.weight;
+        }
+        const baseDesc: KinematicDescriptor = {
+          actions: actionsRecord,
+          geometry: extracted.geometry,
+          profile: extracted.profile,
+        };
+        const descriptor = KinematicMuscleSolver.applyExecutionProfile(baseDesc, req.executionProfile);
+        const rawSolved = this.solver.solveKinematics(descriptor);
+        const verified = this.verifier.verifyAndCorrect(descriptor, rawSolved);
+
+        if (verified.passed) {
+          return {
+            canonicalSlug: extracted.canonicalSlug,
+            displayName: req.locale === "en" ? extracted.displayNameEn : extracted.displayNameRu,
+            rationale: extracted.rationale,
+            source: hasPhoto ? "vlm_v4" : "llm_v4",
             modelUsed: model,
             confidence: extracted.confidence,
             descriptor,

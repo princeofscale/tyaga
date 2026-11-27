@@ -6,6 +6,7 @@ import { BiomechanicalVerifier } from "../src/domain/BiomechanicalVerifier";
 import { KinematicMuscleSolver, makeDescriptor } from "../src/domain/KinematicMuscleSolver";
 import { SEED_KINEMATICS_74 } from "../src/domain/KinematicSeed74";
 import type { AnatomicalMuscleIdV4 } from "../src/domain/KinematicTypesV4";
+import { BiomechanicsAgentService } from "../server/BiomechanicsAgentService";
 
 const solver = new KinematicMuscleSolver();
 const verifier = new BiomechanicalVerifier();
@@ -265,3 +266,92 @@ test("TC10: 74-exercise regression audit against Tyaga v3 catalog achieves >=95%
   assert.ok(avgMs < 1.0, `Expected avg solve latency < 1.0ms, got ${avgMs.toFixed(4)}ms`);
   assert.ok(EXERCISE_PROFILES_V3.bench, "v3 catalog present");
 });
+
+test("Cloudflare Workers AI (env.AI) routes text/vision, retries once on INV-02 antagonist conflict, and solves cleanly", async () => {
+  const calls: Array<{ model: string; inputs: Record<string, unknown> }> = [];
+  let attempt = 0;
+
+  const mockAi = {
+    async run(model: string, inputs: Record<string, unknown>) {
+      calls.push({ model, inputs });
+      attempt++;
+      if (attempt === 1) {
+        // First response has illegal antagonist conflict -> triggers retry!
+        return {
+          response: JSON.stringify({
+            canonicalSlug: "technogym-pure-row",
+            displayNameRu: "Тяга Technogym Pure",
+            displayNameEn: "Technogym Pure Row",
+            confidence: 0.91,
+            missingParams: [],
+            rationale: "Conflict test",
+            actions: [
+              { action: "elbow_flexion", weight: 0.9 },
+              { action: "elbow_extension", weight: 0.9 },
+            ],
+            geometry: SEED_KINEMATICS_74["row-chest-supported"].geometry,
+            profile: SEED_KINEMATICS_74["row-chest-supported"].profile,
+          }),
+        };
+      }
+      return {
+        response: JSON.stringify({
+          canonicalSlug: "technogym-pure-row",
+          displayNameRu: "Тяга Technogym Pure",
+          displayNameEn: "Technogym Pure Row",
+          confidence: 0.92,
+          missingParams: [],
+          rationale: "Рычажная тяга с упором груди фокусируется на широчайших и верхе спины.",
+          actions: [
+            { action: "shoulder_extension_sagittal", weight: 1.0 },
+            { action: "scapular_retraction", weight: 0.7 },
+            { action: "elbow_flexion", weight: 0.5 },
+          ],
+          geometry: { ...SEED_KINEMATICS_74["row-chest-supported"].geometry, shoulderPlaneDeg: 20 },
+          profile: SEED_KINEMATICS_74["row-chest-supported"].profile,
+        }),
+      };
+    },
+  };
+
+  // Stub D1 that returns cache miss safely
+  const mockDb = {
+    prepare() {
+      return {
+        bind() {
+          return {
+            async first() {
+              return null;
+            },
+            async run() {
+              return { success: true };
+            },
+            async all() {
+              return { results: [] };
+            },
+          };
+        },
+      };
+    },
+  } as unknown as D1Database;
+
+  const svc = new BiomechanicsAgentService(mockDb, "u1", { AI: mockAi });
+
+  // 1. Text request -> llama-3.3-70b, auto-retries after INV-02
+  const textRes = await svc.resolve({ queryText: "Technogym Pure Low Row" });
+  assert.equal(textRes.source, "llm_v4");
+  assert.equal(textRes.modelUsed, "@cf/meta/llama-3.3-70b-instruct-fp8-fast");
+  assert.equal(textRes.verification.passed, true);
+  assert.equal(textRes.solved.regions.lats, 1.0);
+  assert.equal(calls.length, 2);
+
+  // 2. Vision request -> llama-4-scout-17b-16e
+  const visionRes = await svc.resolve({
+    queryText: "Тренажёр по фото",
+    imageBase64: "data:image/jpeg;base64,/9j/4AAQSkZJRg==",
+  });
+  assert.equal(visionRes.source, "vlm_v4");
+  assert.equal(visionRes.modelUsed, "@cf/meta/llama-4-scout-17b-16e-instruct");
+  assert.equal(visionRes.verification.passed, true);
+});
+

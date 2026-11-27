@@ -129,7 +129,28 @@ export default function BiomechanicalAgentPanel({
     }
     const reader = new FileReader();
     reader.onload = () => {
-      if (typeof reader.result === "string") setImageBase64(reader.result);
+      if (typeof reader.result !== "string") return;
+      const rawUrl = reader.result;
+      // Сжимаем фото до <= 1024px JPEG (~80-150 КБ), чтобы уложиться в лимит 500 КБ Worker
+      const img = new Image();
+      img.onload = () => {
+        const maxSide = 1024;
+        const scale = Math.min(1, maxSide / Math.max(img.width || 1, img.height || 1));
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          setImageBase64(rawUrl);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, w, h);
+        setImageBase64(canvas.toDataURL("image/jpeg", 0.78));
+      };
+      img.onerror = () => setImageBase64(rawUrl);
+      img.src = rawUrl;
     };
     reader.readAsDataURL(file);
   };

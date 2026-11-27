@@ -31,6 +31,7 @@ import { BodyTooLargeError, json, readTextLimited } from "./http";
 export interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
+  AI?: Ai;
   OPENAI_API_KEY?: string;
   OPENAI_BASE_URL?: string;
   OPENAI_MODEL?: string;
