@@ -42,6 +42,7 @@ import { AnatomyExplorer } from "../../components/chunks";
 import { BodyweightModal } from "../../components/BodyweightModal";
 import SmartCoachPanel from "../../components/SmartCoachPanel";
 import ProgressOverview from "../../components/ProgressOverview";
+import PersonalRecordsView from "../../components/PersonalRecordsView";
 import MuscleVolumePanel from "../../components/MuscleVolumePanel";
 import MovementBalance from "../../components/MovementBalance";
 import InteractiveStrengthChart from "../../components/InteractiveStrengthChart";
@@ -53,6 +54,7 @@ export type ProgressTab =
   | "analytics"
   | "coach"
   | "strength"
+  | "records"
   | "anatomy"
   | "bodyweight";
 
@@ -252,6 +254,7 @@ export default function ProgressScreen({
           [
             ["analytics", "Обзор"],
             ["strength", "Сила"],
+            ["records", "Рекорды"],
             ["balance", "Мышцы"],
             ["bodyweight", "Вес тела"],
           ] as const
@@ -348,6 +351,16 @@ export default function ProgressScreen({
       )}
       {progressTab === "analytics" || progressTab === "coach" ? (
         <div className="progress-overview-stack">
+          <div ref={coachSectionRef} className="progress-coach-section is-primary">
+            <SmartCoachPanel
+              workouts={displayed}
+              routines={routines}
+              today={today}
+              timeZone={settings.timeZone}
+              accountId={accountId}
+              deload={deload}
+            />
+          </div>
           <ProgressOverview
             workouts={workouts}
             routines={routines}
@@ -360,17 +373,17 @@ export default function ProgressScreen({
             }}
             onOpenExerciseDetail={onOpenExerciseDetail}
           />
-          <div ref={coachSectionRef} className="progress-coach-section">
-            <SmartCoachPanel
-              workouts={displayed}
-              routines={routines}
-              today={today}
-              timeZone={settings.timeZone}
-              accountId={accountId}
-              deload={deload}
-            />
-          </div>
         </div>
+      ) : null}
+      {progressTab === "records" ? (
+        <PersonalRecordsView
+          workouts={displayed}
+          settings={settings}
+          onOpenExerciseStrength={(key) => {
+            setProgressExercise(key);
+            onProgressTabChange("strength");
+          }}
+        />
       ) : null}
       {progressTab === "balance" ? (
         <>

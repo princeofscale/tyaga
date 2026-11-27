@@ -1,18 +1,22 @@
 import { useMemo, useState } from "react";
-import { AnimatePresence, m, useReducedMotion } from "motion/react";
+import { m, useReducedMotion } from "motion/react";
 import {
   Activity,
   AlertTriangle,
+  ArrowRight,
+  BatteryCharging,
   Brain,
   CheckCircle2,
-  ChevronDown,
+  ChevronRight,
   Flame,
   Info,
+  RefreshCw,
   ShieldAlert,
   TrendingUp,
 } from "lucide-react";
 import {
   SmartCoach,
+  type CoachActionV2,
   type CoachInsightCategory,
   type CoachStateV2,
 } from "../domain/SmartCoach";
@@ -21,12 +25,19 @@ import { fmt, type Routine, type Workout } from "../lib/model";
 import "../styles/progress.css";
 
 const FILTERS: Array<{ id: "all" | CoachInsightCategory; label: string }> = [
-  { id: "all", label: "Все выводы" },
+  { id: "all", label: "Все" },
   { id: "overload", label: "Перегрузка" },
   { id: "underload", label: "Недогруз" },
   { id: "progress", label: "Прогресс" },
   { id: "balance", label: "Баланс" },
 ];
+
+const CATEGORY_LABEL: Record<CoachInsightCategory, string> = {
+  overload: "Перегрузка",
+  underload: "Недогруз",
+  progress: "Прогресс",
+  balance: "Баланс",
+};
 
 const STATE_TONE: Record<CoachStateV2, string> = {
   PEAK_PROGRESSIVE: "is-peak",
@@ -41,6 +52,31 @@ const READINESS_STATUS_LABEL = {
   recovering: "Восст.",
   fatigued: "Устала",
 } as const;
+
+function parseMetricPct(metric?: string): number | null {
+  if (!metric) return null;
+  const match = metric.match(/(\d+(?:[.,]\d+)?)\s*%/);
+  if (!match) return null;
+  const num = Number(match[1].replace(",", "."));
+  return Number.isFinite(num) ? Math.max(0, Math.min(100, num)) : null;
+}
+
+function ActionKindIcon({ kind }: { kind: CoachActionV2["kind"] }) {
+  switch (kind) {
+    case "deload":
+      return <ShieldAlert size={16} aria-hidden="true" />;
+    case "readiness":
+      return <BatteryCharging size={16} aria-hidden="true" />;
+    case "detraining":
+      return <RefreshCw size={16} aria-hidden="true" />;
+    case "plateau":
+      return <Flame size={16} aria-hidden="true" />;
+    case "progression":
+    case "tm_update":
+    default:
+      return <TrendingUp size={16} aria-hidden="true" />;
+  }
+}
 
 export default function SmartCoachPanel({
   workouts,
@@ -59,7 +95,6 @@ export default function SmartCoachPanel({
 }) {
   const reduced = useReducedMotion();
   const [filter, setFilter] = useState<"all" | CoachInsightCategory>("all");
-  const [showAllDetails, setShowAllDetails] = useState(false);
 
   const report = useMemo(
     () => SmartCoach.analyze(workouts, routines, today, timeZone, undefined, accountId, deload),
@@ -70,17 +105,32 @@ export default function SmartCoachPanel({
   const axialPct = Math.min(130, Math.round(v2.deload.axialUtilization * 100));
   const localPct = Math.min(130, Math.round(v2.deload.localUtilization * 100));
 
+  const readinessSummary = useMemo(() => {
+    const readyCount = v2.readiness.filter((g) => g.readinessPct >= 75).length;
+    const recoveringCount = v2.readiness.length - readyCount;
+    return { readyCount, recoveringCount };
+  }, [v2.readiness]);
+
+  const insightCounts = useMemo(() => {
+    const attention = report.insights.filter(
+      (i) => i.severity === "critical" || i.severity === "warn",
+    ).length;
+    const positive = report.insights.filter((i) => i.severity === "good").length;
+    return { attention, positive };
+  }, [report.insights]);
+
+  const showCategoryFilters = report.insights.length > 4;
   const visibleInsights = useMemo(
     () =>
-      filter === "all"
+      !showCategoryFilters || filter === "all"
         ? report.insights
         : report.insights.filter((i) => i.category === filter),
-    [report.insights, filter],
+    [report.insights, filter, showCategoryFilters],
   );
 
   return (
     <div className="coach-panel coach-v2">
-      {/* 1. Единый главный вердикт SmartCoach v2 (без произвольного балла 0–100) */}
+      {/* 1. Главный командный блок «Контроль усталости» */}
       <m.section
         className={`coach-v2-hero ${STATE_TONE[v2.state]}`}
         aria-label="Сводка Умного Коуча v2"
@@ -101,8 +151,12 @@ export default function SmartCoachPanel({
         <div className="coach-ewma-bars" aria-label="Утилизация усталости EWMA">
           <div className="coach-ewma-row">
             <div className="coach-ewma-head">
-              <span>Осевая / ЦНС</span>
-              <strong className={axialPct >= 100 ? "is-high" : ""}>{axialPct}%</strong>
+              <span>
+                Осевая / ЦНС <small className="coach-ewma-tau">τ 4 дн.</small>
+              </span>
+              <strong className={axialPct >= 100 ? "is-high" : axialPct >= 85 ? "is-warn" : ""}>
+                {axialPct}%
+              </strong>
             </div>
             <div className="coach-ewma-track" aria-hidden="true">
               <span
@@ -113,8 +167,12 @@ export default function SmartCoachPanel({
           </div>
           <div className="coach-ewma-row">
             <div className="coach-ewma-head">
-              <span>Локальная усталость</span>
-              <strong className={localPct >= 100 ? "is-high" : ""}>{localPct}%</strong>
+              <span>
+                Локальная усталость <small className="coach-ewma-tau">τ 10 дн.</small>
+              </span>
+              <strong className={localPct >= 100 ? "is-high" : localPct >= 85 ? "is-warn" : ""}>
+                {localPct}%
+              </strong>
             </div>
             <div className="coach-ewma-track" aria-hidden="true">
               <span
@@ -155,26 +213,56 @@ export default function SmartCoachPanel({
         </div>
       )}
 
-      {/* 2. Бюджет UX: максимум 3 приоритизированных действия */}
+      {/* 2. Главные приоритетные сигналы (вкл. карточки восстановления типа «Спина / шир.: восстановление 20%») */}
       {v2.actions.length > 0 && (
-        <section className="coach-v2-actions" aria-label="Главные действия">
-          {v2.actions.map((act) => (
-            <article key={act.id} className={`coach-v2-action-card kind-${act.kind}`}>
-              <div className="coach-v2-action-head">
-                <strong>{act.title}</strong>
-                {act.metric && <span className="coach-insight-metric">{act.metric}</span>}
-              </div>
-              <p>{act.detail}</p>
-            </article>
-          ))}
-        </section>
+        <div className="coach-v2-actions-wrap">
+          <section className="coach-v2-actions" aria-label="Главные действия">
+            {v2.actions.map((act) => {
+              const recoveryPct = act.kind === "readiness" ? parseMetricPct(act.metric) : null;
+              return (
+                <article key={act.id} className={`coach-v2-action-card kind-${act.kind}`}>
+                  <div className="coach-v2-action-head">
+                    <span className="coach-v2-action-title">
+                      <span className={`coach-v2-action-icon kind-${act.kind}`}>
+                        <ActionKindIcon kind={act.kind} />
+                      </span>
+                      <strong>{act.title}</strong>
+                    </span>
+                    {act.metric && (
+                      <span className={`coach-insight-metric kind-${act.kind}`}>{act.metric}</span>
+                    )}
+                  </div>
+                  {recoveryPct !== null ? (
+                    <div className="coach-action-meter" aria-hidden="true">
+                      <span
+                        className={`coach-action-meter-fill${recoveryPct < 45 ? " is-low" : recoveryPct < 75 ? " is-mid" : " is-ok"}`}
+                        style={{ width: `${Math.max(4, recoveryPct)}%` }}
+                      />
+                    </div>
+                  ) : null}
+                  <p>{act.detail}</p>
+                </article>
+              );
+            })}
+          </section>
+        </div>
       )}
 
-      {/* 3. Гранулярная готовность 12 мышечных групп (порог повторной тренировки ≥75%) */}
+      {/* 3. Готовность 12 мышечных групп — главный визуальный радар восстановления */}
       <section className="coach-readiness-card" aria-label="Готовность 12 мышечных групп">
         <div className="coach-readiness-head">
-          <h3>Готовность мышц</h3>
-          <small>Порог для работы ≥ 75 %</small>
+          <div className="coach-readiness-title-group">
+            <h3>Готовность мышц</h3>
+            <small>Порог для тяжёлой работы ≥ 75%</small>
+          </div>
+          <div className="coach-readiness-counters">
+            <span className="coach-r-pill is-ready">Готовы {readinessSummary.readyCount}/12</span>
+            {readinessSummary.recoveringCount > 0 ? (
+              <span className="coach-r-pill is-rest">
+                Восст. {readinessSummary.recoveringCount}
+              </span>
+            ) : null}
+          </div>
         </div>
         <div className="coach-readiness-grid">
           {v2.readiness.map((g) => (
@@ -183,8 +271,20 @@ export default function SmartCoachPanel({
               className={`coach-readiness-chip status-${g.status}`}
               title={`${g.label}: ${g.readinessPct}% (${READINESS_STATUS_LABEL[g.status]}, T½ ${g.halfLifeHours} ч)`}
             >
-              <span className="coach-readiness-name">{g.label}</span>
-              <strong className="coach-readiness-pct">{g.readinessPct}%</strong>
+              <div className="coach-r-chip-top">
+                <span className="coach-readiness-name">{g.label}</span>
+                <strong className="coach-readiness-pct">{g.readinessPct}%</strong>
+              </div>
+              <div className="coach-r-bar" aria-hidden="true">
+                <span
+                  className="coach-r-bar-fill"
+                  style={{ width: `${Math.max(4, Math.min(100, g.readinessPct))}%` }}
+                />
+              </div>
+              <div className="coach-r-chip-foot">
+                <span>{READINESS_STATUS_LABEL[g.status]}</span>
+                <span>T½ {g.halfLifeHours}ч</span>
+              </div>
             </div>
           ))}
         </div>
@@ -217,28 +317,28 @@ export default function SmartCoachPanel({
         </section>
       )}
 
-      {/* 5. Сворачиваемый подробный разбор (чтобы не перегружать главный экран) */}
+      {/* 5. Переработанный «Подробный разбор» на нативном <details> без визуального шума */}
       {report.insights.length > 0 && (
-        <section className="coach-details-disclosure" aria-label="Подробные заметки">
-          <button
-            type="button"
-            className="coach-details-toggle"
-            aria-expanded={showAllDetails}
-            onClick={() => setShowAllDetails((prev) => !prev)}
-          >
-            <span>Подробный разбор ({report.insights.length})</span>
-            <ChevronDown
-              size={16}
-              aria-hidden="true"
-              style={{
-                transform: showAllDetails ? "rotate(180deg)" : undefined,
-                transition: "transform 160ms ease",
-              }}
-            />
-          </button>
+        <details className="coach-v2-disclosure">
+          <summary className="coach-v2-disclosure-summary coach-details-toggle">
+            <span className="coach-disclosure-main">
+              <ChevronRight size={16} className="coach-disclosure-chevron" aria-hidden="true" />
+              <span className="coach-disclosure-label">
+                Подробный разбор ({report.insights.length})
+              </span>
+            </span>
+            <span className="coach-disclosure-pills">
+              {insightCounts.attention > 0 ? (
+                <span className="coach-disc-pill is-warn">{insightCounts.attention} внимание</span>
+              ) : null}
+              {insightCounts.positive > 0 ? (
+                <span className="coach-disc-pill is-good">{insightCounts.positive} плюс</span>
+              ) : null}
+            </span>
+          </summary>
 
-          {showAllDetails && (
-            <div className="coach-details-body">
+          <div className="coach-details-body">
+            {showCategoryFilters ? (
               <div className="coach-filter-row" role="tablist" aria-label="Категории анализа">
                 {FILTERS.map((f) => (
                   <button
@@ -253,55 +353,54 @@ export default function SmartCoachPanel({
                   </button>
                 ))}
               </div>
+            ) : null}
 
-              <div className="coach-insights-list" style={{ marginTop: 12 }}>
-                <AnimatePresence mode="popLayout" initial={false}>
-                  {visibleInsights.length === 0 ? (
-                    <m.p
-                      key="empty-filter"
-                      className="coach-insight-detail"
-                      initial={reduced ? false : { opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                    >
-                      В этой категории замечаний нет — всё ровно.
-                    </m.p>
-                  ) : (
-                    visibleInsights.map((insight, idx) => (
-                      <m.article
-                        key={insight.id}
-                        layout={!reduced}
-                        className={`coach-insight-card sev-${insight.severity}`}
-                        initial={reduced ? false : { opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={reduced ? undefined : { opacity: 0, y: -6 }}
-                        transition={{ duration: 0.2, delay: reduced ? 0 : idx * 0.03 }}
-                      >
-                        <div className="coach-insight-top">
-                          <span className="coach-insight-title">
-                            {insight.severity === "critical" || insight.severity === "warn" ? (
-                              <AlertTriangle size={16} aria-hidden="true" />
-                            ) : insight.severity === "good" ? (
-                              <CheckCircle2 size={16} aria-hidden="true" />
-                            ) : (
-                              <Info size={16} aria-hidden="true" />
-                            )}
-                            {insight.title}
-                          </span>
-                          {insight.metric && (
-                            <span className="coach-insight-metric">{insight.metric}</span>
+            <div className="coach-insights-v2-list">
+              {visibleInsights.length === 0 ? (
+                <p className="coach-insight-detail">В этой категории замечаний нет — всё ровно.</p>
+              ) : (
+                visibleInsights.map((insight) => (
+                  <article
+                    key={insight.id}
+                    className={`coach-insight-v2 coach-insight-card sev-${insight.severity}`}
+                  >
+                    <div className="coach-insight-v2-head">
+                      <div className="coach-insight-v2-left">
+                        <span className={`coach-insight-v2-icon sev-${insight.severity}`}>
+                          {insight.severity === "critical" || insight.severity === "warn" ? (
+                            <AlertTriangle size={15} aria-hidden="true" />
+                          ) : insight.severity === "good" ? (
+                            <CheckCircle2 size={15} aria-hidden="true" />
+                          ) : (
+                            <Info size={15} aria-hidden="true" />
                           )}
+                        </span>
+                        <div className="coach-insight-v2-titles">
+                          <span className="coach-insight-v2-cat">
+                            {CATEGORY_LABEL[insight.category]}
+                          </span>
+                          <strong className="coach-insight-v2-title">{insight.title}</strong>
                         </div>
-                        <p className="coach-insight-detail">{insight.detail}</p>
-                        <p className="coach-insight-action">{insight.action}</p>
-                      </m.article>
-                    ))
-                  )}
-                </AnimatePresence>
-              </div>
+                      </div>
+                      {insight.metric ? (
+                        <span className={`coach-insight-v2-metric sev-${insight.severity}`}>
+                          {insight.metric}
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <p className="coach-insight-v2-detail">{insight.detail}</p>
+
+                    <div className="coach-insight-v2-action">
+                      <ArrowRight size={14} aria-hidden="true" />
+                      <span>{insight.action}</span>
+                    </div>
+                  </article>
+                ))
+              )}
             </div>
-          )}
-        </section>
+          </div>
+        </details>
       )}
     </div>
   );

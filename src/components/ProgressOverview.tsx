@@ -12,7 +12,6 @@ import StrengthTotalCard from "./StrengthTotalCard";
 import StrengthForecastCard from "./StrengthForecastCard";
 import WeakLinkRadarCard from "./WeakLinkRadarCard";
 import HypertrophyAuditCard from "./HypertrophyAuditCard";
-import StatsAnalytics from "./StatsAnalytics";
 import { quantityWord } from "../lib/quantity";
 import type { Workout, Settings, Routine } from "../lib/model";
 import "../styles/progress.css";
@@ -248,16 +247,6 @@ export default function ProgressOverview({
       </section>
 
       {long ? <WeeklyTrendChart buckets={buckets} /> : null}
-
-      <StatsAnalytics
-        key={period}
-        workouts={data.current}
-        settings={settings}
-        compact
-        weeks={Math.max(Math.ceil(days / 7), data.totalWeeks)}
-        rangeStart={data.start}
-        onOpenExerciseStrength={onStrength}
-      />
     </div>
   );
 }
