@@ -2,10 +2,16 @@ import { exerciseById } from "../lib/model";
 import { PeriodizationRules } from "./PeriodizationRules";
 import type { PrescriptionMode, SubstitutionClass } from "./SubstitutionPolicy";
 import type { LaidDay, LaidMaxes, Muscle, RoutinePeriodization } from "../lib/types";
+import {
+  DAVID_LAID_DUP_V3_LIVE_PLAN,
+  LAID_V3_DAYS,
+  LAID_V3_LIFT_EXERCISE_BY_DAY,
+  type MesocycleWeek,
+} from "./LaidDupV3";
 
 export type { LaidDay };
 export type LaidLift = keyof LaidMaxes;
-export type LaidVersion = "v1" | "v2";
+export type LaidVersion = "v1" | "v2" | "v3";
 export type LaidStimulus = "H" | "M" | "S";
 export type LaidRhythm = "6x1" | "3x1x3";
 export type LaidSubstitutions = Record<string, string>;
@@ -48,6 +54,12 @@ export type LaidDayPlan = {
   painFlag: boolean;
   /** Текущая неделя — встроенная или вставленная разгрузочная неделя цикла. */
   isDeload?: boolean;
+  /** Метаданные DUP v3 (6-недельный мезоцикл 5+1, динамический сброс бэк-оффов и RIR-рампа). */
+  v3Week?: MesocycleWeek;
+  v3TargetTopRir?: number;
+  v3LoadDropPct?: number;
+  v3RepOutCap?: number;
+  v3AccessoryRir?: number;
   maxKg: number;
   heavy: LaidPlanSet & { light: boolean };
   work: LaidPlanSet & { sets: number; light?: boolean };
@@ -138,6 +150,8 @@ export type LaidExerciseGuidance = {
   restSeconds: number;
   restLabel: string;
   detail: string;
+  supersetTag?: string;
+  lengthenedPartials?: boolean;
 };
 
 export type LaidSlotInfo = {
@@ -173,6 +187,8 @@ export type LaidDayExercisePreview = {
   restLabel: string;
   isAdded: boolean;
   isReplaced: boolean;
+  supersetTag?: string;
+  lengthenedPartials?: boolean;
 };
 
 export type LaidWaveWeekPoint = {
@@ -639,11 +655,44 @@ export const LAID_LOAD_NOTICE = "Шесть тренировок в неделю
 export const LAID_DELOAD_NOTICE =
   "После 9-й недели проведи разгрузочную неделю (50–60 % от 1ПМ, половина подходов, запас 3–4 повторения) перед новым циклом.";
 
+export const LAID_V3_LAYOUT: Record<LaidDay, Layout> = (() => {
+  const empty: Layout = { aux: [], extras: [] };
+  const map: Record<LaidDay, Layout> = {
+    legs1: empty,
+    push1: empty,
+    pull1: empty,
+    legs2: empty,
+    push2: empty,
+    pull2: empty,
+  };
+  for (const dayPlan of DAVID_LAID_DUP_V3_LIVE_PLAN.days) {
+    if (!dayPlan.laidDay) continue;
+    const liftId = LAID_V3_LIFT_EXERCISE_BY_DAY[dayPlan.laidDay];
+    const aux: Layout["aux"] = dayPlan.exercises
+      .filter((slot) => slot.exerciseId !== liftId)
+      .map((slot) => ({
+        exerciseId: slot.exerciseId,
+        repMin: slot.repRange[0],
+        repMax: slot.repRange[1],
+        sets: slot.sets,
+        ...(slot.note ? { note: slot.note } : {}),
+      }));
+    map[dayPlan.laidDay] = { aux, extras: [] };
+  }
+  return map;
+})();
+
+export function daysForVersion(version?: LaidVersion): LaidDay[] {
+  return version === "v3" ? [...LAID_V3_DAYS] : PeriodizationRules.DAYS;
+}
+
 export function layoutForVersion(version?: LaidVersion): Record<LaidDay, Layout> {
+  if (version === "v3") return LAID_V3_LAYOUT;
   return version === "v2" ? LAID_V2_LAYOUT : LAID_LAYOUT;
 }
 
 export function liftExerciseForDay(day: LaidDay, version?: LaidVersion): string {
+  if (version === "v3") return LAID_V3_LIFT_EXERCISE_BY_DAY[day];
   return version === "v2" ? LAID_V2_LIFT_EXERCISE_BY_DAY[day] : LAID_LIFT_EXERCISE[LAID_LIFT_OF[day]];
 }
 

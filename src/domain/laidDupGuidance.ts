@@ -24,6 +24,13 @@ import {
   type LaidVersion,
   type LaidWeekGuide,
 } from "./laidDupData";
+import {
+  ACCESSORY_RIR_RAMP_V3,
+  getV3ExerciseSlot,
+  LAID_V3_REST_SUMMARY,
+  LAID_V3_WEEKS,
+  type MesocycleWeek,
+} from "./LaidDupV3";
 
 export function formatKg(value: number): string {
   return String(value).replace(".", ",");
@@ -41,9 +48,17 @@ export function repsWord(n: number): string {
 
 export function buildWeekLabel(
   position: LaidPosition,
-  options: { isDeload?: boolean; totalWeeks?: number } = {},
+  options: { isDeload?: boolean; totalWeeks?: number; version?: LaidVersion } = {},
 ): string {
-  const total = options.totalWeeks ?? LAID_WEEKS;
+  const isV3 = options.version === "v3";
+  const total = options.totalWeeks ?? (isV3 ? LAID_V3_WEEKS : LAID_WEEKS);
+  if (isV3) {
+    if (options.isDeload || position.raw === 5) {
+      return `Неделя ${Math.max(1, position.raw + 1)} из ${total} · активная разгрузка (5+1)`;
+    }
+    if (position.finished) return `Мезоцикл 5+1 завершён · обнови ТМ и начни новый цикл`;
+    return `Неделя ${Math.max(1, position.raw + 1)} из ${total} · Dynamic Wave DUP v3`;
+  }
   if (options.isDeload) {
     return `Неделя ${Math.max(1, position.raw + 1)} из ${total} · разгрузочная неделя`;
   }
@@ -58,8 +73,70 @@ export function buildWeekGuide(
   position: LaidPosition,
   options: { light?: boolean; deload?: boolean; totalWeeks?: number; version?: LaidVersion } = {},
 ): LaidWeekGuide {
-  const totalWeeks = options.totalWeeks ?? LAID_WEEKS;
+  const isV3 = options.version === "v3";
+  const totalWeeks = options.totalWeeks ?? (isV3 ? LAID_V3_WEEKS : LAID_WEEKS);
   const isV2 = options.version === "v2";
+
+  if (isV3) {
+    const w = Math.max(1, Math.min(6, position.raw + 1)) as MesocycleWeek;
+    const isDeload = Boolean(options.deload || w === 6 || position.finished);
+    const auxRir = ACCESSORY_RIR_RAMP_V3[isDeload ? 6 : w];
+    const v3Focus: Record<MesocycleWeek, { title: string; summary: string; baseRir: string }> = {
+      1: {
+        title: "Вход в 5-дневный гибрид · RIR 3",
+        summary:
+          "Настройка 1 авторегулируемого топ-сета + 2 откатных (−12–15 % от факта). Подсобка и изоляция на RIR 3,0, суперсеты экономят до 35 % времени.",
+        baseRir: "База: топ RIR 2,5 · откатные −12–15 %",
+      },
+      2: {
+        title: "Смена волны H ↔ S · RIR 2",
+        summary:
+          "Стимулы H и S меняются местами, %TM растёт на +2,5 %. Подсобка прогрессирует по DDP (каждый сет независимо) при целевом RIR 2,0.",
+        baseRir: "База: топ RIR 2,0 · откатные −12–15 %",
+      },
+      3: {
+        title: "Интенсификация · RIR 1,5",
+        summary:
+          "Высокое механическое натяжение на базе (87,5–92,5 % ТМ). Свежий слот рук и 3D-дельт в Верх B (4 сета махов + 4 в кроссовере = 8 прямых/нед.).",
+        baseRir: "База: топ RIR 1,5 · откатные −12–13 %",
+      },
+      4: {
+        title: "Пик гипертрофии · RIR 1 + шлюз LP",
+        summary:
+          "База выходит на 90–95 % ТМ (RIR 1,0). На последнем сете стабильной растянутой изоляции открывается шлюз удлинённых частичных (LP).",
+        baseRir: "База: топ RIR 1,0 · откатные −12–13 %",
+      },
+      5: {
+        title: "Реализация · Rep-out (+3) + RIR 0 на изоляции",
+        summary:
+          "Пиковая неделя: на топ-сете базы открыт контролируемый rep-out (до +3 повт. при RIR ≥ 1,0) для фиксации реального роста TM. Изоляция до RIR 0 + LP.",
+        baseRir: "База: топ RIR 1,0 (rep-out +3) · откатные −15 %",
+      },
+      6: {
+        title: "Активная разгрузка DUP v3 (5+1)",
+        summary:
+          "Объём −50 % (1 топ + 1 откатный на базе, половина сетов на подсобке), 80–82,5 % ТМ при RIR 4,0. LP и мутации TM отключены; в сушке калории на TDEE.",
+        baseRir: "База: 80–82,5 % ТМ · RIR 4,0 (без отказа)",
+      },
+    };
+    const info = v3Focus[isDeload ? 6 : w];
+    return {
+      weekNumber: isDeload ? Math.max(1, position.raw + 1) : w,
+      totalWeeks,
+      wave: position.wave,
+      waveTitle: isDeload ? "Активная разгрузка" : w === 5 ? "Реализация" : w >= 3 ? "Интенсификация" : "Накопление",
+      badge: isDeload ? `DUP v3 · Разгрузка (${w}/${totalWeeks})` : `DUP v3 · Нед. ${w}/${totalWeeks}`,
+      focusTitle: position.finished ? "Мезоцикл 5+1 завершён — стартуй новый круг" : info.title,
+      summary: info.summary,
+      baseRir: info.baseRir,
+      auxRir: isDeload
+        ? "Подсобка и изоляция: −50 % сетов · RIR 4,0"
+        : `Подсобка (DDP): RIR ${formatPct(auxRir)}${w >= 4 ? " · LP на последнем сете" : ""}`,
+      restSummary: isDeload ? "Отдых: 1,5–2 мин (лёгкие веса)" : LAID_V3_REST_SUMMARY,
+      isDeloadWindow: isDeload,
+    };
+  }
+
   if (options.deload || position.finished) {
     const displayWeek = Math.max(1, position.raw + 1);
     return {
@@ -183,6 +260,65 @@ export function buildExerciseGuidance(
   options: { deload?: boolean } = {},
 ): LaidExerciseGuidance {
   const isLift = exerciseId === plan.liftExerciseId;
+  if (plan.version === "v3") {
+    const v3Week = plan.v3Week ?? 1;
+    const isDeload = Boolean(options.deload || plan.isDeload || v3Week === 6);
+    const slot = getV3ExerciseSlot(day, exerciseId);
+    const supersetTag =
+      slot?.supersetGroup && slot.supersetOrder
+        ? `SS ${slot.supersetGroup}${slot.supersetOrder}`
+        : undefined;
+    const lpActive =
+      !isDeload && Boolean(slot?.isIsolation && slot.lengthenedPartialsEligible && (v3Week === 4 || v3Week === 5));
+    const auxRir = plan.v3AccessoryRir ?? ACCESSORY_RIR_RAMP_V3[isDeload ? 6 : v3Week];
+
+    if (isDeload) {
+      return {
+        role: isLift ? "lift" : isHeavyCompoundAux(exerciseId) ? "compound-aux" : "isolation-aux",
+        roleLabel: isLift ? "DUP v3 · Разгрузка" : "Разгрузка (−50 % сетов)",
+        rirLabel: "Цель: RIR 4,0 (без отказа)",
+        rirPlaceholder: "4",
+        restSeconds: isLift ? 120 : 75,
+        restLabel: isLift ? "2 мин" : "1–1,5 мин",
+        detail:
+          "Активная разгрузка (неделя 6): удерживай технику на 80–82,5 % ТМ (подсобка −50 % сетов, −10 % веса), LP отключены.",
+      };
+    }
+
+    if (isLift) {
+      const stim = plan.stimulus ?? "H";
+      const topRir = plan.v3TargetTopRir ?? 2;
+      const dropPct = plan.v3LoadDropPct ?? 14;
+      const repOutText = plan.v3RepOutCap
+        ? ` На топ-сете открыт rep-out до +${plan.v3RepOutCap} повт. (при RIR ≥ 1,0).`
+        : "";
+      return {
+        role: "lift",
+        roleLabel: `DUP v3 · Стимул ${stim} (нед. ${v3Week}/6)`,
+        rirLabel: `Топ RIR ${formatPct(topRir)} · откат −${dropPct} %`,
+        rirPlaceholder: formatPct(topRir),
+        restSeconds: stim === "S" ? 210 : 180,
+        restLabel: stim === "S" ? "3–3,5 мин" : "2,5–3 мин",
+        detail: `1 авторегулируемый топ-сет (${plan.heavy.reps} повт. @ RIR ${formatPct(topRir)}), затем ${plan.work.sets} откатных по ${plan.work.reps} (−${dropPct} % от фактического топ-сета).${repOutText}`,
+      };
+    }
+
+    const isCompound = !slot?.isIsolation || isHeavyCompoundAux(exerciseId);
+    const restSeconds = supersetTag ? 75 : isCompound ? 120 : 75;
+    const restLabel = supersetTag ? "60–75 с (SS)" : isCompound ? "2 мин" : "75–90 с";
+    return {
+      role: isCompound ? "compound-aux" : "isolation-aux",
+      roleLabel: supersetTag ? `DDP · ${supersetTag}` : isCompound ? "DDP · Базовая подсобка" : "DDP · Изоляция",
+      rirLabel: `RIR ${formatPct(auxRir)}${lpActive ? " + LP (посл. сет)" : ""}`,
+      rirPlaceholder: formatPct(auxRir),
+      restSeconds,
+      restLabel,
+      detail: `${slot?.note ? `${slot.note}. ` : ""}Прогрессия DDP (каждый сет до верха диапазона → шаг +${slot?.plateStepKg ?? 2.5} кг).${lpActive ? " После технического отказа на последнем сете добавь 3–5 удлинённых частичных (LP)." : ""}`,
+      ...(supersetTag ? { supersetTag } : {}),
+      ...(lpActive ? { lengthenedPartials: true } : {}),
+    };
+  }
+
   if (options.deload) {
     return {
       role: isLift ? "lift" : isHeavyCompoundAux(exerciseId) ? "compound-aux" : "isolation-aux",
@@ -304,6 +440,20 @@ export function buildExerciseSpec(
   const originalLiftId = liftExerciseForDay(day, version);
   const resolvedLiftId = resolveLaidExerciseId(originalLiftId, substitutions);
   if (exerciseId === resolvedLiftId) {
+    if (version === "v3") {
+      return {
+        exerciseId,
+        role: "lift",
+        setsLabel: "1 топ-сет (3–6) + 2 откат. (4–8)",
+        intensityLabel: "82,5–97,5 % от ТМ (90 % 1ПМ) · откат −12–15 % от факта · RIR 2,5 → 1,0",
+        rirLabel: "Топ RIR 2,5 → 1,0 · W5 rep-out (+3)",
+        restLabel: "2,5–3,5 мин",
+        restSeconds: 180,
+        note: "Dynamic Wave DUP v3: еженедельная смена H/S, авторегуляция TM по perfDelta и EnergyStatus",
+        added: false,
+        ...(resolvedLiftId !== originalLiftId ? { replacedFrom: originalLiftId } : {}),
+      };
+    }
     if (version === "v2") {
       if (day === "pull2") {
         return {

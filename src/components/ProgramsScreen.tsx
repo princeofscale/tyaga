@@ -23,7 +23,10 @@ import Select from "./Select";
 import { ExerciseLibrary } from "./chunks";
 import { DeloadPlan, type DeloadPlanRecord } from "../domain/DeloadPlan";
 import { dateLabel } from "../lib/calendar";
-import { LaidDupPlan, type LaidCalibrationGraduation, type LaidDay, type LaidLift, type LaidSubstitutions } from "../domain/LaidDupPlan";
+import { LaidDupPlan, type LaidCalibrationGraduation, type LaidDay, type LaidLift, type LaidSubstitutions, type LaidVersion } from "../domain/LaidDupPlan";
+import { AdaptiveNutritionEngine, NutritionStore } from "../domain/AdaptiveNutritionEngine";
+import { BodyweightTracker } from "../domain/BodyweightTracker";
+import type { EnergyStatus } from "../domain/LaidDupV3";
 import LaidDupModal from "./LaidDupModal";
 import { LaidDupCard, LaidDupSchedule, LaidSubstitutionsModal, LaidWeekScheduleModal } from "./LaidDupPanel";
 import ScheduleOccurrenceModal from "./ScheduleOccurrenceModal";
@@ -67,7 +70,11 @@ export default function ProgramsScreen(props: Props) {
   } | null>(null);
   const [picker, setPicker] = useState(false);
   /** R10: окно Лейда (создать / обновить максимумы / новый цикл), расписание на 9 недель и настройка дней недели; цикл — по общему cycleId. */
-  const [laid, setLaid] = useState<{ mode: "create" | "update" | "restart"; cycleId?: string } | null>(null);
+  const [laid, setLaid] = useState<{
+    mode: "create" | "update" | "restart";
+    cycleId?: string;
+    initialVersion?: LaidVersion;
+  } | null>(null);
   const [schedule, setSchedule] = useState<string | null>(null);
   const [weekEditor, setWeekEditor] = useState<string | null>(null);
   const [subsEditor, setSubsEditor] = useState<{ cycleId: string; focusOriginalId?: string } | null>(null);
@@ -379,6 +386,47 @@ export default function ProgramsScreen(props: Props) {
     }
   }
 
+  async function upgradeLaidCycleToV3(cycle: Routine[]) {
+    setBusy(true);
+    setError("");
+    try {
+      const upgraded = LaidDupPlan.upgradeCycleToV3(cycle);
+      await replaceRoutinesBatch(cycle, upgraded);
+      setNotice(
+        "Цикл обновлён до «DUP v3 · Hypertrophy Max»: 5 дней (PPL + Upper/Lower), 5+1 нед., 8 сетов на сред. дельту и авторегуляция топ-сета.",
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось обновить цикл до DUP v3");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const liveEnergyStatus: EnergyStatus = useMemo(() => {
+    if (!props.accountId) return "optimal_surplus";
+    try {
+      const store = new NutritionStore(props.accountId);
+      const saved = store.readRaw();
+      if (!saved) return "optimal_surplus";
+      const tracker = new BodyweightTracker(props.accountId, props.timeZone);
+      const entries = tracker.getEntries();
+      const stats = tracker.getStats();
+      const eng = new AdaptiveNutritionEngine();
+      const tdee = eng.tdeeEstimator.estimateTdee(
+        { ...saved.profile, weightKg: stats?.currentKg ?? saved.profile.weightKg },
+        entries,
+        saved.logs,
+        saved.goalMode,
+        today,
+        saved.creatineStartDate,
+      );
+      const bridged = eng.energyBridge.deriveEnergyStatus(tdee, saved.lastEnergyStatus);
+      return bridged.energyStatus === "unknown" ? "optimal_surplus" : bridged.energyStatus;
+    } catch {
+      return "optimal_surplus";
+    }
+  }, [props.accountId, props.timeZone, today]);
+
   async function toggleLaidDeloadWeek(cycle: Routine[], rawWeek: number, enable: boolean) {
     const updated = LaidDupPlan.withDeloadWeek(cycle, rawWeek, enable);
     if (!updated.length) return;
@@ -602,6 +650,8 @@ export default function ProgramsScreen(props: Props) {
               onGraduateCalibration={(grads, fromWeek) => void graduateLaidCalibration(cycle, grads, fromWeek)}
               onToggleDeloadWeek={(w, enable) => void toggleLaidDeloadWeek(cycle, w, enable)}
               onUpgradeToV2={() => void upgradeLaidCycleToV2(cycle)}
+              onUpgradeToV3={() => void upgradeLaidCycleToV3(cycle)}
+              energyStatus={liveEnergyStatus}
               onApplyTmUpdates={(updates) => void applyTmAutoreg(cycle, updates)}
               onDeleteCycle={() => {
                 setError("");
@@ -726,6 +776,7 @@ export default function ProgramsScreen(props: Props) {
             { id: "split", name: "Верх / низ", note: "Две программы · 4 дня" },
             { id: "ppl", name: "Жимы / тяги / ноги", note: "Три программы · 3 дня" },
             { id: "strength", name: "База 5 × 5", note: "Три движения · 3 дня" },
+            { id: "laid-v3", name: "Hypertrophy Max · DUP v3 (5 дней)", note: "Дэвид Лейд v3 · 5+1 нед. · 8 сетов сред. дельты" },
             { id: "laid", name: "Дэвид Лейд · DUP · 9 недель · 6 дней", note: laidCycles.length ? "Настроить цикл" : "Веса от 1ПМ" },
             { id: "v2", name: "Программа v2 · 5 дней", note: hasCycle ? "Добавить недостающие дни" : "Разгрузка каждую пятую неделю" },
           ] as const).map((template) => (
@@ -736,9 +787,12 @@ export default function ProgramsScreen(props: Props) {
               disabled={busy}
               whileTap={reduceMotion ? undefined : { scale: 0.985 }}
               onClick={() => {
-                if (template.id === "laid") {
+                if (template.id === "laid-v3") {
                   setNotice("");
-                  setLaid({ mode: "create" });
+                  setLaid({ mode: "create", initialVersion: "v3" });
+                } else if (template.id === "laid") {
+                  setNotice("");
+                  setLaid({ mode: "create", initialVersion: "v1" });
                 } else if (props.routines.length > 0) {
                   setError("");
                   setTemplateChoice({ id: template.id, name: template.name });
@@ -748,15 +802,16 @@ export default function ProgramsScreen(props: Props) {
               }}
             >
               <span><b>{template.name}</b><small>{template.note}</small></span>
-              {template.id === "laid" ? <ChevronRight size={18} aria-hidden="true" /> : <Plus size={18} aria-hidden="true" />}
+              {template.id === "laid" || template.id === "laid-v3" ? <ChevronRight size={18} aria-hidden="true" /> : <Plus size={18} aria-hidden="true" />}
             </m.button>
           ))}
         </div>
       </section>
       {laid ? (
         <LaidDupModal
-          key={laid.mode}
+          key={`${laid.mode}-${laid.initialVersion ?? "default"}`}
           mode={laid.mode}
+          initialVersion={laid.initialVersion}
           routines={props.routines}
           cycle={laid.mode === "create" ? undefined : cycleById(laid.cycleId)}
           existing={laid.mode === "create" && laidCycles.length > 0}
@@ -769,6 +824,9 @@ export default function ProgramsScreen(props: Props) {
           onReplaceRoutines={replaceRoutinesBatch}
           onUpgradeToV2={
             laid.mode === "create" ? undefined : () => upgradeLaidCycleToV2(cycleById(laid.cycleId))
+          }
+          onUpgradeToV3={
+            laid.mode === "create" ? undefined : () => upgradeLaidCycleToV3(cycleById(laid.cycleId))
           }
           onClose={() => setLaid(null)}
           onDone={setNotice}

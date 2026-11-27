@@ -41,8 +41,12 @@ type Props = {
   onSwitch?: (mode: Mode) => void;
   /** Заменить выбранные старые программы новыми (удаление старых разом после создания новых). */
   onReplaceRoutines?: (toDelete: Routine[], toCreate: Routine[]) => Promise<void>;
+  /** Начальная версия при создании нового цикла (`v1` | `v2` | `v3`). */
+  initialVersion?: LaidVersion;
   /** Улучшить действующий цикл до «Умного DUP v2» (одна кнопка на весь цикл). */
   onUpgradeToV2?: () => Promise<void> | void;
+  /** Обновить действующий цикл до 5-дневного «DUP v3 · Hypertrophy Max». */
+  onUpgradeToV3?: () => Promise<void> | void;
 };
 
 const LIFTS: LaidLift[] = ["squat", "bench", "deadlift", "ohp"];
@@ -101,12 +105,18 @@ export default function LaidDupModal(props: Props) {
   const [subsOpen, setSubsOpen] = useState(false);
   const [extras, setExtras] = useState(true);
   const [light, setLight] = useState(() => !!props.minorMode);
-  const [version, setVersion] = useState<LaidVersion>(() => base?.version ?? "v1");
+  const [version, setVersion] = useState<LaidVersion>(
+    () => base?.version ?? props.initialVersion ?? "v1",
+  );
+  const isV3 = version === "v3";
   const isV2 = version === "v2";
-  /** Действующий цикл уже на v2: в режимах «Обновить максимумы»/«Новый цикл» переключатели больше не нужны. */
+  /** Действующий цикл уже на v2/v3: в режимах «Обновить максимумы»/«Новый цикл» переключатели больше не нужны. */
   const cycleIsV2 = base?.version === "v2";
+  const cycleIsV3 = base?.version === "v3";
   const [useTrainingMax, setUseTrainingMax] = useState(() => mode === "create");
-  const [midDeload, setMidDeload] = useState(() => !!base?.deloadWeeks?.includes(6));
+  const [midDeload, setMidDeload] = useState(() =>
+    isV3 ? true : !!base?.deloadWeeks?.includes(6),
+  );
   const [rollingWeek, setRollingWeek] = useState(() => base?.weekMode === "rolling");
   const [autoEscalate, setAutoEscalate] = useState(() => !props.minorMode && !!base?.autoEscalate);
   const avoidedIds = useMemo(
@@ -131,8 +141,8 @@ export default function LaidDupModal(props: Props) {
     () => LIFTS.filter((l) => estimates[l] !== null).length,
     [estimates],
   );
-  const tmFactor = isV2 ? LaidDupPlan.V2_TM_FACTOR : LaidDupPlan.TRAINING_MAX_FACTOR;
-  const tmPctLabel = isV2 ? "90 %" : "92,5 %";
+  const tmFactor = isV3 || isV2 ? LaidDupPlan.V2_TM_FACTOR : LaidDupPlan.TRAINING_MAX_FACTOR;
+  const tmPctLabel = isV3 || isV2 ? "90 %" : "92,5 %";
   const suggestedEstimate = (est: number) =>
     useTrainingMax ? LaidDupPlan.trainingMaxFrom1Rm(est, tmFactor) : est;
   const allEstimatesApplied = useMemo(
@@ -148,15 +158,15 @@ export default function LaidDupModal(props: Props) {
   );
 
   const catalogSlots = useMemo(
-    () => LaidDupPlan.catalogSlots(isV2 ? true : extras, activeSubs, version),
-    [isV2, extras, activeSubs, version],
+    () => LaidDupPlan.catalogSlots(isV3 || isV2 ? true : extras, activeSubs, version),
+    [isV3, isV2, extras, activeSubs, version],
   );
   const liftSlots = useMemo(() => catalogSlots.filter((s) => s.role === "lift"), [catalogSlots]);
   const auxSlots = useMemo(() => catalogSlots.filter((s) => s.role !== "lift"), [catalogSlots]);
 
   const volumeSummary = useMemo(
-    () => LaidDupPlan.weeklyMuscleVolume({ version, extras: isV2 ? true : extras, substitutions: activeSubs }),
-    [version, isV2, extras, activeSubs],
+    () => LaidDupPlan.weeklyMuscleVolume({ version, extras: isV3 || isV2 ? true : extras, substitutions: activeSubs }),
+    [version, isV3, isV2, extras, activeSubs],
   );
   const baselineVolume = useMemo(
     () => LaidDupPlan.weeklyMuscleVolume({ version: "v1", extras: true }),
@@ -261,16 +271,16 @@ export default function LaidDupModal(props: Props) {
         const createdRoutines = LaidDupPlan.routines({
           version,
           maxes,
-          extras: isV2 ? true : extras,
-          light: isV2 ? true : light,
+          extras: isV3 || isV2 ? true : extras,
+          light: isV3 || isV2 ? true : light,
           startMonday,
-          weekdays,
+          weekdays: isV3 ? LaidDupPlan.V3_WEEKDAYS : weekdays,
           substitutions: activeSubs,
           calibrationLifts,
           painFlags,
           autoEscalate: !props.minorMode && autoEscalate,
-          weekMode: isV2 ? "rolling" : rollingWeek ? "rolling" : "calendar",
-          deloadWeeks: isV2 ? [LaidDupPlan.V2_DELOAD_WEEK] : midDeload ? [6] : undefined,
+          weekMode: isV3 ? (rollingWeek ? "rolling" : "calendar") : isV2 ? "rolling" : rollingWeek ? "rolling" : "calendar",
+          deloadWeeks: isV3 ? [LaidDupPlan.V3_DELOAD_WEEK] : isV2 ? [LaidDupPlan.V2_DELOAD_WEEK] : midDeload ? [6] : undefined,
         });
         if (replaceExisting && props.routines.length > 0 && props.onReplaceRoutines) {
           await props.onReplaceRoutines(props.routines, createdRoutines);
@@ -294,9 +304,11 @@ export default function LaidDupModal(props: Props) {
         const replaceText =
           replaceExisting && props.routines.length > 0 ? " Прежние программы заменены." : "";
         props.onDone(
-          isV2
-            ? `Умный DUP v2 создан: 6 дней (${daysLabel}), 10 недель с разгрузкой на 7-й и −68 % на поясницу.${subText}${replaceText}`
-            : `Программа Лейда создана: шесть дней, ${daysLabel}.${subText}${replaceText} Расписание — в «Программах».`,
+          isV3
+            ? `DUP v3 (Hypertrophy Max) создан: 5 дней (Пн–Ср, Пт–Сб), мезоцикл 5+1 нед., 8 сетов на сред. дельту и авторегуляция топ-сета.${subText}${replaceText}`
+            : isV2
+              ? `Умный DUP v2 создан: 6 дней (${daysLabel}), 10 недель с разгрузкой на 7-й и −68 % на поясницу.${subText}${replaceText}`
+              : `Программа Лейда создана: шесть дней, ${daysLabel}.${subText}${replaceText} Расписание — в «Программах».`,
         );
       } else {
         const week = position ? position.week : 0;
@@ -413,25 +425,102 @@ export default function LaidDupModal(props: Props) {
             {/* Compact program summary header */}
             <div className="laid-hero-strip">
               <div className="laid-hero-pills" aria-label="Параметры цикла">
-                <span className="laid-pill">{midDeload && mode === "create" ? "10 недель (с разгрузкой)" : "9 недель"}</span>
-                <span className="laid-pill">6 дней/нед</span>
-                <span className="laid-pill">3 волны DUP</span>
-                {mode === "create" && rollingWeek ? (
+                <span className="laid-pill">
+                  {isV3
+                    ? "6 нед. (5+1 · разгрузка)"
+                    : midDeload && mode === "create"
+                      ? "10 недель (с разгрузкой)"
+                      : "9 недель"}
+                </span>
+                <span className="laid-pill">{isV3 ? "5 дней/нед · PPL+UL" : "6 дней/нед"}</span>
+                <span className="laid-pill">{isV3 ? "Dynamic Wave H/S + RIR Ramp" : "3 волны DUP"}</span>
+                {mode === "create" && rollingWeek && !isV3 ? (
                   <span className="laid-pill is-accent">Плавающая неделя</span>
                 ) : null}
                 {mode === "create" ? (
                   <span className="laid-pill">{volumeSummary.totalSets} подх./нед</span>
                 ) : null}
+                {isV3 ? <span className="laid-pill is-accent">8 сетов сред. дельты</span> : null}
                 {subCount > 0 ? (
                   <span className="laid-pill is-accent">Замен: {subCount}</span>
                 ) : null}
               </div>
               <p className="laid-lead">
-                {isV2
-                  ? "Умный DUP v2: веса считаются от 90 % тренировочного максимума (ТМ), без опасных синглов 1ПМ и с разгрузкой на 7-й неделе."
-                  : `1ПМ — максимум на одно повторение; вводи осторожный тренировочный максимум (92,5 % от 1ПМ). ${LaidDupPlan.LOAD_NOTICE}`}
+                {isV3
+                  ? "DUP v3 · Hypertrophy & Strength Max: 5 дней (PPL + Upper/Lower), ТМ = 90 % 1ПМ, авторегулируемый топ-сет + откатные −12–15 %, RIR Ramp 3→0 и активная разгрузка на 6-й неделе."
+                  : isV2
+                    ? "Умный DUP v2: веса считаются от 90 % тренировочного максимума (ТМ), без опасных синглов 1ПМ и с разгрузкой на 7-й неделе."
+                    : `1ПМ — максимум на одно повторение; вводи осторожный тренировочный максимум (92,5 % от 1ПМ). ${LaidDupPlan.LOAD_NOTICE}`}
               </p>
               {(() => {
+                const v3On = mode === "create" ? isV3 : cycleIsV3;
+                const canToggleV3 = mode === "create";
+                const canUpgradeV3 = mode !== "create" && !cycleIsV3 && Boolean(props.onUpgradeToV3);
+                if (!canToggleV3 && !canUpgradeV3 && !v3On) return null;
+                return (
+                  <div className={`laid-v2-banner${v3On ? " is-active" : ""}`}>
+                    <div className="laid-v2-banner-head">
+                      <div className="laid-v2-banner-copy">
+                        <span className="laid-v2-eyebrow">
+                          <Sparkles size={13} aria-hidden="true" />
+                          {v3On ? "DUP v3 · Hypertrophy & Strength Max" : "Новое поколение · v3"}
+                        </span>
+                        <strong>
+                          {v3On
+                            ? "5-дневный гибрид PPL + Upper/Lower · 8 сетов на сред. дельту"
+                            : "Перейти на David Laid DUP v3 (Hypertrophy Max)"}
+                        </strong>
+                        <small>
+                          {v3On
+                            ? "Мезоцикл 5+1, свежий слот рук/дельт в Верх B, авторегуляция TM по RIR и EnergyStatus, 6 парных суперсетов и 100 % покрытие 18 регионов."
+                            : "5 дней (55–60 мин), −29 % на поясницу vs v2, свежие руки и 8 сетов на средние дельты, Dynamic Wave DUP + RIR Ramp."}
+                        </small>
+                      </div>
+                      {canToggleV3 || canUpgradeV3 ? (
+                        <button
+                          type="button"
+                          className={`button ${v3On ? "secondary" : "primary"} laid-v2-toggle-btn`}
+                          aria-pressed={canToggleV3 ? isV3 : v3On}
+                          disabled={busy}
+                          onClick={() => {
+                            if (!canToggleV3) {
+                              void (async () => {
+                                setBusy(true);
+                                try {
+                                  await props.onUpgradeToV3?.();
+                                  props.onClose();
+                                } finally {
+                                  setBusy(false);
+                                }
+                              })();
+                              return;
+                            }
+                            const next: LaidVersion = isV3 ? "v2" : "v3";
+                            setVersion(next);
+                            setSubstitutions({});
+                            if (next === "v3") {
+                              setSlots(LaidDupPlan.slotsForV3());
+                              setExtras(true);
+                              setLight(true);
+                              setMidDeload(true);
+                              setRollingWeek(false);
+                            } else {
+                              setSlots(LaidDupPlan.slotsForRhythm("3x1x3"));
+                              setExtras(true);
+                              setLight(true);
+                              setMidDeload(true);
+                              setRollingWeek(true);
+                            }
+                          }}
+                        >
+                          {canToggleV3 ? (isV3 ? "Переключить на v2" : "Выбрать DUP v3") : "Обновить до DUP v3"}
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })()}
+              {!isV3 && !cycleIsV3 && (() => {
                 // В режимах «Обновить максимумы»/«Новый цикл» версия цикла не правится этим окном:
                 // действующий цикл улучшается целиком через onUpgradeToV2 (одна кнопка на весь цикл).
                 const v2On = mode === "create" ? isV2 : cycleIsV2;
@@ -568,8 +657,26 @@ export default function LaidDupModal(props: Props) {
                     >
                       <div className="laid-field-top">
                         <label htmlFor={inputId} className="laid-field-label">
-                          <span className="laid-field-name">{LABEL[lift]}</span>
-                          <small className="laid-field-tag">{LIFT_DAYS[lift]}</small>
+                          <span className="laid-field-name">
+                            {isV3
+                              ? lift === "ohp"
+                                ? "ТМ: наклонный жим 30°"
+                                : lift === "deadlift"
+                                  ? "ТМ: трэп-гриф (RDL ~75%)"
+                                  : LABEL[lift]
+                              : LABEL[lift]}
+                          </span>
+                          <small className="laid-field-tag">
+                            {isV3
+                              ? lift === "squat"
+                                ? "Ноги A"
+                                : lift === "bench"
+                                  ? "Жим A"
+                                  : lift === "deadlift"
+                                    ? "Тяга A · Низ B"
+                                    : "Верх B"
+                              : LIFT_DAYS[lift]}
+                          </small>
                         </label>
                         {mode === "create" && matchingSlot ? (
                           <button
@@ -735,7 +842,7 @@ export default function LaidDupModal(props: Props) {
                   </div>
                 </div>
 
-                {mode === "create" ? (
+                {mode === "create" && !isV3 ? (
                   <div className="laid-group" role="group" aria-label="Ритм недели">
                     <p className="laid-subcaption">Распределение дней отдыха</p>
                     <div className="laid-choice">
@@ -812,16 +919,18 @@ export default function LaidDupModal(props: Props) {
             {/* Section 3: Program Options (clean 1-button DUP v2 summary or minimal original toggles) */}
             {mode === "create" ? (
               <>
-                {isV2 ? (
+                {isV3 || isV2 ? (
                   <section className="laid-section laid-settings-card laid-v2-summary-card" aria-labelledby={`${uid}-opts-title`}>
                     <div className="laid-v2-summary-head">
                       <h3 id={`${uid}-opts-title`} className="laid-section-title">
-                        Что улучшено в «Умном DUP v2»
+                        {isV3 ? "Что внутри «DUP v3 · Hypertrophy Max»" : "Что улучшено в «Умном DUP v2»"}
                       </h3>
-                      <span className="laid-v2-pill">124 подх. · 14 осевых</span>
+                      <span className="laid-v2-pill">
+                        {isV3 ? `${volumeSummary.totalSets} подх. · 5 дней · 5+1` : "124 подх. · 14 осевых"}
+                      </span>
                     </div>
                     <ul className="laid-v2-bullets">
-                      {LaidDupPlan.V2_SUMMARY_BULLETS.map((item) => (
+                      {(isV3 ? LaidDupPlan.V3_SUMMARY_BULLETS : LaidDupPlan.V2_SUMMARY_BULLETS).map((item) => (
                         <li key={item.title}>
                           <Check size={14} aria-hidden="true" />
                           <span>
@@ -844,7 +953,7 @@ export default function LaidDupModal(props: Props) {
                             <small>
                               {replaceExisting
                                 ? "Старые программы удалятся разом, история тренировок останется."
-                                : "Текущие программы останутся, к ним добавятся 6 дней DUP v2."}
+                                : `Текущие программы останутся, к ним добавятся ${isV3 ? "5 дней DUP v3" : "6 дней DUP v2"}.`}
                             </small>
                           </span>
                           <span className="laid-switch-control" aria-hidden="true">
@@ -945,7 +1054,7 @@ export default function LaidDupModal(props: Props) {
                       <small>При травмах или под оборудование — периодизация и объём сохраняются</small>
                     </span>
                     <span className={`laid-custom-badge${subCount > 0 ? " is-filled" : ""}`}>
-                      {subCount > 0 ? `Замен: ${subCount}` : "Все 6 дней"}
+                      {subCount > 0 ? `Замен: ${subCount}` : isV3 ? "Все 5 дней" : "Все 6 дней"}
                     </span>
                   </summary>
                   {subsOpen ? (
@@ -1084,7 +1193,7 @@ export default function LaidDupModal(props: Props) {
                   ) : null}
                 </AnimatePresence>
               </>
-            ) : cycleIsV2 ? null : (
+            ) : cycleIsV2 || cycleIsV3 ? null : (
               <details className="laid-disclosure laid-update-opts" open={mode === "restart"}>
                 <summary>
                   <span className="laid-disclosure-label">
@@ -1178,39 +1287,55 @@ export default function LaidDupModal(props: Props) {
                 >
                   <div className="laid-preview-head">
                     <p className="field-caption">
-                      Неделя {previewWeek + 1} по этим максимумам · волна {previewWave}
+                      {isV3 || cycleIsV3
+                        ? `Неделя ${previewWeek + 1} из 6 · Dynamic Wave DUP v3`
+                        : `Неделя ${previewWeek + 1} по этим максимумам · волна ${previewWave}`}
                     </p>
-                    <span className="laid-preview-meta">отдых: база 3–5 мин · подсобка 1–3 мин</span>
+                    <span className="laid-preview-meta">
+                      {isV3 || cycleIsV3
+                        ? "отдых: база 2,5–3,5 мин · суперсеты 60–75 с"
+                        : "отдых: база 3–5 мин · подсобка 1–3 мин"}
+                    </span>
                   </div>
                   <ul className="laid-preview-grid">
-                    {[...LaidDupPlan.DAYS]
-                      .sort((a, b) => (mode === "create" ? weekdays[a] - weekdays[b] : cycleWeekdays[a] - cycleWeekdays[b]))
-                      .map((day) => {
-                        const plan = LaidDupPlan.day(day, previewWeek, maxes, {
-                          version: mode === "create" ? version : base?.version,
-                          light: mode === "create" ? (isV2 ? true : light) : (base?.light ?? false),
-                          substitutions: mode === "create" ? activeSubs : base?.substitutions,
-                          calibrationLifts: mode === "create" ? calibrationLifts : base?.calibrationLifts,
-                          painFlags: mode === "create" ? painFlags : base?.painFlags,
+                    {(() => {
+                      const effVersion = mode === "create" ? version : base?.version;
+                      const previewDays = effVersion === "v3" ? [...LaidDupPlan.V3_DAYS] : [...LaidDupPlan.DAYS];
+                      const previewWeekdays =
+                        mode === "create"
+                          ? effVersion === "v3"
+                            ? LaidDupPlan.V3_WEEKDAYS
+                            : weekdays
+                          : cycleWeekdays;
+                      return previewDays
+                        .sort((a, b) => previewWeekdays[a] - previewWeekdays[b])
+                        .map((day) => {
+                          const plan = LaidDupPlan.day(day, previewWeek, maxes, {
+                            version: effVersion,
+                            light: mode === "create" ? (isV3 || isV2 ? true : light) : (base?.light ?? false),
+                            substitutions: mode === "create" ? activeSubs : base?.substitutions,
+                            calibrationLifts: mode === "create" ? calibrationLifts : base?.calibrationLifts,
+                            painFlags: mode === "create" ? painFlags : base?.painFlags,
+                          });
+                          const weekday = previewWeekdays[day];
+                          const replacedLiftName =
+                            plan.liftExerciseId !== plan.originalLiftExerciseId
+                              ? exerciseById(plan.liftExerciseId)?.name
+                              : null;
+                          return (
+                            <li key={day}>
+                              <span className="laid-preview-day">
+                                <b>{LaidDupPlan.dayShort(day, effVersion)}</b>
+                                <small>{DAY_NAMES[weekday]}</small>
+                              </span>
+                              <span className="laid-preview-detail">
+                                {replacedLiftName ? <small className="laid-preview-sub-lift">{replacedLiftName}</small> : null}
+                                <span className="laid-preview-line">{LaidDupPlan.line(plan)}</span>
+                              </span>
+                            </li>
+                          );
                         });
-                        const weekday = mode === "create" ? weekdays[day] : cycleWeekdays[day];
-                        const replacedLiftName =
-                          plan.liftExerciseId !== plan.originalLiftExerciseId
-                            ? exerciseById(plan.liftExerciseId)?.name
-                            : null;
-                        return (
-                          <li key={day}>
-                            <span className="laid-preview-day">
-                              <b>{LaidDupPlan.SHORT[day]}</b>
-                              <small>{DAY_NAMES[weekday]}</small>
-                            </span>
-                            <span className="laid-preview-detail">
-                              {replacedLiftName ? <small className="laid-preview-sub-lift">{replacedLiftName}</small> : null}
-                              <span className="laid-preview-line">{LaidDupPlan.line(plan)}</span>
-                            </span>
-                          </li>
-                        );
-                      })}
+                    })()}
                   </ul>
                 </m.div>
               ) : null}

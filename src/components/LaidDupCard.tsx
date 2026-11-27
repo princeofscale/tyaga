@@ -18,6 +18,7 @@ import {
   LAID_WEEKS,
   type LaidCalibrationGraduation,
 } from "../domain/LaidDupPlan";
+import type { EnergyStatus } from "../domain/LaidDupV3";
 import { DAY_NAMES } from "../domain/TrainingProgram";
 import { dateLabel } from "../lib/calendar";
 import type { Routine, Workout } from "../lib/types";
@@ -46,7 +47,11 @@ type CardProps = {
   onToggleDeloadWeek?: (rawWeek: number, enable: boolean) => void;
   /** В один клик улучшить существующий классический цикл до «Умного DUP v2». */
   onUpgradeToV2?: () => void;
-  /** Применить автокоррекцию TM (DUP v2 гистерезис) с текущей недели. */
+  /** В один клик обновить существующий цикл (v1 или v2) до 5-дневного «DUP v3 · Hypertrophy Max». */
+  onUpgradeToV3?: () => void;
+  /** Текущий энергостатус (из Тяга v5) для демпфирования авторегуляции TM в v3. */
+  energyStatus?: EnergyStatus;
+  /** Применить автокоррекцию TM (DUP v2/v3) с текущей недели. */
   onApplyTmUpdates?: (updates: Array<{ lift: "squat" | "bench" | "deadlift" | "ohp"; toMax: number }>) => void;
   /** Удалить весь 6-дневный цикл разом. */
   onDeleteCycle?: () => void;
@@ -69,6 +74,8 @@ export function LaidDupCard({
   onGraduateCalibration,
   onToggleDeloadWeek,
   onUpgradeToV2,
+  onUpgradeToV3,
+  energyStatus,
   onApplyTmUpdates,
   onDeleteCycle,
 }: CardProps) {
@@ -79,7 +86,10 @@ export function LaidDupCard({
   const subs = first.substitutions;
   const subCount = subs ? Object.keys(subs).length : 0;
   const suggestion = useMemo(() => LaidDupPlan.suggestion(first, workouts, today), [first, workouts, today]);
-  const tmAutoreg = useMemo(() => LaidDupPlan.tmAutoregSuggestions(first, workouts, today), [first, workouts, today]);
+  const tmAutoreg = useMemo(
+    () => LaidDupPlan.tmAutoregSuggestions(first, workouts, today, { energyStatus }),
+    [first, workouts, today, energyStatus],
+  );
   const calibrationReady = useMemo(
     () => LaidDupPlan.calibrationReady(first, workouts, today),
     [first, workouts, today],
@@ -117,13 +127,23 @@ export function LaidDupCard({
       <header className="laid-card-head">
         <div className="laid-card-title-group">
           <div className="laid-card-title-row">
-            <h3>{first.version === "v2" ? "Умный DUP v2 · Баланс и защита" : "Дэвид Лейд · DUP"}</h3>
-            {first.version === "v2" ? <span className="laid-v2-pill">DUP v2</span> : null}
+            <h3>
+              {first.version === "v3"
+                ? "Дэвид Лейд · DUP v3 (Hypertrophy Max)"
+                : first.version === "v2"
+                  ? "Умный DUP v2 · Баланс и защита"
+                  : "Дэвид Лейд · DUP"}
+            </h3>
+            {first.version === "v3" ? (
+              <span className="laid-v2-pill">DUP v3 · 5+1</span>
+            ) : first.version === "v2" ? (
+              <span className="laid-v2-pill">DUP v2</span>
+            ) : null}
           </div>
           <p className="laid-week" aria-live="polite">
             {position.beforeStart
-              ? `Старт ${dateLabel(first.startMonday)} · неделя 1 из ${totalWeeks} · волна 1`
-              : LaidDupPlan.weekLabel(position, { isDeload: isCurrentDeload, totalWeeks })}
+              ? `Старт ${dateLabel(first.startMonday)} · неделя 1 из ${totalWeeks}${first.version === "v3" ? " · 5+1" : " · волна 1"}`
+              : LaidDupPlan.weekLabel(position, { isDeload: isCurrentDeload, totalWeeks, version: first.version })}
             {first.weekMode === "rolling" ? " · плавающая" : ""}
           </p>
         </div>
@@ -132,11 +152,31 @@ export function LaidDupCard({
             ? "Цикл закончен"
             : isCurrentDeload
               ? `Неделя ${rawWeek + 1} · Разгрузка`
-              : `Волна ${position.wave} · ${waveMeta.title}`}
+              : first.version === "v3"
+                ? weekGuide.badge
+                : `Волна ${position.wave} · ${waveMeta.title}`}
         </span>
       </header>
 
-      {first.version !== "v2" && onUpgradeToV2 ? (
+      {first.version !== "v3" && onUpgradeToV3 ? (
+        <div className="laid-v2-upgrade-bar">
+          <div className="laid-v2-upgrade-copy">
+            <b>Обновить до «DUP v3 · Hypertrophy Max»</b>
+            <span>5 дн. PPL+UL (55–60 мин), 8 сетов на сред. дельту, авторегуляция топ-сета + RIR Ramp 3→0, −29 % на поясницу.</span>
+          </div>
+          <button
+            type="button"
+            className="button primary laid-v3-upgrade-btn"
+            disabled={busy}
+            onClick={onUpgradeToV3}
+          >
+            <Sparkles size={14} aria-hidden="true" />
+            На v3
+          </button>
+        </div>
+      ) : null}
+
+      {first.version !== "v2" && first.version !== "v3" && onUpgradeToV2 ? (
         <div className="laid-v2-upgrade-bar">
           <div className="laid-v2-upgrade-copy">
             <b>Улучшить до «Умного DUP v2»</b>
@@ -187,8 +227,12 @@ export function LaidDupCard({
 
         <div className="laid-progress-meta">
           <span>
-            {totalWeeks > LAID_WEEKS ? `3 волны + разгрузка (${totalWeeks} нед.)` : "В1 (1–3) · В2 (4–6) · В3 (7–9)"}
-            {restDay !== null ? ` · выходной ${DAY_NAMES[restDay]}` : ""}
+            {first.version === "v3"
+              ? "5+1 нед. (PPL + Upper/Lower) · отдых Чт и Вс"
+              : totalWeeks > LAID_WEEKS
+                ? `3 волны + разгрузка (${totalWeeks} нед.)`
+                : "В1 (1–3) · В2 (4–6) · В3 (7–9)"}
+            {first.version !== "v3" && restDay !== null ? ` · выходной ${DAY_NAMES[restDay]}` : ""}
           </span>
           <span className="laid-progress-count">
             {doneCount}/{cycle.length} на неделе
@@ -227,7 +271,7 @@ export function LaidDupCard({
               onClick={onUpdate}
               title="Нажми, чтобы обновить максимумы"
             >
-              <small>{LaidDupPlan.liftLabel(lift, subs)}</small>
+              <small>{LaidDupPlan.liftLabel(lift, subs, first.version)}</small>
               <strong>
                 {liftMode === "calibration"
                   ? "Калибровка"
@@ -269,7 +313,7 @@ export function LaidDupCard({
             >
               <div className="laid-day-top">
                 <span className="laid-day-title">
-                  <b>{LaidDupPlan.SHORT[p.day]}</b>
+                  <b>{LaidDupPlan.dayShort(p.day, p.version)}</b>
                   <span className="laid-day-name">{r.days.length ? r.days.map((d) => DAY_NAMES[d]).join("·") : "—"}</span>
                 </span>
                 <LaidStatus status={status} />
@@ -295,7 +339,7 @@ export function LaidDupCard({
                     type="button"
                     className="laid-tile-btn is-icon"
                     disabled={busy}
-                    aria-label={`Превью дня: ${LaidDupPlan.SHORT[p.day]}`}
+                    aria-label={`Превью дня: ${LaidDupPlan.dayShort(p.day, p.version)}`}
                     title="Превью мышц и недельного объёма"
                     onClick={() => onPreviewDay(r)}
                   >
@@ -306,7 +350,7 @@ export function LaidDupCard({
                   type="button"
                   className={`laid-tile-btn is-icon${isExpanded ? " is-active" : ""}`}
                   aria-expanded={isExpanded}
-                  aria-label={`Состав и веса: ${LaidDupPlan.SHORT[p.day]}`}
+                  aria-label={`Состав и веса: ${LaidDupPlan.dayShort(p.day, p.version)}`}
                   title="Состав дня, веса и RIR"
                   onClick={() => setExpandedDayId(isExpanded ? null : r.id)}
                 >
@@ -317,8 +361,8 @@ export function LaidDupCard({
                     type="button"
                     className="laid-tile-btn is-icon"
                     disabled={busy}
-                    aria-label={`Править ${LaidDupPlan.SHORT[p.day]}`}
-                    title={`Править ${LaidDupPlan.SHORT[p.day]}`}
+                    aria-label={`Править ${LaidDupPlan.dayShort(p.day, p.version)}`}
+                    title={`Править ${LaidDupPlan.dayShort(p.day, p.version)}`}
                     onClick={() => onEditDay(r)}
                   >
                     <Pencil size={15} aria-hidden="true" />
@@ -327,12 +371,24 @@ export function LaidDupCard({
               </div>
 
               {isExpanded ? (
-                <div className="laid-day-exercises" role="region" aria-label={`Упражнения: ${LaidDupPlan.SHORT[p.day]}`}>
+                <div className="laid-day-exercises" role="region" aria-label={`Упражнения: ${LaidDupPlan.dayShort(p.day, p.version)}`}>
                   <ul className="laid-day-ex-list">
                     {expandedPreview.map((item) => (
                       <li key={item.exerciseId} className={`laid-day-ex-row${item.role === "lift" ? " is-lift" : ""}`}>
                         <div className="laid-day-ex-main">
-                          <span className="laid-day-ex-name">{item.name}</span>
+                          <span className="laid-day-ex-name">
+                            {item.name}
+                            {item.supersetTag ? (
+                              <span className="laid-v2-pill" style={{ marginInlineStart: 6 }}>
+                                {item.supersetTag}
+                              </span>
+                            ) : null}
+                            {item.lengthenedPartials ? (
+                              <span className="laid-v2-pill" style={{ marginInlineStart: 4 }}>
+                                LP
+                              </span>
+                            ) : null}
+                          </span>
                           <span className="laid-day-ex-meta">
                             <span>{item.setsRepsLabel}</span>
                             <span className={`laid-day-ex-weight source-${item.weightSource}`}>{item.weightLabel}</span>
@@ -440,11 +496,11 @@ export function LaidDupCard({
             transition={{ duration: 0.2 }}
           >
             <p>
-              <b>Автокоррекция TM (DUP v2):</b>{" "}
+              <b>{first.version === "v3" ? "Авторегуляция TM (DUP v3):" : "Автокоррекция TM (DUP v2):"}</b>{" "}
               {tmAutoreg
                 .map(
                   (u) =>
-                    `${LaidDupPlan.liftLabel(u.lift, subs)} ${LaidDupPlan.kg(u.fromMax)} → ${LaidDupPlan.kg(u.toMax)} кг (${u.changePct > 0 ? "+" : ""}${Math.round(u.changePct * 1000) / 10} %)`,
+                    `${LaidDupPlan.liftLabel(u.lift, subs, first.version)} ${LaidDupPlan.kg(u.fromMax)} → ${LaidDupPlan.kg(u.toMax)} кг (${u.changePct > 0 ? "+" : ""}${Math.round(u.changePct * 1000) / 10} %)${u.triggerDeloadFlag ? " · нужна разгрузка" : ""}`,
                 )
                 .join("; ")}
               .

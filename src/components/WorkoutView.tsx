@@ -43,6 +43,7 @@ import { ProgressionEngine, equipmentStepKg, toProgressionInventory } from "../d
 import { SmartRestPlanner } from "../domain/SmartRestPlanner";
 import { PlateApplication } from "../domain/PlateApplication";
 import { LaidDupPlan } from "../domain/LaidDupPlan";
+import { roundPlate } from "../domain/LaidDupV3";
 import ExerciseSwapModal from "./ExerciseSwapModal";
 import { useLiveRoom } from "../lib/liveRoomContext";
 import Modal from "./Modal";
@@ -376,6 +377,7 @@ export default function WorkoutView({
             light: activeLaidPeriodization?.light,
             deload: inDeload,
             totalWeeks: LaidDupPlan.totalWeeks(activeLaidPeriodization),
+            version: activeLaidPeriodization?.version,
           })
         : null,
     [activeLaidPlan, activeLaidPeriodization, inDeload],
@@ -1463,24 +1465,59 @@ export default function WorkoutView({
                   {gymCue ? <p className="lever-cue">{gymCue}</p> : null}
                   {gymDdpLine}
                   {gymAutoregBar}
-                  {gymGuidance ? (
-                    <LaidExerciseGuidanceBar
-                      guidance={gymGuidance}
-                      hasProgressionNote={!!entry.progressionNote}
-                      targetSetsReps={gymTargetReps}
-                      weightHint={gymWeightHint}
-                      auxProgression={gymAuxProg}
-                      topSetPlateWeightKg={gymTopWeight}
-                      onApplyAuxWeight={(nextKg) => {
-                        const targetMin = entry.repMin ?? entry.sets.find((s) => !s.warmup)?.reps ?? 10;
-                        patchExercise(exerciseIndex, {
-                          sets: entry.sets.map((s) =>
-                            s.warmup || s.done ? s : { ...s, weight: nextKg, reps: targetMin },
-                          ),
-                        });
-                      }}
-                    />
-                  ) : null}
+                  {gymGuidance ? (() => {
+                    const v3DropPct = activeLaidPlan?.v3LoadDropPct;
+                    const topSet = gymWorkSets[0];
+                    const backoffSets = gymWorkSets.slice(1).filter((s) => !s.done);
+                    const v3BackoffKg =
+                      isLaidTopLift &&
+                      activeLaidPlan?.version === "v3" &&
+                      !inDeload &&
+                      v3DropPct &&
+                      topSet &&
+                      topSet.weight > 0 &&
+                      backoffSets.length > 0
+                        ? roundPlate(topSet.weight * (1 - v3DropPct / 100), 2.5)
+                        : null;
+                    const showV3Backoff =
+                      v3BackoffKg !== null && backoffSets.some((s) => s.weight !== v3BackoffKg);
+                    return (
+                      <LaidExerciseGuidanceBar
+                        guidance={gymGuidance}
+                        hasProgressionNote={!!entry.progressionNote}
+                        targetSetsReps={gymTargetReps}
+                        weightHint={gymWeightHint}
+                        auxProgression={gymAuxProg}
+                        topSetPlateWeightKg={gymTopWeight}
+                        v3BackoffHint={
+                          showV3Backoff && v3DropPct && topSet && v3BackoffKg !== null
+                            ? { pct: v3DropPct, weightKg: v3BackoffKg, topKg: topSet.weight }
+                            : null
+                        }
+                        onApplyV3Backoff={(nextKg) => {
+                          let seenFirstWorking = false;
+                          patchExercise(exerciseIndex, {
+                            sets: entry.sets.map((s) => {
+                              if (s.warmup) return s;
+                              if (!seenFirstWorking) {
+                                seenFirstWorking = true;
+                                return s;
+                              }
+                              return s.done ? s : { ...s, weight: nextKg };
+                            }),
+                          });
+                        }}
+                        onApplyAuxWeight={(nextKg) => {
+                          const targetMin = entry.repMin ?? entry.sets.find((s) => !s.warmup)?.reps ?? 10;
+                          patchExercise(exerciseIndex, {
+                            sets: entry.sets.map((s) =>
+                              s.warmup || s.done ? s : { ...s, weight: nextKg, reps: targetMin },
+                            ),
+                          });
+                        }}
+                      />
+                    );
+                  })() : null}
                   {entry.progressionNote && !entry.progressionNote.includes("правило программы") ? (
                     <div className={`progression-banner${LaidDupPlan.hasPlanWeight(entry) ? " laid-plan-banner" : ""}`}>
                       <TrendingUp size={15} className="text-accent" aria-hidden="true" />
@@ -1845,46 +1882,82 @@ export default function WorkoutView({
               {renderDdpGoalLine(we, exercise, before, isLaidTopLift)}
               {renderIntraAutoregBar(we, ei, exercise, before, isLaidTopLift)}
 
-              {cardGuidance ? (
-                <LaidExerciseGuidanceBar
-                  guidance={cardGuidance}
-                  hasProgressionNote={!!we.progressionNote}
-                  targetSetsReps={
-                    isLaidTopLift && activeLaidPlan
-                      ? `1×${activeLaidPlan.heavy.reps} + ${activeLaidPlan.work.sets}×${activeLaidPlan.work.reps}`
-                      : !timed && plannedRange
-                        ? `${we.sets.filter((s) => !s.warmup).length} × ${plannedRange}`
+              {cardGuidance ? (() => {
+                const v3DropPct = activeLaidPlan?.v3LoadDropPct;
+                const workSets = we.sets.filter((s) => !s.warmup);
+                const topSet = workSets[0];
+                const backoffSets = workSets.slice(1).filter((s) => !s.done);
+                const v3BackoffKg =
+                  isLaidTopLift &&
+                  activeLaidPlan?.version === "v3" &&
+                  !inDeload &&
+                  v3DropPct &&
+                  topSet &&
+                  topSet.weight > 0 &&
+                  backoffSets.length > 0
+                    ? roundPlate(topSet.weight * (1 - v3DropPct / 100), 2.5)
+                    : null;
+                const showV3Backoff =
+                  v3BackoffKg !== null && backoffSets.some((s) => s.weight !== v3BackoffKg);
+                return (
+                  <LaidExerciseGuidanceBar
+                    guidance={cardGuidance}
+                    hasProgressionNote={!!we.progressionNote}
+                    targetSetsReps={
+                      isLaidTopLift && activeLaidPlan
+                        ? `1×${activeLaidPlan.heavy.reps} + ${activeLaidPlan.work.sets}×${activeLaidPlan.work.reps}`
+                        : !timed && plannedRange
+                          ? `${we.sets.filter((s) => !s.warmup).length} × ${plannedRange}`
+                          : null
+                    }
+                    weightHint={
+                      isLaidTopLift && activeLaidPlan && activeLaidPlan.prescriptionMode === "percent_1rm"
+                        ? {
+                            label: `План: ${LaidDupPlan.kg(activeLaidPlan.heavy.weightKg)} / ${LaidDupPlan.kg(activeLaidPlan.work.weightKg)} кг`,
+                            source: inDeload ? "deload" : "plan",
+                          }
+                        : noLoad || timed
+                          ? null
+                          : before?.working?.[0] && before.working[0].weight > 0
+                            ? {
+                                label: inDeload
+                                  ? `Разгрузка: ${LaidDupPlan.kg(Math.round(before.working[0].weight * 0.65 * 2) / 2)} кг`
+                                  : `Прошлый: ${LaidDupPlan.kg(before.working[0].weight)} кг`,
+                                source: inDeload ? "deload" : "history",
+                              }
+                            : { label: "Вес: подбери по RIR", source: "none" }
+                    }
+                    auxProgression={auxProgression}
+                    topSetPlateWeightKg={topSetPlateWeightKg}
+                    v3BackoffHint={
+                      showV3Backoff && v3DropPct && topSet && v3BackoffKg !== null
+                        ? { pct: v3DropPct, weightKg: v3BackoffKg, topKg: topSet.weight }
                         : null
-                  }
-                  weightHint={
-                    isLaidTopLift && activeLaidPlan && activeLaidPlan.prescriptionMode === "percent_1rm"
-                      ? {
-                          label: `План: ${LaidDupPlan.kg(activeLaidPlan.heavy.weightKg)} / ${LaidDupPlan.kg(activeLaidPlan.work.weightKg)} кг`,
-                          source: inDeload ? "deload" : "plan",
-                        }
-                      : noLoad || timed
-                        ? null
-                        : before?.working?.[0] && before.working[0].weight > 0
-                          ? {
-                              label: inDeload
-                                ? `Разгрузка: ${LaidDupPlan.kg(Math.round(before.working[0].weight * 0.65 * 2) / 2)} кг`
-                                : `Прошлый: ${LaidDupPlan.kg(before.working[0].weight)} кг`,
-                              source: inDeload ? "deload" : "history",
-                            }
-                          : { label: "Вес: подбери по RIR", source: "none" }
-                  }
-                  auxProgression={auxProgression}
-                  topSetPlateWeightKg={topSetPlateWeightKg}
-                  onApplyAuxWeight={(nextKg) => {
-                    const targetMin = we.repMin ?? we.sets.find((s) => !s.warmup)?.reps ?? 10;
-                    patchExercise(ei, {
-                      sets: we.sets.map((s) =>
-                        s.warmup || s.done ? s : { ...s, weight: nextKg, reps: targetMin },
-                      ),
-                    });
-                  }}
-                />
-              ) : null}
+                    }
+                    onApplyV3Backoff={(nextKg) => {
+                      let seenFirstWorking = false;
+                      patchExercise(ei, {
+                        sets: we.sets.map((s) => {
+                          if (s.warmup) return s;
+                          if (!seenFirstWorking) {
+                            seenFirstWorking = true;
+                            return s;
+                          }
+                          return s.done ? s : { ...s, weight: nextKg };
+                        }),
+                      });
+                    }}
+                    onApplyAuxWeight={(nextKg) => {
+                      const targetMin = we.repMin ?? we.sets.find((s) => !s.warmup)?.reps ?? 10;
+                      patchExercise(ei, {
+                        sets: we.sets.map((s) =>
+                          s.warmup || s.done ? s : { ...s, weight: nextKg, reps: targetMin },
+                        ),
+                      });
+                    }}
+                  />
+                );
+              })() : null}
 
               {we.progressionNote && !we.progressionNote.includes("правило программы") ? (
                 <div className={`progression-banner${LaidDupPlan.hasPlanWeight(we) ? " laid-plan-banner" : ""}`}>
