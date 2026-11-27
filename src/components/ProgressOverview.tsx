@@ -11,19 +11,24 @@ import WeeklyTrendChart from "./WeeklyTrendChart";
 import StrengthTotalCard from "./StrengthTotalCard";
 import StrengthForecastCard from "./StrengthForecastCard";
 import WeakLinkRadarCard from "./WeakLinkRadarCard";
+import HypertrophyAuditCard from "./HypertrophyAuditCard";
 import StatsAnalytics from "./StatsAnalytics";
 import { quantityWord } from "../lib/quantity";
-import type { Workout, Settings } from "../lib/model";
+import type { Workout, Settings, Routine } from "../lib/model";
 import "../styles/progress.css";
 
 export default function ProgressOverview({
   workouts,
+  routines = [],
+  today,
   settings,
   bodyMassKg,
   onStrength,
   onOpenExerciseDetail,
 }: {
   workouts: Workout[];
+  routines?: Routine[];
+  today?: string;
   settings: Settings;
   bodyMassKg?: number | null;
   onStrength: (key: string) => void;
@@ -191,6 +196,15 @@ export default function ProgressOverview({
 
       <WeakLinkRadarCard
         workouts={workouts}
+        timeZone={zone}
+        bodyMassKg={bodyMassKg}
+        onOpenExerciseDetail={onOpenExerciseDetail}
+      />
+
+      <HypertrophyAuditCard
+        workouts={workouts}
+        routines={routines}
+        today={today}
         timeZone={zone}
         bodyMassKg={bodyMassKg}
         onOpenExerciseDetail={onOpenExerciseDetail}

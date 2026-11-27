@@ -28,6 +28,7 @@ import { entryName, exerciseForEntry, fmt, localDate, workingSets, type Muscle, 
 import { quantity, quantityWord } from "../lib/quantity";
 import WeeklyActivityBar from "./WeeklyActivityBar";
 import WorkoutPreviewCard from "./WorkoutPreviewCard";
+import JointGuardCard from "./JointGuardCard";
 
 function formatClock(seconds: number): string {
   const s = Math.max(0, Math.floor(seconds));
@@ -535,6 +536,8 @@ export default function TodayDashboard({
             />
           </span>
         </button>
+
+        <JointGuardCard />
       </div>
 
       <section className="recent-panel" aria-labelledby="recent-title">

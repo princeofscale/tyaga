@@ -1,0 +1,301 @@
+@layer screens {
+  /* =====================================================================
+   * HypertrophyAuditCard (Модуль B «Тяга v3»: Регионы, Растяжение, SFR)
+   * ===================================================================== */
+  .ha-card {
+    display: grid;
+    gap: 16px;
+  }
+
+  .ha-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .ha-title-group {
+    display: grid;
+    gap: 6px;
+  }
+
+  .ha-title-group h2 {
+    margin: 0;
+    font-size: clamp(1.15rem, 0.95rem + 0.7vw, 1.4rem);
+  }
+
+  .ha-head-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .ha-empty {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px;
+    border-radius: 12px;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 0.86rem;
+    line-height: 1.4;
+  }
+
+  .ha-score-grid {
+    display: grid;
+    grid-template-columns: 142px minmax(0, 1fr);
+    gap: 14px;
+    align-items: stretch;
+  }
+
+  .ha-total-box {
+    display: grid;
+    align-content: center;
+    justify-items: center;
+    gap: 4px;
+    padding: 14px 12px;
+    border-radius: 14px;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    text-align: center;
+  }
+
+  .ha-total-box.is-good {
+    border-color: color-mix(in oklab, #22c55e 42%, var(--line));
+    background: color-mix(in oklab, #22c55e 10%, var(--surface-2));
+  }
+
+  .ha-total-box.is-watch {
+    border-color: color-mix(in oklab, var(--warn) 42%, var(--line));
+    background: color-mix(in oklab, var(--warn) 10%, var(--surface-2));
+  }
+
+  .ha-total-box.is-alert {
+    border-color: color-mix(in oklab, var(--danger) 42%, var(--line));
+    background: color-mix(in oklab, var(--danger) 10%, var(--surface-2));
+  }
+
+  .ha-total-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+  }
+
+  .ha-total-num {
+    font-size: 1.9rem;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .ha-total-num small {
+    font-size: 0.85rem;
+    color: var(--muted);
+    font-weight: 600;
+  }
+
+  .ha-total-sub {
+    font-size: 0.74rem;
+    color: var(--text-soft);
+  }
+
+  .ha-submetrics {
+    display: grid;
+    gap: 10px;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+  }
+
+  .ha-sub-row {
+    display: grid;
+    gap: 5px;
+  }
+
+  .ha-sub-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 0.8rem;
+    color: var(--text-soft);
+  }
+
+  .ha-sub-meta b {
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .ha-bar {
+    height: 6px;
+    border-radius: var(--r-pill);
+    background: var(--surface-3);
+    overflow: hidden;
+  }
+
+  .ha-bar span {
+    display: block;
+    height: 100%;
+    border-radius: var(--r-pill);
+    background: linear-gradient(90deg, var(--accent) 0%, #f59e0b 100%);
+  }
+
+  .ha-bar.is-safety span {
+    background: linear-gradient(90deg, #22c55e 0%, #4ade80 100%);
+  }
+
+  .ha-section-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--text-soft);
+  }
+
+  .ha-blindspots,
+  .ha-recs {
+    display: grid;
+    gap: 8px;
+  }
+
+  .ha-chip-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .ha-bs-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: var(--r-pill);
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    font-size: 0.76rem;
+    color: var(--text-soft);
+  }
+
+  .ha-bs-chip b {
+    color: var(--warn);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .ha-bs-chip.is-priority {
+    border-color: color-mix(in oklab, var(--danger) 48%, var(--line));
+    background: color-mix(in oklab, var(--danger) 12%, var(--surface-2));
+  }
+
+  .ha-bs-chip.is-priority b {
+    color: var(--danger);
+  }
+
+  .ha-perfect-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: color-mix(in oklab, #22c55e 12%, var(--surface-2));
+    border: 1px solid color-mix(in oklab, #22c55e 38%, var(--line));
+    color: #4ade80;
+    font-size: 0.84rem;
+    font-weight: 600;
+  }
+
+  .ha-rec-list {
+    display: grid;
+    gap: 8px;
+  }
+
+  .ha-rec-card {
+    padding: 11px 13px;
+    border-radius: 12px;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    display: grid;
+    gap: 5px;
+  }
+
+  .ha-rec-card.is-joint_safety {
+    border-color: color-mix(in oklab, var(--danger) 45%, var(--line));
+  }
+
+  .ha-rec-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .ha-rec-badge {
+    padding: 2px 8px;
+    border-radius: var(--r-pill);
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+
+  .ha-rec-badge.is-joint_safety {
+    background: color-mix(in oklab, var(--danger) 18%, var(--surface));
+    color: var(--danger);
+  }
+
+  .ha-rec-badge.is-improve_sfr {
+    background: color-mix(in oklab, var(--stabilize) 18%, var(--surface));
+    color: var(--stabilize);
+  }
+
+  .ha-rec-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    font-size: 0.85rem;
+  }
+
+  .ha-rec-old {
+    color: var(--muted);
+    text-decoration: line-through;
+  }
+
+  .ha-rec-plus {
+    color: #4ade80;
+    font-weight: 800;
+  }
+
+  .ha-rec-link {
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: var(--text);
+    font-weight: 700;
+    font-size: inherit;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .ha-rec-reason {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--muted);
+    line-height: 1.38;
+  }
+
+  @media (max-width: 680px) {
+    .ha-score-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+}

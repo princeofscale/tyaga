@@ -350,6 +350,8 @@ export default function ProgressScreen({
         <div className="progress-overview-stack">
           <ProgressOverview
             workouts={workouts}
+            routines={routines}
+            today={today}
             settings={settings}
             bodyMassKg={bodyMassKg}
             onStrength={(key) => {

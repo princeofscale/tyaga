@@ -27,10 +27,17 @@ import {
   ArrowLeftRight,
   CheckCircle2,
   Trophy,
+  ShieldAlert,
 } from "lucide-react";
 import { BiomechanicsProfileStore } from "../domain/BiomechanicsProfile";
 import { GymInventoryStore } from "../domain/GymInventory";
 import { IntraSessionAutoregulator } from "../domain/IntraSessionAutoregulator";
+import {
+  JointGuardEngine,
+  JointPainStore,
+  OPTIONAL_WARMUP_PROTOCOLS,
+  STANDARD_GYM_INVENTORY_ADAPTER,
+} from "../domain/JointGuardEngine";
 import { LivePrDetector } from "../domain/LivePrDetector";
 import { ProgressionEngine, equipmentStepKg, toProgressionInventory } from "../domain/ProgressionEngine";
 import { SmartRestPlanner } from "../domain/SmartRestPlanner";
@@ -44,6 +51,7 @@ import type { Exercise, Routine } from "../lib/types";
 import { detectExerciseEquipment } from "../domain/ExerciseAlternatives";
 import {
   MUSCLES,
+  exerciseById,
   exerciseForEntry,
   entryName,
   recordingLabel,
@@ -1738,6 +1746,100 @@ export default function WorkoutView({
               {(() => {
                 const cue = BiomechanicsProfileStore.techniqueCue(exercise);
                 return cue ? <p className="lever-cue">{cue}</p> : null;
+              })()}
+
+              {(() => {
+                const painLogs = JointPainStore.read();
+                if (!painLogs.length) return null;
+                const jg = new JointGuardEngine();
+                const longLevers = BiomechanicsProfileStore.read().longLevers;
+                const nowMs = Date.now();
+                const safety = jg.evaluateExerciseSafety(we.exerciseId, painLogs, longLevers, nowMs);
+                if (safety.action === "allow") return null;
+                const sourceWeight =
+                  we.sets.find((s) => !s.warmup && s.weight > 0)?.weight ??
+                  before?.working?.[0]?.weight ??
+                  0;
+                const swaps =
+                  safety.action === "swap_recommended" || safety.action === "block_swap_required"
+                    ? jg.recommendSwap(
+                        we.exerciseId,
+                        sourceWeight,
+                        painLogs,
+                        longLevers,
+                        nowMs,
+                        STANDARD_GYM_INVENTORY_ADAPTER,
+                        2,
+                      )
+                    : [];
+                const warmup = safety.optionalWarmupProtocol
+                  ? OPTIONAL_WARMUP_PROTOCOLS[safety.optionalWarmupProtocol]
+                  : null;
+                return (
+                  <div className={`wv-jg-banner is-${safety.action}`} role="status">
+                    <div className="wv-jg-top">
+                      <ShieldAlert size={15} aria-hidden="true" />
+                      <strong>
+                        {safety.action === "block_swap_required"
+                          ? "Защита суставов: нужна безопасная замена"
+                          : safety.action === "swap_recommended"
+                            ? "Защита суставов: лучше заменить движение"
+                            : `Защита суставов: ×${Math.round(safety.loadMultiplier * 100)}% веса · темп ${safety.tempoPrescription ?? "3-1-1-0"} · RIR ${safety.targetRirFloor ?? 2}+`}
+                      </strong>
+                    </div>
+                    {warmup ? (
+                      <span className="wv-jg-warmup">
+                        Разминка: {warmup.title} ({warmup.prescription})
+                      </span>
+                    ) : null}
+                    {!readOnly && swaps.length > 0 ? (
+                      <div className="wv-jg-swaps">
+                        {swaps.map((sw) => {
+                          const targetEx = exerciseById(sw.targetExerciseId);
+                          if (!targetEx) return null;
+                          return (
+                            <button
+                              key={sw.targetExerciseId}
+                              type="button"
+                              className="wv-jg-swap-btn"
+                              onClick={() => {
+                                const oldSpec = exerciseForEntry(we)?.recording;
+                                const swapped = ExerciseSwap.sets(
+                                  we.sets,
+                                  oldSpec?.loadMode,
+                                  oldSpec?.type,
+                                  targetEx,
+                                  [],
+                                );
+                                const nextSets = swapped.sets.map((s) =>
+                                  !s.done && !s.warmup && sw.estimatedWorkingWeightKg > 0
+                                    ? { ...s, weight: sw.estimatedWorkingWeightKg }
+                                    : s,
+                                );
+                                const renamed: WorkoutExercise = {
+                                  ...we,
+                                  exerciseId: targetEx.id,
+                                  displayNameSnapshot: targetEx.name,
+                                };
+                                setWorkout({
+                                  ...w,
+                                  exercises: w.exercises.map((item, idx) =>
+                                    idx === ei
+                                      ? { ...ExerciseSwap.entry(renamed, swapped.carried), sets: nextSets }
+                                      : item,
+                                  ),
+                                });
+                              }}
+                            >
+                              Заменить → {targetEx.name}
+                              {sw.estimatedWorkingWeightKg > 0 ? ` (${fmt(sw.estimatedWorkingWeightKg)} кг)` : ""}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
+                );
               })()}
 
               {renderDdpGoalLine(we, exercise, before, isLaidTopLift)}

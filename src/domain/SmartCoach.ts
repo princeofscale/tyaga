@@ -11,6 +11,7 @@ import {
 } from "./DeloadEngine";
 import type { DeloadPlanRecord } from "./DeloadPlan";
 import { GymInventoryStore } from "./GymInventory";
+import { JointGuardEngine, JointPainStore } from "./JointGuardEngine";
 import { LaidDupPlan } from "./LaidDupPlan";
 import {
   MuscleReadiness,
@@ -635,6 +636,10 @@ export class SmartCoach {
       options,
     );
     const isLongLimbed = options?.isLongLimbed ?? BiomechanicsProfileStore.read().longLevers;
+    const jointS5 = new JointGuardEngine().evaluateDeloadS5(
+      JointPainStore.read(undefined, now.getTime()),
+      now.getTime(),
+    );
     const deloadV2 = DeloadEngine.evaluateV2(workouts, {
       now,
       today,
@@ -642,8 +647,10 @@ export class SmartCoach {
       isLongLimbed,
       energyStatus,
       currentBodyweightKg,
-      painFlagsCount: painFlagsSummary.count,
-      corePainRepeated: routines.some((r) => (LaidDupPlan.periodizationOf(r)?.painFlags?.length ?? 0) > 0),
+      painFlagsCount: Math.max(painFlagsSummary.count, jointS5.painFlagsCount),
+      corePainRepeated:
+        jointS5.corePainRepeated ||
+        routines.some((r) => (LaidDupPlan.periodizationOf(r)?.painFlags?.length ?? 0) > 0),
     });
     const readinessV2 = MuscleReadiness.fromWorkoutsV2(workouts, today, timeZone, now);
 
