@@ -9,6 +9,8 @@ import { DateText } from "../domain/DateText";
 import { VolumeLabel } from "../domain/VolumeLabel";
 import WeeklyTrendChart from "./WeeklyTrendChart";
 import StrengthTotalCard from "./StrengthTotalCard";
+import StrengthForecastCard from "./StrengthForecastCard";
+import WeakLinkRadarCard from "./WeakLinkRadarCard";
 import StatsAnalytics from "./StatsAnalytics";
 import { quantityWord } from "../lib/quantity";
 import type { Workout, Settings } from "../lib/model";
@@ -19,11 +21,13 @@ export default function ProgressOverview({
   settings,
   bodyMassKg,
   onStrength,
+  onOpenExerciseDetail,
 }: {
   workouts: Workout[];
   settings: Settings;
   bodyMassKg?: number | null;
   onStrength: (key: string) => void;
+  onOpenExerciseDetail?: (exerciseId: string) => void;
 }) {
   const [period, setPeriod] = useState<OverviewPeriod>("4w");
   const reduced = useReducedMotion();
@@ -176,6 +180,20 @@ export default function ProgressOverview({
         summary={totalSummary}
         bodyMassKg={bodyMassKg}
         onOpenLift={onStrength}
+      />
+
+      <StrengthForecastCard
+        workouts={workouts}
+        timeZone={zone}
+        bodyMassKg={bodyMassKg}
+        onOpenLift={onStrength}
+      />
+
+      <WeakLinkRadarCard
+        workouts={workouts}
+        timeZone={zone}
+        bodyMassKg={bodyMassKg}
+        onOpenExerciseDetail={onOpenExerciseDetail}
       />
 
       <section className="pulse-strip" aria-label="Дни тренировок">

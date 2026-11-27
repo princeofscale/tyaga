@@ -32,7 +32,9 @@ import {
 import { MuscleCoverage } from "../../domain/MuscleCoverage";
 import type { DeloadPlanRecord } from "../../domain/DeloadPlan";
 import { StrengthExercises } from "../../domain/StrengthExercises";
+import { StrengthForecast } from "../../domain/StrengthForecast";
 import { ProgressSeries } from "../../domain/ProgressSeries";
+import { DateText } from "../../domain/DateText";
 import { ExecutionIdentity } from "../../domain/ExecutionIdentity";
 import { ImportOrigin } from "../../domain/ImportOrigin";
 import { quantity } from "../../lib/quantity";
@@ -204,6 +206,25 @@ export default function ProgressScreen({
   const progressBest = ProgressSeries.best(progressPoints, progressMetric.lowerIsBetter);
   const lastProgress = progressPoints.at(-1);
   const firstProgress = progressPoints[0];
+  const selectedForecast = (() => {
+    if (!progressSpec.e1rmEligible || progressPoints.length < 2) return null;
+    const pts = progressPoints
+      .filter((p) => p.e1rm > 0)
+      .map((p) => ({ date: p.date, e1rm: p.e1rm }));
+    if (pts.length < 2) return null;
+    return new StrengthForecast(displayed, {
+      timeZone: settings.timeZone,
+      today,
+      bodyMassKg,
+    }).forecastSeries({
+      id: progressEntry.exerciseId,
+      label: entryName(progressEntry),
+      short: entryName(progressEntry),
+      progressKey: progressExercise,
+      points: pts,
+      targetStep: 5,
+    });
+  })();
 
   return (
     <>
@@ -335,6 +356,7 @@ export default function ProgressScreen({
               setProgressExercise(key);
               onProgressTabChange("strength");
             }}
+            onOpenExerciseDetail={onOpenExerciseDetail}
           />
           <div ref={coachSectionRef} className="progress-coach-section">
             <SmartCoachPanel
@@ -504,6 +526,29 @@ export default function ProgressScreen({
             </div>
             {progressPoints.length ? (
               <>
+                {selectedForecast && selectedForecast.status !== "insufficient_data" ? (
+                  <div className="sf-inline-strip" role="status">
+                    <TrendingUp size={14} aria-hidden="true" />
+                    {selectedForecast.status === "on_track" && selectedForecast.etaWeeks && selectedForecast.etaDate ? (
+                      <span>
+                        Темп <b>+{fmt(selectedForecast.weeklyRateKg ?? 0)} кг/нед</b> · цель{" "}
+                        <b>{fmt(selectedForecast.targetKg)} кг</b> ≈ через {selectedForecast.etaWeeks} нед. (
+                        {DateText.day(selectedForecast.etaDate)})
+                        {selectedForecast.projected9WeeksKg
+                          ? ` · через 9 нед. ~${fmt(selectedForecast.projected9WeeksKg)} кг`
+                          : ""}
+                      </span>
+                    ) : selectedForecast.status === "plateau" ? (
+                      <span>
+                        Тренд e1RM вышел на <b>плато</b> ({fmt(selectedForecast.weeklyRateKg ?? 0)} кг/нед) — смени волну или добавь разгрузку
+                      </span>
+                    ) : (
+                      <span>
+                        Отметка <b>{fmt(selectedForecast.targetKg)} кг</b> уже достигнута!
+                      </span>
+                    )}
+                  </div>
+                ) : null}
                 <InteractiveStrengthChart
                   points={progressPoints}
                   unit={progressMetric.unit}
