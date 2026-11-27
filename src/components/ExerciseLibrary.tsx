@@ -9,11 +9,15 @@ import {
   Pencil,
   Plus,
   Search,
+  ShieldCheck,
   Star,
+  Trophy,
   X,
 } from "lucide-react";
 import Select from "./Select";
-import { MUSCLES, exerciseCatalog, type Exercise } from "../lib/model";
+import { MUSCLES, exerciseCatalog, fmt, type Exercise, type Workout } from "../lib/model";
+import { DeloadEngine } from "../domain/DeloadEngine";
+import { OneRepMaxFormulas } from "../domain/OneRepMaxFormulas";
 import { WGER_ZONES } from "../domain/WgerExercise";
 import { matchesSearch, normalizeSearch } from "../lib/search";
 import { ExerciseSearchRank } from "../domain/ExerciseSearchRank";
@@ -137,6 +141,7 @@ function LibraryContent({
   onMarked,
   startMarking = false,
   catalogGaps = [],
+  workouts = [],
 }: {
   picker?: boolean;
   onAdd: (id: string) => void;
@@ -152,6 +157,7 @@ function LibraryContent({
   onMarked?: (exercises: Exercise[]) => void;
   startMarking?: boolean;
   catalogGaps?: Exercise[];
+  workouts?: Workout[];
 }) {
   const [source, setSource] = useState<"tyaga" | "wger" | "personal" | "favorites">(
     startMarking ? "personal" : "tyaga",
@@ -168,7 +174,35 @@ function LibraryContent({
   const [muscle, setMuscle] = useState(defaultMuscle);
   const [subheadFilter, setSubheadFilter] = useState("all");
   const [equipment, setEquipment] = useState("all");
+  const [spineFriendly, setSpineFriendly] = useState(false);
   const [page, setPage] = useState(1);
+
+  const historyStats = useMemo(() => {
+    const map = new Map<string, { bestE1rm: number; lastWeight: number; lastReps: number }>();
+    for (const w of workouts) {
+      if (DeloadEngine.isDeloadName(w.name)) continue;
+      for (const ex of w.exercises) {
+        let best = map.get(ex.exerciseId)?.bestE1rm ?? 0;
+        let lastWeight = map.get(ex.exerciseId)?.lastWeight ?? 0;
+        let lastReps = map.get(ex.exerciseId)?.lastReps ?? 0;
+        for (const s of ex.sets) {
+          if (!s.done || s.warmup || s.weight <= 0 || s.reps < 1) continue;
+          if (lastWeight === 0) {
+            lastWeight = s.weight;
+            lastReps = s.reps;
+          }
+          if (s.reps <= 12) {
+            const est = OneRepMaxFormulas.round(OneRepMaxFormulas.epley(s.weight, s.reps));
+            if (est > best) best = est;
+          }
+        }
+        if (best > 0 || lastWeight > 0) {
+          map.set(ex.exerciseId, { bestE1rm: best, lastWeight, lastReps });
+        }
+      }
+    }
+    return map;
+  }, [workouts]);
 
   useEffect(() => {
     const id = setTimeout(() => setDebounced(search), 200);
@@ -218,10 +252,14 @@ function LibraryContent({
               normalizeSearch,
             )
           : filteredLocal;
-    return subheadFilter !== "all"
-      ? baseExercises.filter((e) => MuscleParticipation.headRole(subheadFilter, e) !== undefined)
-      : baseExercises;
-  }, [source, search, muscle, equipment, query.data?.exercises, page, debounced, filteredLocal, subheadFilter]);
+    const afterHead =
+      subheadFilter !== "all"
+        ? baseExercises.filter((e) => MuscleParticipation.headRole(subheadFilter, e) !== undefined)
+        : baseExercises;
+    return spineFriendly
+      ? afterHead.filter((e) => DeloadEngine.axialLoadMultiplier(e) <= 0.5)
+      : afterHead;
+  }, [source, search, muscle, equipment, query.data?.exercises, page, debounced, filteredLocal, subheadFilter, spineFriendly]);
 
   const unmarked = useMemo(() => MuscleCoverage.unmarkedPersonal(personal), [personal]);
   const togglePicked = (id: string) =>
@@ -383,6 +421,16 @@ function LibraryContent({
             { value: "bodyweight", label: "Вес тела" },
           ]}
         />
+        <button
+          type="button"
+          className={`tel-pill-btn exlib-spine-btn${spineFriendly ? " active" : ""}`}
+          aria-pressed={spineFriendly}
+          onClick={() => setSpineFriendly((v) => !v)}
+          title="Показать только упражнения с низкой осевой нагрузкой на поясницу"
+        >
+          <ShieldCheck size={14} aria-hidden="true" />
+          Щадящие поясницу
+        </button>
       </div>
 
       {/* Мышечные группы */}
@@ -642,6 +690,18 @@ function LibraryContent({
                         </span>
                       ))}
                       <span className="exlib-tag">{equipmentLabel(e.equipment)}</span>
+                      {(() => {
+                        const st = historyStats.get(e.id);
+                        if (!st) return null;
+                        return (
+                          <span className="exlib-tag is-pr">
+                            <Trophy size={11} aria-hidden="true" />
+                            {st.bestE1rm > 0
+                              ? `1ПМ ${fmt(st.bestE1rm)} кг`
+                              : `${fmt(st.lastWeight)} кг × ${st.lastReps}`}
+                          </span>
+                        );
+                      })()}
                     </div>
                   </div>
 

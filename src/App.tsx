@@ -82,7 +82,6 @@ import { DAY_NAMES, TrainingProgram } from "./domain/TrainingProgram";
 import { VolumeLandmarksCalculator } from "./domain/VolumeLandmarks";
 import { WorkoutSession } from "./domain/WorkoutSession";
 import TodayDashboard from "./components/TodayDashboard";
-import WorkoutView from "./components/WorkoutView";
 import SessionCard from "./components/SessionCard";
 import TabErrorBoundary from "./components/TabErrorBoundary";
 import {
@@ -92,6 +91,7 @@ import {
   ProgramsScreen,
   ProgressScreen,
   SupplementsScreen,
+  WorkoutView,
 } from "./components/chunks";
 import type { ProgressTab } from "./features/progress/ProgressScreen";
 import {
@@ -1233,6 +1233,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
         defaultMuscle={muscleFilter}
         personal={product.customExercises}
         favorites={product.favorites}
+        workouts={workouts}
         onFavorite={(id) => void favoriteExercise(id)}
         onCreate={createPersonal}
         onEdit={editPersonal}
@@ -1537,7 +1538,8 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                       tabIndex={-1}
                       aria-label="Редактор тренировки"
                     >
-                      <WorkoutView
+                      <Suspense fallback={<p role="status">Открываем тренировку…</p>}>
+                        <WorkoutView
                         deloadMode={deload?.mode}
                         deloadPlan={deload}
                         routines={product.routines}
@@ -1631,6 +1633,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                           }
                         }}
                       />
+                      </Suspense>
                     </section>
                   </>
                 ) : null}

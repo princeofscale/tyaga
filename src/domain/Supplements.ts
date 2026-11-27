@@ -673,4 +673,59 @@ export class SupplementsStore {
   static todayDate(timeZone?: string, now = new Date()): string {
     return localDate(now, timeZone);
   }
+
+  /**
+   * Пресет «Доказательный стек в 1 клик» (Tier A: креатин 5г, сывороточный протеин 30г,
+   * витамин D3 2000 МЕ, магний 400 мг, кофеин 200 мг в тренировочные дни).
+   * Не дублирует уже добавленные позиции по `catalogId`.
+   */
+  static applyEvidenceStack(state: SupplementsState): {
+    nextState: SupplementsState;
+    addedCount: number;
+  } {
+    const preset: Array<{
+      catalogId: string;
+      doseAmount: number;
+      doseUnit: SupplementDoseUnit;
+      timing: SupplementTiming;
+      days: number[];
+    }> = [
+      { catalogId: "creatine", doseAmount: 5, doseUnit: "г", timing: "morning", days: [...ALL_WEEKDAYS] },
+      { catalogId: "whey-protein", doseAmount: 30, doseUnit: "г", timing: "post_workout", days: [...ALL_WEEKDAYS] },
+      { catalogId: "vitamin-d3", doseAmount: 2000, doseUnit: "МЕ", timing: "morning", days: [...ALL_WEEKDAYS] },
+      { catalogId: "magnesium", doseAmount: 400, doseUnit: "мг", timing: "evening", days: [...ALL_WEEKDAYS] },
+      { catalogId: "caffeine", doseAmount: 200, doseUnit: "мг", timing: "pre_workout", days: [0, 1, 2, 4, 5] },
+    ];
+
+    const existingCatalogIds = new Set(
+      state.stack.map((s) => s.catalogId).filter((id): id is string => Boolean(id)),
+    );
+    const added: UserSupplement[] = [];
+    const nowIso = new Date().toISOString();
+
+    for (const spec of preset) {
+      if (existingCatalogIds.has(spec.catalogId)) continue;
+      const cat = SUPPLEMENT_CATALOG.find((c) => c.id === spec.catalogId);
+      if (!cat) continue;
+      added.push({
+        id: `sup-${spec.catalogId}-${Date.now()}-${added.length}`,
+        catalogId: cat.id,
+        name: cat.name,
+        category: cat.category,
+        dose: `${spec.doseAmount} ${spec.doseUnit}`,
+        doseAmount: spec.doseAmount,
+        doseUnit: spec.doseUnit,
+        timing: spec.timing,
+        days: spec.days,
+        accent: cat.accent,
+        createdAt: nowIso,
+      });
+    }
+
+    if (!added.length) return { nextState: state, addedCount: 0 };
+    return {
+      nextState: { ...state, stack: [...state.stack, ...added] },
+      addedCount: added.length,
+    };
+  }
 }

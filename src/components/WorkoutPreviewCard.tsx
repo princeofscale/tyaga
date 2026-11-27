@@ -86,12 +86,16 @@ export default function WorkoutPreviewCard({
   today,
   timeZone,
   bodyMassKg,
+  selectedMuscle = null,
+  onSelectMuscle,
 }: {
   planned: Workout;
   history: Workout[];
   today: string;
   timeZone?: string;
   bodyMassKg?: number | null;
+  selectedMuscle?: Muscle | null;
+  onSelectMuscle?: (muscle: Muscle | null) => void;
 }) {
   const [showAllMuscles, setShowAllMuscles] = useState(false);
 
@@ -152,8 +156,32 @@ export default function WorkoutPreviewCard({
           const beforePct = Math.min(100, (m.beforeSets / scaleMax) * 100);
           const addedPct = Math.min(100 - beforePct, (m.addedSets / scaleMax) * 100);
           const mevPct = Math.min(96, (m.mev / scaleMax) * 100);
+          const isSelected = selectedMuscle === m.muscle;
+          const interactive = Boolean(onSelectMuscle);
           return (
-            <div key={m.muscle} className="wprev-muscle-row" role="listitem">
+            <div
+              key={m.muscle}
+              className={`wprev-muscle-row${interactive ? " is-interactive" : ""}${isSelected ? " is-selected" : ""}`}
+              role="listitem"
+              onClick={
+                interactive
+                  ? () => onSelectMuscle?.(isSelected ? null : m.muscle)
+                  : undefined
+              }
+              onKeyDown={
+                interactive
+                  ? (e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onSelectMuscle?.(isSelected ? null : m.muscle);
+                      }
+                    }
+                  : undefined
+              }
+              tabIndex={interactive ? 0 : undefined}
+              aria-pressed={interactive ? isSelected : undefined}
+              title={interactive ? "Нажми, чтобы подсветить упражнения на эту мышцу" : undefined}
+            >
               <div className="wprev-muscle-head">
                 <span className="wprev-muscle-name">
                   <b>{m.name}</b>

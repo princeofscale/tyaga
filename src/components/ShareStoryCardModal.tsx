@@ -5,6 +5,9 @@ import type { Workout } from "../lib/model";
 import type { AccountProfile } from "../lib/account";
 import { volumeSummary, fmt } from "../lib/model";
 import { TextFitter } from "../domain/TextFitter";
+import { LivePrDetector } from "../domain/LivePrDetector";
+import { WorkoutPreview } from "../domain/WorkoutPreview";
+import type { Muscle } from "../data/muscles";
 
 const DISPLAY = '"Sofia Sans Condensed", "Arial Narrow", sans-serif';
 const BODY = '"Golos Text", system-ui, sans-serif';
@@ -32,11 +35,85 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.closePath();
 }
 
+function drawMiniBodyCanvas(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  scale: number,
+  bodyMap: Partial<Record<Muscle, { level: "primary" | "secondary"; intensity: number }>>,
+) {
+  const fillFor = (m: Muscle) => {
+    const entry = bodyMap[m];
+    if (!entry) return "rgba(255, 255, 255, 0.12)";
+    if (entry.level === "primary") return "#cafa64";
+    return "rgba(202, 250, 100, 0.48)";
+  };
+  const headFill = "rgba(255, 255, 255, 0.16)";
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(scale, scale);
+
+  // Front silhouette (0..88)
+  ctx.fillStyle = headFill;
+  ctx.beginPath(); ctx.arc(44, 14, 9.5, 0, Math.PI * 2); ctx.fill();
+  roundRect(ctx, 39, 23, 10, 7, 3); ctx.fill();
+  // Shoulders
+  ctx.fillStyle = fillFor("shoulders");
+  ctx.beginPath(); ctx.ellipse(22, 39, 7.5, 9, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(66, 39, 7.5, 9, 0, 0, Math.PI * 2); ctx.fill();
+  // Chest
+  ctx.fillStyle = fillFor("chest");
+  roundRect(ctx, 29, 32, 14, 17, 5); ctx.fill();
+  roundRect(ctx, 45, 32, 14, 17, 5); ctx.fill();
+  // Core
+  ctx.fillStyle = fillFor("core");
+  roundRect(ctx, 33, 52, 22, 26, 6); ctx.fill();
+  // Biceps
+  ctx.fillStyle = fillFor("biceps");
+  roundRect(ctx, 14, 47, 9, 23, 4.5); ctx.fill();
+  roundRect(ctx, 65, 47, 9, 23, 4.5); ctx.fill();
+  // Quads
+  ctx.fillStyle = fillFor("quads");
+  roundRect(ctx, 28, 81, 14, 35, 7); ctx.fill();
+  roundRect(ctx, 46, 81, 14, 35, 7); ctx.fill();
+  // Calves
+  ctx.fillStyle = fillFor("calves");
+  roundRect(ctx, 30, 119, 10.5, 28, 5); ctx.fill();
+  roundRect(ctx, 47.5, 119, 10.5, 28, 5); ctx.fill();
+
+  // Back silhouette (+94px right)
+  ctx.translate(94, 0);
+  ctx.fillStyle = headFill;
+  ctx.beginPath(); ctx.arc(44, 14, 9.5, 0, Math.PI * 2); ctx.fill();
+  roundRect(ctx, 39, 23, 10, 7, 3); ctx.fill();
+  ctx.fillStyle = fillFor("shoulders");
+  ctx.beginPath(); ctx.ellipse(22, 39, 7.5, 9, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(66, 39, 7.5, 9, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = fillFor("back");
+  roundRect(ctx, 29, 31, 30, 33, 7); ctx.fill();
+  ctx.fillStyle = fillFor("triceps");
+  roundRect(ctx, 14, 47, 9, 23, 4.5); ctx.fill();
+  roundRect(ctx, 65, 47, 9, 23, 4.5); ctx.fill();
+  ctx.fillStyle = fillFor("glutes");
+  ctx.beginPath(); ctx.ellipse(36, 76, 9, 10, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(52, 76, 9, 10, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = fillFor("hamstrings");
+  roundRect(ctx, 28, 86, 14, 30, 7); ctx.fill();
+  roundRect(ctx, 46, 86, 14, 30, 7); ctx.fill();
+  ctx.fillStyle = fillFor("calves");
+  roundRect(ctx, 30, 119, 10.5, 28, 5); ctx.fill();
+  roundRect(ctx, 47.5, 119, 10.5, 28, 5); ctx.fill();
+
+  ctx.restore();
+}
+
 export function ShareStoryCardModal({
   workout,
+  allWorkouts,
   account,
 }: {
   workout: Workout;
+  allWorkouts?: Workout[];
   account: AccountProfile;
   onClose: () => void;
 }) {
@@ -194,34 +271,59 @@ export function ShareStoryCardModal({
       ctx.fillText(m.label, cx + cardW / 2, cardY + 188);
     });
 
-    // Главный результат
-    if (bestSet) {
-      const prY = 720;
+    // Главный результат + силуэт мышц и PR
+    const preview = WorkoutPreview.analyze(workout, allWorkouts ?? [], workout.date, workout.timeZone);
+    const prDetector = allWorkouts?.length ? new LivePrDetector(allWorkouts, workout.id) : null;
+    const prHitsCount = prDetector
+      ? workout.exercises.filter((ex) => prDetector.bestPrSetId(ex) !== null).length
+      : 0;
+
+    if (bestSet || preview.muscles.length > 0) {
+      const prY = 700;
       ctx.fillStyle = "rgba(202, 250, 100, 0.08)";
-      ctx.strokeStyle = "rgba(202, 250, 100, 0.4)";
+      ctx.strokeStyle = "rgba(202, 250, 100, 0.36)";
       ctx.lineWidth = 2;
-      roundRect(ctx, 80, prY, inner, 180, 24);
+      roundRect(ctx, 80, prY, inner, 210, 24);
       ctx.fill();
       ctx.stroke();
 
       ctx.fillStyle = "#cafa64";
-      roundRect(ctx, 80, prY, 10, 180, 5);
+      roundRect(ctx, 80, prY, 10, 210, 5);
       ctx.fill();
 
+      // Силуэт мышц справа внутри блока
+      drawMiniBodyCanvas(ctx, width - 80 - 210, prY + 20, 1.08, preview.bodyMap);
+
+      const copyMaxW = inner - 270;
       ctx.textAlign = "left";
       ctx.fillStyle = "#cafa64";
-      ctx.font = font(700, 26);
-      ctx.fillText("Лучший подход", 120, prY + 58);
+      ctx.font = font(700, 25);
+      const tag = prHitsCount > 0 ? `НОВЫЙ PR (${prHitsCount}) · ЛУЧШИЙ ПОДХОД` : "ЛУЧШИЙ ПОДХОД";
+      ctx.fillText(tag, 118, prY + 54);
 
-      ctx.fillStyle = "#ffffff";
-      const result = `${bestSet.name}: ${bestSet.weight} кг × ${bestSet.reps}`;
-      const resultSize = fitter.fitSize(result, inner - 80, 48, 28, (size) => font(700, size, BODY));
-      ctx.font = font(700, resultSize, BODY);
-      ctx.fillText(fitter.ellipsize(result, inner - 80, font(700, resultSize, BODY)), 120, prY + 128);
+      if (bestSet) {
+        ctx.fillStyle = "#ffffff";
+        const result = `${bestSet.name}: ${bestSet.weight} кг × ${bestSet.reps}`;
+        const resultSize = fitter.fitSize(result, copyMaxW, 42, 26, (size) => font(700, size, BODY));
+        ctx.font = font(700, resultSize, BODY);
+        ctx.fillText(fitter.ellipsize(result, copyMaxW, font(700, resultSize, BODY)), 118, prY + 114);
+      }
+
+      ctx.fillStyle = "#a4af9e";
+      ctx.font = font(600, 24);
+      const muscleNames = preview.muscles
+        .filter((m) => m.role === "primary")
+        .slice(0, 3)
+        .map((m) => m.name)
+        .join(" · ");
+      const funLine = [muscleNames, preview.tonnageComparison].filter(Boolean).join("  •  ");
+      if (funLine) {
+        ctx.fillText(fitter.ellipsize(funLine, copyMaxW, font(600, 24)), 118, prY + 168);
+      }
     }
 
     // Выполненные упражнения: название режем по месту, чтобы не налезало на вес
-    const exY = 960;
+    const exY = 970;
     // Упражнение без единого выполненного подхода на карточку не попадает
     const shown = workout.exercises
       .filter((e) => e.sets.some((s) => !s.warmup && s.done))
@@ -272,7 +374,7 @@ export function ShareStoryCardModal({
     ctx.fillStyle = "#5f6b5c";
     ctx.font = font(600, 24);
     ctx.fillText("Тяга · силовой журнал", width / 2, height - 100);
-  }, [workout, account.displayName, format, fontsReady, summary.total, durationMin, workingSetsCount, bestSet]);
+  }, [workout, allWorkouts, account.displayName, format, fontsReady, summary.total, durationMin, workingSetsCount, bestSet]);
 
   const handleDownload = () => {
     const canvas = canvasRef.current;

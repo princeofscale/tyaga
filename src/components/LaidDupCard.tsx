@@ -5,6 +5,7 @@ import {
   ArrowUpDown,
   CalendarDays,
   ChevronDown,
+  Eye,
   Pencil,
   Play,
   RotateCcw,
@@ -35,6 +36,8 @@ type CardProps = {
   onRecalc: () => void;
   /** Быстрый старт конкретного дня цикла прямо из карточки. */
   onStartDay?: (routine: Routine) => void;
+  /** Превью конкретного дня цикла (силуэт мышц, недельный объём и EWMA). */
+  onPreviewDay?: (routine: Routine) => void;
   /** Быстрое редактирование конкретного дня цикла прямо из карточки. */
   onEditDay?: (routine: Routine) => void;
   /** Автовыпуск из «Калибровки по RIR»: применить ТМ 92,5 % и включить проценты DUP. */
@@ -61,6 +64,7 @@ export function LaidDupCard({
   onUpdate,
   onRecalc,
   onStartDay,
+  onPreviewDay,
   onEditDay,
   onGraduateCalibration,
   onToggleDeloadWeek,
@@ -284,6 +288,18 @@ export function LaidDupCard({
                   >
                     <Play size={14} aria-hidden="true" />
                     <span>Начать</span>
+                  </button>
+                ) : null}
+                {onPreviewDay ? (
+                  <button
+                    type="button"
+                    className="laid-tile-btn is-icon"
+                    disabled={busy}
+                    aria-label={`Превью дня: ${LaidDupPlan.SHORT[p.day]}`}
+                    title="Превью мышц и недельного объёма"
+                    onClick={() => onPreviewDay(r)}
+                  >
+                    <Eye size={15} aria-hidden="true" />
                   </button>
                 ) : null}
                 <button

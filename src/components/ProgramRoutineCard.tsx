@@ -1,4 +1,4 @@
-import { Copy, Pencil, Play, Trash2 } from "lucide-react";
+import { Copy, Eye, Pencil, Play, Trash2 } from "lucide-react";
 import { m, useReducedMotion } from "motion/react";
 import { LaidDupPlan } from "../domain/LaidDupPlan";
 import { PlanLine } from "../domain/PlanLine";
@@ -15,12 +15,13 @@ type Props = {
   today: string;
   deload: boolean;
   onStart: () => void;
+  onPreview?: () => void;
   onEdit: () => void;
   onCopy: () => void;
   onDelete: () => void;
 };
 
-export default function ProgramRoutineCard({ routine, workouts, timeZone, today, deload, onStart, onEdit, onCopy, onDelete }: Props) {
+export default function ProgramRoutineCard({ routine, workouts, timeZone, today, deload, onStart, onPreview, onEdit, onCopy, onDelete }: Props) {
   const reduceMotion = useReducedMotion();
   const program = new TrainingProgram(routine);
   const periodization = LaidDupPlan.periodizationOf(routine);
@@ -68,6 +69,11 @@ export default function ProgramRoutineCard({ routine, workouts, timeZone, today,
           <Play size={16} fill="currentColor" aria-hidden="true" />
           Начать
         </m.button>
+        {onPreview ? (
+          <button type="button" className="icon-button" aria-label={`Превью программы ${routine.name}`} title="Превью мышц и объёма" onClick={onPreview}>
+            <Eye size={16} aria-hidden="true" />
+          </button>
+        ) : null}
         <button type="button" className="icon-button" aria-label={`Копировать программу ${routine.name}`} onClick={onCopy}>
           <Copy size={16} aria-hidden="true" />
         </button>

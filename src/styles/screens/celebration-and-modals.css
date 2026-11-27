@@ -1,0 +1,176 @@
+
+@layer screens {
+  .celebration-hero {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 14px 16px;
+      background: linear-gradient(135deg, rgba(202, 250, 100, 0.12) 0%, rgba(255, 255, 255, 0.02) 100%);
+      border: 1px solid rgba(202, 250, 100, 0.25);
+      border-radius: 14px;
+      margin-bottom: 14px;
+    }
+  .celebration-trophy-badge {
+      position: relative;
+      width: 52px;
+      height: 52px;
+      border-radius: 16px;
+      background: linear-gradient(135deg, rgba(202, 250, 100, 0.3) 0%, rgba(202, 250, 100, 0.08) 100%);
+      border: 1px solid rgba(202, 250, 100, 0.4);
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+      box-shadow: 0 0 20px rgba(202, 250, 100, 0.25);
+    }
+  .celebration-hero-copy {
+      flex: 1;
+      min-width: 0;
+    }
+  .celebration-tag {
+      font-size: 0.6875rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      color: var(--accent);
+    }
+  .celebration-hero-copy h3 {
+      margin: 2px 0 0;
+      font-size: 1.1rem;
+    }
+  .celebration-hero-copy p {
+      margin: 2px 0 0;
+      font-size: 0.8125rem;
+      color: var(--muted);
+    }
+  .share-summary-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 38px;
+      padding: 0 14px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: var(--text);
+      font-size: 0.8125rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.18s ease;
+      flex-shrink: 0;
+    }
+  .share-summary-btn:hover {
+      background: rgba(202, 250, 100, 0.15);
+      border-color: rgba(202, 250, 100, 0.4);
+      color: var(--accent);
+    }
+  .share-summary-btn.copied {
+      background: rgba(202, 250, 100, 0.25);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+  .detail-date {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--text);
+      font-size: 0.85rem;
+    }
+  .detail-workout-info {
+      display: flex;
+      flex-direction: column;
+      text-align: right;
+      gap: 2px;
+    }
+  @media (max-width: 540px) {
+    .detail-workout-info {
+          text-align: left;
+        }
+  }
+  .detail-workout-info span {
+      font-size: 0.8125rem;
+      color: var(--muted);
+    }
+  .detail-workout-info b {
+      font-size: 0.875rem;
+      color: var(--accent);
+    }
+  .story-card-modal-content {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1.1rem;
+    }
+  .story-format-pills {
+      display: flex;
+      gap: 6px;
+      background: rgba(0, 0, 0, 0.3);
+      padding: 4px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+    }
+  .story-canvas-preview-wrap {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      padding: 0.5rem 0;
+    }
+  .story-render-canvas {
+      max-width: 100%;
+      border-radius: 16px;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+  .story-render-canvas.story {
+      max-height: 480px;
+      aspect-ratio: 9 / 16;
+    }
+  .story-render-canvas.post {
+      max-height: 440px;
+      aspect-ratio: 4 / 5;
+    }
+  .story-card-actions {
+      display: flex;
+      gap: 0.75rem;
+      width: 100%;
+    }
+  .story-action-btn {
+      flex: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      min-height: 44px;
+      font-size: 0.9rem;
+    }
+  .celebration-actions-group {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+  .story-card-trigger-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0.55rem 0.9rem;
+      background: rgba(202, 250, 100, 0.12);
+      border: 1px solid var(--accent, #cafa64);
+      border-radius: 10px;
+      color: var(--accent, #cafa64);
+      font-size: 0.84rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+  .story-card-trigger-btn:hover {
+      background: rgba(202, 250, 100, 0.22);
+      transform: translateY(-1px);
+    }
+  @media (max-width: 500px) {
+    .celebration-hero {
+          flex-wrap: wrap;
+        }
+    .orm-inputs-deck {
+          grid-template-columns: 1fr;
+        }
+  }
+}

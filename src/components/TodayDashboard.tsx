@@ -24,7 +24,7 @@ import { LaidDupPlan } from "../domain/LaidDupPlan";
 import type { DeloadPlanRecord } from "../domain/DeloadPlan";
 import { SupplementsStore, type SupplementsState } from "../domain/Supplements";
 import { elapsedMs, type Draft } from "../lib/draft";
-import { entryName, fmt, localDate, workingSets, type Routine, type Workout } from "../lib/model";
+import { entryName, exerciseForEntry, fmt, localDate, workingSets, type Muscle, type Routine, type Workout } from "../lib/model";
 import { quantity, quantityWord } from "../lib/quantity";
 import WeeklyActivityBar from "./WeeklyActivityBar";
 import WorkoutPreviewCard from "./WorkoutPreviewCard";
@@ -136,6 +136,7 @@ export default function TodayDashboard({
 }: Props) {
   const reduceMotion = useReducedMotion();
   const [showAllPreview, setShowAllPreview] = useState(false);
+  const [selectedPreviewMuscle, setSelectedPreviewMuscle] = useState<Muscle | null>(null);
   const active = draft ?? plan;
   const finished = active ? undefined : completed;
   const status = draft ? "В работе" : plan ? "По программе" : finished ? "Выполнено" : hasPrograms ? "День отдыха" : null;
@@ -295,6 +296,11 @@ export default function TodayDashboard({
               today={todayKey}
               timeZone={timeZone}
               bodyMassKg={bodyMassKg}
+              selectedMuscle={selectedPreviewMuscle}
+              onSelectMuscle={(m) => {
+                setSelectedPreviewMuscle(m);
+                if (m && preview && preview.length > limit) setShowAllPreview(true);
+              }}
             />
             {preview ? (
               <>
@@ -307,8 +313,18 @@ export default function TodayDashboard({
                     const firstWork = exercise.sets.find((set) => !set.warmup);
                     const weight = firstWork?.weight;
                     const rir = firstWork?.rir;
+                    const def = exerciseForEntry(exercise);
+                    const hitsSelected =
+                      selectedPreviewMuscle !== null &&
+                      def !== undefined &&
+                      (def.primary.includes(selectedPreviewMuscle) ||
+                        def.secondary.includes(selectedPreviewMuscle));
+                    const dimRow = selectedPreviewMuscle !== null && !hitsSelected;
                     return (
-                      <li key={`${exercise.exerciseId}:${index}`}>
+                      <li
+                        key={`${exercise.exerciseId}:${index}`}
+                        className={hitsSelected ? "is-muscle-hit" : dimRow ? "is-muscle-dim" : undefined}
+                      >
                         <span className="plan-number" aria-hidden="true">
                           {String(index + 1).padStart(2, "0")}
                         </span>

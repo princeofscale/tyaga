@@ -116,6 +116,7 @@ export default function SessionInsights({
         >
           <ShareStoryCardModal
             workout={workout}
+            allWorkouts={allWorkouts}
             account={
               account || {
                 displayName: "Атлет",

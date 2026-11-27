@@ -9,6 +9,7 @@ function lazyNamed<P extends object>(
 }
 
 /** Все отдельно загружаемые экраны и модальные инструменты. Каждый при отказе показывает «Повторить», а не роняет приложение. */
+export const WorkoutView = lazyChunk(() => import("./WorkoutView"), "Экран тренировки не загрузился");
 export const ExerciseLibrary = lazyChunk(() => import("./ExerciseLibrary"), "Каталог не загрузился");
 export const AnatomyExplorer = lazyChunk(() => import("./AnatomyExplorer"), "Атлас не загрузился");
 export const ProgramsScreen = lazyChunk(() => import("./ProgramsScreen"), "Программы не загрузились");

@@ -1,0 +1,267 @@
+@layer tokens, base, layout, components, screens, utilities;
+@layer screens {
+  /* Живой бейдж рекорда (PR) в строке подхода */
+  .live-pr-badge {
+    grid-column: 1 / -1;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    justify-self: start;
+    margin-top: 4px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in oklab, #f59e0b 52%, var(--line));
+    background: color-mix(in oklab, #f59e0b 14%, var(--surface));
+    color: #fbbf24;
+    font-size: 0.72rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Быстрые 1-hand степперы веса и RIR в режиме «Зал» */
+  .gym-thumb-controls {
+    grid-column: 1 / -1;
+    display: grid;
+    gap: 8px;
+    margin-top: 8px;
+    padding-top: 10px;
+    border-top: 1px solid var(--line);
+  }
+  .gym-thumb-weights,
+  .gym-thumb-rir {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+  }
+  .gym-thumb-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--muted);
+    margin-right: 2px;
+  }
+  .gym-thumb-btn,
+  .gym-thumb-rir-btn {
+    min-block-size: 44px;
+    min-inline-size: 44px;
+    padding: 6px 10px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: var(--surface-2, var(--bg));
+    color: var(--text);
+    font-size: 0.82rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    flex: 1 1 0;
+  }
+  .gym-thumb-rir-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--on-accent, #ffffff);
+  }
+
+  /* Интерактив клика по мышце в WorkoutPreviewCard */
+  .wprev-muscle-row.is-interactive {
+    cursor: pointer;
+    padding: 4px 6px;
+    margin: -4px -6px;
+    border-radius: 9px;
+    transition: background-color 140ms ease;
+  }
+  .wprev-muscle-row.is-interactive:hover {
+    background: color-mix(in oklab, var(--accent) 8%, transparent);
+  }
+  .wprev-muscle-row.is-selected {
+    background: color-mix(in oklab, var(--accent) 14%, var(--surface));
+  }
+  .plan-exercises li.is-muscle-hit {
+    border-color: color-mix(in oklab, var(--accent) 55%, var(--line));
+    background: color-mix(in oklab, var(--accent) 10%, var(--surface));
+    border-radius: 10px;
+    padding-inline: 8px;
+  }
+  .plan-exercises li.is-muscle-dim {
+    opacity: 0.45;
+  }
+
+  /* Модалка превью дня из Программ */
+  .program-preview-modal {
+    display: grid;
+    gap: 14px;
+  }
+  .program-preview-list {
+    margin: 0;
+  }
+  .program-preview-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .program-preview-actions .button {
+    min-block-size: 44px;
+  }
+
+  /* Теплокарта активности в Истории (16 недель, GitHub-style) */
+  .history-heatmap-card {
+    display: grid;
+    gap: 12px;
+    padding: 16px;
+    min-width: 0;
+  }
+  .heatmap-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 8px 12px;
+  }
+  .heatmap-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .heatmap-head h3 {
+    margin: 2px 0 0;
+    font-size: 0.96rem;
+    color: var(--text);
+  }
+  .heatmap-legend {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.7rem;
+    color: var(--muted);
+  }
+  .heatmap-scroll {
+    display: flex;
+    align-items: stretch;
+    gap: 6px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    max-width: 100%;
+  }
+  .heatmap-weekdays {
+    display: grid;
+    grid-template-rows: repeat(7, 13px);
+    gap: 3px;
+    font-size: 0.62rem;
+    color: var(--muted);
+    line-height: 13px;
+    flex: none;
+  }
+  .heatmap-grid {
+    display: grid;
+    grid-auto-flow: column;
+    gap: 3px;
+    flex: 1 0 auto;
+  }
+  .heatmap-col {
+    display: grid;
+    grid-template-rows: repeat(7, 13px);
+    gap: 3px;
+  }
+  .hm-cell {
+    display: block;
+    width: 13px;
+    height: 13px;
+    border-radius: 3px;
+    background: var(--surface-2, var(--bg-soft));
+    border: 1px solid color-mix(in oklab, var(--line) 65%, transparent);
+  }
+  .hm-cell.is-future {
+    opacity: 0.25;
+  }
+  .hm-cell.lvl-1 {
+    background: color-mix(in oklab, var(--accent) 26%, var(--surface));
+    border-color: color-mix(in oklab, var(--accent) 36%, transparent);
+  }
+  .hm-cell.lvl-2 {
+    background: color-mix(in oklab, var(--accent) 50%, var(--surface));
+    border-color: color-mix(in oklab, var(--accent) 60%, transparent);
+  }
+  .hm-cell.lvl-3 {
+    background: color-mix(in oklab, var(--accent) 76%, var(--surface));
+    border-color: color-mix(in oklab, var(--accent) 82%, transparent);
+  }
+  .hm-cell.lvl-4 {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  .hm-cell.is-today {
+    outline: 1.5px solid var(--text);
+    outline-offset: 1px;
+  }
+  .heatmap-wow {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    padding-top: 10px;
+    border-top: 1px solid var(--line);
+  }
+  .heatmap-wow-item {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+  }
+  .heatmap-wow-item small {
+    font-size: 0.7rem;
+    color: var(--muted);
+  }
+  .heatmap-wow-item strong {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 5px;
+    font-size: 0.96rem;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+  .heatmap-delta {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--muted);
+  }
+  .heatmap-delta.is-up {
+    color: var(--accent-hover, var(--accent));
+  }
+  .heatmap-delta.is-down {
+    color: var(--over, #f59e0b);
+  }
+  .heatmap-prev {
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: var(--muted);
+  }
+
+  /* Каталог упражнений: фильтр щадящих поясницу + бейдж лучшего 1ПМ */
+  .exlib-spine-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-block-size: 44px;
+    white-space: nowrap;
+  }
+  .exlib-tag.is-pr {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border-color: color-mix(in oklab, #f59e0b 45%, var(--line));
+    color: #fbbf24;
+    font-variant-numeric: tabular-nums;
+  }
+
+  @media (max-width: 520px) {
+    .heatmap-wow {
+      grid-template-columns: 1fr;
+    }
+  }
+}

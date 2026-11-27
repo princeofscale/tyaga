@@ -9,6 +9,7 @@ import { formatWorkoutClock } from "./formatWorkoutClock";
 export const WorkoutRestBar = memo(function WorkoutRestBar({
   draft,
   restSeconds,
+  restLabel,
   soundEnabled,
   reducedMotion,
   onShift,
@@ -18,6 +19,7 @@ export const WorkoutRestBar = memo(function WorkoutRestBar({
 }: {
   draft: Draft;
   restSeconds: number;
+  restLabel?: string | null;
   soundEnabled: boolean;
   reducedMotion: boolean | null;
   onShift: (seconds: number) => void;
@@ -90,7 +92,11 @@ export const WorkoutRestBar = memo(function WorkoutRestBar({
       </div>
       <div className="rest-body">
         <div className="rest-copy">
-          <span>{draft.pausedRest !== null ? "Отдых на паузе" : "Отдых"}</span>
+          <span>
+            {draft.pausedRest !== null
+              ? "Отдых на паузе"
+              : restLabel || "Отдых"}
+          </span>
           <span className="rest-digits active" aria-live="off">
             {formatWorkoutClock(remaining)}
           </span>
@@ -101,10 +107,10 @@ export const WorkoutRestBar = memo(function WorkoutRestBar({
         <button
           type="button"
           className="timer-plus"
-          aria-label="Плюс 15 секунд"
-          onClick={() => onShift(15)}
+          aria-label="Плюс 30 секунд"
+          onClick={() => onShift(30)}
         >
-          +15
+          +30
         </button>
         <button
           type="button"

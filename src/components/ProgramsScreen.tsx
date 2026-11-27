@@ -1,8 +1,10 @@
 import { m, useReducedMotion } from "motion/react";
 import { Suspense, useState, useEffect, useMemo, useRef } from "react";
-import { ArrowLeftRight, ChevronRight, Plus, Save, Trash2 } from "lucide-react";
+import { ArrowLeftRight, ChevronRight, Play, Plus, Save, Trash2 } from "lucide-react";
 import { TrainingProgram, DAY_NAMES } from "../domain/TrainingProgram";
+import { PlanLine } from "../domain/PlanLine";
 import { TrainingCalendar, type ScheduledTraining } from "../domain/TrainingCalendar";
+import WorkoutPreviewCard from "./WorkoutPreviewCard";
 import {
   localDate,
   exerciseForEntry,
@@ -14,7 +16,7 @@ import {
 } from "../lib/model";
 import ExerciseInfo from "./ExerciseInfo";
 import ExerciseSwapModal from "./ExerciseSwapModal";
-import type { Exercise, LaidMaxes, Routine, Workout } from "../lib/types";
+import type { Exercise, LaidMaxes, Muscle, Routine, Workout } from "../lib/types";
 import { ApiError } from "../services/ApiClient";
 import Modal from "./Modal";
 import Select from "./Select";
@@ -88,6 +90,8 @@ export default function ProgramsScreen(props: Props) {
     index: number;
   } | null>(null);
   const [info, setInfo] = useState<Exercise | null>(null);
+  const [previewRoutine, setPreviewRoutine] = useState<Routine | null>(null);
+  const [previewMuscle, setPreviewMuscle] = useState<Muscle | null>(null);
   // R03-REQ03: закрытие редактора с несохранёнными правками спрашивает, а не стирает работу.
   const baseline = useRef<string | null>(null);
   const editing = !!editor;
@@ -590,6 +594,10 @@ export default function ProgramsScreen(props: Props) {
                 const slot = TrainingCalendar.onDate([r], today).find((item) => !TrainingCalendar.completed(item, props.workouts));
                 props.onStart(r, slot);
               }}
+              onPreviewDay={(r) => {
+                setPreviewMuscle(null);
+                setPreviewRoutine(r);
+              }}
               onEditDay={(r) => open(r)}
               onGraduateCalibration={(grads, fromWeek) => void graduateLaidCalibration(cycle, grads, fromWeek)}
               onToggleDeloadWeek={(w, enable) => void toggleLaidDeloadWeek(cycle, w, enable)}
@@ -621,6 +629,10 @@ export default function ProgramsScreen(props: Props) {
                     onStart={() => {
                       const slot = TrainingCalendar.onDate([r], today).find((item) => !TrainingCalendar.completed(item, props.workouts));
                       props.onStart(r, slot);
+                    }}
+                    onPreview={() => {
+                      setPreviewMuscle(null);
+                      setPreviewRoutine(r);
                     }}
                     onCopy={() => {
                       open({
@@ -813,6 +825,83 @@ export default function ProgramsScreen(props: Props) {
           onClose={() => setSubsEditor(null)}
         />
       ) : null}
+      {previewRoutine ? (() => {
+        const cycle = LaidDupPlan.periodizationOf(previewRoutine)
+          ? LaidDupPlan.cycleOf(props.routines, previewRoutine)
+          : undefined;
+        const planned = new TrainingProgram(previewRoutine).start(
+          props.workouts,
+          props.timeZone,
+          today,
+          undefined,
+          cycle ? { cycle } : undefined,
+        );
+        return (
+          <Modal
+            title={`Превью · ${previewRoutine.name}`}
+            wide
+            onClose={() => {
+              setPreviewRoutine(null);
+              setPreviewMuscle(null);
+            }}
+          >
+            <div className="program-preview-modal">
+              <WorkoutPreviewCard
+                planned={planned}
+                history={props.workouts}
+                today={today}
+                timeZone={props.timeZone}
+                selectedMuscle={previewMuscle}
+                onSelectMuscle={setPreviewMuscle}
+              />
+              <ol className="plan-exercises program-preview-list">
+                {planned.exercises.map((ex, idx) => {
+                  const def = exerciseForEntry(ex);
+                  const firstW = ex.sets.find((s) => !s.warmup);
+                  const hits =
+                    previewMuscle !== null &&
+                    def !== undefined &&
+                    (def.primary.includes(previewMuscle) || def.secondary.includes(previewMuscle));
+                  const dim = previewMuscle !== null && !hits;
+                  return (
+                    <li
+                      key={`${ex.exerciseId}:${idx}`}
+                      className={hits ? "is-muscle-hit" : dim ? "is-muscle-dim" : undefined}
+                    >
+                      <span className="plan-number" aria-hidden="true">
+                        {String(idx + 1).padStart(2, "0")}
+                      </span>
+                      <span className="plan-exercise-name">{entryName(ex)}</span>
+                      <b>
+                        {PlanLine.sets(ex)}
+                        {firstW?.weight ? ` · ${fmt(firstW.weight)} кг` : ""}
+                      </b>
+                    </li>
+                  );
+                })}
+              </ol>
+              <div className="program-preview-actions">
+                <button
+                  type="button"
+                  className="button primary"
+                  onClick={() => {
+                    const target = previewRoutine;
+                    setPreviewRoutine(null);
+                    setPreviewMuscle(null);
+                    const slot = TrainingCalendar.onDate([target], today).find(
+                      (item) => !TrainingCalendar.completed(item, props.workouts),
+                    );
+                    props.onStart(target, slot);
+                  }}
+                >
+                  <Play size={16} fill="currentColor" aria-hidden="true" />
+                  Начать тренировку
+                </button>
+              </div>
+            </div>
+          </Modal>
+        );
+      })() : null}
       {editor ? (
         <Modal
           title={

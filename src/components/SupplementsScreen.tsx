@@ -12,6 +12,7 @@ import {
   Pencil,
   Pill,
   Plus,
+  Sparkles,
   Trash2,
   X,
 } from "lucide-react";
@@ -570,6 +571,23 @@ export default function SupplementsScreen({
                 {allTaken ? "Снять отметки" : "Отметить всё на сегодня"}
               </m.button>
             )}
+            <m.button
+              type="button"
+              className="button secondary"
+              whileTap={reduced ? undefined : { scale: 0.97 }}
+              onClick={() => {
+                const { nextState, addedCount } = SupplementsStore.applyEvidenceStack(state);
+                if (addedCount > 0) {
+                  onChange(nextState);
+                  setLiveNotice(`Добавлен доказательный стек (${addedCount} поз.)`);
+                } else {
+                  setLiveNotice("Весь доказательный стек уже добавлен");
+                }
+              }}
+            >
+              <Sparkles size={15} aria-hidden="true" />
+              Доказательный стек
+            </m.button>
             <m.button
               type="button"
               className="button secondary"

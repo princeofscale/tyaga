@@ -10,6 +10,7 @@ type Props = {
   draft: Draft;
   removalKey: string;
   restSeconds: number;
+  restLabel?: string | null;
   soundEnabled: boolean;
   reducedMotion: boolean | null;
   toastPaused: boolean;
@@ -26,6 +27,7 @@ export function WorkoutUndoDock({
   draft,
   removalKey,
   restSeconds,
+  restLabel,
   soundEnabled,
   reducedMotion,
   toastPaused,
@@ -110,6 +112,7 @@ export function WorkoutUndoDock({
       <WorkoutRestBar
         draft={draft}
         restSeconds={restSeconds}
+        restLabel={restLabel}
         soundEnabled={soundEnabled}
         reducedMotion={reducedMotion}
         onShift={onShiftRest}

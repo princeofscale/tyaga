@@ -1,0 +1,465 @@
+
+@layer screens {
+  .map-view-control {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 2px auto 13px;
+      max-width: 100%;
+    }
+  .body-figures {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      width: 100%;
+    }
+  .body-figures.single {
+      grid-template-columns: 1fr;
+    }
+  .map-legend {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      margin: 23px auto 10px;
+      font-size: 0.75rem;
+      color: var(--muted);
+      max-width: 220px;
+      width: 100%;
+    }
+  .map-legend > span {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      white-space: nowrap;
+    }
+  .map-legend i {
+      display: inline-block;
+      flex-shrink: 0;
+    }
+  .volume-chart {
+      height: 147px;
+      display: flex;
+      gap: 15px;
+      margin-top: 27px;
+      padding-bottom: 18px;
+    }
+  .volume-y {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      font-size: 0.75rem;
+      color: var(--muted);
+      width: 32px;
+      white-space: nowrap;
+      padding-bottom: 7px;
+    }
+  .volume-bars {
+      position: relative;
+      flex: 1;
+      display: flex;
+      justify-content: space-between;
+      gap: 4px;
+      background: repeating-linear-gradient(
+      to top,
+      transparent,
+      transparent calc(50% - 1px),
+      var(--line) calc(50% - 1px),
+      var(--line) 50%
+    );
+      border-bottom: 1px solid var(--line-strong);
+    }
+  .muscle-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+  .muscle-chips label {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      background: var(--line);
+      border: 1px solid var(--accent-line);
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: 0.75rem;
+      color: var(--text-soft);
+    }
+  .muscle-chips input {
+      margin: 0;
+    }
+  @media (min-width: 1500px) {
+    .page-content {
+          padding-top: 43px;
+        }
+    .body-figure svg {
+          height: 315px;
+        }
+    .map-legend, .stat-card > p {
+          font-size: 0.75rem;
+        }
+  }
+  @media (max-width: 1250px) {
+    .page-content {
+          padding-left: 27px;
+          padding-right: 27px;
+        }
+    .body-figure svg {
+          height: 256px;
+        }
+    .stat-card {
+          padding: 18px 16px;
+        }
+    .recent-panel {
+          padding: 20px 18px;
+        }
+    .recent-panel .session-item {
+          gap: 8px;
+        }
+    .recent-panel h2 {
+          font-size: 1rem;
+        }
+    .sets-header {
+          grid-template-columns: 43px minmax(45px, 1fr) minmax(45px, 1fr)
+          37px 36px 19px;
+          gap: 5px;
+        }
+  }
+  @media (max-width: 1050px) {
+    .page-content {
+          padding-left: 22px;
+          padding-right: 22px;
+        }
+    .map-view-control button {
+          font-size: 0.75rem;
+          padding: 6px 4px;
+        }
+    .map-legend {
+          grid-template-columns: 1fr;
+          gap: 7px;
+          max-width: 120px;
+        }
+    .body-figure svg {
+          height: 220px;
+        }
+    .stat-value {
+          font-size: 2.0625rem;
+        }
+    .stat-card > p {
+          line-height: 1.5;
+        }
+    .toast {
+          left: calc(50% + 97px);
+        }
+  }
+  @media (max-width: 960px) {
+    .map-legend {
+          grid-template-columns: 1fr 1fr;
+          max-width: 215px;
+        }
+    .body-figure svg {
+          height: 260px;
+        }
+    .stat-value {
+          font-size: 2.1875rem;
+        }
+    .toast {
+          left: 50%;
+        }
+  }
+  @media (max-width: 760px) {
+    .stat-card {
+          padding: 18px 20px;
+        }
+    .map-view-control button {
+          font-size: 0.75rem;
+          padding: 6px 8px;
+        }
+    .body-figure svg {
+          height: 290px;
+        }
+    .map-legend {
+          font-size: 0.75rem;
+        }
+    .sets-header {
+          grid-template-columns: 55px minmax(55px, 1fr) minmax(55px, 1fr)
+          49px 49px 22px;
+          gap: 8px;
+        }
+    .history-panel .session-item-info p {
+          font-size: 0.75rem;
+        }
+    .intro-banner {
+          flex-wrap: wrap;
+        }
+    .intro-banner > span {
+          font-size: 0.8125rem;
+        }
+    .intro-banner > .text-button {
+          margin-left: 30px;
+        }
+    .demo-explanation {
+          display: none;
+        }
+  }
+  @media (max-width: 520px) {
+    .page-content {
+          padding: 26px 17px 0;
+        }
+    .stat-card {
+          padding: 16px;
+        }
+    .stat-value {
+          font-size: 2rem;
+        }
+    .stat-card > p {
+          font-size: 0.75rem;
+        }
+    .stat-value > span {
+          font-size: 1rem;
+        }
+    .body-figures {
+          max-width: 310px;
+          margin: 0 auto;
+        }
+    .body-figure > span {
+          margin-top: 1px;
+          font-size: 0.75rem;
+        }
+    .map-view-control {
+          margin-bottom: 7px;
+        }
+    .map-legend {
+          display: flex;
+          flex-wrap: wrap;
+          justify-content: center;
+          max-width: none;
+          margin: 19px 0 16px;
+          font-size: 0.75rem;
+        }
+    .feature-tag {
+          font-size: 0.75rem;
+        }
+    .recent-panel {
+          padding: 21px 18px;
+        }
+    .panel-header h2 {
+          font-size: 1.0625rem;
+        }
+    .recent-panel .session-item {
+          padding: 16px 0;
+          gap: 11px;
+        }
+    .session-item-info h3 {
+          font-size: 0.8755rem;
+        }
+    .session-item-info p {
+          font-size: 0.75rem;
+        }
+    .session-date {
+          min-width: 45px;
+        }
+    .session-date span {
+          font-size: 0.75rem;
+        }
+    .session-item-value > b {
+          font-size: 0.8125rem;
+        }
+    .session-item-value > span {
+          font-size: 0.75rem;
+        }
+    .history-toolbar {
+          flex-direction: column;
+          gap: 12px;
+        }
+    .history-toolbar > .button {
+          align-self: flex-start;
+        }
+    .history-panel {
+          padding: 3px 14px;
+        }
+    .history-panel .session-item {
+          gap: 10px;
+        }
+    .history-panel .session-item h3 {
+          font-size: 0.875rem;
+        }
+    .history-panel .session-item-value > b {
+          font-size: 0.8125rem;
+        }
+    .history-panel .session-date {
+          min-width: 42px;
+          min-height: 51px;
+        }
+    .history-panel .session-item > svg {
+          display: none;
+        }
+    .history-panel .session-item-value > span {
+          font-size: 0.75rem;
+        }
+    .sets-header {
+          grid-template-columns: 37px minmax(47px, 1fr) minmax(47px, 1fr)
+          37px 35px 19px;
+          gap: 5px;
+          font-size: 0.75rem;
+        }
+    .goal-settings > label {
+          font-size: 0.8125rem;
+          gap: 7px;
+        }
+    .goal-settings input {
+          width: 53px;
+        }
+    .goal-settings .tiny {
+          width: 30px;
+        }
+    .settings-bottom {
+          grid-template-columns: 1fr;
+        }
+    .method-content p, .method-content li {
+          font-size: 0.875rem;
+        }
+    .toast {
+          bottom: 15px;
+          font-size: 0.8125rem;
+        }
+    .empty-state {
+          padding: 60px 10px;
+        }
+    .empty-state h2 {
+          font-size: 1.375rem;
+        }
+    .demo-banner {
+          padding: 11px 12px;
+        }
+    .demo-banner > span {
+          gap: 7px;
+        }
+    .demo-banner b, .demo-banner > button {
+          font-size: 0.75rem;
+        }
+  }
+  .map-toolbar {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 12px;
+      color: var(--faint);
+    }
+  .map-toolbar .map-view-control {
+      margin: 0;
+    }
+  .map-view-control {
+      background: var(--surface);
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      padding: 4px;
+      gap: 3px;
+      flex-wrap: wrap;
+    }
+  .map-view-control button {
+      white-space: nowrap;
+      padding: 7px 9px;
+      font-size: 0.8125rem;
+      color: var(--muted);
+      border-radius: 5px;
+    }
+  .map-view-control button.active {
+      background: var(--line);
+      color: var(--text-soft);
+    }
+  .body-figures {
+      margin-top: 19px;
+      gap: 8px;
+      align-items: start;
+    }
+  .body-figure svg {
+      display: block;
+      width: 100%;
+      height: 310px;
+      max-width: 100%;
+    }
+  .body-figures.single svg {
+      height: 350px;
+    }
+  .body-figure > span {
+      display: block;
+      text-align: center;
+      font-size: 0.75rem;
+      letter-spacing: 0.11em;
+      color: var(--muted);
+      margin-top: 10px;
+    }
+  .map-legend {
+      gap: 9px 13px;
+      margin-top: 12px;
+    }
+  .map-legend span {
+      font-size: 0.75rem;
+      line-height: 1.6;
+    }
+  .map-legend i {
+      width: 7px;
+      height: 7px;
+      border-radius: 2px;
+    }
+  .exercise-atlas .body-figure svg {
+      height: 270px;
+    }
+  .exercise-atlas .body-figures {
+      margin-top: 0;
+    }
+  .exercise-atlas .map-legend {
+      justify-content: center;
+    }
+  @media (max-width: 760px) {
+    .panel {
+          border-radius: 13px;
+        }
+    .exercise-atlas {
+          padding: 15px;
+        }
+    .exercise-atlas .body-figure svg {
+          height: 245px;
+        }
+  }
+  @media (max-width: 520px) {
+    .map-view-control button {
+          font-size: 0.75rem;
+          padding: 7px 8px;
+        }
+    .map-toolbar {
+          gap: 7px;
+        }
+    .map-toolbar > svg {
+          display: none;
+        }
+    .anatomical-map {
+          padding-right: 0;
+        }
+    .body-figure svg {
+          height: 280px;
+        }
+    .body-figures {
+          gap: 2px;
+        }
+    .map-legend {
+          gap: 7px 10px;
+        }
+    .catalog-pagination {
+          gap: 12px;
+        }
+    .catalog-pagination .button {
+          padding: 9px 12px;
+        }
+    .exercise-atlas .body-figure svg {
+          height: 230px;
+        }
+  }
+  .session-muscle-table .muscle-table-head {
+      font-size: .75rem;
+      color: var(--muted);
+    }
+  .volume-total {
+      font-family: var(--font-display);
+      font-weight: 700;
+    }
+}

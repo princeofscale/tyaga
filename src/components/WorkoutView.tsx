@@ -26,11 +26,14 @@ import {
   Zap,
   ArrowLeftRight,
   CheckCircle2,
+  Trophy,
 } from "lucide-react";
 import { BiomechanicsProfileStore } from "../domain/BiomechanicsProfile";
 import { GymInventoryStore } from "../domain/GymInventory";
 import { IntraSessionAutoregulator } from "../domain/IntraSessionAutoregulator";
-import { ProgressionEngine, toProgressionInventory } from "../domain/ProgressionEngine";
+import { LivePrDetector } from "../domain/LivePrDetector";
+import { ProgressionEngine, equipmentStepKg, toProgressionInventory } from "../domain/ProgressionEngine";
+import { SmartRestPlanner } from "../domain/SmartRestPlanner";
 import { PlateApplication } from "../domain/PlateApplication";
 import { LaidDupPlan } from "../domain/LaidDupPlan";
 import ExerciseSwapModal from "./ExerciseSwapModal";
@@ -217,6 +220,7 @@ export default function WorkoutView({
   const [dismissedAutoreg, setDismissedAutoreg] = useState<Record<string, boolean>>({});
   const [detrainingAppliedFor, setDetrainingAppliedFor] = useState<string | null>(null);
   const [detrainingDismissedFor, setDetrainingDismissedFor] = useState<string | null>(null);
+  const [smartRestMeta, setSmartRestMeta] = useState<{ seconds: number; label: string } | null>(null);
   useEffect(() => {
     if (!readOnly) return;
     setPlateCalcTarget(null);
@@ -311,6 +315,10 @@ export default function WorkoutView({
         }),
       ),
     [history, exercises, workoutId, draft?.workout.date, draft?.workout.name, settings.timeZone],
+  );
+  const prDetector = useMemo(
+    () => new LivePrDetector(history, workoutId),
+    [history, workoutId],
   );
   const detrainingPlan = useMemo(() => {
     if (!draft || draft.editing || !history.length) return null;
@@ -758,7 +766,21 @@ export default function WorkoutView({
             deload: inDeload,
           })
         : null;
-    const effectiveRest = isSupersetTransition ? 15 : (laidRest ?? restSeconds);
+    const smartRest = new SmartRestPlanner({
+      fallbackSeconds: restSeconds,
+      inDeload,
+    }).recommend(exerciseForEntry(targetEx), targetSet);
+    const effectiveRest = isSupersetTransition ? 15 : (laidRest ?? smartRest.seconds);
+    if (patch.done) {
+      setSmartRestMeta({
+        seconds: effectiveRest,
+        label: isSupersetTransition
+          ? "Суперсет · 0:15"
+          : laidRest !== null
+            ? `План DUP · ${SmartRestPlanner.formatShort(laidRest)}`
+            : smartRest.label,
+      });
+    }
 
     const shouldAutoResume =
       !draft.editing &&
@@ -1130,6 +1152,56 @@ export default function WorkoutView({
             {gym && toggleLabel}
           </button>
         </div>
+        {(() => {
+          const prHit = prDetector.checkSet(entry, set);
+          if (!prHit) return null;
+          return (
+            <div
+              className="live-pr-badge"
+              role="status"
+              title={`Прежний рекорд e1RM: ${fmt(prHit.previousBest)} кг (+${fmt(prHit.deltaKg)} кг)`}
+            >
+              <Trophy size={12} aria-hidden="true" />
+              <span>PR · e1RM {fmt(prHit.e1rm)} кг (+{fmt(prHit.deltaKg)})</span>
+            </div>
+          );
+        })()}
+        {gym && !noLoad ? (() => {
+          const inv = toProgressionInventory(GymInventoryStore.read());
+          const step = equipmentStepKg(set.weight || inv.barbellWeightKg, spec.loadMode, inv);
+          return (
+            <div className="gym-thumb-controls" aria-label="Быстрая правка одной рукой">
+              <div className="gym-thumb-weights">
+                {[-step * 2, -step, step, step * 2].map((delta) => (
+                  <button
+                    key={delta}
+                    type="button"
+                    className="gym-thumb-btn"
+                    onClick={() => bumpWeight(ei, si, delta)}
+                  >
+                    {delta < 0 ? `−${fmt(Math.abs(delta))}` : `+${fmt(delta)}`}
+                  </button>
+                ))}
+              </div>
+              {!timed ? (
+                <div className="gym-thumb-rir">
+                  <span className="gym-thumb-label">RIR</span>
+                  {[0, 1, 2, 3, 4].map((r) => (
+                    <button
+                      key={r}
+                      type="button"
+                      className={`gym-thumb-rir-btn${set.rir === r ? " active" : ""}`}
+                      aria-pressed={set.rir === r}
+                      onClick={() => changeSet(ei, si, { rir: set.rir === r ? null : r }, true)}
+                    >
+                      {r}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          );
+        })() : null}
         {missing && <p id={hintId} className="set-hint" role="alert">{SetCompleteness.message(missing)}</p>}
         {isActive ? quickControls : null}
       </div>
@@ -1882,7 +1954,8 @@ export default function WorkoutView({
         dockRef={dockRef}
         draft={draft}
         removalKey={removalKey}
-        restSeconds={restSeconds}
+        restSeconds={smartRestMeta?.seconds ?? restSeconds}
+        restLabel={smartRestMeta?.label}
         soundEnabled={soundEnabled}
         reducedMotion={reducedMotion}
         toastPaused={toastPaused}

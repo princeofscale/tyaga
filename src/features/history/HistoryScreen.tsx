@@ -7,6 +7,7 @@ import type { ImportRecord } from "../../domain/ImportUndo";
 import { VolumeLabel } from "../../domain/VolumeLabel";
 import { quantity } from "../../lib/quantity";
 import HistoryList, { HistoryStats } from "../../components/HistoryList";
+import HistoryHeatmapCard from "../../components/HistoryHeatmapCard";
 import SessionInsights from "../../components/SessionInsights";
 import { VolumeChart } from "../../components/Charts";
 
@@ -61,6 +62,13 @@ export default function HistoryScreen({
         <h1>История тренировок</h1>
       </header>
       <HistoryStats workouts={displayed} today={localDate(new Date(), settings.timeZone)} />
+      {displayed.length > 0 ? (
+        <HistoryHeatmapCard
+          workouts={displayed}
+          today={localDate(new Date(), settings.timeZone)}
+          timeZone={settings.timeZone}
+        />
+      ) : null}
       {pendingImport ? (
         <section className="import-undo panel" role="status">
           <p>
