@@ -1,5 +1,6 @@
 import { addCalendarDays } from "../lib/calendar";
 import type { Muscle, Routine, Workout } from "../lib/types";
+import { AdaptiveNutritionEngine, NutritionStore } from "./AdaptiveNutritionEngine";
 import { AnalyticsFacts } from "./AnalyticsFacts";
 import { BiomechanicsEngine, type LaidCycleAudit, type WeeklyBiomechanicsReport } from "./BiomechanicsEngine";
 import { BiomechanicsProfileStore } from "./BiomechanicsProfile";
@@ -161,20 +162,46 @@ function inferEnergyAndBodyweight(
   if (accountId && (opts?.energyStatus === undefined || opts?.currentBodyweightKg === undefined)) {
     try {
       const tracker = new BodyweightTracker(accountId, timeZone);
+      const entries = tracker.getEntries();
       const stats = tracker.getStats();
       if (opts?.currentBodyweightKg === undefined && stats?.currentKg) {
         currentBodyweightKg = stats.currentKg;
       }
       if (opts?.energyStatus === undefined) {
-        const verdict = tracker.getNeatVerdict(today);
-        if (verdict.status === "loss_optimal" || verdict.status === "loss_fast" || verdict.status === "loss_slow") {
-          energyStatus = "deficit";
-        } else if (verdict.status === "neat_plateau") {
-          energyStatus = "maintenance";
-        } else if (verdict.status === "optimal_gain") {
-          energyStatus = "optimal_surplus";
-        } else if (verdict.status === "too_fast") {
-          energyStatus = "high_surplus";
+        const nutritionStore = new NutritionStore(accountId);
+        const savedNutrition = nutritionStore.readRaw();
+        if (savedNutrition && (savedNutrition.logs.length > 0 || entries.length > 0)) {
+          const engine = new AdaptiveNutritionEngine();
+          const tdee = engine.tdeeEstimator.estimateTdee(
+            {
+              ...savedNutrition.profile,
+              weightKg: stats?.currentKg ?? savedNutrition.profile.weightKg,
+            },
+            entries,
+            savedNutrition.logs,
+            savedNutrition.goalMode,
+            today,
+            savedNutrition.creatineStartDate,
+          );
+          const bridged = engine.energyBridge.deriveEnergyStatus(
+            tdee,
+            savedNutrition.lastEnergyStatus,
+          );
+          if (bridged.energyStatus !== "unknown") {
+            energyStatus = bridged.energyStatus;
+          }
+        }
+        if (energyStatus === "unknown") {
+          const verdict = tracker.getNeatVerdict(today);
+          if (verdict.status === "loss_optimal" || verdict.status === "loss_fast" || verdict.status === "loss_slow") {
+            energyStatus = "deficit";
+          } else if (verdict.status === "neat_plateau") {
+            energyStatus = "maintenance";
+          } else if (verdict.status === "optimal_gain") {
+            energyStatus = "optimal_surplus";
+          } else if (verdict.status === "too_fast") {
+            energyStatus = "high_surplus";
+          }
         }
       }
     } catch {

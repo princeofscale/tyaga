@@ -33,11 +33,13 @@ import { dateLabel, fmt } from "../lib/model";
 import { saveFile } from "../lib/saveFile";
 import { cloudState, syncCloud } from "../device/cloudSync";
 import ProgressChart from "./ProgressChart";
+import { AdaptiveNutritionPanel } from "./AdaptiveNutritionPanel";
 import "../styles/progress.css";
 import { DateText } from "../domain/DateText";
 
 /** Account-scoped weighing journal, reused by Progress and the quick tool dialog. */
 export function BodyweightModal({
+  accountId,
   timeZone = browserTimeZone(),
 }: {
   accountId: string;
@@ -421,6 +423,13 @@ export function BodyweightModal({
         <strong className="bw-neat-title">{neatVerdict.headline}</strong>
         <p className="bw-neat-detail">{neatVerdict.detail}</p>
       </section>
+
+      <AdaptiveNutritionPanel
+        accountId={accountId}
+        today={today}
+        entries={entries}
+        currentWeightKg={stats?.currentKg ?? null}
+      />
 
       {/* График + Форма записи */}
       <div className="bw-main-grid">

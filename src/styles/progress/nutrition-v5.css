@@ -1,0 +1,559 @@
+@layer tokens, base, layout, components, screens, utilities;
+@layer screens {
+  .nut-shell {
+    display: grid;
+    gap: 14px;
+    min-width: 0;
+  }
+
+  .nut-card {
+    container-type: inline-size;
+    display: grid;
+    gap: 14px;
+    padding: 18px;
+    border-radius: 18px;
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    min-width: 0;
+  }
+
+  .nut-hero-card {
+    background:
+      radial-gradient(420px 220px at 96% 0%, color-mix(in oklab, var(--accent) 14%, transparent), transparent 70%),
+      var(--bg-card);
+    border-color: color-mix(in oklab, var(--accent) 26%, var(--line));
+  }
+
+  .nut-card-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .nut-head-left {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .nut-mode-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    border: 1px solid var(--line);
+    background: var(--bg-soft);
+    color: var(--ink-soft);
+  }
+
+  .nut-mode-badge.mode-pro {
+    border-color: color-mix(in oklab, var(--accent) 50%, var(--line));
+    color: var(--accent-hover, var(--accent));
+    background: color-mix(in oklab, var(--accent) 10%, var(--bg-soft));
+  }
+
+  .nut-status-pill {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--ink-soft);
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: var(--bg-soft);
+    border: 1px solid var(--line);
+  }
+
+  .nut-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  @container (min-width: 640px) {
+    .nut-kpi-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+
+  .nut-kpi {
+    display: grid;
+    gap: 4px;
+    padding: 12px;
+    border-radius: 14px;
+    background: var(--bg-soft);
+    border: 1px solid var(--line);
+    min-width: 0;
+  }
+
+  .nut-kpi.is-primary {
+    border-color: color-mix(in oklab, var(--accent) 42%, var(--line));
+    background: color-mix(in oklab, var(--accent) 6%, var(--bg-soft));
+  }
+
+  .nut-kpi-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.72rem;
+    font-weight: 650;
+    color: var(--ink-soft);
+  }
+
+  .nut-kpi-val {
+    font-family: var(--font-display, inherit);
+    font-size: clamp(1.05rem, 0.9rem + 0.6cqi, 1.35rem);
+    font-weight: 800;
+    line-height: 1.15;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .nut-kpi-val small {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--ink-soft);
+  }
+
+  .nut-kpi-sub {
+    font-size: 0.72rem;
+    line-height: 1.35;
+    color: var(--ink-soft);
+  }
+
+  .nut-bridge-kpi.status-deficit {
+    border-color: color-mix(in oklab, var(--over, #f59e0b) 48%, var(--line));
+  }
+
+  .nut-bridge-kpi.status-optimal_surplus,
+  .nut-bridge-kpi.status-high_surplus {
+    border-color: color-mix(in oklab, var(--accent) 45%, var(--line));
+  }
+
+  .nut-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    padding: 11px 13px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    line-height: 1.45;
+    border: 1px solid var(--line);
+    background: var(--bg-soft);
+    color: var(--ink);
+  }
+
+  .nut-banner svg {
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  .nut-banner.is-warn {
+    border-color: color-mix(in oklab, var(--over, #f59e0b) 48%, var(--line));
+    background: color-mix(in oklab, var(--over, #f59e0b) 9%, var(--bg-soft));
+  }
+
+  .nut-banner.is-accent {
+    border-color: color-mix(in oklab, var(--accent) 46%, var(--line));
+    background: color-mix(in oklab, var(--accent) 8%, var(--bg-soft));
+  }
+
+  .nut-checkin-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--line);
+    font-size: 0.84rem;
+  }
+
+  /* Phase choice cards: transparent 2px border so selection never causes layout shift */
+  .nut-phase-fieldset {
+    border: 0;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 10px;
+  }
+
+  .nut-legend {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--ink-soft);
+    padding: 0;
+  }
+
+  .nut-phase-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  @container (min-width: 560px) {
+    .nut-phase-grid {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+  }
+
+  .nut-phase-card {
+    position: relative;
+    display: grid;
+    gap: 2px;
+    padding: 10px 11px;
+    min-block-size: 48px;
+    border-radius: 12px;
+    background: var(--bg-soft);
+    border: 2px solid transparent;
+    box-shadow: inset 0 0 0 1px var(--line);
+    cursor: pointer;
+    transition: border-color 0.16s ease, background 0.16s ease;
+  }
+
+  .nut-phase-card:has(> :checked) {
+    border-color: var(--accent);
+    background: color-mix(in oklab, var(--accent) 10%, var(--bg-soft));
+    box-shadow: none;
+  }
+
+  .nut-phase-card:has(> :checked)::after {
+    content: "✓";
+    position: absolute;
+    inset-block-start: 6px;
+    inset-inline-end: 8px;
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: var(--accent-hover, var(--accent));
+  }
+
+  .nut-phase-card:has(> :focus-visible) {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .nut-phase-title {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--ink);
+  }
+
+  .nut-phase-sub {
+    font-size: 0.7rem;
+    color: var(--ink-soft);
+  }
+
+  .nut-section-title {
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.94rem;
+    font-weight: 750;
+    color: var(--ink);
+  }
+
+  .nut-section-sub {
+    margin: 2px 0 0;
+    font-size: 0.76rem;
+    color: var(--ink-soft);
+  }
+
+  .nut-day-tabs {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .nut-day-pill {
+    display: grid;
+    justify-items: center;
+    gap: 2px;
+    min-block-size: 48px;
+    padding: 6px 4px;
+    border-radius: 11px;
+    border: 1px solid var(--line);
+    background: var(--bg-soft);
+    color: var(--ink-soft);
+    font-size: 0.74rem;
+    font-weight: 700;
+    cursor: pointer;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .nut-day-pill small {
+    font-size: 0.68rem;
+    font-weight: 600;
+    opacity: 0.85;
+  }
+
+  .nut-day-pill.is-active {
+    border-color: var(--accent);
+    background: color-mix(in oklab, var(--accent) 13%, var(--bg-soft));
+    color: var(--ink);
+  }
+
+  .nut-macro-showcase {
+    display: grid;
+    gap: 12px;
+    padding: 14px;
+    border-radius: 14px;
+    background: var(--bg-soft);
+    border: 1px solid var(--line);
+  }
+
+  @container (min-width: 520px) {
+    .nut-macro-showcase {
+      grid-template-columns: minmax(140px, 0.8fr) minmax(0, 1.6fr);
+      align-items: center;
+    }
+  }
+
+  .nut-macro-kcal {
+    display: grid;
+    gap: 3px;
+  }
+
+  .nut-macro-tag {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--ink-soft);
+  }
+
+  .nut-macro-kcal strong {
+    font-family: var(--font-display, inherit);
+    font-size: 1.7rem;
+    line-height: 1.05;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .nut-macro-kcal small {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--ink-soft);
+  }
+
+  .nut-macro-pillars {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .nut-macro-box {
+    display: grid;
+    gap: 2px;
+    padding: 10px;
+    border-radius: 11px;
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .nut-macro-box span {
+    font-size: 0.7rem;
+    color: var(--ink-soft);
+  }
+
+  .nut-macro-box b {
+    font-size: 1rem;
+    font-weight: 800;
+    color: var(--ink);
+  }
+
+  .nut-macro-box small {
+    font-size: 0.68rem;
+    color: var(--ink-soft);
+  }
+
+  /* Forms (modern-web-guidance: >= 1rem font, >= 48px height, :user-invalid) */
+  .nut-log-form {
+    display: grid;
+    gap: 12px;
+  }
+
+  .nut-form-grid,
+  .nut-profile-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  @container (min-width: 500px) {
+    .nut-form-grid,
+    .nut-profile-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @container (min-width: 720px) {
+    .nut-form-grid,
+    .nut-profile-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+
+  .nut-field {
+    display: grid;
+    gap: 5px;
+    align-content: start;
+    min-width: 0;
+  }
+
+  .nut-field label {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 3px;
+    font-size: 0.76rem;
+    font-weight: 650;
+    color: var(--ink-soft);
+    white-space: nowrap;
+  }
+
+  .nut-field input,
+  .nut-field select {
+    width: 100%;
+    min-width: 0;
+    min-block-size: 48px;
+    padding: 8px 11px;
+    border-radius: 11px;
+    border: 1px solid var(--line);
+    background: var(--bg-soft);
+    color: var(--ink);
+    font: inherit;
+    font-size: max(1rem, 0.94rem);
+    box-sizing: border-box;
+  }
+
+  @media (pointer: coarse) {
+    .nut-field input,
+    .nut-field select {
+      min-block-size: 52px;
+    }
+  }
+
+  .nut-field input:is(:user-invalid, .user-invalid-fallback) {
+    border-color: #ef4444;
+    background: color-mix(in oklab, #ef4444 9%, var(--bg-soft));
+  }
+
+  .nut-field-error {
+    font-size: 0.74rem;
+    font-weight: 600;
+    color: #f87171;
+  }
+
+  .nut-form-footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .nut-check-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.8rem;
+    color: var(--ink-soft);
+  }
+
+  .nut-check-inline input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+
+  .nut-check-inline label {
+    cursor: pointer;
+  }
+
+  .nut-status-msg {
+    margin: 0;
+  }
+
+  .nut-details {
+    border-top: 1px solid var(--line);
+    padding-top: 10px;
+  }
+
+  .nut-details-summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--ink-soft);
+    cursor: pointer;
+    list-style: none;
+    min-block-size: 36px;
+  }
+
+  .nut-details-summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .nut-details[open] .nut-details-summary {
+    color: var(--ink);
+    margin-bottom: 10px;
+  }
+
+  .nut-logs-list {
+    display: grid;
+    gap: 6px;
+    max-block-size: 210px;
+    overflow-y: auto;
+  }
+
+  .nut-log-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 11px;
+    border-radius: 10px;
+    background: var(--bg-soft);
+    border: 1px solid var(--line);
+    font-size: 0.78rem;
+    color: var(--ink-soft);
+  }
+
+  .nut-log-row b {
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .nut-partial-tag {
+    margin-inline-start: 6px;
+    font-style: normal;
+    font-size: 0.68rem;
+    padding: 1px 6px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    color: var(--over, #f59e0b);
+  }
+
+  .nut-profile-check {
+    margin-top: 10px;
+  }
+
+  .nut-shell .visually-hidden {
+    position: absolute;
+    clip-path: inset(50%);
+    overflow: hidden;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
+    white-space: nowrap;
+  }
+}
