@@ -241,8 +241,8 @@ export const LAID_V3_SUMMARY_BULLETS: readonly { title: string; detail: string }
     detail: "Пн–Ср база PPL (Присед, Жим, Трэп-гриф), Чт отдых, Пт Верх B (свежие руки + 3D-дельты), Сб Низ B (RDL + Гакк + молот), Вс отдых.",
   },
   {
-    title: "Усиленный фокус на 3D-дельты (8 прямых сетов/нед.)",
-    detail: "4 сета отведений в кроссовере (Push A) + 4 сета махов гантелями (Upper B) с шлюзом удлинённых частичных на неделях 4–5.",
+    title: "Усиленный объём груди (14 сетов) и 3D-дельт (8 сетов)",
+    detail: "Грудь 14 прямых сетов/нед. (9 в Push A + 5 в Upper B со сведением в кроссовере без усталости трицепса) и 8 прямых на средние дельты (4+4) с LP на неделях 4–5.",
   },
   {
     title: "Авторегуляция Dynamic Wave DUP (5+1)",
@@ -254,7 +254,7 @@ export const LAID_V3_SUMMARY_BULLETS: readonly { title: string; detail: string }
   },
   {
     title: "100 % покрытие 18 регионов · −29 % нагрузки на спину",
-    detail: "16–19 подходов/сессия (~55–60 мин благодаря 6 парным суперсетам), закрыто слепое пятно glutes_shortened, средний SFR 8,2.",
+    detail: "16–21 подход/сессия (~55–65 мин благодаря 6 парным суперсетам), закрыто слепое пятно glutes_shortened, средний SFR 8,22.",
   },
 ];
 
@@ -570,22 +570,55 @@ export const DAVID_LAID_DUP_V3_PLAN: LaidDupV3Plan = {
 };
 
 /**
- * Live Tyaga app plan with side-delt boost (lateral = 4 sets in Upper B -> 8 direct side-delt sets/week,
- * 85 total sets/week, 100% RCS, 0 blind spots).
+ * Live Tyaga app plan with user-tuned chest & side-delt volume:
+ * - Chest: 14 direct sets/week (Push A: bench 3 + incline-db 3 + pec-deck-fly 3 = 9;
+ *   Upper B: incline-bar 3 + fly 2 = 5 -> balanced 10.0 upper / 11.0 mid-lower fractional,
+ *   zero extra triceps fatigue before Upper B arms superset).
+ * - Side delts: 8 direct sets/week (lateral-cable-single 4 in Push A + lateral 4 in Upper B).
+ * Total: 88 sets/week, 99.2 score, 100% RCS, 0 blind spots, avg SFR 8.22.
  */
 export const DAVID_LAID_DUP_V3_LIVE_PLAN: LaidDupV3Plan = {
   ...DAVID_LAID_DUP_V3_PLAN,
-  days: DAVID_LAID_DUP_V3_PLAN.days.map((day) =>
-    day.id !== "upper-b"
-      ? day
-      : {
-          ...day,
-          targetDurationMin: 60,
-          exercises: day.exercises.map((slot) =>
-            slot.exerciseId === "lateral" ? { ...slot, sets: 4 } : slot,
-          ),
-        },
-  ),
+  days: DAVID_LAID_DUP_V3_PLAN.days.map((day) => {
+    if (day.id === "push-a") {
+      return {
+        ...day,
+        targetDurationMin: 58,
+        exercises: day.exercises.map((slot) =>
+          slot.exerciseId === "pec-deck-fly" ? { ...slot, sets: 3 } : slot,
+        ),
+      };
+    }
+    if (day.id === "upper-b") {
+      const nextExercises: LaidDupV3ExerciseSlot[] = [];
+      for (const slot of day.exercises) {
+        if (slot.exerciseId === "lateral") {
+          nextExercises.push({ ...slot, sets: 4 });
+        } else {
+          nextExercises.push(slot);
+        }
+        if (slot.exerciseId === "incline-bar") {
+          nextExercises.push({
+            exerciseId: "fly",
+            sets: 2,
+            progression: "DDP",
+            repRange: [10, 15],
+            isIsolation: true,
+            lengthenedPartialsEligible: true,
+            timeCrunchDropSetEligible: true,
+            plateStepKg: 2.5,
+            note: "Сведение в кроссовере в растяжении (stretch = 3), без усталости трицепса перед блоком рук; LP на последнем сете (нед. 4–5)",
+          });
+        }
+      }
+      return {
+        ...day,
+        targetDurationMin: 64,
+        exercises: nextExercises,
+      };
+    }
+    return day;
+  }),
 };
 
 export function getV3DayByLaidDay(day: LaidDay, plan: LaidDupV3Plan = DAVID_LAID_DUP_V3_LIVE_PLAN): LaidDupV3Day | null {

@@ -234,16 +234,24 @@ describe("David Laid DUP v3 — Hypertrophy & Strength Max (TC1–TC8)", () => {
     assert.equal(refReport.stretchStimulusShare, 59);
     assert.equal(refReport.totalSets, 83);
 
-    // Live plan with 4 sets lateral in Upper B -> 8 direct side-delt sets/week
+    // Live plan: 14 direct chest sets (Push A pec-deck-fly 3 + Upper B fly 2) & 8 direct side-delt sets
     const liveVolumes = DAVID_LAID_DUP_V3_LIVE_PLAN.days.flatMap((d) =>
       d.exercises.map((e) => ({ exerciseId: e.exerciseId, sets: e.sets })),
     );
     const liveReport = audit.auditWeek(liveVolumes, true, [], Date.now());
-    assert.equal(liveReport.totalSets, 85);
+    assert.equal(liveReport.totalSets, 88);
     assert.equal(liveReport.regionalCoverageScore, 100);
     assert.equal(liveReport.blindSpots.length, 0);
     assert.ok(liveReport.totalScore >= 99.0, `expected live score >= 99.0, got ${liveReport.totalScore}`);
     assert.equal(liveReport.volumeBridge.regionFractionalSets.delt_mid, 8);
+    assert.equal(liveReport.volumeBridge.regionFractionalSets.chest_upper, 10);
+    assert.equal(liveReport.volumeBridge.regionFractionalSets.chest_mid_lower, 11);
+
+    const directChestIds = new Set(["bench", "incline-db", "pec-deck-fly", "incline-bar", "fly"]);
+    const directChestSets = liveVolumes
+      .filter((v) => directChestIds.has(v.exerciseId))
+      .reduce((sum, v) => sum + v.sets, 0);
+    assert.equal(directChestSets, 14);
   });
 
   it("LaidDupPlan v3 integration: creates 5-day cycle, validates PeriodizationRules, upgrades v2->v3, and preserves Lower B order", () => {
@@ -262,8 +270,16 @@ describe("David Laid DUP v3 — Hypertrophy & Strength Max (TC1–TC8)", () => {
     }
     assert.equal(LaidDupPlan.totalWeeks(routines[0].periodization), 6);
 
-    // Upper B has 4 sets on lateral (boosted side delts -> 8 direct/wk) + supersets
+    // Push A has 3 sets on pec-deck-fly (9 direct chest sets in Push A)
+    const pushA = routines.find((r) => r.periodization?.day === "push1")!;
+    const pecDeckEntry = pushA.exercises.find((e) => e.exerciseId === "pec-deck-fly")!;
+    assert.equal(pecDeckEntry.sets.length, 3);
+
+    // Upper B has 2 sets on cable fly (5 direct chest sets -> 14/wk total) + 4 sets on lateral (8/wk) + supersets
     const upperB = routines.find((r) => r.periodization?.day === "push2")!;
+    const flyEntry = upperB.exercises.find((e) => e.exerciseId === "fly")!;
+    assert.equal(flyEntry.sets.length, 2);
+    assert.equal(upperB.exercises[1].exerciseId, "fly");
     const lateralEntry = upperB.exercises.find((e) => e.exerciseId === "lateral")!;
     assert.equal(lateralEntry.sets.length, 4);
     assert.ok(lateralEntry.supersetId?.includes("B"));

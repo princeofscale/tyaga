@@ -393,7 +393,7 @@ export default function ProgramsScreen(props: Props) {
       const upgraded = LaidDupPlan.upgradeCycleToV3(cycle);
       await replaceRoutinesBatch(cycle, upgraded);
       setNotice(
-        "Цикл обновлён до «DUP v3 · Hypertrophy Max»: 5 дней (PPL + Upper/Lower), 5+1 нед., 8 сетов на сред. дельту и авторегуляция топ-сета.",
+        "Цикл обновлён до «DUP v3 · Hypertrophy Max»: 5 дней (PPL + Upper/Lower), 5+1 нед., 14 сетов груди, 8 сред. дельты и авторегуляция топ-сета.",
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось обновить цикл до DUP v3");
@@ -776,7 +776,7 @@ export default function ProgramsScreen(props: Props) {
             { id: "split", name: "Верх / низ", note: "Две программы · 4 дня" },
             { id: "ppl", name: "Жимы / тяги / ноги", note: "Три программы · 3 дня" },
             { id: "strength", name: "База 5 × 5", note: "Три движения · 3 дня" },
-            { id: "laid-v3", name: "Hypertrophy Max · DUP v3 (5 дней)", note: "Дэвид Лейд v3 · 5+1 нед. · 8 сетов сред. дельты" },
+            { id: "laid-v3", name: "Hypertrophy Max · DUP v3 (5 дней)", note: "Дэвид Лейд v3 · 5+1 нед. · 14 грудь / 8 сред. дельты" },
             { id: "laid", name: "Дэвид Лейд · DUP · 9 недель · 6 дней", note: laidCycles.length ? "Настроить цикл" : "Веса от 1ПМ" },
             { id: "v2", name: "Программа v2 · 5 дней", note: hasCycle ? "Добавить недостающие дни" : "Разгрузка каждую пятую неделю" },
           ] as const).map((template) => (

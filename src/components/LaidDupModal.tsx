@@ -467,13 +467,13 @@ export default function LaidDupModal(props: Props) {
                         </span>
                         <strong>
                           {v3On
-                            ? "5-дневный гибрид PPL + Upper/Lower · 8 сетов на сред. дельту"
+                            ? "5-дневный гибрид · 14 сетов на грудь и 8 на сред. дельту"
                             : "Перейти на David Laid DUP v3 (Hypertrophy Max)"}
                         </strong>
                         <small>
                           {v3On
-                            ? "Мезоцикл 5+1, свежий слот рук/дельт в Верх B, авторегуляция TM по RIR и EnergyStatus, 6 парных суперсетов и 100 % покрытие 18 регионов."
-                            : "5 дней (55–60 мин), −29 % на поясницу vs v2, свежие руки и 8 сетов на средние дельты, Dynamic Wave DUP + RIR Ramp."}
+                            ? "Мезоцикл 5+1, 14 прямых сетов груди (9+5), свежий слот рук/дельт в Верх B, авторегуляция TM по RIR и EnergyStatus, 100 % покрытие 18 регионов."
+                            : "5 дней (55–65 мин), −29 % на поясницу vs v2, 14 сетов на грудь и 8 на средние дельты, Dynamic Wave DUP + RIR Ramp."}
                         </small>
                       </div>
                       {canToggleV3 || canUpgradeV3 ? (
