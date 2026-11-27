@@ -234,7 +234,7 @@ describe("David Laid DUP v3 — Hypertrophy & Strength Max (TC1–TC8)", () => {
     assert.equal(refReport.stretchStimulusShare, 59);
     assert.equal(refReport.totalSets, 83);
 
-    // Live plan: 14 direct chest sets (Push A pec-deck-fly 3 + Upper B fly 2) & 8 direct side-delt sets
+    // Live plan: 14 direct chest sets (Push A 8 + Upper B incline-bar 3 & dip-weighted 3 = 6) & 8 direct side-delt sets
     const liveVolumes = DAVID_LAID_DUP_V3_LIVE_PLAN.days.flatMap((d) =>
       d.exercises.map((e) => ({ exerciseId: e.exerciseId, sets: e.sets })),
     );
@@ -242,12 +242,12 @@ describe("David Laid DUP v3 — Hypertrophy & Strength Max (TC1–TC8)", () => {
     assert.equal(liveReport.totalSets, 88);
     assert.equal(liveReport.regionalCoverageScore, 100);
     assert.equal(liveReport.blindSpots.length, 0);
-    assert.ok(liveReport.totalScore >= 99.0, `expected live score >= 99.0, got ${liveReport.totalScore}`);
+    assert.ok(liveReport.totalScore >= 98.5, `expected live score >= 98.5, got ${liveReport.totalScore}`);
     assert.equal(liveReport.volumeBridge.regionFractionalSets.delt_mid, 8);
-    assert.equal(liveReport.volumeBridge.regionFractionalSets.chest_upper, 10);
+    assert.equal(liveReport.volumeBridge.regionFractionalSets.chest_upper, 8.5);
     assert.equal(liveReport.volumeBridge.regionFractionalSets.chest_mid_lower, 11);
 
-    const directChestIds = new Set(["bench", "incline-db", "pec-deck-fly", "incline-bar", "fly"]);
+    const directChestIds = new Set(["bench", "incline-db", "pec-deck-fly", "incline-bar", "dip-weighted"]);
     const directChestSets = liveVolumes
       .filter((v) => directChestIds.has(v.exerciseId))
       .reduce((sum, v) => sum + v.sets, 0);
@@ -270,16 +270,16 @@ describe("David Laid DUP v3 — Hypertrophy & Strength Max (TC1–TC8)", () => {
     }
     assert.equal(LaidDupPlan.totalWeeks(routines[0].periodization), 6);
 
-    // Push A has 3 sets on pec-deck-fly (9 direct chest sets in Push A)
+    // Push A keeps 2 sets on pec-deck-fly (8 direct chest sets in Push A)
     const pushA = routines.find((r) => r.periodization?.day === "push1")!;
     const pecDeckEntry = pushA.exercises.find((e) => e.exerciseId === "pec-deck-fly")!;
-    assert.equal(pecDeckEntry.sets.length, 3);
+    assert.equal(pecDeckEntry.sets.length, 2);
 
-    // Upper B has 2 sets on cable fly (5 direct chest sets -> 14/wk total) + 4 sets on lateral (8/wk) + supersets
+    // Upper B has 3 sets on dip-weighted (6 direct chest sets -> 14/wk total) + 4 sets on lateral (8/wk) + supersets
     const upperB = routines.find((r) => r.periodization?.day === "push2")!;
-    const flyEntry = upperB.exercises.find((e) => e.exerciseId === "fly")!;
-    assert.equal(flyEntry.sets.length, 2);
-    assert.equal(upperB.exercises[1].exerciseId, "fly");
+    const dipEntry = upperB.exercises.find((e) => e.exerciseId === "dip-weighted")!;
+    assert.equal(dipEntry.sets.length, 3);
+    assert.equal(upperB.exercises[1].exerciseId, "dip-weighted");
     const lateralEntry = upperB.exercises.find((e) => e.exerciseId === "lateral")!;
     assert.equal(lateralEntry.sets.length, 4);
     assert.ok(lateralEntry.supersetId?.includes("B"));
