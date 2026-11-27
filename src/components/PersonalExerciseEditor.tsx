@@ -3,6 +3,7 @@ import type { Exercise, Equipment, RecordingSpec } from "../lib/types";
 import { MUSCLES, EXERCISES } from "../lib/model";
 import { productService } from "../services/ProductService";
 import Select from "./Select";
+import BiomechanicalAgentPanel from "./BiomechanicalAgentPanel";
 
 export default function PersonalExerciseEditor({
   exercise,
@@ -153,6 +154,17 @@ export default function PersonalExerciseEditor({
           Одностороннее: повторы на каждую сторону
         </label>
         <div>
+          <BiomechanicalAgentPanel
+            compact
+            initialQuery={name}
+            onApplyToExercise={({ zones: inferredZones, rationale, unilateral: isUni, equipment: eq, loadMode: lm }) => {
+              setZones(inferredZones);
+              setUnilateral(isUni);
+              setEquipment(eq);
+              setLoadMode(lm);
+              if (!notes.trim()) setNotes(rationale);
+            }}
+          />
           {type === "reps" && <label>Базовое движение для карты мышц
             <Select value={basedOn} onChange={setBasedOn} options={[
               { value: "", label: "Без разметки — только журнал" },

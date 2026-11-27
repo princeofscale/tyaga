@@ -10,11 +10,14 @@ import {
   Plus,
   Search,
   ShieldCheck,
+  Sparkles,
   Star,
   Trophy,
   X,
 } from "lucide-react";
 import Select from "./Select";
+import Modal from "./Modal";
+import BiomechanicalAgentPanel from "./BiomechanicalAgentPanel";
 import { MUSCLES, exerciseCatalog, fmt, type Exercise, type Workout } from "../lib/model";
 import { DeloadEngine } from "../domain/DeloadEngine";
 import { OneRepMaxFormulas } from "../domain/OneRepMaxFormulas";
@@ -175,6 +178,7 @@ function LibraryContent({
   const [subheadFilter, setSubheadFilter] = useState("all");
   const [equipment, setEquipment] = useState("all");
   const [spineFriendly, setSpineFriendly] = useState(false);
+  const [agentOpen, setAgentOpen] = useState(false);
   const [page, setPage] = useState(1);
 
   const historyStats = useMemo(() => {
@@ -431,7 +435,21 @@ function LibraryContent({
           <ShieldCheck size={14} aria-hidden="true" />
           Щадящие поясницу
         </button>
+        <button
+          type="button"
+          className="tel-pill-btn exlib-spine-btn exlib-agent-btn"
+          onClick={() => setAgentOpen(true)}
+          title="Разобрать любой тренажёр или технику с помощью ИИ-агента биомеханики"
+        >
+          <Sparkles size={14} aria-hidden="true" />
+          ИИ-разбор тренажёра
+        </button>
       </div>
+      {agentOpen ? (
+        <Modal title="ИИ-агент разметки мышц" onClose={() => setAgentOpen(false)}>
+          <BiomechanicalAgentPanel initialQuery={search} />
+        </Modal>
+      ) : null}
 
       {/* Мышечные группы */}
       <div className="tel-pill-row" role="group" aria-label="Мышечная группа">

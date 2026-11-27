@@ -26,10 +26,14 @@ import { SharedProgramRepository } from "./SharedProgramRepository";
 import { MeetupRepository } from "./MeetupRepository";
 import { LiveRoomService } from "./LiveRoomService";
 import { BodyweightRepository } from "./BodyweightRepository";
+import { BiomechanicsAgentService } from "./BiomechanicsAgentService";
 import { BodyTooLargeError, json, readTextLimited } from "./http";
 export interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
+  OPENAI_API_KEY?: string;
+  OPENAI_BASE_URL?: string;
+  OPENAI_MODEL?: string;
   onSessionToken?: (token: string) => void;
 }
 const MAX_BODY_BYTES = 500_000;
@@ -68,6 +72,53 @@ export async function handleApi(request: Request, env: Env, preReadBody?: string
     const authResponse = await accounts.handle(request, preReadBody);
     if (authResponse) return authResponse;
     const activeAccount = await accounts.require(request);
+    if (url.pathname.startsWith("/api/v4/biomechanics/")) {
+      const agentSvc = new BiomechanicsAgentService(env.DB, activeAccount.id, env);
+      if (url.pathname === "/api/v4/biomechanics/resolve" && request.method === "POST") {
+        const body = object(await readJson());
+        const result = await agentSvc.resolve({
+          queryText: str(body.queryText, 240, 1),
+          locale: body.locale === "en" ? "en" : "ru",
+          imageBase64: typeof body.imageBase64 === "string" ? body.imageBase64 : undefined,
+          executionProfile:
+            body.executionProfile && typeof body.executionProfile === "object"
+              ? (body.executionProfile as Record<string, unknown>)
+              : undefined,
+          machineBrandHint:
+            typeof body.machineBrandHint === "string" ? body.machineBrandHint.slice(0, 120) : undefined,
+          userId: activeAccount.id,
+          longLevers: body.longLevers === true,
+        });
+        return json(result);
+      }
+      if (url.pathname === "/api/v4/biomechanics/clarify" && request.method === "POST") {
+        const body = object(await readJson());
+        return json(
+          await agentSvc.clarify({
+            canonicalSlug: str(body.canonicalSlug, 80, 1),
+            updatedDescriptor: body.updatedDescriptor as Parameters<BiomechanicsAgentService["clarify"]>[0]["updatedDescriptor"],
+            executionPatch:
+              body.executionPatch && typeof body.executionPatch === "object"
+                ? (body.executionPatch as Record<string, unknown>)
+                : undefined,
+          }),
+        );
+      }
+      if (url.pathname === "/api/v4/biomechanics/feedback" && request.method === "POST") {
+        const body = object(await readJson());
+        return json(
+          await agentSvc.submitFeedback({
+            canonicalSlug: str(body.canonicalSlug, 80, 1),
+            proposedDescriptor: body.proposedDescriptor as Parameters<BiomechanicsAgentService["submitFeedback"]>[0]["proposedDescriptor"],
+          }),
+        );
+      }
+      if (url.pathname === "/api/v4/biomechanics/catalog/sync" && request.method === "GET") {
+        const since = Number(url.searchParams.get("since") ?? "0") || 0;
+        return json(await agentSvc.syncCatalog(since));
+      }
+      return json({ error: "Не найдено" }, 404);
+    }
     if(url.pathname==="/api/challenges"||url.pathname.startsWith("/api/challenges/")) {
       const challenges=new ChallengeRepository(env.DB,activeAccount);
       if(url.pathname==="/api/challenges"&&request.method==="GET")return json(await challenges.read());
