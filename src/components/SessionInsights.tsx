@@ -6,6 +6,7 @@ import { BiomechanicsProfileStore } from "../domain/BiomechanicsProfile";
 import { SessionReport } from "../domain/SessionReport";
 import { fmt, type Workout, type Settings } from "../lib/model";
 import type { AccountProfile } from "../lib/account";
+import { useStorageRevision } from "../lib/useNow";
 import Modal from "./Modal";
 import { setsSummaryLine, workingSets } from "../lib/quantity";
 import { ShareStoryCardModal } from "./ShareStoryCardModal";
@@ -23,33 +24,50 @@ export default function SessionInsights({
 }) {
   const [copied, setCopied] = useState(false);
   const [showStoryModal, setShowStoryModal] = useState(false);
+  const bioRev = useStorageRevision(["tyaga:biomechanics-profile-change"]);
   const report = new SessionReport(workout, settings), sets = report.sets, volume = report.volume;
 
   const recoveryImpact = useMemo(() => {
-    const pool = allWorkouts && allWorkouts.length > 0 ? allWorkouts : [workout];
+    void bioRev;
+    const priorPool =
+      allWorkouts && allWorkouts.length > 0
+        ? allWorkouts.filter((w) => w.id !== workout.id)
+        : [];
+    const pool = [...priorPool, workout];
     const deloadV2 = DeloadEngine.evaluateV2(pool, {
       today: workout.date,
       timeZone: settings.timeZone,
-      isLongLimbed: BiomechanicsProfileStore.read().longLevers,
+      isLongLimbed: BiomechanicsProfileStore.read(undefined, account?.id).longLevers,
       currentBodyweightKg: account?.bodyMassKg ?? 75,
     });
+    const beforeReadiness = MuscleReadiness.fromWorkoutsV2(priorPool, workout.date, settings.timeZone);
+    const beforeById = new Map(beforeReadiness.map((m) => [m.id, m]));
     const readinessV2 = MuscleReadiness.fromWorkoutsV2(pool, workout.date, settings.timeZone);
     const fatigued = readinessV2
-      .filter((m) => m.readinessPct < 75)
+      .filter((m) => {
+        const prev = beforeById.get(m.id);
+        return (
+          m.hasRecentLoad &&
+          m.readinessPct < 75 &&
+          (!prev || !prev.hasRecentLoad || m.fatigueLoad > prev.fatigueLoad)
+        );
+      })
       .sort((a, b) => a.readinessPct - b.readinessPct)
       .slice(0, 3);
     return {
       axialPct: Math.min(130, Math.round(deloadV2.axialUtilization * 100)),
       localPct: Math.min(130, Math.round(deloadV2.localUtilization * 100)),
       statusLabel:
-        deloadV2.status === "deload_recommended"
-          ? "Показана разгрузка"
-          : deloadV2.status === "productive_overreach"
-            ? "Высокая нагрузка"
-            : "В норме",
+        deloadV2.status === "pain_reported"
+          ? "Отметки боли"
+          : deloadV2.status === "deload_recommended"
+            ? "Сигналы нагрузки"
+            : deloadV2.status === "productive_overreach"
+              ? "Высокая нагрузка"
+              : "В норме",
       fatigued,
     };
-  }, [allWorkouts, workout, settings.timeZone, account?.bodyMassKg]);
+  }, [allWorkouts, workout, settings.timeZone, account?.bodyMassKg, account?.id, bioRev]);
 
   const shareSummary = async () => {
     const text = [

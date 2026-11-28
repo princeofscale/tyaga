@@ -770,7 +770,7 @@
     align-items: center;
     justify-content: center;
     gap: 6px;
-    min-block-size: 40px;
+    min-block-size: 44px;
     padding: 6px 14px;
     border-radius: 999px;
     border: 1px solid var(--line);

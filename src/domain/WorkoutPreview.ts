@@ -26,6 +26,8 @@ export interface PreviewMuscleImpact {
   phaseLabelAfter: string;
   /** Готовность мышцы прямо сейчас (0–100 %, модель v2). */
   readinessPct: number;
+  /** Была ли зафиксирована нагрузка на целевые подгруппы за последние 10 дн. */
+  hasReadinessData: boolean;
 }
 
 export interface WorkoutPreviewAnalysis {
@@ -47,6 +49,7 @@ export interface WorkoutPreviewAnalysis {
   bodyMap: Partial<Record<Muscle, { level: "primary" | "secondary"; intensity: number }>>;
   lowestTargetReadiness: { name: string; pct: number } | null;
   avgTargetReadinessPct: number;
+  hasTargetReadinessData: boolean;
 }
 
 const MUSCLE_TO_V2_GROUPS: Record<Muscle, MuscleReadinessGroupV2Id[]> = {
@@ -60,6 +63,21 @@ const MUSCLE_TO_V2_GROUPS: Record<Muscle, MuscleReadinessGroupV2Id[]> = {
   glutes: ["glutes"],
   calves: ["calves"],
   core: ["abs"],
+};
+
+const V2_GROUP_TO_MUSCLE: Record<MuscleReadinessGroupV2Id, Muscle> = {
+  chest: "chest",
+  lats_upper_back: "back",
+  erectors: "back",
+  front_delts: "shoulders",
+  side_rear_delts: "shoulders",
+  biceps: "biceps",
+  triceps: "triceps",
+  quads: "quads",
+  hamstrings: "hamstrings",
+  glutes: "glutes",
+  calves: "calves",
+  abs: "core",
 };
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
@@ -94,11 +112,11 @@ export class WorkoutPreview {
     history: Workout[],
     today: string,
     timeZone?: string,
-    options?: { isLongLimbed?: boolean; bodyMassKg?: number | null },
+    options?: { isLongLimbed?: boolean; bodyMassKg?: number | null; now?: Date; accountId?: string },
   ): WorkoutPreviewAnalysis {
-    const isLongLimbed = options?.isLongLimbed ?? BiomechanicsProfileStore.read().longLevers;
+    const isLongLimbed = options?.isLongLimbed ?? BiomechanicsProfileStore.read(undefined, options?.accountId).longLevers;
     const bodyMassKg = options?.bodyMassKg ?? 75;
-    const refNow = new Date(`${today}T12:00:00Z`);
+    const refNow = options?.now ?? new Date(`${today}T12:00:00Z`);
 
     // 1. Текущий недельный объём (исключаем саму тренировку, если она уже сохранена/в истории)
     const pastOnly = history.filter((w) => w.id !== planned.id);
@@ -107,13 +125,15 @@ export class WorkoutPreview {
       weekReport.assessments.map((a) => [a.muscle, a.actualSets]),
     );
 
-    // 2. Готовность мышц v2 прямо сейчас
-    const readinessV2 = MuscleReadiness.fromWorkoutsV2(pastOnly, today, timeZone, refNow);
-    const readinessByV2 = new Map(readinessV2.map((r) => [r.id, r.readinessPct]));
+    // 2. Готовность мышц v2 прямо сейчас (если now не задан — детерминированный календарный расчёт без сдвига 12:00Z)
+    const readinessV2 = MuscleReadiness.fromWorkoutsV2(pastOnly, today, timeZone, options?.now);
+    const readinessByV2 = new Map(readinessV2.map((r) => [r.id, r]));
 
     // 3. Разбираем плановую тренировку по подходам, мышцам, осевой цене и тоннажу
     const directMap = new Map<Muscle, number>();
     const indirectMap = new Map<Muscle, number>();
+    const targetedPrimaryV2 = new Map<Muscle, Set<MuscleReadinessGroupV2Id>>();
+    const targetedAnyV2 = new Map<Muscle, Set<MuscleReadinessGroupV2Id>>();
     let workingSets = 0;
     let compoundSets = 0;
     let axialWeightedSum = 0;
@@ -131,6 +151,17 @@ export class WorkoutPreview {
       axialWeightedSum += count * axialMult * (isLongLimbed && axialMult >= 1.5 ? 1.2 : 1.0);
 
       if (def) {
+        if (count > 0) {
+          for (const [v2Id, roleWeight] of MuscleReadiness.muscleRolesV2(def)) {
+            const coarse = V2_GROUP_TO_MUSCLE[v2Id];
+            if (!targetedAnyV2.has(coarse)) targetedAnyV2.set(coarse, new Set());
+            targetedAnyV2.get(coarse)!.add(v2Id);
+            if (roleWeight >= 1.0) {
+              if (!targetedPrimaryV2.has(coarse)) targetedPrimaryV2.set(coarse, new Set());
+              targetedPrimaryV2.get(coarse)!.add(v2Id);
+            }
+          }
+        }
         const primaryZones =
           !def.primary.length && def.custom?.declaredZones?.length
             ? def.custom.declaredZones
@@ -220,11 +251,23 @@ export class WorkoutPreview {
       const beforeSets = round1(beforeMap.get(m) ?? 0);
       const afterSets = round1(beforeSets + addedSets);
       const assessedAfter = VolumeLandmarksCalculator.assessMuscleVolume(m, afterSets);
-      const v2Ids = MUSCLE_TO_V2_GROUPS[m];
-      const readinessPct = Math.min(
-        ...v2Ids.map((id) => readinessByV2.get(id) ?? 100),
-      );
       const role: "primary" | "secondary" = directAdded > 0 ? "primary" : "secondary";
+      const primarySubgroups = targetedPrimaryV2.get(m);
+      const anySubgroups = targetedAnyV2.get(m);
+      const v2Ids =
+        role === "primary" && primarySubgroups?.size
+          ? [...primarySubgroups]
+          : anySubgroups?.size
+            ? [...anySubgroups]
+            : MUSCLE_TO_V2_GROUPS[m];
+      const v2Items = v2Ids
+        .map((id) => readinessByV2.get(id))
+        .filter((item): item is NonNullable<typeof item> => Boolean(item));
+      const loadedV2 = v2Items.filter((item) => item.hasRecentLoad);
+      const hasReadinessData = loadedV2.length > 0;
+      const readinessPct = hasReadinessData
+        ? Math.min(...loadedV2.map((item) => item.readinessPct))
+        : 100;
 
       muscles.push({
         muscle: m,
@@ -242,6 +285,7 @@ export class WorkoutPreview {
         phaseAfter: assessedAfter.phase,
         phaseLabelAfter: assessedAfter.phaseShort,
         readinessPct,
+        hasReadinessData,
       });
 
       bodyMap[m] = {
@@ -257,11 +301,13 @@ export class WorkoutPreview {
 
     const primaryMuscles = muscles.filter((m) => m.role === "primary");
     const targetPool = primaryMuscles.length > 0 ? primaryMuscles : muscles;
+    const trackedTargets = targetPool.filter((m) => m.hasReadinessData);
+    const hasTargetReadinessData = trackedTargets.length > 0;
     const avgTargetReadinessPct =
-      targetPool.length > 0
-        ? Math.round(targetPool.reduce((s, m) => s + m.readinessPct, 0) / targetPool.length)
+      trackedTargets.length > 0
+        ? Math.round(trackedTargets.reduce((s, m) => s + m.readinessPct, 0) / trackedTargets.length)
         : 100;
-    const worstTarget = targetPool
+    const worstTarget = trackedTargets
       .filter((m) => m.readinessPct < 75)
       .sort((a, b) => a.readinessPct - b.readinessPct)[0];
 
@@ -293,6 +339,7 @@ export class WorkoutPreview {
         ? { name: worstTarget.name, pct: worstTarget.readinessPct }
         : null,
       avgTargetReadinessPct,
+      hasTargetReadinessData,
     };
   }
 }

@@ -3,6 +3,7 @@ import { trailingWindow } from "../lib/calendar";
 import { exerciseById, exerciseForEntry } from "../lib/catalog";
 import type { Exercise, Routine, SetEntry, Workout, WorkoutExercise } from "../lib/types";
 import { AnalyticsFacts, type FactsOptions } from "./AnalyticsFacts";
+import { DeloadEngine } from "./DeloadEngine";
 import { LaidDupPlan, type LaidDay } from "./LaidDupPlan";
 import { MuscleParticipation } from "./MuscleParticipation";
 import { OneRepMaxFormulas } from "./OneRepMaxFormulas";
@@ -239,7 +240,10 @@ export class BiomechanicsEngine {
       const profile = this.setProfile(fact.entry, fact.set, exercise);
       effectiveSetsTotal += profile.stimulus;
       sfrSum += profile.sfr;
-      repZones[profile.repZone] += 1;
+      const isDurationSet =
+        exercise?.recording.type === "duration" ||
+        (typeof fact.set.durationSeconds === "number" && fact.set.durationSeconds > 0);
+      if (!isDurationSet) repZones[profile.repZone] += 1;
       if (profile.isHard) hardSets += 1;
       if (profile.isFailure) failureSets += 1;
       if (profile.isJunk) junkSets += 1;
@@ -459,8 +463,12 @@ export class BiomechanicsEngine {
     if (first) {
       const since = trailingWindow(today, 14).from;
       const cycleRoutineIds = new Set(cycle.map((r) => r.id));
-      const recent = workouts.filter(
-        (w) => w.date >= since && w.date <= today && w.routineId && cycleRoutineIds.has(w.routineId),
+      const deduped = new AnalyticsFacts(workouts, { from: since, through: today }).workouts();
+      const recent = deduped.filter(
+        (w) =>
+          !DeloadEngine.isDeloadName(w.name) &&
+          w.routineId &&
+          cycleRoutineIds.has(w.routineId),
       );
       let easyTopSets = 0;
       let missedRepTopSets = 0;
@@ -469,7 +477,7 @@ export class BiomechanicsEngine {
         const routine = cycle.find((r) => r.id === w.routineId);
         if (!routine) continue;
         const plan = LaidDupPlan.planFor(routine, w.programDate ?? w.date);
-        if (!plan) continue;
+        if (!plan || plan.isDeload || plan.painFlag || plan.heavy.weightKg <= 0) continue;
         const liftEntry = w.exercises.find((e) => e.exerciseId === plan.liftExerciseId);
         const topSet = liftEntry?.sets.find((s) => s.done && !s.warmup);
         if (!topSet) continue;

@@ -272,7 +272,10 @@ export function ShareStoryCardModal({
     });
 
     // Главный результат + силуэт мышц и PR
-    const preview = WorkoutPreview.analyze(workout, allWorkouts ?? [], workout.date, workout.timeZone);
+    const preview = WorkoutPreview.analyze(workout, allWorkouts ?? [], workout.date, workout.timeZone, {
+      accountId: account.id,
+      bodyMassKg: account.bodyMassKg,
+    });
     const prDetector = allWorkouts?.length ? new LivePrDetector(allWorkouts, workout.id) : null;
     const prHitsCount = prDetector
       ? workout.exercises.filter((ex) => prDetector.bestPrSetId(ex) !== null).length
@@ -374,7 +377,7 @@ export function ShareStoryCardModal({
     ctx.fillStyle = "#5f6b5c";
     ctx.font = font(600, 24);
     ctx.fillText("Тяга · силовой журнал", width / 2, height - 100);
-  }, [workout, allWorkouts, account.displayName, format, fontsReady, summary.total, durationMin, workingSetsCount, bestSet]);
+  }, [workout, allWorkouts, account.displayName, account.bodyMassKg, account.id, format, fontsReady, summary.total, durationMin, workingSetsCount, bestSet]);
 
   const handleDownload = () => {
     const canvas = canvasRef.current;

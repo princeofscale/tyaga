@@ -19,12 +19,13 @@ export async function replicate(
   }
 }
 
-// Requests stay under the API limits: 100 documents and a 500 kB body.
+// Requests stay under the API limits: 100 documents and a 500 kB UTF-8 body.
+const utf8 = new TextEncoder();
 function* chunks(docs: unknown[]) {
   let chunk: unknown[] = [];
   let size = 0;
   for (const doc of docs) {
-    const length = JSON.stringify(doc).length;
+    const length = utf8.encode(JSON.stringify(doc)).byteLength;
     if (chunk.length && (chunk.length === 100 || size + length > 400000)) {
       yield chunk;
       chunk = [];

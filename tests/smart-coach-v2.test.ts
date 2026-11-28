@@ -7,6 +7,7 @@ import { DeloadEngine } from "../src/domain/DeloadEngine";
 import { MuscleReadiness } from "../src/domain/MuscleReadiness";
 import { SmartCoach } from "../src/domain/SmartCoach";
 import { LaidDupPlan } from "../src/domain/LaidDupPlan";
+import { ExerciseAvoidStore } from "../src/domain/SubstitutionPolicy";
 import { addCalendarDays } from "../src/lib/calendar";
 import { makeExerciseEntry, makeWorkout } from "../src/lib/model";
 import type { Routine, Workout } from "../src/lib/types";
@@ -429,4 +430,92 @@ test("13. laid_v2_tm_autoreg_hysteresis: 1 easy DUP v2 bench top set holds, 2 co
   assert.equal(suggestions[0].lift, "bench");
   assert.equal(suggestions[0].status, "increased");
   assert.ok(suggestions[0].toMax > first.maxes.bench);
+});
+
+const trendNow = new Date("2026-11-26T12:00:00Z");
+const trendOptions = { now: trendNow, timeZone: "UTC" };
+const trendEntries = (weight: number, reps: number, rir: number, ids = ["bench"]) =>
+  ids.map((exerciseId) => ({ exerciseId, sets: Array.from({ length: 3 }, () => ({ weight, reps, rir })) }));
+
+test("repeating the same stronger and lighter sessions does not count as a drop", () => {
+  const assessment = DeloadEngine.evaluateV2([
+    makeDoneSession("prior-heavy", "2026-11-10", trendEntries(100, 6, 2)),
+    makeDoneSession("prior-light", "2026-11-12", trendEntries(90, 6, 2)),
+    makeDoneSession("recent-heavy", "2026-11-24", trendEntries(100, 6, 2)),
+    makeDoneSession("recent-light", "2026-11-25", trendEntries(90, 6, 2)),
+  ], trendOptions);
+  assert.deepEqual(assessment.e1rmDropExercises, []);
+  assert.equal(assessment.recommendedMode, "none");
+});
+
+test("a change of set-level ROM must not be interpreted as a loss of strength", () => {
+  const before = makeDoneSession("prior-partial", "2026-11-10", trendEntries(100, 6, 2));
+  for (const set of before.exercises[0].sets) set.execution = { rom: "lengthened_partial" };
+  const after = makeDoneSession("current-full", "2026-11-25", trendEntries(85, 6, 2));
+  for (const set of after.exercises[0].sets) set.execution = { rom: "full" };
+  assert.ok(!DeloadEngine.evaluateV2([before, after], trendOptions).triggeredSignals.includes("S1_e1rm_drop"));
+});
+
+test("RIR drift does not compare readings of different machines", () => {
+  const ids = ["lat-pulldown", "row"];
+  const before = makeDoneSession("prior-machine", "2026-11-10", trendEntries(65, 8, 3, ids));
+  const after = makeDoneSession("new-machine", "2026-11-25", trendEntries(50, 8, 1, ids));
+  for (const entry of before.exercises) entry.machineInstanceId = "gym-a:" + entry.exerciseId;
+  for (const entry of after.exercises) entry.machineInstanceId = "gym-b:" + entry.exerciseId;
+  const assessment = DeloadEngine.evaluateV2([before, after], trendOptions);
+  assert.ok(!assessment.triggeredSignals.includes("S2_rir_drift"));
+  assert.equal(assessment.rirDrift, null);
+});
+
+test("fewer reps after switching to heavier sets do not trigger a rep-drop signal", () => {
+  const ids = ["bench", "squat"];
+  const assessment = DeloadEngine.evaluateV2([
+    makeDoneSession("prior", "2026-11-10", trendEntries(100, 10, 2, ids)),
+    makeDoneSession("recent", "2026-11-25", trendEntries(110, 7, 2, ids)),
+  ], trendOptions);
+  assert.ok(!assessment.triggeredSignals.includes("S4_rep_drop"));
+});
+
+test("fewer reps with intentionally more reserve do not signal loss of performance", () => {
+  const ids = ["bench", "squat"];
+  const assessment = DeloadEngine.evaluateV2([
+    makeDoneSession("prior", "2026-11-10", trendEntries(100, 8, 1, ids)),
+    makeDoneSession("recent", "2026-11-25", trendEntries(100, 5, 4, ids)),
+  ], trendOptions);
+  assert.ok(!assessment.triggeredSignals.includes("S4_rep_drop"));
+});
+
+test("repeated pain alone produces a caution, not a green verdict or a training protocol", () => {
+  const workouts = [makeDoneSession("single", "2026-11-25", trendEntries(80, 6, 2))];
+  const assessment = DeloadEngine.evaluateV2(workouts, { ...trendOptions, corePainRepeated: true });
+  assert.ok(assessment.triggeredSignals.includes("S5_pain"));
+  assert.notEqual(assessment.status, "optimal");
+  assert.equal(assessment.protocolParams, null);
+});
+
+test("a completed calendar cycle stops counting as active deload after the post-cycle week", () => {
+  const routines = LaidDupPlan.routines({
+    maxes: { squat: 120, bench: 100, deadlift: 150, ohp: 65 },
+    extras: true,
+    light: false,
+    startMonday: "2026-09-07",
+  });
+  const report = SmartCoach.analyze([], routines, "2026-11-16", "UTC", new Date("2026-11-16T12:00:00Z"));
+  assert.equal(report.activeDeload, null);
+  assert.notEqual(report.v2.state, "DELOAD_ACTIVE");
+});
+
+test("a movement marked with pain does not get a recommendation to increase weight", (t) => {
+  t.mock.method(ExerciseAvoidStore.prototype, "read", () => [
+    { exerciseId: "bench", reason: "pain", addedAt: "2026-11-25" },
+  ]);
+  const routines: Routine[] = [{
+    id: "double", name: "Double", notes: "", days: [1],
+    exercises: [makeExerciseEntry("bench"), makeExerciseEntry("squat")],
+    restSeconds: 120, progression: "double", repMin: 8, repMax: 10, incrementKg: 2.5, revision: 1,
+  }];
+  const workouts = [makeDoneSession("routine", "2026-11-25", trendEntries(80, 10, 2, ["bench", "squat"]))];
+  const report = SmartCoach.analyze(workouts, routines, "2026-11-26", "UTC", trendNow, "test-account");
+  assert.equal(report.painFlagsSummary.count, 1);
+  assert.deepEqual(report.v2.weightIncreaseRecommendations.map((rec) => rec.exerciseId), ["squat"]);
 });

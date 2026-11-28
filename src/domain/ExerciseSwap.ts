@@ -8,9 +8,25 @@ import { PreviousSets } from "./PreviousSets";
  * истории поля остаются пустыми. Выполненный подход старого упражнения в новое не переходит.
  */
 export class ExerciseSwap {
-  /** Правило веса и тип записи. */
-  static sameRule(oldLoadMode: string | undefined, oldType: string | undefined, next: Exercise) {
-    return oldLoadMode === next.recording.loadMode && oldType === next.recording.type;
+  /** Правило веса и тип записи (с учётом тренажёра и числа снарядов/латеральности). */
+  static sameRule(
+    oldLoadMode: string | undefined,
+    oldType: string | undefined,
+    next: Exercise,
+    oldExercise?: Exercise,
+  ) {
+    if (oldLoadMode !== next.recording.loadMode || oldType !== next.recording.type) return false;
+    if (next.recording.loadMode === "machine_stack" && (!oldExercise || oldExercise.id !== next.id)) {
+      return false;
+    }
+    if (oldExercise && next.recording.loadMode === "per_implement") {
+      const oldCount = oldExercise.recording.implementCount ?? 2;
+      const nextCount = next.recording.implementCount ?? 2;
+      const oldLat = oldExercise.recording.laterality ?? "bilateral";
+      const nextLat = next.recording.laterality ?? "bilateral";
+      if (oldCount !== nextCount || oldLat !== nextLat) return false;
+    }
+    return true;
   }
 
   /**
@@ -23,8 +39,9 @@ export class ExerciseSwap {
     oldType: string | undefined,
     next: Exercise,
     previousWorking: SetEntry[],
+    oldExercise?: Exercise,
   ): { sets: SetEntry[]; carried: boolean } {
-    if (ExerciseSwap.sameRule(oldLoadMode, oldType, next)) return { sets: oldSets, carried: true };
+    if (ExerciseSwap.sameRule(oldLoadMode, oldType, next, oldExercise)) return { sets: oldSets, carried: true };
     const timed = next.recording.type === "duration";
     const assistance = next.recording.loadMode === "assisted_bodyweight";
     // Разминка настроена под вес старого упражнения: в новом её нет, остаются рабочие подходы.

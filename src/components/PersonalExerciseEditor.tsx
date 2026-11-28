@@ -1,15 +1,17 @@
 import { useState } from "react";
-import type { Exercise, Equipment, RecordingSpec } from "../lib/types";
+import type { Exercise, Equipment, MuscleRole, RecordingSpec } from "../lib/types";
 import { MUSCLES, EXERCISES } from "../lib/model";
 import { productService } from "../services/ProductService";
 import Select from "./Select";
 import BiomechanicalAgentPanel from "./BiomechanicalAgentPanel";
 
 export default function PersonalExerciseEditor({
+  accountId,
   exercise,
   onSaved,
   onDeleted,
 }: {
+  accountId?: string;
   exercise?: Exercise;
   onSaved: (e: Exercise) => void;
   onDeleted?: (id: string) => void;
@@ -32,6 +34,11 @@ export default function PersonalExerciseEditor({
   );
   const [zones, setZones] = useState(exercise?.custom?.declaredZones ?? []);
   const [basedOn, setBasedOn] = useState(exercise?.custom?.basedOnExerciseId ?? "");
+  const [muscleRoles, setMuscleRoles] = useState<Pick<MuscleRole, "muscleId" | "role">[]>(() =>
+    exercise?.custom && !exercise.custom.basedOnExerciseId
+      ? exercise.muscles.map(({ muscleId, role }) => ({ muscleId, role }))
+      : [],
+  );
   const [familyId] = useState(
     exercise?.custom?.familyId ?? crypto.randomUUID(),
   );
@@ -53,7 +60,8 @@ export default function PersonalExerciseEditor({
         notes,
         equipment,
         declaredZones: zones,
-          basedOnExerciseId: type === "reps" ? basedOn : "",
+        basedOnExerciseId: type === "reps" ? basedOn : "",
+        ...(muscleRoles.length ? { muscleRoles } : {}),
         recording: {
           type,
           loadMode,
@@ -155,10 +163,13 @@ export default function PersonalExerciseEditor({
         </label>
         <div>
           <BiomechanicalAgentPanel
+            accountId={accountId}
             compact
             initialQuery={name}
-            onApplyToExercise={({ zones: inferredZones, rationale, unilateral: isUni, equipment: eq, loadMode: lm }) => {
+            onApplyToExercise={({ zones: inferredZones, muscleRoles: inferredRoles, rationale, unilateral: isUni, equipment: eq, loadMode: lm }) => {
               setZones(inferredZones);
+              setMuscleRoles(inferredRoles);
+              setBasedOn("");
               setUnilateral(isUni);
               setEquipment(eq);
               setLoadMode(lm);
@@ -166,11 +177,20 @@ export default function PersonalExerciseEditor({
             }}
           />
           {type === "reps" && <label>Базовое движение для карты мышц
-            <Select value={basedOn} onChange={setBasedOn} options={[
-              { value: "", label: "Без разметки — только журнал" },
+            <Select value={basedOn} onChange={(value) => {
+              setBasedOn(value);
+              if (value) setMuscleRoles([]);
+            }} options={[
+              { value: "", label: muscleRoles.length ? "Роли из анализа" : "Без разметки — только журнал" },
               ...EXERCISES.map(e => ({ value: e.id, label: e.name })),
             ]} /><small className="tiny">Выбирай, если движение совпадает. Для жима от груди в своём тренажёре — жим лёжа; для тяги сидя — горизонтальная тяга. Это твоя разметка, её можно изменить отдельной версией.</small>
           </label>}
+          {muscleRoles.length ? (
+            <p className="tiny">
+              Роли из анализа сохранятся как пользовательская разметка. {" "}
+              <button type="button" className="text-button" onClick={() => setMuscleRoles([])}>Убрать роли</button>
+            </p>
+          ) : null}
           <p className="field-caption">
             Группы мышц для поиска — твоя разметка
           </p>
@@ -206,8 +226,8 @@ export default function PersonalExerciseEditor({
         </label>
         <p className="tiny">
           Этот вариант сохраняется в твоём аккаунте. Мышцы помогают искать
-          упражнение. Если выбрано базовое движение, подходы участвуют в карте
-          с пометкой пользовательской разметки. Расчётный 1ПМ отключён.
+          упражнение. Роли из анализа или базового движения учитываются в карте
+          как пользовательская разметка. Расчётный 1ПМ отключён.
         </p>
         {error ? (
           <p className="error-banner" role="alert">

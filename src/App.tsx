@@ -40,6 +40,7 @@ import { useBodyweight } from "./state/bodyweightStore";
 import { useLiveRoom } from "./lib/liveRoomContext";
 import { useLiveBroadcast } from "./lib/useLiveBroadcast";
 import { useDraftTabs } from "./lib/useDraftTabs";
+import { useLiveClock } from "./lib/useNow";
 import { usePendingWorkouts } from "./hooks/usePendingWorkouts";
 import { useRestNotifications } from "./hooks/useRestNotifications";
 import { useTrainingTools } from "./lib/webmcp";
@@ -135,6 +136,9 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
   const [importBusy, setImportBusy] = useState(false);
   const [stored, setWorkouts] = useState<Workout[]>([]);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
+  useEffect(() => {
+    weights.setTimeZone(settings.timeZone ?? account.timeZone);
+  }, [weights, settings.timeZone, account.timeZone]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [demo, setDemo] = useState(false);
@@ -424,14 +428,17 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
     [settings.timeZone],
   );
   const displayed = demo ? demoData : workouts;
+  const liveNow = useLiveClock();
+  const today = localDate(liveNow, settings.timeZone);
+  const currentWeekStart = weekStart(liveNow, settings.timeZone);
   const currentWeek = useMemo(
     () =>
       displayed.filter(
         (w) =>
-          w.date >= weekStart(new Date(), settings.timeZone) &&
-          w.date <= localDate(new Date(), settings.timeZone),
+          w.date >= currentWeekStart &&
+          w.date <= today,
       ),
-    [displayed, settings.timeZone],
+    [displayed, currentWeekStart, today],
   );
   const familyKey = useMemo(
     () =>
@@ -452,15 +459,14 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
       muscleLoad(
         workouts.filter(
           (w) =>
-            w.date >= weekStart(new Date(), settings.timeZone) &&
-            w.date <= localDate(new Date(), settings.timeZone),
+            w.date >= currentWeekStart &&
+            w.date <= today,
         ),
         settings,
         { mapping },
       ),
-    [workouts, settings, mapping],
+    [workouts, settings, mapping, currentWeekStart, today],
   );
-  const today = localDate(new Date(), settings.timeZone);
   const deloadStore = useMemo(() => new DeloadPlan(undefined, account.id), [account.id]);
   const [deload, setDeload] = useState<DeloadPlanRecord | null>(null);
   useEffect(() => setDeload(deloadStore.read(today)), [deloadStore, today]);
@@ -506,7 +512,15 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
           routines: [...saved, ...p.routines.filter((r) => !saved.some((s) => s.id === r.id))],
         }));
         setNotice({
-          text: due.map((item) => LaidDupPlan.autoNotice(item.update, item.cycle[0]?.periodization?.substitutions)).join(" "),
+          text: due
+            .map((item) =>
+              LaidDupPlan.autoNotice(
+                item.update,
+                item.cycle[0]?.periodization?.substitutions,
+                item.cycle[0]?.periodization?.version,
+              ),
+            )
+            .join(" "),
           tone: "ok",
         });
       } catch {
@@ -528,14 +542,21 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
       const phaseDate = slot?.originalDate ?? date;
       const base = deload ? DeloadEngine.regular(workouts) : workouts;
       const laidCycle = LaidDupPlan.cycleOf(product.routines, routine);
-      const laidPlan = LaidDupPlan.planFor(routine, phaseDate, { workouts: base, cycle: laidCycle });
+      const laidPlan = LaidDupPlan.planFor(routine, phaseDate, {
+        workouts: base,
+        cycle: laidCycle,
+        accountId: account.id,
+      });
       return DeloadPlan.workout(
-        program.start(base, timeZone, date, slot?.originalDate, { cycle: laidCycle }),
+        program.start(base, timeZone, date, slot?.originalDate, {
+          cycle: laidCycle,
+          accountId: account.id,
+        }),
         deload,
         program.isDeload(workouts, phaseDate) || !!laidPlan?.isDeload,
       );
     },
-    [deload, workouts, product.routines, timeZone, today],
+    [deload, workouts, product.routines, timeZone, today, account.id],
   );
   const todaySlots = useMemo(
     () => TrainingCalendar.onDate(product.routines, today),
@@ -855,28 +876,22 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
   };
 
   const replaceRoutines = async (toDelete: Routine[], toCreate: Routine[]) => {
-    const deleteFirst = product.routines.length + toCreate.length > 50;
+    if (product.routines.length + toCreate.length > 50) {
+      const over = product.routines.length + toCreate.length - 50;
+      throw new Error(
+        `Нельзя безопасно заменить программы при лимите 50: сначала удали хотя бы ${quantity(over, "программу", "программы", "программ")}.`,
+      );
+    }
     const deletedIds = new Set<string>();
     const created: Routine[] = [];
     try {
-      if (deleteFirst) {
-        for (const r of toDelete) {
-          await productService.deleteRoutine(r);
-          deletedIds.add(r.id);
-        }
-        for (const r of toCreate) {
-          const res = await productService.saveRoutine(r);
-          created.push(res.routine);
-        }
-      } else {
-        for (const r of toCreate) {
-          const res = await productService.saveRoutine(r);
-          created.push(res.routine);
-        }
-        for (const r of toDelete) {
-          await productService.deleteRoutine(r);
-          deletedIds.add(r.id);
-        }
+      for (const r of toCreate) {
+        const res = await productService.saveRoutine(r);
+        created.push(res.routine);
+      }
+      for (const r of toDelete) {
+        await productService.deleteRoutine(r);
+        deletedIds.add(r.id);
       }
     } finally {
       if (created.length > 0 || deletedIds.size > 0) {
@@ -955,11 +970,6 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
           )
         : Math.max(1, Math.round(elapsedMs(draft) / 60000));
     const workout = new WorkoutSession(performed).completedWithDuration(autoDuration);
-    setDraft({
-      ...checkpointDraft(draft, Date.now(), true),
-      workout,
-      manualDuration: true,
-    });
     try {
       let result: { workout: Workout };
       try {
@@ -1226,6 +1236,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
     >
       <ExerciseLibrary
         picker={picker}
+        accountId={account.id}
         onAdd={addExercise}
         onDetail={setExerciseDetail}
         selectedIds={draft?.workout.exercises.map((e) => e.exerciseId) ?? []}
@@ -1244,7 +1255,7 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
     </Suspense>
   );
 
-  const currentYear = localDate(new Date(), settings.timeZone).slice(0, 4);
+  const currentYear = today.slice(0, 4);
   const sessionItem = (w: Workout, expanded = false, index = 0, records?: string[]) => (
     <SessionCard
       key={w.id}
@@ -1427,11 +1438,13 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                     </header>
                     <TodayDashboard
                       timeZone={settings.timeZone}
-                      bodyMassKg={account.bodyMassKg}
+                      accountId={account.id}
+                      bodyMassKg={weights.massAt(today, account.bodyMassKg)}
                       workouts={workouts}
                       routines={product.routines}
                       supplements={supplements}
                       today={today}
+                      now={liveNow}
                       recent={displayed
                         .slice(0, 2)
                         .map((workout, index) => sessionItem(workout, false, index))}
@@ -1574,7 +1587,9 @@ function JournalApp({ account, onAccountChange, onLogout }: AppProps) {
                               Object.entries(curSubs).find(([, v]) => v === oldExerciseId)?.[0] ?? oldExerciseId;
                             curSubs[origSlot] = newExercise.id;
                             const lift = (["squat", "bench", "deadlift", "ohp"] as const).find(
-                              (l) => LaidDupPlan.LIFT_EXERCISE[l] === origSlot,
+                              (l) =>
+                                LaidDupPlan.baseLiftExerciseId(l, p.version) === origSlot ||
+                                (p.version === "v3" && l === "deadlift" && origSlot === "rdl"),
                             );
                             const painFlags =
                               lift && avoidReason === "pain"

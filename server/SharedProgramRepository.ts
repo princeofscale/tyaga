@@ -77,8 +77,9 @@ export class SharedProgramRepository {
   async read(now = new Date()): Promise<SharedProgram[]> {
     await this.ensure();
     const id = this.account.id;
+    const accepted = await this.acceptedFriendIds();
     const { start, today } = FriendsService.week(now, this.account.timeZone);
-    const { results: rows } = await this.db
+    const { results: rawRows } = await this.db
       .prepare(
         `SELECT p.id, p.owner_id, COALESCE(a.display_name, 'Атлет') AS owner_name,
                 p.title, p.kind, p.payload, p.created_at
@@ -92,6 +93,7 @@ export class SharedProgramRepository {
       .bind(id)
       .all<ProgramRow>();
 
+    const rows = rawRows.filter((r) => r.owner_id === id || accepted.has(r.owner_id));
     if (!rows.length) return [];
 
     const ids = rows.map((r) => r.id);
@@ -101,8 +103,7 @@ export class SharedProgramRepository {
         `SELECT m.program_id, m.account_id, COALESCE(a.display_name, 'Атлет') AS display_name,
                 m.role, m.adopted_at,
                 (SELECT COUNT(*) FROM workouts w
-                 WHERE w.owner_id = COALESCE(a.user_id, '')
-                   AND w.deleted = 0
+                 WHERE w.owner_id = a.platform_id
                    AND w.date >= ? AND w.date <= ?) AS week_workouts
          FROM shared_program_members m
          LEFT JOIN accounts a ON a.id = m.account_id
@@ -203,6 +204,15 @@ export class SharedProgramRepository {
   async adopt(programId: string, now = new Date()): Promise<void> {
     await this.ensure();
     const id = str(programId, 80, 1);
+    const program = await this.db
+      .prepare(`SELECT owner_id FROM shared_programs WHERE id = ?`)
+      .bind(id)
+      .first<{ owner_id: string }>();
+    if (!program) throw new InputError("Программа не найдена");
+    if (program.owner_id !== this.account.id) {
+      const accepted = await this.acceptedFriendIds();
+      if (!accepted.has(program.owner_id)) throw new InputError("Программа не найдена");
+    }
     const ts = now.toISOString();
     const res = await this.db
       .prepare(

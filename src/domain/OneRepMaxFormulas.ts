@@ -12,6 +12,7 @@ export interface E1RMInput {
   reps: number;
   rir: number | null;
   loadMode: E1RMLoadMode;
+  implementCount?: number;
   currentBodyweightKg: number;
   isWarmup: boolean;
   e1rmEligible: boolean;
@@ -70,7 +71,7 @@ export class OneRepMaxFormulas {
         effectiveWeight = input.weight;
         break;
       case "per_implement":
-        effectiveWeight = input.weight * 2;
+        effectiveWeight = input.weight * Math.max(1, input.implementCount ?? 2);
         break;
       case "bodyweight":
         effectiveWeight = bw;

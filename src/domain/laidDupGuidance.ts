@@ -263,7 +263,16 @@ export function buildExerciseGuidance(
   if (plan.version === "v3") {
     const v3Week = plan.v3Week ?? 1;
     const isDeload = Boolean(options.deload || plan.isDeload || v3Week === 6);
-    const slot = getV3ExerciseSlot(day, exerciseId);
+    let origId = exerciseId;
+    if (substitutions) {
+      for (const [orig, repl] of Object.entries(substitutions)) {
+        if (repl === exerciseId) {
+          origId = orig;
+          break;
+        }
+      }
+    }
+    const slot = getV3ExerciseSlot(day, exerciseId) ?? getV3ExerciseSlot(day, origId);
     const supersetTag =
       slot?.supersetGroup && slot.supersetOrder
         ? `SS ${slot.supersetGroup}${slot.supersetOrder}`
@@ -420,15 +429,17 @@ export function calcRestSecondsForSet(
   plan: LaidDayPlan,
   options: { isTopSet?: boolean; reps?: number; substitutions?: LaidSubstitutions; deload?: boolean } = {},
 ): number {
-  if (options.deload) return exerciseId === plan.liftExerciseId ? 120 : 75;
+  const isDeload = Boolean(options.deload || plan.isDeload);
+  if (isDeload) return exerciseId === plan.liftExerciseId ? 120 : 75;
   if (exerciseId === plan.liftExerciseId) {
     if (plan.prescriptionMode === "calibration") return 180;
     if (plan.prescriptionMode === "rir_range") return 150;
+    if (plan.version === "v3") return plan.stimulus === "S" ? 210 : 180;
     if (options.isTopSet) return plan.heavy.reps <= 3 ? 240 : 210;
     const reps = options.reps ?? plan.work.reps;
     return reps <= 4 ? 240 : reps <= 6 ? 210 : 180;
   }
-  return buildExerciseGuidance(day, exerciseId, plan, options.substitutions).restSeconds;
+  return buildExerciseGuidance(day, exerciseId, plan, options.substitutions, { deload: isDeload }).restSeconds;
 }
 
 export function buildExerciseSpec(
@@ -638,16 +649,18 @@ export function formatCompactDayLine(plan: LaidDayPlan): string {
 
 export function formatDayDescription(plan: LaidDayPlan): string {
   const { heavy, work } = plan;
+  const labelOpts = { version: plan.version };
+  const maxRef = plan.version === "v2" || plan.version === "v3" ? "ТМ" : "1ПМ";
   if (plan.isDeload) {
-    const label = buildWeekLabel(plan.position, { isDeload: true });
+    const label = buildWeekLabel(plan.position, { ...labelOpts, isDeload: true });
     if (plan.prescriptionMode !== "percent_1rm") {
       return [
         `${label}.`,
-        `${LAID_PLAN_MARK} разгрузка 1 × ${heavy.reps} ${repsWord(heavy.reps)} и ${work.sets} × ${work.reps} ${repsWord(work.reps)} (${plan.version === "v2" ? "RIR 4–5" : "RIR 3–4"}).`,
+        `${LAID_PLAN_MARK} разгрузка 1 × ${heavy.reps} ${repsWord(heavy.reps)} и ${work.sets} × ${work.reps} ${repsWord(work.reps)} (${plan.version === "v2" ? "RIR 4–5" : plan.version === "v3" ? "RIR 4" : "RIR 3–4"}).`,
         "Снизь рабочий вес до комфортного лёгкого и не ходи в отказ — задача недели восстановить ЦНС и суставы.",
       ].join(" ");
     }
-    const deloadRir = plan.version === "v2" ? "RIR 4–5" : "RIR 3–4";
+    const deloadRir = plan.version === "v2" ? "RIR 4–5" : plan.version === "v3" ? "RIR 4" : "RIR 3–4";
     return [
       `${label}.`,
       `${LAID_PLAN_MARK} разгрузка 1 × ${heavy.reps} ${repsWord(heavy.reps)} · ${formatPct(heavy.percent)} % = ${formatKg(heavy.weightKg)} кг (${deloadRir}).`,
@@ -656,14 +669,14 @@ export function formatDayDescription(plan: LaidDayPlan): string {
   }
   if (plan.prescriptionMode === "calibration") {
     return [
-      `${buildWeekLabel(plan.position)}.`,
+      `${buildWeekLabel(plan.position, labelOpts)}.`,
       `${LAID_PLAN_MARK} калибровка 1 × ${heavy.reps} ${repsWord(heavy.reps)} с запасом 2–3 повторения (RIR 2–3), затем ${work.sets} × ${work.reps} ${repsWord(work.reps)} (RIR 2).`,
       "Подбери комфортный рабочий вес без привязки к старому 1ПМ — после 2 тренировок сможешь задать собственный максимум.",
     ].join(" ");
   }
   if (plan.prescriptionMode === "rir_range") {
     return [
-      `${buildWeekLabel(plan.position)}.`,
+      `${buildWeekLabel(plan.position, labelOpts)}.`,
       `${LAID_PLAN_MARK} ${plan.painFlag ? "щадящий режим (пометка боли)" : "работа по RIR (класс C)"}: 1 × ${heavy.reps} ${repsWord(heavy.reps)} и ${work.sets} × ${work.reps} ${repsWord(work.reps)} с запасом ${plan.painFlag ? "2–3" : "1–2"} повт.`,
       plan.painFlag
         ? "Тяжёлые синглы 95 % и автоповышение веса отключены — ориентируйся на переносимый вес без усиления симптомов."
@@ -675,8 +688,8 @@ export function formatDayDescription(plan: LaidDayPlan): string {
       ? `Замена вместо «${exerciseById(plan.originalLiftExerciseId)?.name ?? LAID_LIFT_LABEL[plan.lift]}»: волновая периодизация и проценты сохранены.`
       : "";
   return [
-    `${buildWeekLabel(plan.position)}.`,
-    `${LAID_PLAN_MARK} 1 × ${heavy.reps} ${repsWord(heavy.reps)} · ${formatPct(heavy.percent)} % от 1ПМ (${formatKg(plan.maxKg)} кг) = ${formatKg(heavy.weightKg)} кг${heavy.light ? " (облегчённо, не по оригиналу)" : ""}.`,
+    `${buildWeekLabel(plan.position, labelOpts)}.`,
+    `${LAID_PLAN_MARK} 1 × ${heavy.reps} ${repsWord(heavy.reps)} · ${formatPct(heavy.percent)} % от ${maxRef} (${formatKg(plan.maxKg)} кг) = ${formatKg(heavy.weightKg)} кг${heavy.light ? " (облегчённо, не по оригиналу)" : ""}.`,
     `Затем ${work.sets} × ${work.reps} ${repsWord(work.reps)} · ${formatPct(work.percent)} % = ${formatKg(work.weightKg)} кг${work.light ? " (облегчённо)" : ""}.`,
     ...(replacedNote ? [replacedNote] : []),
   ].join(" ");

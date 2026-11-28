@@ -326,7 +326,7 @@ export function validWorkout(
     result.restSeconds = num(w.restSeconds, 15, 600, true);
   return result;
 }
-function validCycle(value: unknown): RoutineCycle {
+export function validCycle(value: unknown): RoutineCycle {
   const c = object(value);
   const weeks = num(c.weeks, 2, 52, true);
   return {

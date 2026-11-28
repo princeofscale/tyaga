@@ -287,6 +287,23 @@
     background: var(--danger);
   }
 
+  .coach-readiness-chip.status-nodata .coach-readiness-pct {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--muted);
+  }
+
+  .coach-r-pill.is-nodata {
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    color: var(--muted);
+  }
+
+  .coach-v2-disclaimer {
+    margin: 2px 0 0;
+    color: var(--muted);
+  }
+
   .coach-r-chip-foot {
     display: flex;
     align-items: center;

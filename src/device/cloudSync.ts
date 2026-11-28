@@ -5,7 +5,7 @@ import { browserTimeZone } from "../lib/calendar";
 import { replicate, type SyncPage } from "../lib/replicate";
 import type { AccountProfile } from "../lib/account";
 
-export const CLOUD_URL = (import.meta.env.VITE_CLOUD_URL ?? "").replace(/\/$/, "");
+export const CLOUD_URL = (import.meta.env?.VITE_CLOUD_URL ?? "").replace(/\/$/, "");
 export type CloudState = {
   accountId?: string;
   email: string;

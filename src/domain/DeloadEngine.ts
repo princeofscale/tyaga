@@ -1,4 +1,5 @@
 import { AnalyticsFacts } from "./AnalyticsFacts";
+import { ExecutionIdentity } from "./ExecutionIdentity";
 import { OneRepMaxFormulas } from "./OneRepMaxFormulas";
 import { workingSets as workingSetsText } from "../lib/quantity";
 /**
@@ -48,7 +49,8 @@ export interface DeloadEvaluateV2Options {
 }
 
 export interface DeloadEvaluationV2 {
-  status: "optimal" | "productive_overreach" | "deload_recommended";
+  status: "optimal" | "productive_overreach" | "deload_recommended" | "pain_reported";
+  workouts35d: number;
   recommendedMode: DeloadModeV2;
   axialUtilization: number;
   localUtilization: number;
@@ -548,130 +550,133 @@ export class DeloadEngine {
       timeZone,
     }).workouts();
 
-    // S1: RIR-нормализованный e1RM (среднее лучших по сессиям за 7д vs пик за предыдущие 21д)
+    // Compare the same statistic in both windows, for the same execution.
+    // Averaging recent sessions against an older peak falsely flags unchanged alternating sessions.
     const collectSessionE1rms = (list: Workout[]) => {
-      const byEx = new Map<string, number[]>();
+      const byExecution = new Map<string, { exerciseId: string; values: number[] }>();
       for (const w of list) {
         if (DeloadEngine.isDeloadName(w.name)) continue;
-        const sessionBest = new Map<string, number>();
+        const sessionBest = new Map<string, { exerciseId: string; e1rm: number }>();
         for (const e of w.exercises) {
           const def = exerciseForEntry(e);
           if (!def?.recording.e1rmEligible) continue;
           for (const s of e.sets) {
-            if (!s.done || s.warmup) continue;
             const est = OneRepMaxFormulas.estimateV2({
               weight: s.weight,
               reps: s.reps,
               rir: s.rir,
               loadMode: def.recording.loadMode,
+              implementCount: def.recording.implementCount,
               currentBodyweightKg: e.bodyMassKg ?? currentBodyweightKg,
               isWarmup: s.warmup,
-              e1rmEligible: def.recording.e1rmEligible,
+              e1rmEligible: true,
             });
             if (est.isExcludedFromTrend || est.e1rm <= 0) continue;
-            // Требуем доверие >= 0.7 при наличии RIR (или >= 0.4 при fallback RIR)
             const minConf = est.isFallbackRIR ? 0.4 : 0.7;
             if (est.confidence < minConf) continue;
-            const prev = sessionBest.get(e.exerciseId) ?? 0;
-            if (est.e1rm > prev) sessionBest.set(e.exerciseId, est.e1rm);
+            const key = ExecutionIdentity.key(e, s);
+            if (est.e1rm > (sessionBest.get(key)?.e1rm ?? 0)) {
+              sessionBest.set(key, { exerciseId: e.exerciseId, e1rm: est.e1rm });
+            }
           }
         }
-        for (const [exId, best] of sessionBest) {
-          const arr = byEx.get(exId) ?? [];
-          arr.push(best);
-          byEx.set(exId, arr);
+        for (const [key, best] of sessionBest) {
+          const trend = byExecution.get(key) ?? { exerciseId: best.exerciseId, values: [] };
+          trend.values.push(best.e1rm);
+          byExecution.set(key, trend);
         }
       }
-      return byEx;
+      return byExecution;
     };
 
+    const average = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / values.length;
     const recent7E1rm = collectSessionE1rms(recent7Workouts);
     const prior21E1rm = collectSessionE1rms(prior21Workouts);
-    const e1rmDropExercises: Array<{ exerciseId: string; dropPct: number }> = [];
-    for (const [exId, recentVals] of recent7E1rm) {
-      const priorVals = prior21E1rm.get(exId);
-      if (!priorVals?.length || !recentVals.length) continue;
-      const recentAvg = recentVals.reduce((a, b) => a + b, 0) / recentVals.length;
-      const priorPeak = Math.max(...priorVals);
-      const changePct = ((recentAvg - priorPeak) / priorPeak) * 100;
+    const dropByExercise = new Map<string, number>();
+    for (const [key, recent] of recent7E1rm) {
+      const prior = prior21E1rm.get(key);
+      if (!prior) continue;
+      const priorAvg = average(prior.values);
+      const changePct = ((average(recent.values) - priorAvg) / priorAvg) * 100;
       if (changePct <= -2.5) {
-        e1rmDropExercises.push({ exerciseId: exId, dropPct: Math.round(changePct * 10) / 10 });
+        const dropPct = Math.round(changePct * 10) / 10;
+        dropByExercise.set(recent.exerciseId, Math.min(dropPct, dropByExercise.get(recent.exerciseId) ?? 0));
       }
     }
+    const e1rmDropExercises = Array.from(dropByExercise, ([exerciseId, dropPct]) => ({ exerciseId, dropPct }));
 
-    // S2: RIR-дрейф на сопоставимом или меньшем весе (последние 14 дн. vs предыдущие 15–42 дн.)
     const collectRirAndReps = (list: Workout[]) => {
-      const byEx = new Map<
+      const byExecution = new Map<
         string,
-        { rirSum: number; rirCount: number; weightSum: number; repSum: number; setCount: number }
+        { exerciseId: string; rirSum: number; weightSum: number; repSum: number; count: number }
       >();
-      let globalRirSum = 0;
-      let globalRirCount = 0;
       for (const w of list) {
         if (DeloadEngine.isDeloadName(w.name)) continue;
         for (const e of w.exercises) {
-          const cur = byEx.get(e.exerciseId) ?? {
-            rirSum: 0,
-            rirCount: 0,
-            weightSum: 0,
-            repSum: 0,
-            setCount: 0,
-          };
+          const spec = exerciseForEntry(e)?.recording;
+          if (!spec || spec.type === "duration" || spec.loadMode === "legacy_unspecified") continue;
           for (const s of e.sets) {
-            if (!s.done || s.warmup) continue;
-            cur.weightSum += s.weight;
-            cur.repSum += s.reps;
-            cur.setCount++;
-            if (s.rir !== null && Number.isFinite(s.rir)) {
-              cur.rirSum += s.rir;
-              cur.rirCount++;
-              globalRirSum += s.rir;
-              globalRirCount++;
+            if (s.rir === null) continue;
+            // On assisted machines the stack is assistance, not resistance. Only compare
+            // the resulting nominal workload when the recorded mass and assistance are known.
+            let weight = s.weight;
+            if (spec.loadMode === "assisted_bodyweight" || spec.loadMode === "added_bodyweight" || spec.loadMode === "bodyweight") {
+              if (!(e.bodyMassKg !== undefined && e.bodyMassKg > 0)) continue;
+              weight = e.bodyMassKg + s.weight;
+              if (spec.loadMode === "assisted_bodyweight") {
+                if (s.assistanceKg === undefined) continue;
+                weight -= s.assistanceKg;
+              }
             }
+            if (weight <= 0) continue;
+            const key = ExecutionIdentity.key(e, s);
+            const cur = byExecution.get(key) ?? { exerciseId: e.exerciseId, rirSum: 0, weightSum: 0, repSum: 0, count: 0 };
+            cur.rirSum += s.rir;
+            cur.weightSum += weight;
+            cur.repSum += s.reps;
+            cur.count++;
+            byExecution.set(key, cur);
           }
-          if (cur.setCount > 0) byEx.set(e.exerciseId, cur);
         }
       }
-      return {
-        byEx,
-        globalAvgRir: globalRirCount >= 4 ? globalRirSum / globalRirCount : null,
-      };
+      return byExecution;
     };
 
     const cur14 = collectRirAndReps(recent14Workouts);
     const prev28 = collectRirAndReps(prior28Workouts);
-    const rirDriftExercises: string[] = [];
-    const repDropExercises: string[] = [];
+    const rirDriftExercises = new Set<string>();
+    const repDropExercises = new Set<string>();
+    let pairedRirDelta = 0;
+    let pairedRirSets = 0;
 
-    for (const [exId, c] of cur14.byEx) {
-      const p = prev28.byEx.get(exId);
-      if (!p) continue;
-      const curAvgW = c.weightSum / c.setCount;
-      const prevAvgW = p.weightSum / p.setCount;
-      // Сопоставимый или меньший вес (допуск +2.5% на округление)
-      const comparableOrLowerWeight = prevAvgW <= 0 || curAvgW <= prevAvgW * 1.025;
-      if (c.rirCount >= 2 && p.rirCount >= 2 && comparableOrLowerWeight) {
-        const exDrift = c.rirSum / c.rirCount - p.rirSum / p.rirCount;
-        if (exDrift <= -1.0) rirDriftExercises.push(exId);
+    for (const [key, c] of cur14) {
+      const p = prev28.get(key);
+      if (!p || c.count < 2 || p.count < 2) continue;
+      const curAvgW = c.weightSum / c.count;
+      const prevAvgW = p.weightSum / p.count;
+      const repDelta = c.repSum / c.count - p.repSum / p.count;
+      const rirDelta = c.rirSum / c.count - p.rirSum / p.count;
+      // S2: fewer reps in reserve with roughly the same reps at the same or a lower load.
+      if (curAvgW <= prevAvgW * 1.025 && Math.abs(repDelta) < 1) {
+        if (rirDelta <= -1.0) rirDriftExercises.add(c.exerciseId);
+        const pairs = Math.min(c.count, p.count);
+        pairedRirDelta += rirDelta * pairs;
+        pairedRirSets += pairs;
       }
-      // S4: спад средних повторов >= 2 на сопоставимом или большем весе
-      if (c.setCount >= 2 && p.setCount >= 2 && curAvgW >= prevAvgW * 0.975) {
-        const repDelta = c.repSum / c.setCount - p.repSum / p.setCount;
-        if (repDelta <= -2.0) repDropExercises.push(exId);
+      // S4: both load and effort must be comparable. Heavier sets or deliberately
+      // stopping earlier can reduce repetitions without a performance drop.
+      if (curAvgW >= prevAvgW * 0.975 && curAvgW <= prevAvgW * 1.025 && rirDelta < 1 && repDelta <= -2.0) {
+        repDropExercises.add(c.exerciseId);
       }
     }
 
-    const globalRirDrift =
-      cur14.globalAvgRir !== null && prev28.globalAvgRir !== null
-        ? Math.round((cur14.globalAvgRir - prev28.globalAvgRir) * 10) / 10
-        : null;
+    const globalRirDrift = pairedRirSets >= 4 ? Math.round(pairedRirDelta * 10 / pairedRirSets) / 10 : null;
 
     const s1 = e1rmDropExercises.length > 0;
-    const s2 =
-      rirDriftExercises.length >= 2 ||
-      (globalRirDrift !== null && globalRirDrift <= -1.0 && rirDriftExercises.length >= 1);
+    const s2 = rirDriftExercises.size >= 2 ||
+      (globalRirDrift !== null && globalRirDrift <= -1.0 && rirDriftExercises.size >= 1);
     const s3 = axialUtilization >= 1.0 || localUtilization >= 1.0;
-    const s4 = repDropExercises.length >= 2;
+    const s4 = repDropExercises.size >= 2;
     const s5 = painFlagsCount >= 2 || corePainRepeated;
 
     const triggeredSignals: DeloadSignalId[] = [];
@@ -693,9 +698,14 @@ export class DeloadEngine {
     let recommendedMode: DeloadModeV2 = "none";
     let status: DeloadEvaluationV2["status"] = "optimal";
     let protocolParams: DeloadEvaluationV2["protocolParams"] = null;
-    let summary = "Нагрузка в продуктивном коридоре — можно прогрессировать по плану.";
+    let summary = ewmaWorkouts.length
+      ? "По журналу нет выраженного сочетания сигналов. Это не оценка восстановления."
+      : "Нет записанных рабочих подходов за 35 дней.";
 
-    if ((s5 && (s1 || s2 || s3 || s4)) || (s1 && s2 && s3)) {
+    if (s5) {
+      status = "pain_reported";
+      summary = "В журнале повторяются отметки боли. Индекс нагрузки не оценивает её причину и не определяет, можно ли тренироваться.";
+    } else if (s1 && s2 && s3) {
       recommendedMode = "pivot_recovery";
       status = "deload_recommended";
       protocolParams = {
@@ -704,9 +714,7 @@ export class DeloadEngine {
         volumeMultiplier: 0.5,
         targetRIRFloor: 4,
       };
-      summary = s5
-        ? "Накопленная усталость на фоне болевых сигналов — нужен восстановительный Pivot-блок на 7 дней."
-        : "Совпали 3 маркера перегрузки (EWMA + спад e1RM + RIR-дрейф) — показан восстановительный блок.";
+      summary = "Совпали высокий индекс нагрузки, снижение расчётного 1ПМ и RIR. Можно сравнить с более лёгким шаблоном.";
     } else if (s3 && axialUtilization >= 1.1 && s1 && heavyLowRepShare >= 0.35) {
       recommendedMode = "intensity_taper";
       status = "deload_recommended";
@@ -716,7 +724,7 @@ export class DeloadEngine {
         volumeMultiplier: 0.4,
         targetRIRFloor: 3,
       };
-      summary = "Высокая осевая усталость на тяжёлой базе — показан тапер (−60 % подходов, 85 % веса).";
+      summary = "Высокий осевой индекс и снижение расчётного 1ПМ. Можно сравнить с шаблоном тапер-разгрузки.";
     } else if (
       (s3 && (s1 || s2 || s4)) ||
       (s1 && s2 && (affectedExerciseIds.length >= 2 || (globalRirDrift !== null && globalRirDrift <= -1.0)))
@@ -729,9 +737,9 @@ export class DeloadEngine {
         volumeMultiplier: 0.5,
         targetRIRFloor: 3,
       };
-      summary = "Зафиксирован спад производительности и/или RIR-дрейф — нужна объёмная разгрузка (−50 % подходов, 90 % веса, RIR 3+).";
+      summary = "Несколько сигналов по журналу совпали. Можно сравнить с шаблоном разгрузки по объёму.";
     } else if (
-      (s1 || rirDriftExercises.length === 1) &&
+      (s1 || rirDriftExercises.size === 1) &&
       affectedExerciseIds.length === 1 &&
       axialUtilization < 0.9 &&
       localUtilization < 0.9
@@ -744,14 +752,15 @@ export class DeloadEngine {
         volumeMultiplier: 0.7,
         targetRIRFloor: 3,
       };
-      summary = "Локальная просадка только в 1 движении при нормальном общем фоне — достаточно локальной микро-разгрузки на 7 дней.";
+      summary = "Изменение отмечено в одном движении. Перепроверь сопоставимость записей и при необходимости сравни варианты нагрузки.";
     } else if (axialUtilization >= 0.85 || localUtilization >= 0.85) {
       status = "productive_overreach";
-      summary = "Высокая продуктивная нагрузка без спада силы — держи целевой RIR и следи за восстановлением.";
+      summary = "Индекс записанной нагрузки выше ориентира модели или близок к нему.";
     }
 
     return {
       status,
+      workouts35d: ewmaWorkouts.length,
       recommendedMode,
       axialUtilization,
       localUtilization,

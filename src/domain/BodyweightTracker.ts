@@ -41,6 +41,7 @@ export interface BodyweightGoal {
 
 export type BodyweightNeatStatus =
   | "insufficient"
+  | "maintenance"
   | "neat_plateau"
   | "optimal_gain"
   | "too_fast"
@@ -73,6 +74,51 @@ export class BodyweightTracker {
   }
 
   private get storage() { return this.adapter ?? localStorage; }
+
+  public setTimeZone(timeZone: string) {
+    if (timeZone) this.timeZone = timeZone;
+  }
+
+  /**
+   * Возвращает BodyweightTracker, подключённый к актуальному локальному кэшу BodyweightJournal
+   * (`tyaga-bodyweight-sync:<accountId>`) с безопасным фолбэком на legacy-хранилище.
+   */
+  public static fromSyncedCache(
+    accountId: string,
+    timeZone = browserTimeZone(),
+    storage?: Pick<Storage, "getItem" | "setItem"> | null,
+  ): BodyweightTracker {
+    const backing = storage !== undefined ? storage : (typeof localStorage === "undefined" ? null : localStorage);
+    if (!backing) return new BodyweightTracker(accountId, timeZone);
+    try {
+      const bound = backing.getItem(`tyaga-bodyweight-bound:${accountId}`);
+      const candidateKeys = [
+        `tyaga-bodyweight-sync:${accountId}`,
+        ...(bound ? [`tyaga-bodyweight-sync:${accountId}:cloud:${bound}`] : []),
+        `tyaga-bodyweight-sync:${accountId}:cloud:offline`,
+      ];
+      for (const key of candidateKeys) {
+        const raw = backing.getItem(key);
+        if (!raw) continue;
+        const parsed = JSON.parse(raw) as { entries?: unknown; goal?: unknown };
+        if (parsed && Array.isArray(parsed.entries)) {
+          const entriesJson = JSON.stringify(parsed.entries);
+          const goalJson = JSON.stringify(
+            parsed.goal && typeof parsed.goal === "object"
+              ? parsed.goal
+              : { targetWeightKg: null, startWeightKg: null },
+          );
+          return new BodyweightTracker(accountId, timeZone, {
+            getItem: (k) => (k.includes("-goal:") ? goalJson : entriesJson),
+            setItem: () => {},
+          });
+        }
+      }
+    } catch {
+      // Fallback to legacy tracker below
+    }
+    return new BodyweightTracker(accountId, timeZone, backing);
+  }
 
   /** Accepts Russian decimal input without accepting trailing junk or non-finite values. */
   static parseWeight(value: string): number {
@@ -331,10 +377,20 @@ export class BodyweightTracker {
     let rateKgPerWeek: number | null = null;
 
     if (recent7.length >= 2 && prev7.length >= 2) {
-      const avgRecent = recent7.reduce((s, e) => s + e.weightKg, 0) / recent7.length;
-      const avgPrev = prev7.reduce((s, e) => s + e.weightKg, 0) / prev7.length;
-      rateKgPerWeek = Math.round((avgRecent - avgPrev) * 100) / 100;
-    } else {
+      const meanDayRecent =
+        recent7.reduce((s, e) => s + Date.parse(e.date) / 86400000, 0) / recent7.length;
+      const meanDayPrev =
+        prev7.reduce((s, e) => s + Date.parse(e.date) / 86400000, 0) / prev7.length;
+      const totalSpanDays =
+        (Date.parse(recent7[recent7.length - 1].date) - Date.parse(prev7[0].date)) / 86400000;
+      const elapsedDays = meanDayRecent - meanDayPrev;
+      if (totalSpanDays >= 7 && elapsedDays >= 3.5) {
+        const avgRecent = recent7.reduce((s, e) => s + e.weightKg, 0) / recent7.length;
+        const avgPrev = prev7.reduce((s, e) => s + e.weightKg, 0) / prev7.length;
+        rateKgPerWeek = Math.round(((avgRecent - avgPrev) / (elapsedDays / 7)) * 100) / 100;
+      }
+    }
+    if (rateKgPerWeek === null) {
       const window21 = entries.filter((e) => e.date >= addCalendarDays(today, -20));
       const spanDays =
         window21.length >= 2
@@ -405,7 +461,68 @@ export class BodyweightTracker {
       };
     }
 
-    // Gain or neutral (hypertrophy / lean bulk reference 0.25–0.5%/week)
+    if (goalMode === "neutral") {
+      if (ratePctPerWeek <= -1.0) {
+        return {
+          status: "loss_fast",
+          goalMode,
+          rateKgPerWeek,
+          ratePctPerWeek,
+          badge: "Быстрое снижение",
+          headline: `Снижение быстрее 1 %/нед (${pctText})`,
+          detail: `За 14 дней темп ${rateText}. Если цель — не агрессивная сушка, добавь калории и белок.`,
+          kcalDeltaHint: null,
+        };
+      }
+      if (ratePctPerWeek <= -0.25) {
+        return {
+          status: "loss_optimal",
+          goalMode,
+          rateKgPerWeek,
+          ratePctPerWeek,
+          badge: "Снижение",
+          headline: `Плавное снижение веса (${pctText})`,
+          detail: `За 14 дней темп ${rateText}. Укажи целевой вес, чтобы получать точные подсказки по калориям.`,
+          kcalDeltaHint: null,
+        };
+      }
+      if (rateKgPerWeek > 0.7 || ratePctPerWeek > 0.55) {
+        return {
+          status: "too_fast",
+          goalMode,
+          rateKgPerWeek,
+          ratePctPerWeek,
+          badge: "Быстрый рост",
+          headline: `Быстрый набор веса (${pctText})`,
+          detail: `За 14 дней темп ${rateText}. Укажи целевой вес, чтобы откалибровать профицит.`,
+          kcalDeltaHint: null,
+        };
+      }
+      if (ratePctPerWeek >= 0.25) {
+        return {
+          status: "optimal_gain",
+          goalMode,
+          rateKgPerWeek,
+          ratePctPerWeek,
+          badge: "Плавный рост",
+          headline: `Плавный набор веса (${pctText})`,
+          detail: `За 14 дней темп ${rateText}. Укажи целевой вес для персональных ориентиров.`,
+          kcalDeltaHint: null,
+        };
+      }
+      return {
+        status: "maintenance",
+        goalMode,
+        rateKgPerWeek,
+        ratePctPerWeek,
+        badge: "Удержание",
+        headline: `Вес стабилен (${pctText})`,
+        detail: `За 14 дней темп ${rateText} — масса тела удерживается ровно. Укажи целевой вес, если хочешь перейти на набор или сушку.`,
+        kcalDeltaHint: "Без изменений",
+      };
+    }
+
+    // Gain (hypertrophy / lean bulk reference 0.25–0.5%/week)
     if (ratePctPerWeek < 0.25) {
       return {
         status: "neat_plateau",

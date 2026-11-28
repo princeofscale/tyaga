@@ -120,7 +120,14 @@ export class AccountService {
       .bind(tokenHash, now, this.platformId).first<AccountRow & { session_last_seen_at: number | null }>();
     if (!row) return null;
     if (!row.session_last_seen_at || now - row.session_last_seen_at >= SESSION_TOUCH_MS) {
-      await this.db.prepare("UPDATE sessions SET last_seen_at = ? WHERE token_hash = ?").bind(now, tokenHash).run();
+      if (this.platformId === "device") {
+        await this.db
+          .prepare("UPDATE sessions SET last_seen_at = ?, expires_at = ? WHERE token_hash = ?")
+          .bind(now, now + SESSION_MS, tokenHash)
+          .run();
+      } else {
+        await this.db.prepare("UPDATE sessions SET last_seen_at = ? WHERE token_hash = ?").bind(now, tokenHash).run();
+      }
     }
     return profile(row);
   }
@@ -214,9 +221,9 @@ export class AccountService {
       this.db.prepare("DELETE FROM workout_import_staging WHERE owner_id = ?").bind(ownerId),
       this.db.prepare("DELETE FROM workout_import_dependencies WHERE owner_id = ?").bind(ownerId),
       this.db.prepare("DELETE FROM workout_import_receipts WHERE owner_id = ?").bind(ownerId),
+      this.db.prepare("DELETE FROM workout_import_finalize_requests WHERE owner_id = ?").bind(ownerId),
       this.db.prepare("DELETE FROM workout_import_runs WHERE owner_id = ?").bind(ownerId),
       this.db.prepare("DELETE FROM workout_sync_recovery WHERE owner_id = ?").bind(ownerId),
-      this.db.prepare("DELETE FROM sync_versions WHERE owner_id = ?").bind(ownerId),
       this.db.prepare("DELETE FROM bodyweight_documents WHERE owner_id = ?").bind(ownerId),
       this.db.prepare("DELETE FROM machine_instances WHERE owner_id = ?").bind(ownerId),
       this.db.prepare("DELETE FROM machine_models WHERE owner_id = ?").bind(ownerId),
@@ -225,9 +232,24 @@ export class AccountService {
       this.db.prepare("DELETE FROM routines WHERE owner_id = ?").bind(ownerId),
       this.db.prepare("DELETE FROM settings WHERE owner_id = ?").bind(ownerId),
       this.db.prepare("DELETE FROM workouts WHERE owner_id = ?").bind(ownerId),
-      this.db.prepare("DELETE FROM auth_limits WHERE platform_id = ? OR platform_id = ?").bind(ownerId, `live_join:${accountId}`),
+      // Удаляем sync_versions после всех таблиц с триггерами, чтобы AFTER DELETE не оставлял tombstones.
+      this.db.prepare("DELETE FROM sync_versions WHERE owner_id = ?").bind(ownerId),
+      this.db.prepare("DELETE FROM exercise_user_overrides WHERE user_id = ?").bind(accountId),
+      this.db.prepare("DELETE FROM agent_telemetry_logs WHERE user_id = ?").bind(accountId),
+      this.db.prepare("DELETE FROM nutrition_profiles WHERE user_id = ?").bind(accountId),
+      this.db.prepare("DELETE FROM auth_limits WHERE platform_id IN (?, ?, ?)").bind(ownerId, `live_join:${accountId}`, `social:${accountId}`),
       this.db.prepare("DELETE FROM accounts WHERE id = ?").bind(accountId),
     ]);
+    try {
+      await this.db.batch([
+        this.db
+          .prepare("DELETE FROM shared_program_members WHERE account_id = ? OR program_id IN (SELECT id FROM shared_programs WHERE owner_id = ?)")
+          .bind(accountId, accountId),
+        this.db.prepare("DELETE FROM shared_programs WHERE owner_id = ?").bind(accountId),
+      ]);
+    } catch {
+      // Таблицы shared_programs создаются лениво при первом обращении.
+    }
     return this.reply({ deleted: true }, request, "");
   }
   async handle(request: Request, rawBody?: string): Promise<Response | null> {

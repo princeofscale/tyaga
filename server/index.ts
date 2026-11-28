@@ -128,7 +128,15 @@ export async function handleApi(request: Request, env: Env, preReadBody?: string
       return json({error:"Не найдено"},404);
     }
     if (url.pathname === "/api/bodyweight" || url.pathname.startsWith("/api/bodyweight/")) {
-      const weights = new BodyweightRepository(env.DB, userId, activeAccount.timeZone,activeAccount.id);
+      const profile = await env.DB.prepare(
+        "SELECT payload FROM settings WHERE owner_id = ?",
+      )
+        .bind(userId)
+        .first<{ payload: string }>();
+      const effectiveTimeZone =
+        (profile ? (JSON.parse(profile.payload) as { timeZone?: string }).timeZone : undefined) ??
+        activeAccount.timeZone;
+      const weights = new BodyweightRepository(env.DB, userId, effectiveTimeZone, activeAccount.id);
       if (request.method === "GET" && url.pathname === "/api/bodyweight") return json({...await weights.read(),accountId:activeAccount.id});
       if (request.method === "PUT" && url.pathname.startsWith("/api/bodyweight/")) {
         const key = decodeURIComponent(url.pathname.slice("/api/bodyweight/".length));
@@ -219,7 +227,7 @@ export async function handleApi(request: Request, env: Env, preReadBody?: string
       request.method === "POST" &&
       url.pathname === "/api/exercises/resolve"
     ) {
-      const input = await readJson();
+      const input = object(await readJson());
       if (!Array.isArray(input.names) || input.names.length > 80)
         throw new InputError("Не больше 80 названий за запрос");
       return json({
@@ -263,7 +271,7 @@ export async function handleApi(request: Request, env: Env, preReadBody?: string
       return json({ deleted: id });
     }
     if (request.method === "PUT" && url.pathname === "/api/favorites") {
-      const v = await readJson();
+      const v = object(await readJson());
       const id = str(v.exerciseId, 80, 1);
       if (typeof v.favorite !== "boolean")
         throw new InputError("Проверь отметку избранного");
@@ -273,9 +281,13 @@ export async function handleApi(request: Request, env: Env, preReadBody?: string
       return json({ exerciseId: id, favorite: v.favorite });
     }
     if (request.method === "PUT" && url.pathname === "/api/routines") {
-      const input = await readJson();
+      const input = object(await readJson());
       const ids = Array.isArray(input.exercises)
-        ? input.exercises.map((e: { exerciseId: string }) => e.exerciseId)
+        ? input.exercises.flatMap((e: unknown) =>
+            e && typeof e === "object" && typeof (e as { exerciseId?: unknown }).exerciseId === "string"
+              ? [(e as { exerciseId: string }).exerciseId]
+              : [],
+          )
         : [];
       const result = await product.saveRoutine(
         validRoutine(input, await definitions(ids), await machines.definitions()),
@@ -300,7 +312,7 @@ export async function handleApi(request: Request, env: Env, preReadBody?: string
           80,
           1,
         ),
-        body = await readJson();
+        body = object(await readJson());
       if (body.revision === undefined)
         throw new InputError("Для удаления нужна версия программы");
       const current = await product.removeRoutine(

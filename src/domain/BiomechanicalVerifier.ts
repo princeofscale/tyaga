@@ -76,8 +76,14 @@ export class BiomechanicalVerifier {
       });
     }
 
-    // INV-11: Границы анатомических углов
+    // INV-11: Границы и конечность анатомических углов
     if (
+      !Number.isFinite(g.benchAngleDeg) ||
+      !Number.isFinite(g.shoulderPlaneDeg) ||
+      !Number.isFinite(g.torsoAngleDeg) ||
+      !Number.isFinite(g.shoulderFlexionDeg) ||
+      !Number.isFinite(g.hipFlexionDeg) ||
+      !Number.isFinite(g.kneeFlexionDeg) ||
       g.benchAngleDeg < -30 ||
       g.benchAngleDeg > 90 ||
       g.shoulderPlaneDeg < 0 ||
@@ -207,8 +213,10 @@ export class BiomechanicalVerifier {
     }
 
     // INV-14: Границы и монотонность SFR: 1.0 <= sfrLongLevers <= sfrBase <= 10.0
-    const clampedBase = round1(Math.max(1.0, Math.min(10.0, sfrBase)));
-    const clampedLL = round1(Math.max(1.0, Math.min(clampedBase, sfrLongLevers)));
+    const finiteBase = Number.isFinite(sfrBase) ? sfrBase : 5.0;
+    const finiteLL = Number.isFinite(sfrLongLevers) ? sfrLongLevers : finiteBase;
+    const clampedBase = round1(Math.max(1.0, Math.min(10.0, finiteBase)));
+    const clampedLL = round1(Math.max(1.0, Math.min(clampedBase, finiteLL)));
     if (clampedBase !== sfrBase || clampedLL !== sfrLongLevers) {
       violations.push({
         code: "INV-14_SFR_BOUNDS",

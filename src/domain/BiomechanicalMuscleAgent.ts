@@ -2,6 +2,7 @@ import { BiomechanicalVerifier } from "./BiomechanicalVerifier";
 import { KinematicMuscleSolver, makeDescriptor } from "./KinematicMuscleSolver";
 import { SEED_KINEMATICS_74 } from "./KinematicSeed74";
 import {
+  MUSCLE_TO_ZONE10,
   SOLVER_VERSION_V4,
   type AgentResolveRequest,
   type AgentResolveResponse,
@@ -10,6 +11,14 @@ import {
   type ClarifyingQuestion,
   type KinematicDescriptor,
 } from "./KinematicTypesV4";
+import type { Muscle, MuscleRole } from "../lib/types";
+
+export type AgentExerciseMarking = {
+  zones: Muscle[];
+  muscleRoles: Pick<MuscleRole, "muscleId" | "role">[];
+};
+
+const MIN_APPLY_CONFIDENCE = 0.8;
 
 interface ParsedOfflineResult {
   canonicalSlug: string;
@@ -160,15 +169,32 @@ export class BiomechanicalMuscleAgent {
     return out;
   }
 
+  /** Only a sufficiently resolved, structurally valid estimate is applicable. */
+  static exerciseMarking(result: AgentResolveResponse): AgentExerciseMarking | null {
+    const { primaryMuscles, assistantMuscles, stabilizerMuscles } = result.solved;
+    if (!result.verification.passed || !(result.confidence >= MIN_APPLY_CONFIDENCE) ||
+        result.clarifyingQuestions.length || !primaryMuscles.length) return null;
+    return {
+      zones: [...new Set(primaryMuscles.map((id) => MUSCLE_TO_ZONE10[id]))],
+      muscleRoles: [
+        ...primaryMuscles.map((muscleId) => ({ muscleId, role: "primary" as const })),
+        ...assistantMuscles.map((muscleId) => ({ muscleId, role: "assistant" as const })),
+        ...stabilizerMuscles.map((muscleId) => ({ muscleId, role: "stabilizer" as const })),
+      ],
+    };
+  }
+
   /** Оффлайн-резолвер (Tier 0 + Tier 4 RU/EN NLP -> Solver -> Verifier). */
   resolveOffline(req: AgentResolveRequest): AgentResolveResponse {
     const t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
     const parsed = this.parseOfflineQuery(req.queryText, req.machineBrandHint);
-    const descriptor = KinematicMuscleSolver.applyExecutionProfile(parsed.descriptor, req.executionProfile);
+    const descriptor = Object.keys(parsed.descriptor.actions).length
+      ? KinematicMuscleSolver.applyExecutionProfile(parsed.descriptor, req.executionProfile)
+      : parsed.descriptor;
     const raw = this.solver.solveKinematics(descriptor);
     const verified = this.verifier.verifyAndCorrect(descriptor, raw);
     const questions =
-      parsed.confidence < 0.8 ? BiomechanicalMuscleAgent.buildClarifyingQuestions(parsed.missingParams) : [];
+      parsed.confidence < MIN_APPLY_CONFIDENCE ? BiomechanicalMuscleAgent.buildClarifyingQuestions(parsed.missingParams) : [];
 
     const elapsed = (typeof performance !== "undefined" ? performance.now() : Date.now()) - t0;
     return {
@@ -219,8 +245,9 @@ export class BiomechanicalMuscleAgent {
     const full = `${trimmed} ${brandHint ?? ""}`.toLowerCase().replace(/\s+/g, " ");
 
     // Tier 0: точное совпадение с 74 ID
-    if (SEED_KINEMATICS_74[trimmed.toLowerCase()]) {
-      const id = trimmed.toLowerCase();
+    const exactId = trimmed.toLowerCase();
+    if (Object.hasOwn(SEED_KINEMATICS_74, exactId)) {
+      const id = exactId;
       return {
         canonicalSlug: id,
         displayName: trimmed,
@@ -239,7 +266,7 @@ export class BiomechanicalMuscleAgent {
       return {
         canonicalSlug: "pendulum-squat",
         displayName: trimmed || "Pendulum Squat",
-        rationale: "Рычажная дуга с упором спины: максимальное сгибание колена (глубокое растяжение квадрицепса) при нулевой осевой компрессии позвоночника.",
+        rationale: "Рычажная дуга с упором спины: глубокое сгибание колена (акцент на квадрицепс) при сниженной осевой нагрузке на позвоночник по сравнению со свободным приседом.",
         confidence: 0.94,
         missingParams: [],
         descriptor: makeDescriptor(
@@ -256,7 +283,7 @@ export class BiomechanicalMuscleAgent {
       return {
         canonicalSlug: "belt-squat",
         displayName: trimmed || "Belt Squat",
-        rationale: "Нагрузка подвешена на тазовом поясе — полная разгрузка поясницы (axial 0.15) при высоком стимуле квадрицепсов и ягодичных.",
+        rationale: "Нагрузка подвешена на тазовом поясе — это снижает осевую нагрузку на позвоночник (коэф. модели 0,15) при высоком стимуле квадрицепсов и ягодичных.",
         confidence: 0.94,
         missingParams: [],
         descriptor: makeDescriptor(
@@ -275,7 +302,7 @@ export class BiomechanicalMuscleAgent {
       return {
         canonicalSlug: "hammer-strength-iso-lateral-high-row",
         displayName: trimmed || "Hammer Strength Iso-Lateral High Row",
-        rationale: "Тяга рычагов сверху вниз с упором груди: сагиттальное разгибание плеча грузит широчайшие и большую круглую без нагрузки на поясницу.",
+        rationale: "Тяга рычагов сверху вниз с упором груди: сагиттальное разгибание плеча грузит широчайшие и большую круглую при сниженной осевой нагрузке на поясницу.",
         confidence: 0.92,
         missingParams: [],
         descriptor: makeDescriptor(
@@ -365,7 +392,8 @@ export class BiomechanicalMuscleAgent {
     }
 
     // 8. Неоднозначная «Тяга в тренажёре Хаммер» без указания вектора и угла локтей (TC9)
-    const isRowQuery = /(тяга|row|хаммер|hammer)/.test(full) && !/(станов|deadlift|румын|rdl|жим|press|присед|squat)/.test(full);
+    const isRowQuery = /(тяга|row|хаммер|hammer)/.test(full) &&
+      !/(станов|deadlift|румын|rdl|жим|press|присед|squat|\bcurls?\b|сгибан.*рук|молот)/.test(full);
     if (isRowQuery) {
       const hasVector = /(верхн|сверх|high|low|сниз|горизонт|к поясу|к груди|pulldown|подтяг)/.test(full);
       const hasPlane = /(узк|narrow|прижат|tuck|широк|wide|развед|flared|нейтр|neutral|\d{2}\s*°)/.test(full);
@@ -406,6 +434,19 @@ export class BiomechanicalMuscleAgent {
             implement: /(гантел|db|dumbbell)/.test(full) ? "dumbbell" : /(блок|кабел|cable)/.test(full) ? "cable" : "machine",
           },
         ),
+        source: "offline_kinematic",
+      };
+    }
+
+    // Rear-delt fly is horizontal abduction, not a chest fly. Check before generic press/fly.
+    if (/(задн.*дельт|face ?pull|обратн.*развед|rear[ -]+delt|\breverse[ -]+(?:fly|pec[ -]+deck)\b)/.test(full)) {
+      return {
+        canonicalSlug: slugify(trimmed),
+        displayName: trimmed || "Задняя дельта",
+        rationale: "Горизонтальное отведение плеча: модель выделяет заднюю дельту, а не грудные мышцы.",
+        confidence: 0.92,
+        missingParams: [],
+        descriptor: SEED_KINEMATICS_74["rear-delt-fly"],
         source: "offline_kinematic",
       };
     }
@@ -572,18 +613,6 @@ export class BiomechanicalMuscleAgent {
       };
     }
 
-    if (/(задн.*дельт|face ?pull|обратн.*развед|rear delt)/.test(full)) {
-      return {
-        canonicalSlug: slugify(trimmed),
-        displayName: trimmed || "Задняя дельта",
-        rationale: "Горизонтальное отведение плеча и наружная ротация изолированно грузят заднюю дельту и вращательную манжету.",
-        confidence: 0.92,
-        missingParams: [],
-        descriptor: SEED_KINEMATICS_74["rear-delt-fly"],
-        source: "offline_kinematic",
-      };
-    }
-
     if (/(станов|deadlift|румын|rdl|хип-?траст|ягодичн|мостик|hip thrust)/.test(full)) {
       const thrust = /(хип-?траст|ягодичн|мостик|thrust|bridge)/.test(full);
       return {
@@ -612,7 +641,7 @@ export class BiomechanicalMuscleAgent {
       };
     }
 
-    if (/(пресс|скруч|crunch|планк|ролик|ab|кор|дровосек)/.test(full)) {
+    if (/(пресс|скруч|crunch|планк|ролик|\babs?\b|\bcore\b|(?:^|[^а-яё])кор(?:$|[^а-яё])|дровосек)/.test(full)) {
       return {
         canonicalSlug: slugify(trimmed),
         displayName: trimmed || "Упражнение на кор",
@@ -624,18 +653,14 @@ export class BiomechanicalMuscleAgent {
       };
     }
 
-    // Неопознанный общий ввод -> безопасный базовый жим/тяга с низкой уверенностью и вопросами
+    // Unknown movement: let the verifier reject the empty descriptor, not a guessed press.
     return {
       canonicalSlug: slugify(trimmed),
       displayName: trimmed || "Новое упражнение",
-      rationale: "Низкая уверенность распознавания — уточни параметры выполнения в 1 клик или опиши траекторию движения.",
+      rationale: "Не удалось распознать движение. Уточни название или опиши траекторию и положение тела.",
       confidence: 0.45,
-      missingParams: ["benchAngleDeg", "shoulderPlaneDeg"],
-      descriptor: makeDescriptor(
-        { shoulder_horizontal_adduction: 0.85, elbow_extension: 0.5 },
-        { benchAngleDeg: 0, shoulderPlaneDeg: 45 },
-        { supportType: "machine_guided", loadVector: "lever_arc", peakTorqueZone: "mid", implement: "machine" },
-      ),
+      missingParams: [],
+      descriptor: makeDescriptor({}),
       source: "offline_kinematic",
     };
   }

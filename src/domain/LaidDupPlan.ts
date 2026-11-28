@@ -398,7 +398,7 @@ export class LaidDupPlan {
   static isDeloadWeek(p: Pick<RoutinePeriodization, "deloadWeeks" | "version"> | undefined, raw: number): boolean {
     const idx = Math.trunc(raw);
     if (p?.version === "v3") {
-      return p.deloadWeeks?.length ? p.deloadWeeks.includes(idx) : idx === LAID_V3_DELOAD_WEEK;
+      return p.deloadWeeks !== undefined ? p.deloadWeeks.includes(idx) : idx === LAID_V3_DELOAD_WEEK;
     }
     return !!p?.deloadWeeks?.includes(idx);
   }
@@ -424,6 +424,29 @@ export class LaidDupPlan {
     return Math.floor(completed / Math.max(1, cycle.length));
   }
 
+  static weekPosition(
+    p: Pick<RoutinePeriodization, "deloadWeeks" | "version">,
+    rawWeek: number,
+  ): LaidPosition {
+    const raw = Math.trunc(rawWeek);
+    if (p.version === "v3") {
+      const clampedWeek = Math.max(0, Math.min(LAID_V3_WEEKS - 1, raw));
+      const wave = (clampedWeek < 2 ? 1 : clampedWeek < 4 ? 2 : 3) as 1 | 2 | 3;
+      return {
+        raw,
+        week: clampedWeek,
+        wave,
+        inWave: (clampedWeek % 3) as 0 | 1 | 2,
+        finished: raw >= LAID_V3_WEEKS,
+        beforeStart: raw < 0,
+      };
+    }
+    const isDeload = LaidDupPlan.isDeloadWeek(p, raw);
+    const deloadsBefore = (p.deloadWeeks ?? []).filter((w) => w < raw).length;
+    const effectiveIdx = isDeload ? Math.max(0, raw - deloadsBefore - 1) : raw - deloadsBefore;
+    return { ...LaidDupPlan.position(effectiveIdx), raw };
+  }
+
   static cycleState(
     cycle: readonly Routine[],
     workouts: readonly Workout[],
@@ -434,22 +457,7 @@ export class LaidDupPlan {
     const rawWeek = LaidDupPlan.effectiveRawWeek(cycle, workouts, today);
     const isCurrentDeload = LaidDupPlan.isDeloadWeek(first, rawWeek);
     const deloadsBefore = (first.deloadWeeks ?? []).filter((w) => w < rawWeek).length;
-    let position: LaidPosition;
-    if (first.version === "v3") {
-      const clampedWeek = Math.max(0, Math.min(LAID_V3_WEEKS - 1, Math.trunc(rawWeek)));
-      const wave = (clampedWeek < 2 ? 1 : clampedWeek < 4 ? 2 : 3) as 1 | 2 | 3;
-      position = {
-        raw: Math.trunc(rawWeek),
-        week: clampedWeek,
-        wave,
-        inWave: (clampedWeek % 3) as 0 | 1 | 2,
-        finished: Math.trunc(rawWeek) >= LAID_V3_WEEKS,
-        beforeStart: Math.trunc(rawWeek) < 0,
-      };
-    } else {
-      const effectiveIdx = isCurrentDeload ? Math.max(0, rawWeek - deloadsBefore - 1) : rawWeek - deloadsBefore;
-      position = { ...LaidDupPlan.position(effectiveIdx), raw: rawWeek };
-    }
+    const position = LaidDupPlan.weekPosition(first, rawWeek);
     const activeMaxes = LaidDupPlan.maxesFor(first, position.week);
     const statusWeek = position.beforeStart ? 0 : Math.min(totalWeeks - 1, Math.max(0, rawWeek));
     const weekGuide = buildWeekGuide(position, {
@@ -497,6 +505,7 @@ export class LaidDupPlan {
       }
       if (hasWork) completedSessions++;
     }
+    const tmFactor = first.version === "v2" || first.version === "v3" ? LaidDupPlan.V2_TM_FACTOR : LaidDupPlan.TRAINING_MAX_FACTOR;
     const startMaxes = LaidDupPlan.maxesFor(first, 0);
     const lifts = (["squat", "bench", "deadlift", "ohp"] as const).map((lift) => {
       const startMax = startMaxes[lift];
@@ -505,10 +514,10 @@ export class LaidDupPlan {
         lift,
         first.startMonday,
         today,
-        LaidDupPlan.liftExerciseId(lift, first.substitutions),
+        LaidDupPlan.liftExerciseId(lift, first.substitutions, first.version),
         10,
       );
-      const suggestedNextTm = bestE1rm !== null ? LaidDupPlan.trainingMaxFrom1Rm(bestE1rm) : null;
+      const suggestedNextTm = bestE1rm !== null ? LaidDupPlan.trainingMaxFrom1Rm(bestE1rm, tmFactor) : null;
       const isCalOrPain = first.calibrationLifts?.includes(lift) || first.painFlags?.includes(lift);
       const deltaKg =
         bestE1rm !== null && !isCalOrPain
@@ -516,7 +525,7 @@ export class LaidDupPlan {
           : null;
       return {
         lift,
-        name: LaidDupPlan.liftLabel(lift, first.substitutions),
+        name: LaidDupPlan.liftLabel(lift, first.substitutions, first.version),
         startMax,
         bestE1rm,
         suggestedNextTm,
@@ -538,10 +547,11 @@ export class LaidDupPlan {
     today: string,
   ): LaidCalibrationGraduation[] {
     if (!p.calibrationLifts?.length) return [];
+    const tmFactor = p.version === "v2" || p.version === "v3" ? LaidDupPlan.V2_TM_FACTOR : LaidDupPlan.TRAINING_MAX_FACTOR;
     const out: LaidCalibrationGraduation[] = [];
     for (const lift of p.calibrationLifts) {
       if (p.painFlags?.includes(lift)) continue;
-      const exerciseId = LaidDupPlan.liftExerciseId(lift, p.substitutions);
+      const exerciseId = LaidDupPlan.liftExerciseId(lift, p.substitutions, p.version);
       const sessions = LaidDupPlan.sessionsForExercise(workouts, exerciseId, p.startMonday, today);
       if (sessions < 2) continue;
       let best1Rm: number | null = null;
@@ -560,11 +570,11 @@ export class LaidDupPlan {
       }
       if (best1Rm === null || best1Rm < 5) continue;
       const estimated1Rm = Math.round(best1Rm * 10) / 10;
-      const suggestedTm = Math.min(MAX_KG, LaidDupPlan.trainingMaxFrom1Rm(estimated1Rm));
+      const suggestedTm = Math.min(MAX_KG, LaidDupPlan.trainingMaxFrom1Rm(estimated1Rm, tmFactor));
       out.push({
         lift,
         exerciseId,
-        exerciseName: LaidDupPlan.liftLabel(lift, p.substitutions),
+        exerciseName: LaidDupPlan.liftLabel(lift, p.substitutions, p.version),
         sessions,
         estimated1Rm,
         suggestedTm,
@@ -581,13 +591,13 @@ export class LaidDupPlan {
   }
 
   static liftModeOf(
-    p: Pick<RoutinePeriodization, "calibrationLifts" | "painFlags" | "substitutions">,
+    p: Pick<RoutinePeriodization, "calibrationLifts" | "painFlags" | "substitutions" | "version">,
     lift: LaidLift,
   ): "percent_1rm" | "calibration" | "pain" | "rir_range" {
     if (p.painFlags?.includes(lift)) return "pain";
     if (p.calibrationLifts?.includes(lift)) return "calibration";
-    const origId = LAID_LIFT_EXERCISE[lift];
-    const resolvedId = LaidDupPlan.liftExerciseId(lift, p.substitutions);
+    const origId = LaidDupPlan.baseLiftExerciseId(lift, p.version);
+    const resolvedId = LaidDupPlan.liftExerciseId(lift, p.substitutions, p.version);
     if (resolvedId !== origId) {
       const compat = SubstitutionPolicy.classify(exerciseById(origId), exerciseById(resolvedId), {
         hasOwnHistory: true,
@@ -683,18 +693,32 @@ export class LaidDupPlan {
     return resolveLaidExerciseId(originalId, substitutions);
   }
 
-  static liftExerciseId(lift: LaidLift, substitutions?: LaidSubstitutions): string {
-    return resolveLaidExerciseId(LAID_LIFT_EXERCISE[lift], substitutions);
+  static liftForDay(day: LaidDay, version?: LaidVersion): LaidLift {
+    return version === "v3" && day === "legs2" ? "deadlift" : LAID_LIFT_OF[day];
   }
 
-  static isLiftSubstituted(lift: LaidLift, substitutions?: LaidSubstitutions): boolean {
-    const orig = LAID_LIFT_EXERCISE[lift];
+  static baseLiftExerciseId(lift: LaidLift, version?: LaidVersion): string {
+    if (version === "v3") {
+      if (lift === "deadlift") return "trap-bar-deadlift";
+      if (lift === "ohp") return "incline-bar";
+    } else if (version === "v2" && lift === "deadlift") {
+      return "trap-bar-deadlift";
+    }
+    return LAID_LIFT_EXERCISE[lift];
+  }
+
+  static liftExerciseId(lift: LaidLift, substitutions?: LaidSubstitutions, version?: LaidVersion): string {
+    return resolveLaidExerciseId(LaidDupPlan.baseLiftExerciseId(lift, version), substitutions);
+  }
+
+  static isLiftSubstituted(lift: LaidLift, substitutions?: LaidSubstitutions, version?: LaidVersion): boolean {
+    const orig = LaidDupPlan.baseLiftExerciseId(lift, version);
     return !!substitutions?.[orig] && substitutions[orig] !== orig;
   }
 
   static liftLabel(lift: LaidLift, substitutions?: LaidSubstitutions, version?: LaidVersion): string {
-    if (LaidDupPlan.isLiftSubstituted(lift, substitutions)) {
-      const id = LaidDupPlan.liftExerciseId(lift, substitutions);
+    if (LaidDupPlan.isLiftSubstituted(lift, substitutions, version)) {
+      const id = LaidDupPlan.liftExerciseId(lift, substitutions, version);
       return exerciseById(id)?.name ?? LAID_LIFT_LABEL[lift];
     }
     if (version === "v3") {
@@ -715,13 +739,19 @@ export class LaidDupPlan {
       calibrationLifts?: readonly LaidLift[];
       painFlags?: readonly LaidLift[];
       deloadWeeks?: readonly number[];
+      longLevers?: boolean;
+      accountId?: string;
     } = {},
   ): LaidDayPlan {
     const n = Number.isFinite(raw) ? Math.trunc(raw) : 0;
     const isV3 = options.version === "v3";
     const isV2 = options.version === "v2";
     const deloads = options.deloadWeeks ?? [];
-    const isDeload = isV3 ? (deloads.length ? deloads.includes(n) : n === LAID_V3_DELOAD_WEEK) : deloads.includes(n);
+    const isDeload = isV3
+      ? options.deloadWeeks !== undefined
+        ? options.deloadWeeks.includes(n)
+        : n === LAID_V3_DELOAD_WEEK
+      : deloads.includes(n);
     const deloadsBefore = deloads.filter((w) => w < n).length;
     const effectiveIndex = isDeload ? Math.max(0, n - deloadsBefore - 1) : n - deloadsBefore;
     const basePos = LaidDupPlan.position(effectiveIndex);
@@ -737,7 +767,7 @@ export class LaidDupPlan {
       : deloads.length
         ? { ...basePos, raw: n }
         : basePos;
-    const lift = LAID_LIFT_OF[day];
+    const lift: LaidLift = LaidDupPlan.liftForDay(day, options.version);
     const maxKg = maxes[lift];
     const originalLiftExerciseId = liftExerciseForDay(day, options.version);
     const liftExerciseId = resolveLaidExerciseId(originalLiftExerciseId, options.substitutions);
@@ -747,10 +777,11 @@ export class LaidDupPlan {
 
     // DUP v3 — Hypertrophy & Strength Max (6-week 5+1 mesocycle, Dynamic Wave H/S + Autoregulated Top Set + RIR Ramp)
     if (isV3) {
-      const v3Week = isDeload ? 6 : mesocycleWeekFromZeroBased(n);
+      const v3Week = isDeload ? 6 : (Math.min(5, mesocycleWeekFromZeroBased(n)) as 1 | 2 | 3 | 4 | 5);
       const stimulus = v3StimulusForWeek(day, v3Week);
       const spec = WAVE_MATRIX_V3[v3Week][stimulus];
-      const longLevers = BiomechanicsProfileStore.read().longLevers || true;
+      const longLevers =
+        options.longLevers ?? BiomechanicsProfileStore.read(undefined, options.accountId).longLevers;
       const loadDrop = longLevers ? spec.loadDropLL : spec.loadDrop;
       const compat = isReplaced
         ? SubstitutionPolicy.classify(exerciseById(originalLiftExerciseId), exerciseById(liftExerciseId), {
@@ -786,7 +817,7 @@ export class LaidDupPlan {
         prescriptionMode,
         subClass: compat.subClass,
         painFlag,
-        isDeload: v3Week === 6 || isDeload,
+        isDeload,
         v3Week,
         v3TargetTopRir: spec.topTargetRir,
         v3LoadDropPct: Math.round(loadDrop * 100),
@@ -1145,6 +1176,7 @@ export class LaidDupPlan {
           }
           const def = exerciseById(resolvedId);
           const isDuration = def?.recording.type === "duration";
+          const isAssisted = def?.recording.loadMode === "assisted_bodyweight";
           ordered.push({
             ...makeExerciseEntry(resolvedId),
             ...(slot.supersetGroup ? { supersetId: `v3-${day}-${slot.supersetGroup}` } : {}),
@@ -1152,6 +1184,7 @@ export class LaidDupPlan {
               ...s,
               rir: null,
               ...(isDuration ? { durationSeconds: 45 } : {}),
+              ...(isAssisted ? { assistanceKg: 0 } : {}),
             })),
             ...(isDuration
               ? {}
@@ -1175,12 +1208,14 @@ export class LaidDupPlan {
       const reps = x.byWave ? x.byWave[0] : x.repMin;
       const def = exerciseById(resolvedId);
       const isDuration = def?.recording.type === "duration";
+      const isAssisted = def?.recording.loadMode === "assisted_bodyweight";
       rows.push({
         ...makeExerciseEntry(resolvedId),
         sets: makeSets(x.sets, 0, isDuration ? 0 : reps).map((s) => ({
           ...s,
           rir: null,
           ...(isDuration ? { durationSeconds: 45 } : {}),
+          ...(isAssisted ? { assistanceKg: 0 } : {}),
         })),
         ...(isDuration
           ? {}
@@ -1389,7 +1424,7 @@ export class LaidDupPlan {
   static planFor(
     routine: Routine,
     date: string,
-    options?: { workouts?: readonly Workout[]; cycle?: readonly Routine[] },
+    options?: { workouts?: readonly Workout[]; cycle?: readonly Routine[]; accountId?: string; longLevers?: boolean },
   ): LaidDayPlan | null {
     const p = LaidDupPlan.periodizationOf(routine);
     if (!p) return null;
@@ -1397,15 +1432,16 @@ export class LaidDupPlan {
       p.weekMode === "rolling" && options?.workouts
         ? LaidDupPlan.effectiveRawWeek(options.cycle?.length ? options.cycle : [routine], options.workouts, date)
         : LaidDupPlan.weekOf(p.startMonday, date);
-    const deloadsBefore = (p.deloadWeeks ?? []).filter((w) => w < Math.trunc(raw)).length;
-    const effectiveWeek = Math.max(0, Math.min(LAID_WEEKS - 1, Math.trunc(raw) - deloadsBefore));
-    return LaidDupPlan.day(p.day, raw, LaidDupPlan.maxesFor(p, effectiveWeek), {
+    const effWeek = LaidDupPlan.weekPosition(p, raw).week;
+    return LaidDupPlan.day(p.day, raw, LaidDupPlan.maxesFor(p, effWeek), {
       version: p.version,
       light: p.light,
       substitutions: p.substitutions,
       calibrationLifts: p.calibrationLifts,
       painFlags: p.painFlags,
       deloadWeeks: p.deloadWeeks,
+      accountId: options?.accountId,
+      longLevers: options?.longLevers,
     });
   }
 
@@ -1526,13 +1562,18 @@ export class LaidDupPlan {
     return best === null ? null : Math.round(best * 10) / 10;
   }
 
-  static estimates(workouts: Workout[], today: string, substitutions?: LaidSubstitutions): Record<LaidLift, number | null> {
+  static estimates(
+    workouts: Workout[],
+    today: string,
+    substitutions?: LaidSubstitutions,
+    version?: LaidVersion,
+  ): Record<LaidLift, number | null> {
     const since = addCalendarDays(today, -LaidDupPlan.ESTIMATE_DAYS);
     return {
-      squat: LaidDupPlan.estimate(workouts, "squat", since, today, LaidDupPlan.liftExerciseId("squat", substitutions)),
-      bench: LaidDupPlan.estimate(workouts, "bench", since, today, LaidDupPlan.liftExerciseId("bench", substitutions)),
-      deadlift: LaidDupPlan.estimate(workouts, "deadlift", since, today, LaidDupPlan.liftExerciseId("deadlift", substitutions)),
-      ohp: LaidDupPlan.estimate(workouts, "ohp", since, today, LaidDupPlan.liftExerciseId("ohp", substitutions)),
+      squat: LaidDupPlan.estimate(workouts, "squat", since, today, LaidDupPlan.liftExerciseId("squat", substitutions, version)),
+      bench: LaidDupPlan.estimate(workouts, "bench", since, today, LaidDupPlan.liftExerciseId("bench", substitutions, version)),
+      deadlift: LaidDupPlan.estimate(workouts, "deadlift", since, today, LaidDupPlan.liftExerciseId("deadlift", substitutions, version)),
+      ohp: LaidDupPlan.estimate(workouts, "ohp", since, today, LaidDupPlan.liftExerciseId("ohp", substitutions, version)),
     };
   }
 
@@ -1545,16 +1586,30 @@ export class LaidDupPlan {
     const settingStart = addCalendarDays(p.startMonday, p.maxesFromWeek * 7);
     const window = addCalendarDays(today, -LaidDupPlan.SUGGEST_DAYS);
     const since = settingStart > window ? settingStart : window;
+    const isTmVersion = p.version === "v2" || p.version === "v3";
     const found: { lift: LaidLift; from: number; estimate: number; to: number }[] = [];
     for (const lift of ["squat", "bench", "deadlift", "ohp"] as const) {
       if (p.painFlags?.includes(lift) || p.calibrationLifts?.includes(lift)) continue;
-      const estimate = LaidDupPlan.estimate(workouts, lift, since, today, LaidDupPlan.liftExerciseId(lift, p.substitutions), 10);
+      const estimate = LaidDupPlan.estimate(
+        workouts,
+        lift,
+        since,
+        today,
+        LaidDupPlan.liftExerciseId(lift, p.substitutions, p.version),
+        10,
+      );
       const current = p.maxes[lift];
-      if (estimate !== null && estimate >= current * 1.05) {
+      const comparable =
+        estimate !== null
+          ? isTmVersion
+            ? estimate * LaidDupPlan.V2_TM_FACTOR
+            : estimate
+          : null;
+      if (estimate !== null && comparable !== null && comparable >= current * 1.05) {
         const capped =
           options.maxJumpFactor && options.maxJumpFactor > 1
-            ? Math.min(estimate, current * options.maxJumpFactor)
-            : estimate;
+            ? Math.min(comparable, current * options.maxJumpFactor)
+            : comparable;
         const to = Math.min(MAX_KG, Math.floor(capped / 2.5) * 2.5);
         if (to > current) found.push({ lift, from: current, estimate, to });
       }
@@ -1571,7 +1626,7 @@ export class LaidDupPlan {
     p: RoutinePeriodization,
     workouts: Workout[],
     today: string,
-    options?: { energyStatus?: EnergyStatus; longLevers?: boolean },
+    options?: { energyStatus?: EnergyStatus; longLevers?: boolean; accountId?: string },
   ): Array<{
     lift: LaidLift;
     fromMax: number;
@@ -1592,7 +1647,8 @@ export class LaidDupPlan {
     }> = [];
 
     if (p.version === "v3") {
-      const longLevers = options?.longLevers ?? true;
+      const longLevers =
+        options?.longLevers ?? BiomechanicsProfileStore.read(undefined, options?.accountId).longLevers;
       const energyStatus: EnergyStatus = options?.energyStatus ?? "optimal_surplus";
       const liftsV3: Array<{ lift: LaidLift; day: LaidDay }> = [
         { lift: "squat", day: "legs1" },
@@ -1606,7 +1662,7 @@ export class LaidDupPlan {
         const liftWorkouts = workouts
           .filter(
             (w) =>
-              w.date >= settingStart &&
+              (w.programDate ?? w.date) >= settingStart &&
               w.date <= today &&
               !DeloadEngine.isDeloadName(w.name) &&
               w.exercises.some(
@@ -1629,18 +1685,22 @@ export class LaidDupPlan {
           const topSet = entry.sets
             .filter((s) => s.done && !s.warmup && s.weight > 0 && s.reps >= 1)
             .sort((a, b) => b.weight - a.weight)[0];
-          if (!topSet) continue;
+          if (!topSet || topSet.rir === null || !Number.isFinite(topSet.rir)) continue;
           const rawWeekIdx = Math.max(0, LaidDupPlan.weekOf(p.startMonday, w.programDate ?? w.date));
-          const v3Week = mesocycleWeekFromZeroBased(rawWeekIdx);
-          if (v3Week === 6) continue;
+          if (LaidDupPlan.isDeloadWeek(p, rawWeekIdx)) continue;
+          const v3Week = Math.min(5, mesocycleWeekFromZeroBased(rawWeekIdx)) as 1 | 2 | 3 | 4 | 5;
           const stim = v3StimulusForWeek(day, v3Week);
+          const plannedTopKg = roundPlate(workingTm * WAVE_MATRIX_V3[v3Week][stim].topPctTM, 2.5);
+          if (plannedTopKg > 0 && Math.abs(topSet.weight - plannedTopKg) / plannedTopKg > 0.12) {
+            continue;
+          }
           const dec = computeNextWeekLoad({
             workingTmKg: workingTm,
             week: v3Week,
             stimulus: stim,
             actualTopWeightKg: topSet.weight,
             actualReps: topSet.reps,
-            actualRir: topSet.rir ?? 2,
+            actualRir: topSet.rir,
             longLevers,
             energyStatus,
             consecutiveStalls: stalls,
@@ -1667,7 +1727,7 @@ export class LaidDupPlan {
 
     for (const lift of ["squat", "bench", "deadlift"] as const) {
       if (p.painFlags?.includes(lift) || p.calibrationLifts?.includes(lift)) continue;
-      const exId = LaidDupPlan.liftExerciseId(lift, p.substitutions);
+      const exId = LaidDupPlan.liftExerciseId(lift, p.substitutions, p.version);
       const liftWorkouts = workouts
         .filter(
           (w) =>
@@ -1754,7 +1814,7 @@ export class LaidDupPlan {
     options: { maxJumpFactor?: number; minorMode?: boolean } = {},
   ): LaidAutoUpdate | null {
     if (options.minorMode) return null;
-    const position = LaidDupPlan.position(LaidDupPlan.weekOf(p.startMonday, today));
+    const position = LaidDupPlan.weekPosition(p, LaidDupPlan.weekOf(p.startMonday, today));
     if (position.finished) return null;
     const applied = LaidDupPlan.suggestion(p, workouts, today, { maxJumpFactor: options.maxJumpFactor });
     if (!applied.length) return null;
@@ -1763,9 +1823,9 @@ export class LaidDupPlan {
     return { maxes, applied, fromWeek: position.week };
   }
 
-  static autoNotice(update: LaidAutoUpdate, substitutions?: LaidSubstitutions): string {
+  static autoNotice(update: LaidAutoUpdate, substitutions?: LaidSubstitutions, version?: LaidVersion): string {
     const list = update.applied
-      .map((item) => `${LaidDupPlan.liftLabel(item.lift, substitutions)} ${formatKg(item.from)} → ${formatKg(item.to)} кг`)
+      .map((item) => `${LaidDupPlan.liftLabel(item.lift, substitutions, version)} ${formatKg(item.from)} → ${formatKg(item.to)} кг`)
       .join("; ");
     return `Максимумы обновлены автоматически: ${list}. Оценка — по подходам ${LaidDupPlan.windowText(LaidDupPlan.SUGGEST_DAYS)}, новые веса — с недели ${update.fromWeek + 1}.`;
   }
@@ -1802,7 +1862,7 @@ export class LaidDupPlan {
     };
     const targetDays = daysForVersion(version);
     for (const day of targetDays) {
-      const lift = LAID_LIFT_OF[day];
+      const lift = LaidDupPlan.liftForDay(day, version);
       const originalId = liftExerciseForDay(day, version);
       const liftSetsCount = version === "v3" ? 3 : version === "v2" ? (day === "pull1" || day === "legs2" ? 3 : 4) : 5;
       addSlot(originalId, "lift", day, liftSetsCount, version === "v2" && day === "pull2" ? undefined : lift);
@@ -1824,7 +1884,7 @@ export class LaidDupPlan {
   ): string[] {
     const conflicts = new Set<string>();
     const allLayouts = layoutForVersion(version);
-    for (const day of LaidDupPlan.DAYS) {
+    for (const day of daysForVersion(version)) {
       const layout = allLayouts[day];
       const dayOriginals = [
         liftExerciseForDay(day, version),
@@ -1954,6 +2014,7 @@ export class LaidDupPlan {
         substitutions: normalized,
         calibrationLifts: calLifts,
         painFlags: pFlags,
+        deloadWeeks: nextPeriodization.deloadWeeks,
       });
 
       const seen = new Set<string>();
@@ -1977,19 +2038,23 @@ export class LaidDupPlan {
         if (mappedId === newPlan.liftExerciseId) {
           nextExercises.push({
             ...fresh,
+            ...(entry.supersetId ? { supersetId: entry.supersetId } : {}),
             sets: LaidDupPlan.liftSets(newPlan),
           });
         } else {
           const def = exerciseById(mappedId);
           const isDuration = def?.recording.type === "duration";
+          const isAssisted = def?.recording.loadMode === "assisted_bodyweight";
           const workingCount = Math.max(1, entry.sets.filter((s) => !s.warmup).length || entry.sets.length);
           const fallbackReps = entry.repMin ?? (entry.sets.find((s) => !s.warmup)?.reps || 10);
           nextExercises.push({
             ...fresh,
+            ...(entry.supersetId ? { supersetId: entry.supersetId } : {}),
             sets: makeSets(workingCount, 0, isDuration ? 0 : fallbackReps).map((s) => ({
               ...s,
               rir: null,
               ...(isDuration ? { durationSeconds: 45 } : {}),
+              ...(isAssisted ? { assistanceKg: 0 } : {}),
             })),
             ...(isDuration
               ? {}
@@ -2016,12 +2081,19 @@ export class LaidDupPlan {
     for (const routine of cycle) {
       const prev = LaidDupPlan.periodizationOf(routine);
       if (!prev) continue;
-      const set = new Set(prev.deloadWeeks ?? []);
+      const base =
+        prev.deloadWeeks !== undefined
+          ? prev.deloadWeeks
+          : prev.version === "v3"
+            ? [LAID_V3_DELOAD_WEEK]
+            : [];
+      const set = new Set(base);
       if (enable) set.add(target);
       else set.delete(target);
       const nextDeloads = [...set].sort((a, b) => a - b).slice(0, 3);
       const nextP: RoutinePeriodization = { ...prev };
       if (nextDeloads.length) nextP.deloadWeeks = nextDeloads;
+      else if (prev.version === "v3") nextP.deloadWeeks = [];
       else delete nextP.deloadWeeks;
       out.push({ ...routine, periodization: nextP });
     }
@@ -2104,13 +2176,12 @@ export class LaidDupPlan {
     week: number,
     workouts: readonly Workout[],
     today?: string,
+    options?: { accountId?: string; longLevers?: boolean },
   ): LaidDayExercisePreview[] {
     const p = LaidDupPlan.periodizationOf(routine);
     if (!p) return [];
-    const deloadsBefore = (p.deloadWeeks ?? []).filter((w) => w < week).length;
     const isWeekDeload = LaidDupPlan.isDeloadWeek(p, week);
-    const effIdx = isWeekDeload ? Math.max(0, week - deloadsBefore - 1) : week - deloadsBefore;
-    const effPos = LaidDupPlan.position(effIdx);
+    const effPos = LaidDupPlan.weekPosition(p, week);
     const maxes = LaidDupPlan.maxesFor(p, effPos.week);
     const plan = LaidDupPlan.day(p.day, week, maxes, {
       version: p.version,
@@ -2119,6 +2190,8 @@ export class LaidDupPlan {
       calibrationLifts: p.calibrationLifts,
       painFlags: p.painFlags,
       deloadWeeks: p.deloadWeeks,
+      accountId: options?.accountId,
+      longLevers: options?.longLevers,
     });
     const subs = p.substitutions;
     const reverseSub = new Map<string, string>();
@@ -2151,7 +2224,7 @@ export class LaidDupPlan {
           weightLabel = `${formatKg(plan.heavy.weightKg)} / ${formatKg(plan.work.weightKg)} кг`;
           weightSource = isWeekDeload ? "deload" : "plan";
         } else if (last && last.weightKg > 0) {
-          const factor = p.version === "v2" ? 0.85 : 0.65;
+          const factor = p.version === "v3" ? 0.9 : p.version === "v2" ? 0.85 : 0.65;
           const shownKg = isWeekDeload ? Math.round(last.weightKg * factor * 2) / 2 : last.weightKg;
           weightLabel = isWeekDeload ? `${formatKg(shownKg)} кг (${Math.round(factor * 100)} %)` : `${formatKg(shownKg)} кг`;
           weightSource = isWeekDeload ? "deload" : "history";
@@ -2186,8 +2259,9 @@ export class LaidDupPlan {
           weightSource = last ? "history" : "none";
         } else if (last && last.weightKg > 0) {
           if (isWeekDeload && DeloadEngine.isScalable(loadMode)) {
-            const deloadKg = Math.round(last.weightKg * 0.65 * 2) / 2;
-            weightLabel = `${formatKg(deloadKg)}${unit} (65 %)`;
+            const auxFactor = p.version === "v3" ? 0.9 : p.version === "v2" ? 0.85 : 0.65;
+            const deloadKg = Math.round(last.weightKg * auxFactor * 2) / 2;
+            weightLabel = `${formatKg(deloadKg)}${unit} (${Math.round(auxFactor * 100)} %)`;
             weightSource = "deload";
           } else {
             weightLabel = `${formatKg(last.weightKg)}${unit}`;
@@ -2252,20 +2326,12 @@ export class LaidDupPlan {
     const lifts: LaidLift[] = ["squat", "bench", "deadlift", "ohp"];
 
     return lifts.map((lift) => {
-      const baseExId =
-        first.version === "v3"
-          ? lift === "deadlift"
-            ? "trap-bar-deadlift"
-            : lift === "ohp"
-              ? "incline-bar"
-              : LAID_LIFT_EXERCISE[lift]
-          : first.version === "v2" && lift === "deadlift"
-            ? "trap-bar-deadlift"
-            : LAID_LIFT_EXERCISE[lift];
-      const exerciseId = resolveLaidExerciseId(baseExId, first.substitutions);
-      const liftDays = cycle.filter(
-        (r) => r.periodization && LAID_LIFT_OF[r.periodization.day] === lift && !(first.version === "v2" && r.periodization.day === "pull2"),
-      );
+      const exerciseId = LaidDupPlan.liftExerciseId(lift, first.substitutions, first.version);
+      const liftDays = cycle.filter((r) => {
+        if (!r.periodization) return false;
+        if (first.version === "v2" && r.periodization.day === "pull2") return false;
+        return LaidDupPlan.liftForDay(r.periodization.day, first.version) === lift;
+      });
       const weeks: LaidWaveWeekPoint[] = [];
       const waveStats = new Map<1 | 2 | 3, { plannedPeak: number | null; bestE1rm: number | null; sessions: Set<string> }>([
         [1, { plannedPeak: null, bestE1rm: null, sessions: new Set() }],
@@ -2278,9 +2344,7 @@ export class LaidDupPlan {
 
       for (let week = 0; week < totalWeeks; week++) {
         const isDeload = LaidDupPlan.isDeloadWeek(first, week);
-        const deloadsBefore = (first.deloadWeeks ?? []).filter((w) => w < week).length;
-        const effIdx = isDeload ? Math.max(0, week - deloadsBefore - 1) : week - deloadsBefore;
-        const pos = LaidDupPlan.position(effIdx);
+        const pos = LaidDupPlan.weekPosition(first, week);
         const maxes = LaidDupPlan.maxesFor(first, pos.week);
 
         let plannedTopKg: number | null = null;
@@ -2363,9 +2427,14 @@ export class LaidDupPlan {
           ? Math.round((overallBestE1rm - startMaxes[lift]) * 10) / 10
           : null;
 
+      const v3WaveTitles: Record<1 | 2 | 3, string> = {
+        1: "Накопление (нед. 1–2)",
+        2: "Интенсификация (нед. 3–4)",
+        3: "Пик и разгрузка (нед. 5–6)",
+      };
       return {
         lift,
-        name: LaidDupPlan.liftLabel(lift, first.substitutions),
+        name: LaidDupPlan.liftLabel(lift, first.substitutions, first.version),
         exerciseId,
         startMaxKg: startMaxes[lift],
         currentMaxKg: currentMaxes[lift],
@@ -2377,7 +2446,7 @@ export class LaidDupPlan {
           const ws = waveStats.get(wave)!;
           return {
             wave,
-            title: LAID_WAVE_META[wave].title,
+            title: first.version === "v3" ? v3WaveTitles[wave] : LAID_WAVE_META[wave].title,
             plannedPeakKg: ws.plannedPeak,
             bestE1rm: ws.bestE1rm,
             sessionsDone: ws.sessions.size,

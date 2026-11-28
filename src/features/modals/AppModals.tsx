@@ -141,15 +141,15 @@ function GymInventorySettings() {
   );
 }
 
-function BiomechanicsProfileSettings() {
-  const [profile, setProfile] = useState<BiomechanicsProfile>(() => BiomechanicsProfileStore.read());
+function BiomechanicsProfileSettings({ accountId }: { accountId: string }) {
+  const [profile, setProfile] = useState<BiomechanicsProfile>(() => BiomechanicsProfileStore.read(undefined, accountId));
   const [shoulderInput, setShoulderInput] = useState(() =>
     profile.biacromialCm !== null ? String(profile.biacromialCm) : "",
   );
   const grip = BiomechanicsProfileStore.optimalBenchGripCm(profile.biacromialCm);
 
   const toggleLongLevers = (checked: boolean) => {
-    setProfile((prev) => BiomechanicsProfileStore.save({ ...prev, longLevers: checked }));
+    setProfile((prev) => BiomechanicsProfileStore.save({ ...prev, longLevers: checked }, undefined, accountId));
   };
 
   const updateShoulder = (raw: string) => {
@@ -157,7 +157,7 @@ function BiomechanicsProfileSettings() {
     const cleaned = raw.trim().replace(",", ".");
     const parsed = cleaned === "" ? null : Number(cleaned);
     if (parsed === null || (Number.isFinite(parsed) && parsed >= 30 && parsed <= 60)) {
-      setProfile((prev) => BiomechanicsProfileStore.save({ ...prev, biacromialCm: parsed }));
+      setProfile((prev) => BiomechanicsProfileStore.save({ ...prev, biacromialCm: parsed }, undefined, accountId));
     }
   };
 
@@ -454,7 +454,7 @@ export function AppModals({
             </label>
           </div>
           <GymInventorySettings />
-          <BiomechanicsProfileSettings />
+          <BiomechanicsProfileSettings accountId={account.id} />
           <label className="settings-safety-toggle">
             <input
               type="checkbox"
@@ -744,6 +744,7 @@ export function AppModals({
         >
           <Suspense fallback={<p>Открываем редактор…</p>}>
             <PersonalExerciseEditor
+              accountId={account.id}
               exercise={personalEditor}
               onDeleted={(id) => {
                 setProduct((p) => ({

@@ -42,11 +42,15 @@ export type ImportedExercise = {
   supersetId?: string;
   catalogRevision?: 1 | 2 | 3;
   muscleModelRevision?: 1;
+  repMin?: number;
+  repMax?: number;
+  progressionNote?: string;
 };
 export type ImportedWorkout = {
   sourceKey: string;
   nativeId?: string;
   analysisVersion?: 1 | 2;
+  createdAt?: string;
   name: string;
   date: string;
   duration: number;
@@ -149,7 +153,8 @@ function day(value: string, order: "dmy" | "mdy") {
       `Не удалось прочитать дату «${value}». Выбери порядок дня и месяца или используй ГГГГ-ММ-ДД.`,
     );
   const result = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-  if (new Date(result + "T12:00:00Z").toISOString().slice(0, 10) !== result) {
+  const parsed = new Date(result + "T12:00:00Z");
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== result) {
     if (european && m > 12 && d >= 1 && d <= 12) {
       throw new Error(
         `Некорректная дата «${value}»: похоже, в файле сначала ${order === "dmy" ? "месяц (ММ/ДД)" : "день (ДД/ММ)"} — переключи порядок дат.`,
@@ -301,9 +306,9 @@ export class WorkoutImport {
           sessions.set(key, workout);
         }
         const weightRaw = numeric(
-          lookup(row, "weight_kg", "weight_lb", "weight_lbs", "weight"),
+          lookup(row, "weight_kg", "weight_kgs", "weight_lb", "weight_lbs", "weight"),
         );
-        const unit = columns.includes("weight_kg")
+        const unit = columns.some((c) => c === "weight_kg" || c === "weight_kgs")
           ? "kg"
           : columns.some((c) => c === "weight_lb" || c === "weight_lbs")
             ? "lb"
@@ -416,6 +421,7 @@ export class WorkoutImport {
       sourceKey: `tyaga|${w.id}`,
       nativeId: w.id,
       analysisVersion: w.analysisVersion,
+      ...(w.createdAt !== undefined ? { createdAt: w.createdAt } : {}),
       name: w.name,
       date: w.date,
       duration: w.duration,
@@ -441,6 +447,9 @@ export class WorkoutImport {
         machineSnapshot: e.machineSnapshot,
         execution: e.execution,
         supersetId: e.supersetId,
+        ...(e.repMin !== undefined ? { repMin: e.repMin } : {}),
+        ...(e.repMax !== undefined ? { repMax: e.repMax } : {}),
+        ...(e.progressionNote !== undefined ? { progressionNote: e.progressionNote } : {}),
       })),
     }));
     if (

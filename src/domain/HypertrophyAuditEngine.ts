@@ -393,9 +393,10 @@ export class HypertrophyAuditEngine {
   ): HypertrophyAuditReport {
     const weeklyMap = new Map<string, number>();
     for (const r of routines) {
+      const daysPerWeek = Math.max(1, r.days.length);
       for (const ex of r.exercises) {
         const working = ex.sets.filter((s) => !s.warmup).length;
-        const sets = Math.max(1, working || ex.sets.length || 3);
+        const sets = Math.max(1, working || ex.sets.length || 3) * daysPerWeek;
         weeklyMap.set(ex.exerciseId, (weeklyMap.get(ex.exerciseId) ?? 0) + sets);
       }
     }

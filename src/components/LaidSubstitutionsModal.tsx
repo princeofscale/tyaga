@@ -118,8 +118,8 @@ export function LaidSubstitutionsModal({
   );
 
   const estimates = useMemo(
-    () => LaidDupPlan.estimates(workouts, today, activeSubs),
-    [workouts, today, activeSubs],
+    () => LaidDupPlan.estimates(workouts, today, activeSubs, first.version),
+    [workouts, today, activeSubs, first.version],
   );
 
   const lastWeights = useMemo(() => {
@@ -169,7 +169,7 @@ export function LaidSubstitutionsModal({
     }
     setSubs(nextMap);
 
-    const lift = SUB_LIFTS.find((l) => LaidDupPlan.LIFT_EXERCISE[l] === originalId);
+    const lift = SUB_LIFTS.find((l) => LaidDupPlan.baseLiftExerciseId(l, first.version) === originalId);
     if (lift) {
       if (!nextId || nextId === originalId) {
         setCalibrationLifts((prev) => prev.filter((l) => l !== lift));
@@ -182,7 +182,7 @@ export function LaidSubstitutionsModal({
         if (compat.prescriptionMode !== "percent_1rm") {
           setCalibrationLifts((prev) => (prev.includes(lift) ? prev : [...prev, lift]));
         }
-        const nextEst = LaidDupPlan.estimates(workouts, today, LaidDupPlan.normalizeSubstitutions(nextMap))[lift];
+        const nextEst = LaidDupPlan.estimates(workouts, today, LaidDupPlan.normalizeSubstitutions(nextMap), first.version)[lift];
         if (nextEst !== null) {
           setMaxValues((prev) => ({ ...prev, [lift]: LaidDupPlan.kg(nextEst) }));
         }
@@ -250,7 +250,7 @@ export function LaidSubstitutionsModal({
               >
                 Все дни
               </button>
-              {LaidDupPlan.DAYS.map((day) => (
+              {(first.version === "v3" ? LaidDupPlan.V3_DAYS : LaidDupPlan.DAYS).map((day) => (
                 <button
                   key={day}
                   type="button"
@@ -258,7 +258,7 @@ export function LaidSubstitutionsModal({
                   className={`laid-filter-pill${dayFilter === day ? " active" : ""}`}
                   onClick={() => setDayFilter(day)}
                 >
-                  {LaidDupPlan.SHORT[day]}
+                  {LaidDupPlan.dayShort(day, first.version)}
                 </button>
               ))}
               <button
@@ -317,14 +317,14 @@ export function LaidSubstitutionsModal({
                   const liftErr = shown && check.error ? check.error : "";
                   const est = estimates[lift];
                   const lastText = lastWeights.get(slot.resolvedId);
-                  const changedThisLift = slot.resolvedId !== LaidDupPlan.liftExerciseId(lift, normalizedInitial);
+                  const changedThisLift = slot.resolvedId !== LaidDupPlan.liftExerciseId(lift, normalizedInitial, first.version);
                   return (
                     <li key={slot.originalId} className={`laid-subs-item laid-subs-lift-item${slot.replaced ? " is-replaced" : ""}`}>
                       <div className="laid-subs-item-row">
                         <div className="laid-subs-item-info">
                           <b>{curName}</b>
                           <small>
-                            {slot.days.map((d) => LaidDupPlan.SHORT[d]).join(" · ")} · {slot.weeklySets} подх./нед
+                            {slot.days.map((d) => LaidDupPlan.dayShort(d, first.version)).join(" · ")} · {slot.weeklySets} подх./нед
                             {lastText ? ` · прошлый ${lastText}` : ""}
                             {slot.replaced ? ` · вместо «${origName}»` : ""}
                           </small>
@@ -437,7 +437,7 @@ export function LaidSubstitutionsModal({
                       <div className="laid-subs-item-info">
                         <b>{curName}</b>
                         <small>
-                          {slot.days.map((d) => LaidDupPlan.SHORT[d]).join(" · ")} · {slot.weeklySets} подх./нед
+                          {slot.days.map((d) => LaidDupPlan.dayShort(d, first.version)).join(" · ")} · {slot.weeklySets} подх./нед
                           {slot.role === "wave-aux" ? " · волна повт." : ""}
                           {lastText ? ` · ${lastText}` : ""}
                           {slot.replaced ? ` · вместо «${origName}»` : ""}
@@ -500,7 +500,7 @@ export function LaidSubstitutionsModal({
       {swapSlot && swapCurrentEx ? (
         <ExerciseSwapModal
           title={swapSlot.role === "lift" ? "Заменить базовое движение" : "Заменить упражнение в цикле"}
-          subtitle={`Применится ко всем неделям цикла (${swapSlot.days.map((d) => LaidDupPlan.SHORT[d]).join(" · ")}).`}
+          subtitle={`Применится ко всем неделям цикла (${swapSlot.days.map((d) => LaidDupPlan.dayShort(d, first.version)).join(" · ")}).`}
           currentExercise={swapCurrentEx}
           originalExercise={swapOriginalEx}
           showCompatibilityFor={swapSlot.role === "lift" ? swapOriginalEx : undefined}

@@ -1,5 +1,16 @@
 import { isCalendarDate } from "../src/lib/calendar";
-import { InputError, object, str, num, validPeriodization, validOccurrenceOverrides, validProgramDate } from "./validation";
+import {
+  InputError,
+  object,
+  str,
+  num,
+  validCycle,
+  validMachine,
+  validPeriodization,
+  validOccurrenceOverrides,
+  validProgramDate,
+  validSettings,
+} from "./validation";
 
 // Device ↔ cloud replication. Triggers (drizzle/0006_sync.sql) record every
 // write in sync_versions; a document's version time travels with it, so the
@@ -191,8 +202,11 @@ function validateWorkoutSyncPayload(id: string, rowDate: string, payload: Record
   if (!isCalendarDate(rowDate)) throw new InputError("Некорректная дата тренировки");
   if (payload.id !== undefined && str(payload.id, 80, 1) !== id)
     throw new InputError("ID тренировки не совпадает с документом");
-  if (payload.date !== undefined && !isCalendarDate(str(payload.date, 10, 10)))
-    throw new InputError("Некорректная дата в данных тренировки");
+  if (payload.date !== undefined) {
+    const payloadDate = str(payload.date, 10, 10);
+    if (!isCalendarDate(payloadDate))
+      throw new InputError("Некорректная дата в данных тренировки");
+  }
   str(payload.name, 120, 1);
   if (payload.duration !== undefined) num(payload.duration, 0, 1440);
   if (payload.notes !== undefined) str(payload.notes, 2000);
@@ -209,6 +223,8 @@ function validateWorkoutSyncPayload(id: string, rowDate: string, payload: Record
       str(s.id, 80, 1);
       num(s.weight, 0, 1000);
       num(s.reps, 0, 200, true);
+      if ((s.done !== undefined && typeof s.done !== "boolean") || (s.warmup !== undefined && typeof s.warmup !== "boolean"))
+        throw new InputError("Проверь отметки подхода");
       if (s.rir !== null && s.rir !== undefined) num(s.rir, 0, 10);
     }
   }
@@ -219,12 +235,37 @@ function validateRoutineSyncPayload(id: string, payload: Record<string, unknown>
     throw new InputError("ID программы не совпадает с документом");
   str(payload.name, 120, 1);
   if (payload.notes !== undefined) str(payload.notes, 2000);
-  if (!Array.isArray(payload.exercises) || payload.exercises.length > 30)
+  if (
+    !Array.isArray(payload.days) ||
+    payload.days.length > 7 ||
+    new Set(payload.days).size !== payload.days.length
+  )
+    throw new InputError("Проверь дни программы");
+  for (const d of payload.days) num(d, 0, 6, true);
+  num(payload.restSeconds, 15, 600, true);
+  if (!["repeat", "double"].includes(String(payload.progression)))
+    throw new InputError("Проверь правило прогрессии");
+  const repMin = num(payload.repMin, 1, 200, true);
+  num(payload.repMax, repMin, 200, true);
+  num(payload.incrementKg, 0.25, 50);
+  if (!Array.isArray(payload.exercises) || !payload.exercises.length || payload.exercises.length > 30)
     throw new InputError("Некорректный список упражнений программы");
   for (const rawEx of payload.exercises) {
     const ex = object(rawEx);
     str(ex.exerciseId, 80, 1);
+    if (!Array.isArray(ex.sets) || !ex.sets.length || ex.sets.length > 30)
+      throw new InputError("В упражнении программы должен быть список подходов");
+    for (const rawSet of ex.sets) {
+      const s = object(rawSet);
+      str(s.id, 80, 1);
+      num(s.weight, 0, 1000);
+      num(s.reps, 0, 200, true);
+      if (typeof s.done !== "boolean" || typeof s.warmup !== "boolean")
+        throw new InputError("Проверь отметки подхода в программе");
+      if (s.rir !== null && s.rir !== undefined) num(s.rir, 0, 10);
+    }
   }
+  if (payload.cycle !== undefined) validCycle(payload.cycle);
   if (payload.periodization !== undefined) validPeriodization(payload.periodization);
   if (payload.occurrenceOverrides !== undefined) {
     const overrides = validOccurrenceOverrides(payload.occurrenceOverrides);
@@ -235,12 +276,14 @@ function validateRoutineSyncPayload(id: string, payload: Record<string, unknown>
 
 function parseDoc(value: unknown): SyncDoc {
   const v = object(value);
-  if (typeof v.kind !== "string" || !(v.kind in TABLES)) throw new InputError("Неизвестный тип документа");
+  if (typeof v.kind !== "string" || !Object.hasOwn(TABLES, v.kind)) throw new InputError("Неизвестный тип документа");
   const kind = v.kind as SyncKind;
   const table = TABLES[kind];
   const id = str(v.id, 200, 1);
   const versionAt = canonicalVersionAt(str(v.versionAt, 40, 1));
   if (kind === "settings" && id !== "settings") throw new InputError("Некорректный документ настроек");
+  if (kind === "custom_exercise" && !id.startsWith("custom:"))
+    throw new InputError("Некорректный ID личного упражнения");
   if (v.deleted === true) return { kind, id, versionAt, deleted: true };
   const source = object(v.row);
   const row: Record<string, string | number> = {};
@@ -257,6 +300,20 @@ function parseDoc(value: unknown): SyncDoc {
     }
     if (kind === "workout") {
       validateWorkoutSyncPayload(id, String(row.date), payload);
+    }
+    if (kind === "settings") {
+      validSettings({ ...payload, revision: row.revision });
+    }
+    if (kind === "machine") {
+      if (row.active !== 0 && row.active !== 1) throw new InputError("Некорректный статус тренажёра");
+      const machine = validMachine({ ...payload, id, revision: row.revision });
+      if (row.model_id !== machine.model.id) throw new InputError("Модель тренажёра не совпадает с документом");
+    }
+    if (kind === "custom_exercise") {
+      if (row.active !== 0 && row.active !== 1) throw new InputError("Некорректный статус упражнения");
+      if (payload.id !== undefined && str(payload.id, 80, 1) !== id)
+        throw new InputError("ID упражнения не совпадает с документом");
+      str(payload.name, 120, 1);
     }
   }
   return { kind, id, versionAt, deleted: false, row };

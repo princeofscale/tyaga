@@ -38,6 +38,7 @@ export type CoachSeverity = "critical" | "warn" | "good" | "info";
 
 export type CoachStateV2 =
   | "PEAK_PROGRESSIVE"
+  | "NO_DATA"
   | "MANAGE_FATIGUE"
   | "DELOAD_ACTIVE"
   | "OVERLOAD_WARNING";
@@ -72,6 +73,8 @@ export interface SmartCoachV2Summary {
   /** Рекомендации повышения веса (гарантированно пусто при DELOAD_ACTIVE, OVERLOAD_WARNING и Detraining). */
   weightIncreaseRecommendations: WeightIncreaseRecommendationV2[];
   silenceActive: boolean;
+  /** Энергетический статус, учтённый при расчёте порогов разгрузки (питание v5 или кеш массы тела). */
+  energyStatus: EnergyStatus;
 }
 
 export interface SmartCoachAnalyzeOptions {
@@ -161,7 +164,7 @@ function inferEnergyAndBodyweight(
   let currentBodyweightKg = opts?.currentBodyweightKg ?? 75;
   if (accountId && (opts?.energyStatus === undefined || opts?.currentBodyweightKg === undefined)) {
     try {
-      const tracker = new BodyweightTracker(accountId, timeZone);
+      const tracker = BodyweightTracker.fromSyncedCache(accountId, timeZone);
       const entries = tracker.getEntries();
       const stats = tracker.getStats();
       if (opts?.currentBodyweightKg === undefined && stats?.currentKg) {
@@ -169,7 +172,7 @@ function inferEnergyAndBodyweight(
       }
       if (opts?.energyStatus === undefined) {
         const nutritionStore = new NutritionStore(accountId);
-        const savedNutrition = nutritionStore.readRaw();
+        const savedNutrition = nutritionStore.readRaw(today);
         if (savedNutrition && (savedNutrition.logs.length > 0 || entries.length > 0)) {
           const engine = new AdaptiveNutritionEngine();
           const tdee = engine.tdeeEstimator.estimateTdee(
@@ -193,14 +196,15 @@ function inferEnergyAndBodyweight(
         }
         if (energyStatus === "unknown") {
           const verdict = tracker.getNeatVerdict(today);
-          if (verdict.status === "loss_optimal" || verdict.status === "loss_fast" || verdict.status === "loss_slow") {
-            energyStatus = "deficit";
-          } else if (verdict.status === "neat_plateau") {
-            energyStatus = "maintenance";
-          } else if (verdict.status === "optimal_gain") {
-            energyStatus = "optimal_surplus";
-          } else if (verdict.status === "too_fast") {
-            energyStatus = "high_surplus";
+          if (verdict.ratePctPerWeek !== null) {
+            energyStatus =
+              verdict.ratePctPerWeek <= -0.20
+                ? "deficit"
+                : verdict.ratePctPerWeek < 0.12
+                  ? "maintenance"
+                  : verdict.ratePctPerWeek < 0.50
+                    ? "optimal_surplus"
+                    : "high_surplus";
           }
         }
       }
@@ -252,17 +256,24 @@ export class SmartCoach {
         : null;
 
     // Сводка ограничений по боли (avoid list + painFlags в циклах Лейда)
+    const painExerciseIds = new Set<string>();
     const painNameSet = new Set<string>();
     if (accountId) {
       for (const item of new ExerciseAvoidStore(accountId).read()) {
-        if (item.reason === "pain") painNameSet.add(exerciseById(item.exerciseId)?.name ?? item.exerciseId);
+        if (item.reason !== "pain") continue;
+        painExerciseIds.add(item.exerciseId);
+        painNameSet.add(exerciseById(item.exerciseId)?.name ?? item.exerciseId);
       }
     }
     for (const r of routines) {
       const p = LaidDupPlan.periodizationOf(r);
       if (p?.painFlags?.length) {
         for (const lift of p.painFlags) {
-          painNameSet.add(LaidDupPlan.liftLabel(lift, p.substitutions));
+          painNameSet.add(LaidDupPlan.liftLabel(lift, p.substitutions, p.version));
+          painExerciseIds.add(LaidDupPlan.liftExerciseId(lift, p.substitutions, p.version));
+          if (p.version === "v3" && lift === "deadlift") {
+            painExerciseIds.add(p.substitutions?.rdl || "rdl");
+          }
         }
       }
     }
@@ -357,7 +368,11 @@ export class SmartCoach {
     );
     const laidStates = laidCycles.map((c) => ({ cycle: c, state: LaidDupPlan.cycleState(c, workouts, today) }));
     const laidDeloadEntry = laidStates.find((x) => x.state.isCurrentDeload);
-    const laidFinishedEntry = laidStates.find((x) => !x.state.isCurrentDeload && x.state.position.finished);
+    const laidFinishedEntry = laidStates.find(({ state }) =>
+      state.first.weekMode !== "rolling" && state.position.finished &&
+      state.rawWeek === state.totalWeeks &&
+      !LaidDupPlan.isDeloadWeek(state.first, state.totalWeeks - 1),
+    );
     const activeDeload: SmartCoachReport["activeDeload"] = isManualDeload
       ? { active: true, reason: `Включена разгрузка до ${deload!.until}` }
       : laidDeloadEntry
@@ -368,7 +383,7 @@ export class SmartCoach {
         : periodicDeloadRoutine
           ? { active: true, reason: `Плановая разгрузочная неделя программы «${periodicDeloadRoutine.name}»` }
           : laidFinishedEntry
-            ? { active: true, reason: "Цикл Дэвида Лейда (9 нед.) завершён — рекомендована разгрузочная неделя (неделя 10)" }
+            ? { active: true, reason: "Первая неделя после завершения цикла Дэвида Лейда" }
             : null;
     const isDeloadWeek = !!activeDeload?.active;
 
@@ -588,7 +603,7 @@ export class SmartCoach {
 
     let status: CoachLoadStatus = "optimal";
     let statusLabel = "Оптимальный режим";
-    let headline = "Нагрузка и восстановление в балансе — можно спокойно прогрессировать.";
+    let headline = "По журналу нет выраженного сочетания сигналов нагрузки.";
 
     if (isDeloadWeek) {
       status = "optimal";
@@ -644,11 +659,8 @@ export class SmartCoach {
           : {
               focusLabels,
               recommendedRir: "RIR 1–2",
-              headline: `Свежие зоны: ${focusLabels.join(" + ")}`,
-              reason:
-                underloadedMuscles.length > 0
-                  ? `Группы готовы к работе; дополнительно стоит добрать объём на ${underloadedMuscles[0].name.toLowerCase()}.`
-                  : "Эти мышечные группы полностью восстановились и готовы к прогрессии веса.",
+              headline: "Нагрузка по записям",
+              reason: "История тренировок не измеряет восстановление. Сопоставь записи с самочувствием.",
             };
 
     // Сортируем инсайты по важности
@@ -662,9 +674,9 @@ export class SmartCoach {
       timeZone,
       options,
     );
-    const isLongLimbed = options?.isLongLimbed ?? BiomechanicsProfileStore.read().longLevers;
+    const isLongLimbed = options?.isLongLimbed ?? BiomechanicsProfileStore.read(undefined, accountId).longLevers;
     const jointS5 = new JointGuardEngine().evaluateDeloadS5(
-      JointPainStore.read(undefined, now.getTime()),
+      JointPainStore.read(undefined, now.getTime(), accountId),
       now.getTime(),
     );
     const deloadV2 = DeloadEngine.evaluateV2(workouts, {
@@ -675,9 +687,7 @@ export class SmartCoach {
       energyStatus,
       currentBodyweightKg,
       painFlagsCount: Math.max(painFlagsSummary.count, jointS5.painFlagsCount),
-      corePainRepeated:
-        jointS5.corePainRepeated ||
-        routines.some((r) => (LaidDupPlan.periodizationOf(r)?.painFlags?.length ?? 0) > 0),
+      corePainRepeated: jointS5.corePainRepeated,
     });
     const readinessV2 = MuscleReadiness.fromWorkoutsV2(workouts, today, timeZone, now);
 
@@ -695,8 +705,8 @@ export class SmartCoach {
     const recoveringBase = readinessV2.filter((g) => baseGroups.has(g.id) && g.readinessPct < 75);
 
     let coachStateV2: CoachStateV2 = "PEAK_PROGRESSIVE";
-    let stateLabelV2 = "Готов к прогрессу";
-    let verdictV2 = "Нагрузка в продуктивном коридоре, базовые группы готовы к росту весов.";
+    let stateLabelV2 = "По журналу";
+    let verdictV2 = deloadV2.summary;
 
     if (isDeloadWeek) {
       coachStateV2 = "DELOAD_ACTIVE";
@@ -704,31 +714,35 @@ export class SmartCoach {
       verdictV2 = activeDeload?.reason
         ? `${activeDeload.reason} — держи целевой RIR 3–4 без гонки за весами.`
         : "Идёт плановая разгрузка — сбрось усталость перед следующей волной.";
+    } else if (deloadV2.status === "pain_reported") {
+      coachStateV2 = "MANAGE_FATIGUE";
+      stateLabelV2 = "Отметки боли";
+      verdictV2 = deloadV2.summary;
     } else if (deloadV2.status === "deload_recommended") {
       coachStateV2 = "OVERLOAD_WARNING";
-      stateLabelV2 = "Нужна разгрузка";
+      stateLabelV2 = "Сигналы нагрузки";
       verdictV2 = deloadV2.summary;
     } else if (detraining.active) {
       coachStateV2 = "MANAGE_FATIGUE";
       stateLabelV2 = "Возврат после паузы";
       verdictV2 = `Перерыв ${detraining.gapDays} дн. — начни с ${Math.round(detraining.weightMultiplier * 100)} % веса и ${Math.round(detraining.volumeMultiplier * 100)} % объёма (RIR ${detraining.rirFloor}+).`;
     } else if (!hasData) {
-      coachStateV2 = "PEAK_PROGRESSIVE";
-      stateLabelV2 = "Ожидаю данные";
-      verdictV2 = "Запиши 1–2 тренировки с весом и RIR — здесь появятся EWMA-усталость и готовность 12 групп.";
+      coachStateV2 = "NO_DATA";
+      stateLabelV2 = "Недостаточно данных";
+      verdictV2 = "Нет недавних записей о выполненных рабочих подходах. Это не означает, что нагрузка была нулевой.";
     } else if (recoveringBase.length > 0 || deloadV2.status === "productive_overreach") {
       coachStateV2 = "MANAGE_FATIGUE";
-      stateLabelV2 = "Контроль усталости";
-      verdictV2 =
-        recoveringBase.length > 0
-          ? `Недовосстановлены: ${recoveringBase.slice(0, 2).map((g) => `${g.label.toLowerCase()} (${g.readinessPct}%)`).join(", ")} — работай по свежим зонам или держи RIR 2.`
-          : deloadV2.summary;
+      stateLabelV2 = "Недавняя нагрузка";
+      verdictV2 = recoveringBase.length
+        ? "На несколько групп недавно пришлась нагрузка. Индекс не измеряет, восстановились ли они."
+        : deloadV2.summary;
     }
 
     // Правила тишины (Silence Rules): при DELOAD_ACTIVE / OVERLOAD_WARNING / Detraining подавляем повышения и плато
     const silenceActive =
       coachStateV2 === "DELOAD_ACTIVE" ||
       coachStateV2 === "OVERLOAD_WARNING" ||
+      deloadV2.status === "pain_reported" ||
       detraining.active;
 
     // Расчёт рекомендаций повышения веса DDP (строго подавляется при silenceActive)
@@ -739,7 +753,7 @@ export class SmartCoach {
       for (const r of routines) {
         if (r.progression !== "double" || LaidDupPlan.periodizationOf(r)) continue;
         for (const plan of r.exercises) {
-          if (seenEx.has(plan.exerciseId)) continue;
+          if (seenEx.has(plan.exerciseId) || painExerciseIds.has(plan.exerciseId)) continue;
           const def = exerciseForEntry(plan);
           if (!def || !def.recording.e1rmEligible) continue;
           // Ищем последнюю неразгрузочную сессию этого упражнения
@@ -805,7 +819,7 @@ export class SmartCoach {
         if (DeloadEngine.isDeloadName(w.name)) continue;
         for (const e of w.exercises) {
           const def = exerciseForEntry(e);
-          if (!def?.recording.e1rmEligible) continue;
+          if (!def?.recording.e1rmEligible || painExerciseIds.has(e.exerciseId)) continue;
           let best = 0;
           let bestConf = 0;
           let rirSum = 0;
@@ -821,6 +835,7 @@ export class SmartCoach {
               reps: s.reps,
               rir: s.rir,
               loadMode: def.recording.loadMode,
+              implementCount: def.recording.implementCount,
               currentBodyweightKg: e.bodyMassKg ?? currentBodyweightKg,
               isWarmup: s.warmup,
               e1rmEligible: def.recording.e1rmEligible,
@@ -852,6 +867,8 @@ export class SmartCoach {
           weeksInCurrentVariant: 6,
           currentRepRange: [6, 10],
           loadMode: def.recording.loadMode,
+          implementCount: def.recording.implementCount,
+          currentBodyweightKg,
           globalDeloadRecommended: deloadV2.status === "deload_recommended",
           inventory: inv,
         });
@@ -929,8 +946,8 @@ export class SmartCoach {
         id: `v2-readiness-${worst.id}`,
         priority: 3,
         kind: "readiness",
-        title: `${worst.label}: восстановление ${worst.readinessPct}%`,
-        detail: "Ниже порога 75 % — лучше отдать приоритет свежим группам или снизить объём на эту зону.",
+        title: `${worst.label}: недавняя нагрузка`,
+        detail: "Условный индекс по выполненным подходам. Он не измеряет состояние мышц.",
         metric: `${worst.readinessPct}%`,
       });
     }
@@ -945,6 +962,7 @@ export class SmartCoach {
       actions: actionsV2.slice(0, 3),
       weightIncreaseRecommendations,
       silenceActive,
+      energyStatus,
     };
 
     return {

@@ -12,6 +12,11 @@ export class DeviceAccountData {
   private static readonly perAccount = [
     "tyaga-draft-account:", "tyaga-bodyweight-sync:", "tyaga-bodyweight-bound:", "tyaga-bodyweight-goal:",
     "tyaga-bodyweight:", "tyaga-last-import:", "tyaga-offline:data:", "tyaga-offline-mutations:", "tyaga-pending-workouts:", "tyaga-deload:", "tyaga-live-finished:",
+    "tyaga-nutrition-v5:", "tyaga-avoid-exercises:", "tyaga-joint-pain-logs-v3:", "tyaga-biomechanics-profile-v1:",
+  ];
+  private static readonly legacyUnscoped = [
+    "tyaga-joint-pain-logs-v3",
+    "tyaga-biomechanics-profile-v1",
   ];
 
   constructor(private storage: () => Store | null = () => (typeof localStorage === "undefined" ? null : localStorage)) {}
@@ -54,6 +59,7 @@ export class DeviceAccountData {
   /** Вошёл другой аккаунт: данные прежних аккаунтов на этом устройстве стираются, свои остаются. */
   purgeOthers(accountId: string) {
     return this.remove(this.keys().filter((k) => {
+      if (DeviceAccountData.legacyUnscoped.includes(k)) return true;
       const prefix = DeviceAccountData.perAccount.find((p) => k.startsWith(p));
       return !!prefix && k.slice(prefix.length).split(":")[0] !== accountId;
     }));

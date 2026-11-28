@@ -59,7 +59,11 @@ export class LocalD1 {
       this.db.exec("COMMIT");
       return results;
     } catch (error) {
-      this.db.exec("ROLLBACK");
+      try {
+        this.db.exec("ROLLBACK");
+      } catch {
+        // SQLite may have already rolled back the transaction on error
+      }
       throw error;
     }
   }

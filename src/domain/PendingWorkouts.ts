@@ -50,8 +50,12 @@ export class PendingWorkouts {
     const rest = this.list().filter((i) => i.workout.id !== workout.id);
     return this.write([...rest, { workout, queuedAt: now.toISOString() }]);
   }
-  remove(id: string) {
-    this.write(this.list().filter((i) => i.workout.id !== id));
+  remove(id: string, expectedQueuedAt?: string) {
+    this.write(
+      this.list().filter(
+        (i) => i.workout.id !== id || (expectedQueuedAt !== undefined && i.queuedAt !== expectedQueuedAt),
+      ),
+    );
   }
   fail(id: string, message: string) {
     this.write(this.list().map((i) => (i.workout.id === id ? { ...i, error: message } : i)));
@@ -82,7 +86,7 @@ export class PendingWorkouts {
   static isRetryable(error: unknown) {
     if (!(error instanceof Error) || error.name === "AbortError") return false;
     const status = (error as { status?: unknown }).status;
-    return typeof status !== "number" || status >= 500;
+    return typeof status !== "number" || status === 408 || status === 429 || status >= 500;
   }
   /** Сессия истекла: отправка подождёт нового входа, ошибкой это не считается. */
   static needsSignIn(error: unknown) {

@@ -9,12 +9,13 @@ type WeekScheduleProps = {
   cycle: Routine[];
   allRoutines: Routine[];
   today: string;
+  accountId?: string;
   onSave: (weekdays: Record<LaidDay, number>) => Promise<void>;
   onClose: () => void;
 };
 
 /** Модальное окно «Дни недели · Дэвид Лейд»: перестановка тренировок и выходного по Пн–Вс. */
-export function LaidWeekScheduleModal({ cycle, allRoutines, today, onSave, onClose }: WeekScheduleProps) {
+export function LaidWeekScheduleModal({ cycle, allRoutines, today, accountId, onSave, onClose }: WeekScheduleProps) {
   const initialSlots = useMemo(() => LaidDupPlan.slotsFromCycle(cycle), [cycle]);
   const [slots, setSlots] = useState<LaidWeekSlot[]>(initialSlots);
   const [busy, setBusy] = useState(false);
@@ -22,7 +23,7 @@ export function LaidWeekScheduleModal({ cycle, allRoutines, today, onSave, onClo
 
   const first = cycle[0].periodization!;
   const rawWeek = LaidDupPlan.weekOf(first.startMonday, today);
-  const position = LaidDupPlan.position(rawWeek);
+  const position = LaidDupPlan.weekPosition(first, rawWeek);
   const activeMaxes = useMemo(() => LaidDupPlan.maxesFor(first, position.week), [first, position.week]);
   const cycleIds = useMemo(() => new Set(cycle.map((r) => r.id)), [cycle]);
   const otherRoutines = useMemo(() => allRoutines.filter((r) => !cycleIds.has(r.id)), [allRoutines, cycleIds]);
@@ -33,17 +34,19 @@ export function LaidWeekScheduleModal({ cycle, allRoutines, today, onSave, onClo
     for (const r of cycle) {
       const p = r.periodization!;
       const plan = LaidDupPlan.day(p.day, rawWeek, activeMaxes, {
+        version: p.version,
         light: p.light,
         substitutions: p.substitutions,
         calibrationLifts: p.calibrationLifts,
         painFlags: p.painFlags,
         deloadWeeks: p.deloadWeeks,
+        accountId,
       });
       sum[p.day] = LaidDupPlan.compactLine(plan);
       cnt[p.day] = quantity(r.exercises.length, "упражнение", "упражнения", "упражнений");
     }
     return { summaries: sum, counts: cnt };
-  }, [activeMaxes, cycle, rawWeek]);
+  }, [activeMaxes, cycle, rawWeek, accountId]);
 
   const changed = slots.some((s, idx) => s !== initialSlots[idx]);
 
@@ -74,6 +77,7 @@ export function LaidWeekScheduleModal({ cycle, allRoutines, today, onSave, onClo
           summaries={summaries}
           counts={counts}
           otherRoutines={otherRoutines}
+          version={first.version}
           disabled={busy}
         />
 

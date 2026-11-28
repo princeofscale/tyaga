@@ -126,6 +126,7 @@ export class PeriodizationRules {
       }
       if (seen.size !== p.deloadWeeks.length) return fail("Проверь разгрузочные недели цикла");
       if (seen.size > 0) deloadWeeks = [...seen].sort((a, b) => a - b);
+      else if (version === "v3") deloadWeeks = [];
     }
     return {
       ok: true,

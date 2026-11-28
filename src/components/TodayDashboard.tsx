@@ -25,6 +25,7 @@ import type { DeloadPlanRecord } from "../domain/DeloadPlan";
 import { SupplementsStore, type SupplementsState } from "../domain/Supplements";
 import { elapsedMs, type Draft } from "../lib/draft";
 import { entryName, exerciseForEntry, fmt, localDate, workingSets, type Muscle, type Routine, type Workout } from "../lib/model";
+import { useLiveClock, useStorageRevision } from "../lib/useNow";
 import { quantity, quantityWord } from "../lib/quantity";
 import WeeklyActivityBar from "./WeeklyActivityBar";
 import WorkoutPreviewCard from "./WorkoutPreviewCard";
@@ -77,11 +78,13 @@ type QuickTool = "plate" | "orm" | "warmup";
 
 type Props = {
   timeZone?: string;
+  accountId?: string;
   bodyMassKg?: number | null;
   workouts: Workout[];
   routines?: Routine[];
   supplements?: SupplementsState;
   today?: string;
+  now?: Date;
   recent: ReactNode;
   hasRecent: boolean;
   draft?: Workout;
@@ -108,11 +111,13 @@ type Props = {
 
 export default function TodayDashboard({
   timeZone,
+  accountId,
   bodyMassKg,
   workouts,
   routines = [],
   supplements,
   today: todayProp,
+  now: nowProp,
   recent,
   hasRecent,
   draft,
@@ -156,10 +161,15 @@ export default function TodayDashboard({
   const limit = 4;
   const progress = load.goal ? Math.min(1, load.done / load.goal) : 0;
 
-  const todayKey = todayProp ?? localDate(new Date(), timeZone);
+  const liveNow = useLiveClock();
+  const storeRev = useStorageRevision(["tyaga:biomechanics-profile-change", "tyaga:joint-pain-change"]);
+  const effectiveNow = nowProp ?? liveNow;
+  const liveToday = localDate(effectiveNow, timeZone);
+  const todayKey = todayProp ?? liveToday;
+  const readinessNow = todayKey === liveToday ? effectiveNow : undefined;
   const readiness = useMemo(
-    () => MuscleReadiness.fromWorkoutsV2(workouts, todayKey, timeZone),
-    [workouts, todayKey, timeZone],
+    () => MuscleReadiness.fromWorkoutsV2(workouts, todayKey, timeZone, readinessNow),
+    [workouts, todayKey, timeZone, readinessNow],
   );
   const totalSummary = useMemo(
     () => StrengthTotal.fromWorkouts(workouts, timeZone, bodyMassKg),
@@ -169,10 +179,10 @@ export default function TodayDashboard({
     () => new PersonalRecordsCalculator(workouts).calculateStreak(timeZone),
     [workouts, timeZone],
   );
-  const coach = useMemo(
-    () => SmartCoach.analyze(workouts, routines, todayKey, timeZone, undefined, undefined, deload),
-    [workouts, routines, todayKey, timeZone, deload],
-  );
+  const coach = useMemo(() => {
+    void storeRev;
+    return SmartCoach.analyze(workouts, routines, todayKey, timeZone, readinessNow, accountId, deload);
+  }, [workouts, routines, todayKey, timeZone, readinessNow, accountId, deload, storeRev]);
   const supSummary = useMemo(
     () => (supplements ? SupplementsStore.summary(supplements, todayKey) : null),
     [supplements, todayKey],
@@ -191,8 +201,9 @@ export default function TodayDashboard({
     return { state, dayPlan, exerciseRows };
   }, [active?.routineId, active?.programDate, finished?.routineId, routines, workouts, todayKey]);
 
-  const readyMusclesCount = readiness.filter((r) => r.canTrain).length;
-  const recoveringMuscles = readiness
+  const trackedMuscles = readiness.filter((r) => r.hasRecentLoad);
+  const readyMusclesCount = trackedMuscles.filter((r) => r.canTrain).length;
+  const recoveringMuscles = trackedMuscles
     .filter((r) => !r.canTrain)
     .sort((a, b) => a.readinessPct - b.readinessPct);
   const coachLoadPct = Math.round(
@@ -296,6 +307,8 @@ export default function TodayDashboard({
               history={workouts}
               today={todayKey}
               timeZone={timeZone}
+              now={readinessNow}
+              accountId={accountId}
               bodyMassKg={bodyMassKg}
               selectedMuscle={selectedPreviewMuscle}
               onSelectMuscle={(m) => {
@@ -371,12 +384,16 @@ export default function TodayDashboard({
               <div className="today-readiness-summary-copy">
                 <h2 id="readiness-title">Готовность мышц</h2>
                 <span className="today-readiness-summary-meta">
-                  {recoveringMuscles.length > 0
-                    ? `Готовы ${readyMusclesCount}/${readiness.length} · устали: ${recoveringMuscles
-                        .slice(0, 2)
-                        .map((m) => `${m.label.toLowerCase()} (${m.readinessPct}%)`)
-                        .join(", ")}`
-                    : `Все ${readiness.length} групп готовы к работе (≥75 %)`}
+                  {trackedMuscles.length === 0
+                    ? "Нет данных за 10 дн. · запиши тренировку"
+                    : recoveringMuscles.length > 0
+                      ? `По записям: ${readyMusclesCount}/${trackedMuscles.length} ≥75 % · недавняя нагрузка: ${recoveringMuscles
+                          .slice(0, 2)
+                          .map((m) => `${m.label.toLowerCase()} (${m.readinessPct}%)`)
+                          .join(", ")}`
+                      : trackedMuscles.length < readiness.length
+                        ? `По записям: ${readyMusclesCount}/${trackedMuscles.length} групп ≥75 % · по остальным нет данных`
+                        : `Все ${readiness.length} групп ≥75 % по записям (не измерение восстановления)`}
                 </span>
               </div>
               <ChevronDown size={18} className="today-readiness-chevron" aria-hidden="true" />
@@ -384,31 +401,36 @@ export default function TodayDashboard({
             <div className="today-readiness-body">
               <div className="readiness-grid">
                 {readiness.map((item, idx) => {
-                  const tileTone =
-                    item.status === "fresh" || item.status === "usable"
+                  const tileTone = !item.hasRecentLoad
+                    ? "nodata"
+                    : item.status === "fresh" || item.status === "usable"
                       ? "ready"
                       : item.status;
                   return (
                     <div key={item.id} className={`readiness-tile is-${tileTone}`}>
                       <div className="readiness-tile-head">
                         <span className="readiness-name">{item.label}</span>
-                        <span className="readiness-state">{item.readinessPct}%</span>
+                        <span className="readiness-state">
+                          {item.hasRecentLoad ? `${item.readinessPct}%` : "Нет данных"}
+                        </span>
                       </div>
                       <div className="readiness-bar" aria-hidden="true">
                         <m.span
                           initial={reduceMotion ? false : { scaleX: 0 }}
-                          animate={{ scaleX: Math.max(0.08, item.readinessPct / 100) }}
+                          animate={{ scaleX: item.hasRecentLoad ? Math.max(0.08, item.readinessPct / 100) : 0 }}
                           transition={{ duration: reduceMotion ? 0 : 0.36, delay: reduceMotion ? 0 : idx * 0.02, ease: [0.22, 1, 0.36, 1] }}
                         />
                       </div>
                       <span className="readiness-meta">
-                        {item.status === "fresh"
-                          ? "свежая"
-                          : item.status === "usable"
-                            ? "готова"
-                            : item.status === "recovering"
-                              ? "восстан."
-                              : "устала"}
+                        {!item.hasRecentLoad
+                          ? "нет записей"
+                          : item.status === "fresh"
+                            ? "свежая"
+                            : item.status === "usable"
+                              ? "готова"
+                              : item.status === "recovering"
+                                ? "восстан."
+                                : "устала"}
                       </span>
                     </div>
                   );
@@ -537,7 +559,7 @@ export default function TodayDashboard({
           </span>
         </button>
 
-        <JointGuardCard />
+        <JointGuardCard accountId={accountId} />
       </div>
 
       <section className="recent-panel" aria-labelledby="recent-title">

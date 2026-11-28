@@ -53,13 +53,17 @@ export function DeloadModal({
   const config = DELOAD_PRESETS[selectedMode];
 
   // Calculated deload simulation
-  const simWeight = Math.round((testWeight * config.intensityMultiplier) / 2.5) * 2.5;
-  const simSets = Math.max(1, Math.round(testSets * config.volumeMultiplier));
+  const simWeight =
+    testWeight > 0
+      ? Math.min(testWeight, Math.round((testWeight * config.intensityMultiplier) / 2.5) * 2.5)
+      : 0;
+  const simSets = testSets > 0 ? Math.max(1, Math.round(testSets * config.volumeMultiplier)) : 0;
   const normalTonnage = testWeight * testSets * 8;
   const deloadTonnage = simWeight * simSets * 8;
-  const tonnageSavedPercent = Math.round(
-    ((normalTonnage - deloadTonnage) / normalTonnage) * 100
-  );
+  const tonnageSavedPercent =
+    normalTonnage > 0
+      ? Math.max(0, Math.round(((normalTonnage - deloadTonnage) / normalTonnage) * 100))
+      : 0;
 
   const handleApply = () => {
     setCancelled(false);

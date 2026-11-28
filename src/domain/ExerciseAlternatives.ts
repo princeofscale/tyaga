@@ -8,6 +8,8 @@ export interface ExerciseAlternative {
   matchScore: number;
   reason: string;
   equipmentLabel: string;
+  /** "mover" = overlaps primary anatomical mover; "zone" = fallback within coarse zone only. */
+  matchKind?: "mover" | "zone";
 }
 
 export type DetectedEquipment = "barbell" | "dumbbell" | "cable" | "machine" | "bodyweight";
@@ -67,11 +69,13 @@ export class ExerciseAlternativesFinder {
     const curAnatPrimary = new Set(
       curRoles.filter((r) => r.role === "primary").map((r) => r.muscleId),
     );
+    const curHasChestPrimary = [...curAnatPrimary].some((m) => m.startsWith("pectoralis-"));
     const curAnatAssist = new Set(
       curRoles.filter((r) => r.role === "assistant").map((r) => r.muscleId),
     );
 
-    const scored: ExerciseAlternative[] = [];
+    const movers: ExerciseAlternative[] = [];
+    const zoneFallbacks: ExerciseAlternative[] = [];
 
     for (const cand of allExercises) {
       if (cand.id === curId) continue;
@@ -82,6 +86,13 @@ export class ExerciseAlternativesFinder {
       let score = 0;
       const candEquip = detectExerciseEquipment(cand);
       const candRoles = MuscleParticipation.roles(cand);
+      const candAnatPrimary = candRoles.filter((r) => r.role === "primary").map((r) => r.muscleId);
+      const candHasChestPrimary = candAnatPrimary.some((m) => m.startsWith("pectoralis-"));
+      const hasAnatPrimaryMatch =
+        curAnatPrimary.size === 0 ||
+        candAnatPrimary.length === 0 ||
+        candAnatPrimary.some((m) => curAnatPrimary.has(m)) ||
+        (curHasChestPrimary && candHasChestPrimary);
 
       // Same movement family (e.g., bench-press, horizontal-row, knee-flexion): strong biomechanical match
       if (cand.familyId && cand.familyId === currentExercise.familyId) {
@@ -95,9 +106,12 @@ export class ExerciseAlternativesFinder {
         }
       }
 
-      // Primary zone match: 40 points per matching primary zone
+      // Primary zone match: 40 points per matching primary zone, +30 for matching the lead zone
       for (const p of cand.primary) {
         if (curPrimary.has(p)) score += 40;
+      }
+      if (currentExercise.primary[0] && cand.primary.includes(currentExercise.primary[0])) {
+        score += 30;
       }
 
       // Exact anatomical muscle & subhead match (prevents string-guessing bugs like "верхних блоков" → upper chest)
@@ -135,18 +149,24 @@ export class ExerciseAlternativesFinder {
         equipReason = ` · ${EQUIPMENT_NAMES[candEquip]}`;
       }
 
-      const reason = `Фокус: ${primaryNames}${equipReason}`;
+      const matchKind: ExerciseAlternative["matchKind"] = hasAnatPrimaryMatch ? "mover" : "zone";
+      const reason =
+        matchKind === "mover"
+          ? `Движитель: ${primaryNames}${equipReason}`
+          : `Та же зона (другой движитель): ${primaryNames}${equipReason}`;
       const equipmentLabel = EQUIPMENT_NAMES[candEquip];
 
-      scored.push({
+      (matchKind === "mover" ? movers : zoneFallbacks).push({
         exercise: cand,
         matchScore: score,
         reason,
         equipmentLabel,
+        matchKind,
       });
     }
 
-    scored.sort((a, b) => b.matchScore - a.matchScore);
-    return scored.slice(0, limit);
+    const pool = movers.length > 0 ? movers : zoneFallbacks;
+    pool.sort((a, b) => b.matchScore - a.matchScore);
+    return pool.slice(0, limit);
   }
 }

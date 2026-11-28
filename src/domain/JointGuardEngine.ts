@@ -10,6 +10,7 @@ import {
   type LoadModeV3,
   type PainSeverity,
 } from "./BiomechanicsCatalogV3";
+import { exerciseById } from "../lib/catalog";
 
 export type SafetyAction =
   | "allow"
@@ -204,7 +205,7 @@ export class JointGuardEngine {
     return log.isAcuteNightOrRadiating ? 3 : log.severity;
   }
 
-  /** Карта максимальной активной тяжести по 5 суставным зонам за 14-дневное окно (O(N)). */
+  /** Карта актуальной тяжести по 5 суставным зонам за 14-дневное окно (последний чек-ин зоны; при равном timestamp — максимум). */
   static activeZoneSeverities(
     painLogs: readonly JointPainLog[],
     nowMs: number,
@@ -216,11 +217,23 @@ export class JointGuardEngine {
       knee_patellar: 0,
       wrist: 0,
     };
+    const latestTs: Record<JointZone, number> = {
+      lumbar: -Infinity,
+      shoulder_anterior: -Infinity,
+      elbow: -Infinity,
+      knee_patellar: -Infinity,
+      wrist: -Infinity,
+    };
     for (const log of painLogs) {
       const age = nowMs - log.timestamp;
       if (age < 0 || age > WINDOW_14D_MS) continue;
       const eff = JointGuardEngine.effectiveSeverity(log);
-      if (eff > map[log.zone]) map[log.zone] = eff;
+      if (log.timestamp > latestTs[log.zone]) {
+        latestTs[log.zone] = log.timestamp;
+        map[log.zone] = eff;
+      } else if (log.timestamp === latestTs[log.zone] && eff > map[log.zone]) {
+        map[log.zone] = eff;
+      }
     }
     return map;
   }
@@ -311,7 +324,7 @@ export class JointGuardEngine {
       targetRirFloor = maxTriggeredSev >= 2 ? 3 : 2;
       tempoPrescription = "3-1-1-0";
     } else if (action === "swap_recommended") {
-      loadMultiplier = 0.85;
+      loadMultiplier = maxTriggeredSev >= 2 ? 0.75 : 0.85;
       repRangeShift = [8, 15];
       targetRirFloor = maxTriggeredSev >= 2 ? 3 : 2;
       tempoPrescription = "3-1-1-0";
@@ -405,8 +418,13 @@ export class JointGuardEngine {
 
       const transferRatio = JointGuardEngine.lookupTransferRatio(source, cand);
       const cleanSourceW = Math.max(0, Number.isFinite(sourceWorkingWeightKg) ? sourceWorkingWeightKg : 0);
-      const rawWeightKg = cand.isBodyweight ? 0 : round2(cleanSourceW * transferRatio * painDiscount);
-      const estimatedWorkingWeightKg = cand.isBodyweight
+      const srcDef = exerciseById(source.id);
+      const candDef = exerciseById(cand.id);
+      const zeroExternalTarget =
+        cand.isBodyweight ||
+        (candDef?.recording.loadMode === "added_bodyweight" && srcDef?.recording.loadMode !== "added_bodyweight");
+      const rawWeightKg = zeroExternalTarget ? 0 : round2(cleanSourceW * transferRatio * painDiscount);
+      const estimatedWorkingWeightKg = zeroExternalTarget
         ? 0
         : inventory.roundWeight(rawWeightKg, cand.loadMode);
 
@@ -499,6 +517,7 @@ export class JointGuardEngine {
               phase: "test_reload_70",
               loadPct: RTL_PHASE_LOAD.test_reload_70,
               daysSymptomFree: nextDays,
+              consecutiveRelapses: 0,
             },
           };
         }
@@ -514,7 +533,7 @@ export class JointGuardEngine {
         decision: "hold_acute",
         nextState: {
           ...state,
-          daysSymptomFree: nrs > 0 ? 0 : state.daysSymptomFree,
+          daysSymptomFree: nrs > 0 ? Math.min(0, state.daysSymptomFree) : state.daysSymptomFree,
         },
       };
     }
@@ -601,8 +620,14 @@ export class JointGuardEngine {
   ): number {
     const direct = TRANSFER_RATIOS[`${source.id}->${target.id}`];
     if (direct !== undefined) return direct;
-    if (source.loadMode === "total_external" && target.loadMode === "per_implement") return 0.38;
-    if (source.loadMode === "per_implement" && target.loadMode === "total_external") return 2.1;
+    const srcImpl = exerciseById(source.id)?.recording.implementCount;
+    const tgtImpl = exerciseById(target.id)?.recording.implementCount;
+    if (source.loadMode === "total_external" && target.loadMode === "per_implement") {
+      return tgtImpl === 1 ? 0.75 : 0.38;
+    }
+    if (source.loadMode === "per_implement" && target.loadMode === "total_external") {
+      return srcImpl === 1 ? 0.85 : 2.1;
+    }
     return 0.8;
   }
 }
@@ -620,10 +645,18 @@ function defaultStorage(): StorageLike | null {
 }
 
 export class JointPainStore {
-  static read(storage: StorageLike | null = defaultStorage(), nowMs = Date.now()): JointPainLog[] {
+  static key(accountId?: string): string {
+    return accountId ? `${PAIN_STORAGE_KEY}:${accountId}` : PAIN_STORAGE_KEY;
+  }
+
+  static read(
+    storage: StorageLike | null = defaultStorage(),
+    nowMs = Date.now(),
+    accountId?: string,
+  ): JointPainLog[] {
     if (!storage) return [];
     try {
-      const raw = storage.getItem(PAIN_STORAGE_KEY);
+      const raw = storage.getItem(JointPainStore.key(accountId));
       if (!raw) return [];
       const parsed = JSON.parse(raw) as unknown;
       if (!Array.isArray(parsed)) return [];
@@ -647,10 +680,17 @@ export class JointPainStore {
     }
   }
 
-  static save(logs: readonly JointPainLog[], storage: StorageLike | null = defaultStorage()): JointPainLog[] {
+  static save(
+    logs: readonly JointPainLog[],
+    storage: StorageLike | null = defaultStorage(),
+    accountId?: string,
+  ): JointPainLog[] {
     const trimmed = logs.slice(-60);
     try {
-      storage?.setItem(PAIN_STORAGE_KEY, JSON.stringify(trimmed));
+      storage?.setItem(JointPainStore.key(accountId), JSON.stringify(trimmed));
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("tyaga:joint-pain-change"));
+      }
     } catch {
       // ignore quota / private mode
     }
@@ -668,11 +708,12 @@ export class JointPainStore {
     isAcuteNightOrRadiating = false,
     nowMs = Date.now(),
     storage: StorageLike | null = defaultStorage(),
+    accountId?: string,
   ): JointPainLog[] {
-    const existing = JointPainStore.read(storage, nowMs);
+    const existing = JointPainStore.read(storage, nowMs, accountId);
     if (severity === 0 && !isAcuteNightOrRadiating) {
       const cleaned = existing.filter((l) => l.zone !== zone);
-      return JointPainStore.save(cleaned, storage);
+      return JointPainStore.save(cleaned, storage, accountId);
     }
 
     const nextLog: JointPainLog = {
@@ -688,9 +729,9 @@ export class JointPainStore {
     if (lastIdx >= 0) {
       const realIdx = existing.length - 1 - lastIdx;
       const updated = existing.map((l, i) => (i === realIdx ? nextLog : l));
-      return JointPainStore.save(updated, storage);
+      return JointPainStore.save(updated, storage, accountId);
     }
 
-    return JointPainStore.save([...existing, nextLog], storage);
+    return JointPainStore.save([...existing, nextLog], storage, accountId);
   }
 }

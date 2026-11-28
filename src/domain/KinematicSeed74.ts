@@ -137,9 +137,9 @@ export const SEED_KINEMATICS_74: Readonly<Record<string, KinematicDescriptor>> =
     { supportType: "chest_or_back_supported", loadVector: "gravity_vertical", peakTorqueZone: "mid", implement: "dumbbell" },
   ),
   "back-extension": makeDescriptor(
-    { spinal_isometric_extension: 1.0, hip_extension: 0.65 },
+    { spinal_isometric_extension: 1.0, hip_extension: 0.7 },
     { torsoAngleDeg: 45, hipFlexionDeg: 80 },
-    { supportType: "chest_or_back_supported", loadVector: "gravity_vertical", peakTorqueZone: "lengthened", implement: "bodyweight" },
+    { supportType: "free_standing", loadVector: "gravity_vertical", peakTorqueZone: "lengthened", implement: "bodyweight" },
   ),
 
   // === ПЛЕЧИ (8) ===

@@ -1,4 +1,5 @@
 import { AnalyticsFacts } from "./AnalyticsFacts";
+import { DeloadEngine } from "./DeloadEngine";
 import { OneRepMaxFormulas } from "./OneRepMaxFormulas";
 import { StrengthTotal, type BigLiftId, type StrengthTotalSummary } from "./StrengthTotal";
 import { addCalendarDays, browserTimeZone, localDate } from "../lib/calendar";
@@ -101,7 +102,7 @@ const LIFT_DEFAULTS: Record<BigLiftId, { label: string; short: string; defaultTa
     short: "Жим стоя",
     defaultTarget: 70,
     step: 5,
-    match: (id, name) => id === "ohp-bar" || id === "ohp" || /жим штанги стоя/i.test(name),
+    match: (id, name) => id === "ohp-bar" || /жим штанги стоя/i.test(name),
   },
 };
 
@@ -308,8 +309,8 @@ export class StrengthForecast {
     const recent = sorted.filter((p) => p.date >= cutoff);
     const windowPoints = recent.length >= 3 ? recent : sorted;
 
-    const currentE1rm = sorted.length > 0 ? round1(sorted[sorted.length - 1].e1rm) : null;
-    const bestE1rm = sorted.length > 0 ? round1(Math.max(...sorted.map((p) => p.e1rm))) : null;
+    const currentE1rm = windowPoints.length > 0 ? round1(windowPoints[windowPoints.length - 1].e1rm) : null;
+    const bestE1rm = windowPoints.length > 0 ? round1(Math.max(...windowPoints.map((p) => p.e1rm))) : null;
     const effectiveCurrent = bestE1rm !== null && currentE1rm !== null
       ? round1(Math.max(currentE1rm, bestE1rm * 0.98))
       : currentE1rm;
@@ -435,7 +436,7 @@ export class StrengthForecast {
     const lastDate = windowPoints[windowPoints.length - 1].date;
     const projection: DatedE1rmPoint[] = [
       { date: lastDate, e1rm: effectiveCurrent },
-      { date: addCalendarDays(this.today, Math.round((horizonWeeks * 7) / 2)), e1rm: round1(effectiveCurrent + projectionRate * (horizonWeeks / 2)) },
+      { date: addCalendarDays(this.today, Math.round((horizonWeeks * 7) / 2)), e1rm: round1(Math.min(targetKg, effectiveCurrent + projectionRate * (horizonWeeks / 2))) },
       { date: addCalendarDays(this.today, horizonWeeks * 7), e1rm: round1(Math.min(targetKg, effectiveCurrent + projectionRate * horizonWeeks)) },
     ];
 
@@ -484,6 +485,7 @@ export class StrengthForecast {
     const perLiftKey: Partial<Record<BigLiftId, string>> = {};
 
     for (const w of eligible) {
+      if (DeloadEngine.isDeloadName(w.name)) continue;
       for (const entry of w.exercises) {
         const def = exerciseForEntry(entry);
         const name = entry.displayNameSnapshot ?? def?.name ?? entry.exerciseId;
@@ -534,11 +536,13 @@ export class StrengthForecast {
 
   private static bestEntryE1rm(entry: WorkoutExercise): number {
     const def = exerciseForEntry(entry);
+    if (!def || !def.recording.e1rmEligible || def.recording.type === "duration") return 0;
     let best = 0;
     for (const set of entry.sets) {
       if (!set.done || set.warmup) continue;
       if (set.weight <= 0 || set.reps < 1 || set.reps > 15) continue;
-      if (def && !def.recording.e1rmEligible) continue;
+      const rom = set.execution?.rom ?? entry.execution?.rom;
+      if (rom === "shortened_partial" || rom === "lengthened_partial") continue;
       const e1rm = OneRepMaxFormulas.round(OneRepMaxFormulas.epley(set.weight, set.reps));
       if (e1rm > best) best = e1rm;
     }

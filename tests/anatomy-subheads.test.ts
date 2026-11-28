@@ -224,3 +224,37 @@ test("explicit regional roles win over the chest overlay and never double count"
   const personal = { ...base, custom: { familyId: "own", declaredZones: ["chest" as const] } };
   assert.equal(MuscleParticipation.headRole("chest-mid", personal), undefined);
 });
+
+test("whole-group chest part counts explicit pectoralis subheads without pectoralis-major", () => {
+  const base = exerciseById("bench")!;
+  const explicit = {
+    ...base,
+    id: "custom:bench:explicit",
+    catalogRevision: 3 as const,
+    custom: { familyId: "bench-explicit", declaredZones: ["chest" as const] },
+    muscles: [
+      { muscleId: "pectoralis-sternal" as const, role: "primary" as const, confidence: "moderate" as const, basis: "anatomical-inference" as const, sources: [] },
+      { muscleId: "deltoid-anterior" as const, role: "assistant" as const, confidence: "moderate" as const, basis: "anatomical-inference" as const, sources: [] },
+    ],
+  };
+  const w = createWorkout("bench", 3);
+  w.exercises[0].exerciseId = explicit.id;
+  w.exercises[0].catalogRevision = 3;
+  w.exercises[0].externalDefinition = explicit;
+  const p = new AnatomyPresenter([], [w]);
+  const chest = p.part("chest", "front")!;
+  assert.equal(p.activity(chest).direct, 3);
+  assert.equal(p.exerciseRole(chest, explicit), "primary");
+});
+
+test("whole-group deltoids part includes posterior deltoid without double-counting multi-head presses", () => {
+  const rearW = createWorkout("rear-delt-fly", 3);
+  const pRear = new AnatomyPresenter([], [rearW]);
+  const allDelts = pRear.part("deltoids", "all")!;
+  assert.deepEqual(allDelts.muscles, ["deltoid-anterior", "deltoid-middle", "deltoid-posterior"]);
+  assert.equal(pRear.activity(allDelts).direct, 3);
+
+  const ohpW = createWorkout("ohp", 4);
+  const pOhp = new AnatomyPresenter([], [ohpW]);
+  assert.equal(pOhp.activity(pOhp.part("deltoids", "all")!).direct, 4);
+});

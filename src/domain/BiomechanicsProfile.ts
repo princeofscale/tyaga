@@ -29,10 +29,14 @@ function normalizeBiacromial(v: unknown): number | null {
 
 /** Локальный антропометрический профиль атлета: режим длинных рычагов и расчёт ширины хвата в жиме. */
 export class BiomechanicsProfileStore {
-  static read(storage: StorageLike | null = defaultStorage()): BiomechanicsProfile {
+  static key(accountId?: string): string {
+    return accountId ? `${STORAGE_KEY}:${accountId}` : STORAGE_KEY;
+  }
+
+  static read(storage: StorageLike | null = defaultStorage(), accountId?: string): BiomechanicsProfile {
     if (!storage) return { ...DEFAULT_BIOMECHANICS_PROFILE };
     try {
-      const raw = storage.getItem(STORAGE_KEY);
+      const raw = storage.getItem(BiomechanicsProfileStore.key(accountId));
       if (!raw) return { ...DEFAULT_BIOMECHANICS_PROFILE };
       const parsed = JSON.parse(raw) as Partial<BiomechanicsProfile>;
       return {
@@ -47,13 +51,17 @@ export class BiomechanicsProfileStore {
   static save(
     next: BiomechanicsProfile,
     storage: StorageLike | null = defaultStorage(),
+    accountId?: string,
   ): BiomechanicsProfile {
     const clean: BiomechanicsProfile = {
       longLevers: Boolean(next.longLevers),
       biacromialCm: normalizeBiacromial(next.biacromialCm),
     };
     try {
-      storage?.setItem(STORAGE_KEY, JSON.stringify(clean));
+      storage?.setItem(BiomechanicsProfileStore.key(accountId), JSON.stringify(clean));
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("tyaga:biomechanics-profile-change"));
+      }
     } catch {
       // Ignore storage quota / private mode failures
     }
@@ -73,13 +81,15 @@ export class BiomechanicsProfileStore {
   /** Короткая 1-строчная подсказка техники для длиннорычажного атлета (null, если режим выключен). */
   static techniqueCue(
     exercise: Pick<Exercise, "id" | "familyId" | "equipment"> | undefined,
-    profile: BiomechanicsProfile = BiomechanicsProfileStore.read(),
+    profile?: BiomechanicsProfile,
+    accountId?: string,
   ): string | null {
-    if (!profile.longLevers || !exercise) return null;
+    const resolved = profile ?? BiomechanicsProfileStore.read(undefined, accountId);
+    if (!resolved.longLevers || !exercise) return null;
     const { id, familyId } = exercise;
 
     if (id === "bench" || id === "incline-bar") {
-      const grip = BiomechanicsProfileStore.optimalBenchGripCm(profile.biacromialCm);
+      const grip = BiomechanicsProfileStore.optimalBenchGripCm(resolved.biacromialCm);
       return grip
         ? `Хват ${grip.min}–${grip.max} см (1,4–1,5× плеч) · лопатки сведены · локти 45–60°`
         : "Хват 1,4–1,5× ширины плеч · лопатки сведены · локти 45–60°, без отбива";

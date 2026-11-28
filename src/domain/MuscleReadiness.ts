@@ -37,6 +37,7 @@ export interface MuscleReadinessV2Item {
   readinessPct: number;
   status: ReadinessStatusV2;
   canTrain: boolean;
+  hasRecentLoad: boolean;
   directSets10d: number;
   synergistSets10d: number;
 }
@@ -390,6 +391,35 @@ export class MuscleReadiness {
     return roles;
   }
 
+  static hasRecentLoad(
+    item: Pick<MuscleReadinessV2Item, "directSets10d" | "synergistSets10d">,
+  ): boolean {
+    return item.directSets10d + item.synergistSets10d > 0;
+  }
+
+  private static reliableOccurrenceMs(workout: Workout, timeZone?: string): number | null {
+    const workoutTz = workout.timeZone ?? timeZone;
+    if (workout.wearable?.endedAt) {
+      const endMs = Date.parse(workout.wearable.endedAt);
+      const startMs = workout.wearable.startedAt ? Date.parse(workout.wearable.startedAt) : Number.NaN;
+      if (Number.isFinite(endMs)) {
+        if (Number.isFinite(startMs) && endMs >= startMs && endMs - startMs <= MS_PER_DAY) {
+          if (localDate(new Date(startMs), workoutTz) === workout.date) return endMs;
+        } else {
+          const endDate = localDate(new Date(endMs), workoutTz);
+          if (endDate === workout.date || endDate === addCalendarDays(workout.date, 1)) return endMs;
+        }
+      }
+    }
+    if (workout.createdAt) {
+      const createdMs = Date.parse(workout.createdAt);
+      if (Number.isFinite(createdMs) && localDate(new Date(createdMs), workoutTz) === workout.date) {
+        return createdMs;
+      }
+    }
+    return null;
+  }
+
   /**
    * Модуль 5 (v2): гранулярная готовность 12 групп мышц с мультидневным экспоненциальным
    * распадом за последние 10 дней (240 ч), учётом синергистов (0.45×), эксцентрики и RIR.
@@ -400,14 +430,13 @@ export class MuscleReadiness {
     timeZone?: string,
     now?: Date,
   ): MuscleReadinessV2Item[] {
-    const windowStart = addCalendarDays(today, -10);
-    const refTimeMs = now ? now.getTime() : Date.parse(`${today}T12:00:00Z`);
+    // 11-day calendar prefilter avoids dropping a <240h session across a DST spring-forward boundary.
+    const windowStart = addCalendarDays(today, -11);
     const facts = new AnalyticsFacts(workouts, {
       from: windowStart,
       through: today,
-      includeFuture: false,
+      includeFuture: true,
       timeZone,
-      now: now ?? new Date(refTimeMs),
       setKind: "working",
       completedOnly: true,
     }).sets();
@@ -421,16 +450,22 @@ export class MuscleReadiness {
 
     for (const { workout, exercise, set } of facts) {
       if (!exercise || workout.date > today) continue;
-      // Вычисляем Δt в часах: используем timestamp, если он совпадает с датой тренировки, иначе 12:00Z дня
-      let workoutMs = Date.parse(`${workout.date}T12:00:00Z`);
-      const tsCandidate = workout.updatedAt ?? workout.createdAt;
-      if (tsCandidate && now) {
-        const parsed = Date.parse(tsCandidate);
-        if (Number.isFinite(parsed) && localDate(new Date(parsed), timeZone) === workout.date) {
-          workoutMs = parsed;
+      let deltaHours: number;
+      if (now) {
+        const occurrenceMs = MuscleReadiness.reliableOccurrenceMs(workout, timeZone);
+        if (occurrenceMs !== null) {
+          if (occurrenceMs > now.getTime()) continue;
+          deltaHours = (now.getTime() - occurrenceMs) / MS_PER_HOUR;
+        } else {
+          const calDays = daysBetween(workout.date, today);
+          if (calDays < 0) continue;
+          deltaHours = calDays * 24;
         }
+      } else {
+        const calDays = daysBetween(workout.date, today);
+        if (calDays < 0) continue;
+        deltaHours = calDays * 24;
       }
-      const deltaHours = Math.max(0, (refTimeMs - workoutMs) / MS_PER_HOUR);
       if (deltaHours > 240) continue;
 
       const roles = MuscleReadiness.muscleRolesV2(exercise);
@@ -456,6 +491,9 @@ export class MuscleReadiness {
     }
 
     return READINESS_GROUPS_V2.map((g) => {
+      const direct = directSets.get(g.id) ?? 0;
+      const synergist = synergistSets.get(g.id) ?? 0;
+      const hasRecentLoad = direct + synergist > 0;
       const fatigueLoad = Math.round((fatigueByGroup.get(g.id) ?? 0) * 10) / 10;
       const readinessPct = Math.max(0, Math.min(100, Math.round(100 - fatigueLoad)));
       const status: ReadinessStatusV2 =
@@ -474,8 +512,9 @@ export class MuscleReadiness {
         readinessPct,
         status,
         canTrain: readinessPct >= 75,
-        directSets10d: directSets.get(g.id) ?? 0,
-        synergistSets10d: synergistSets.get(g.id) ?? 0,
+        hasRecentLoad,
+        directSets10d: direct,
+        synergistSets10d: synergist,
       };
     });
   }

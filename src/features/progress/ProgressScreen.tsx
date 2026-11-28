@@ -362,6 +362,7 @@ export default function ProgressScreen({
             />
           </div>
           <ProgressOverview
+            accountId={accountId}
             workouts={workouts}
             routines={routines}
             today={today}
@@ -398,6 +399,7 @@ export default function ProgressScreen({
             mapping={mapping}
             onMappingChange={onMappingChange}
             unmarkedNote={unmarkedNote}
+            weekOffset={weekOffset}
           />
           <MovementBalance workouts={weekWorkouts} />
         </>

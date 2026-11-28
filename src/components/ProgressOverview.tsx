@@ -17,6 +17,7 @@ import type { Workout, Settings, Routine } from "../lib/model";
 import "../styles/progress.css";
 
 export default function ProgressOverview({
+  accountId,
   workouts,
   routines = [],
   today,
@@ -25,6 +26,7 @@ export default function ProgressOverview({
   onStrength,
   onOpenExerciseDetail,
 }: {
+  accountId?: string;
   workouts: Workout[];
   routines?: Routine[];
   today?: string;
@@ -187,6 +189,7 @@ export default function ProgressOverview({
       />
 
       <StrengthForecastCard
+        accountId={accountId}
         workouts={workouts}
         timeZone={zone}
         bodyMassKg={bodyMassKg}
@@ -194,6 +197,7 @@ export default function ProgressOverview({
       />
 
       <WeakLinkRadarCard
+        accountId={accountId}
         workouts={workouts}
         timeZone={zone}
         bodyMassKg={bodyMassKg}
@@ -201,6 +205,7 @@ export default function ProgressOverview({
       />
 
       <HypertrophyAuditCard
+        accountId={accountId}
         workouts={workouts}
         routines={routines}
         today={today}

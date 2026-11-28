@@ -231,7 +231,7 @@ export default function WorkoutDetailModal({
       </p>
       <details className="detail-insights">
         <summary>Итоги, мышцы и карточка для сторис</summary>
-        <SessionInsights workout={detail} settings={settings} account={account} />
+        <SessionInsights workout={detail} settings={settings} account={account} allWorkouts={history} />
       </details>
       <Suspense fallback={<p className="tiny">Открываем показатели часов…</p>}>
         <AppleHealthPanel workout={detail} readOnly={demo} onSaved={onHealthSaved} />

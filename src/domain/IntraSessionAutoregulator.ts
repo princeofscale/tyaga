@@ -1,6 +1,7 @@
 import type { E1RMLoadMode } from "./OneRepMaxFormulas";
 import {
   equipmentStepKg,
+  roundDownToEquipment,
   roundToEquipment,
   toProgressionInventory,
   type ProgressionInventory,
@@ -75,12 +76,25 @@ export class IntraSessionAutoregulator {
           : 0.95;
 
     const adjustedWeight =
-      params.plannedWeight > 0
-        ? Math.min(
-            params.plannedWeight,
-            roundToEquipment(params.plannedWeight * weightMultiplier, params.loadMode, inv, "floor"),
+      params.loadMode === "assisted_bodyweight"
+        ? roundToEquipment(
+            Math.max(
+              params.plannedWeight + equipmentStepKg(params.plannedWeight, params.loadMode, inv),
+              params.plannedWeight / weightMultiplier,
+            ),
+            params.loadMode,
+            inv,
+            "ceil",
           )
-        : params.plannedWeight;
+        : params.plannedWeight > 0
+          ? roundDownToEquipment(
+              params.plannedWeight * weightMultiplier,
+              params.plannedWeight,
+              params.loadMode,
+              inv,
+              "floor",
+            )
+          : params.plannedWeight;
 
     const targetSetsCount =
       params.status === "hard" && params.plannedSetsCount >= 3
@@ -133,6 +147,8 @@ export class IntraSessionAutoregulator {
 
     const step = equipmentStepKg(input.plannedWeight, loadMode, inv);
 
+    const isAssisted = loadMode === "assisted_bodyweight";
+
     // Запас выше плана (+1.5 < E_dev < +2.5 — мягкая зона без шума; >= +2.5 — High Performance)
     if (deviation > 1.5) {
       if (deviation < 2.5) {
@@ -145,6 +161,25 @@ export class IntraSessionAutoregulator {
           repCap: null,
           dropLastSet: false,
           messageShort: "",
+        };
+      }
+      if (isAssisted) {
+        const nextAssist =
+          input.plannedWeight > 0
+            ? roundToEquipment(Math.max(0, input.plannedWeight - step), loadMode, inv, "floor")
+            : 0;
+        const lowered = nextAssist < input.plannedWeight;
+        return {
+          shouldNotify: true,
+          status: "high_performance",
+          deviation,
+          adjustedWeight: nextAssist,
+          loadDropPct: lowered ? 0.025 : 0,
+          repCap: null,
+          dropLastSet: false,
+          messageShort: lowered
+            ? `Идёт легко: можно снизить помощь до ${nextAssist} кг на оставшиеся ${input.remainingSetsCount}`
+            : "Идёт легко: можешь добавить +1–2 повтора с тем же весом",
         };
       }
       const relStep = input.plannedWeight > 0 ? step / input.plannedWeight : 1;
@@ -170,17 +205,25 @@ export class IntraSessionAutoregulator {
     // Критическая просадка: E_dev <= -2.5
     if (deviation <= -2.5) {
       const pct = input.isCompoundAxial ? -0.1 : -0.075;
-      let nextWeight =
-        input.plannedWeight > 0
-          ? roundToEquipment(input.plannedWeight * (1 + pct), loadMode, inv, "nearest")
+      let nextWeight = isAssisted
+        ? roundToEquipment(input.plannedWeight + step, loadMode, inv, "ceil")
+        : input.plannedWeight > 0
+          ? roundDownToEquipment(input.plannedWeight * (1 + pct), input.plannedWeight, loadMode, inv, "nearest")
           : input.plannedWeight;
       let repCap: number | null = Math.max(1, input.targetReps - 1);
 
-      if (input.plannedWeight > 0 && nextWeight >= input.plannedWeight) {
-        const forcedDrop = roundToEquipment(Math.max(0, input.plannedWeight - step), loadMode, inv, "floor");
+      if (!isAssisted && input.plannedWeight > 0 && nextWeight >= input.plannedWeight) {
+        const forcedDrop = roundDownToEquipment(
+          Math.max(0, input.plannedWeight - step),
+          input.plannedWeight,
+          loadMode,
+          inv,
+          "floor",
+        );
         if (forcedDrop < input.plannedWeight) {
           nextWeight = forcedDrop;
         } else {
+          nextWeight = input.plannedWeight;
           repCap = Math.max(1, input.targetReps - 2);
         }
       }
@@ -199,8 +242,9 @@ export class IntraSessionAutoregulator {
         loadDropPct: pct,
         repCap,
         dropLastSet,
-        messageShort:
-          nextWeight < input.plannedWeight
+        messageShort: isAssisted
+          ? `Высокая усталость: увеличить помощь до ${nextWeight} кг${dropText}`
+          : nextWeight < input.plannedWeight
             ? `Высокая усталость: снизить до ${nextWeight} кг (−${pctLabel} %)${dropText}`
             : `Высокая усталость: стоп на ${repCap} повт. (RIR 2)${dropText}`,
       };
@@ -208,17 +252,25 @@ export class IntraSessionAutoregulator {
 
     // Просадка: -2.5 < E_dev < -1.0
     const pct = -0.05;
-    let nextWeight =
-      input.plannedWeight > 0
-        ? roundToEquipment(input.plannedWeight * (1 + pct), loadMode, inv, "nearest")
+    let nextWeight = isAssisted
+      ? roundToEquipment(input.plannedWeight + step, loadMode, inv, "ceil")
+      : input.plannedWeight > 0
+        ? roundDownToEquipment(input.plannedWeight * (1 + pct), input.plannedWeight, loadMode, inv, "nearest")
         : input.plannedWeight;
     let repCap: number | null = Math.max(1, input.targetReps - 1);
 
-    if (input.plannedWeight > 0 && nextWeight >= input.plannedWeight) {
-      const forcedDrop = roundToEquipment(Math.max(0, input.plannedWeight - step), loadMode, inv, "floor");
+    if (!isAssisted && input.plannedWeight > 0 && nextWeight >= input.plannedWeight) {
+      const forcedDrop = roundDownToEquipment(
+        Math.max(0, input.plannedWeight - step),
+        input.plannedWeight,
+        loadMode,
+        inv,
+        "floor",
+      );
       if (forcedDrop < input.plannedWeight) {
         nextWeight = forcedDrop;
       } else {
+        nextWeight = input.plannedWeight;
         repCap = Math.max(1, input.targetReps - 2);
       }
     }
@@ -231,8 +283,9 @@ export class IntraSessionAutoregulator {
       loadDropPct: pct,
       repCap,
       dropLastSet: false,
-      messageShort:
-        nextWeight < input.plannedWeight
+      messageShort: isAssisted
+        ? `Усталость: увеличить помощь до ${nextWeight} кг на оставшиеся ${input.remainingSetsCount}`
+        : nextWeight < input.plannedWeight
           ? `Усталость: снизить оставшиеся ${input.remainingSetsCount} до ${nextWeight} кг (−5 %)`
           : `Усталость: держи потолок ${repCap} повт. на оставшиеся ${input.remainingSetsCount}`,
     };

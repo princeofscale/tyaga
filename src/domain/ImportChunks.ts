@@ -22,12 +22,13 @@ export class ImportChunks {
   }
 
   static split(workouts: ImportedWorkout[]): ImportedWorkout[][] {
+    const utf8 = new TextEncoder();
     const parts: ImportedWorkout[][] = [];
     let current: ImportedWorkout[] = [];
     let variants = new Set<string>(), personal = new Set<string>(), bytes = 0;
     for (const workout of workouts) {
       const own = ImportChunks.variants(workout);
-      const size = JSON.stringify(workout).length;
+      const size = utf8.encode(JSON.stringify(workout)).byteLength;
       const mergedVariants = new Set([...variants, ...own.variants]);
       const mergedPersonal = new Set([...personal, ...own.personal]);
       const overflow = current.length >= ImportChunks.maxWorkouts ||

@@ -147,3 +147,20 @@ test("Перетаскивание мышью за ручку и клавиат�
   const afterDrag = await dlg.locator(".laid-week-slot").evaluateAll((els) => els.map((el) => el.getAttribute("data-slot")));
   expect(afterDrag).toEqual(["legs1", "push1", "pull1", "rest", "legs2", "push2", "pull2"]);
 });
+
+test("DUP v3 schedule uses six weeks and all three version-specific waves", async ({ page }) => {
+  const routines = LaidDupPlan.routines({
+    version: "v3", maxes: MAXES, extras: true, light: false, startMonday: "2026-11-02", weekMode: "calendar",
+  });
+  await setupLaid(page, "2026-11-02", "2026-11-30", routines);
+  await page.getByRole("button", { name: "Расписание (6 нед.)" }).click();
+  const dialog = page.getByRole("dialog", { name: "Расписание на 6 нед." });
+  await expect(dialog.locator(".laid-sched-hero")).toContainText(/неделя 5 из 6/i);
+  for (const wave of [1, 2, 3]) {
+    await dialog.getByRole("button", { name: "Волна " + wave, exact: true }).click();
+    const rows = dialog.locator(".laid-week-card h4 > span:first-child");
+    await expect(rows).toHaveText([new RegExp("Неделя " + (2 * wave - 1)), new RegExp("Неделя " + (2 * wave))]);
+  }
+  await expect(dialog.locator(".laid-week-card.is-deload")).toContainText("Неделя 6");
+});
+

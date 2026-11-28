@@ -31,7 +31,7 @@ export function usePendingWorkouts(
         if (item.error && !manual) continue;
         try {
           const result = await api<{ workout: Workout }>("/api/workouts", "PUT", item.workout);
-          queue.remove(item.workout.id);
+          queue.remove(item.workout.id, item.queuedAt);
           callbacks.current.onSent(result.workout);
           sent++;
         } catch (e) {

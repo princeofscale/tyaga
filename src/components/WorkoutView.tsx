@@ -86,6 +86,7 @@ import WorkoutPhaseBanner from "./WorkoutPhaseBanner";
 import { WorkoutAutoDuration } from "./workout/WorkoutLiveClock";
 import { WorkoutHeader } from "./workout/WorkoutHeader";
 import { WorkoutUndoDock } from "./workout/WorkoutUndoDock";
+import { useStorageRevision } from "../lib/useNow";
 
 type Props = {
   focusRequest?: {exerciseId:string;setId:string;id:string}|null;
@@ -278,8 +279,8 @@ export default function WorkoutView({
   const errorRef = useRef<HTMLParagraphElement>(null);
   useEffect(() => {
     if (!error || saving) return;
-    errorRef.current?.scrollIntoView({ block: "center", behavior: reducedMotion ? "auto" : "smooth" });
-  }, [error, saving, reducedMotion]);
+    errorRef.current?.scrollIntoView({ block: "center", behavior: "auto" });
+  }, [error, saving]);
 
   useEffect(() => {
     if (!focusRequest || consumedFocus.current === focusRequest.id) return;
@@ -356,15 +357,24 @@ export default function WorkoutView({
     () => (activeRoutine ? LaidDupPlan.periodizationOf(activeRoutine) : undefined),
     [activeRoutine],
   );
+  const bioRev = useStorageRevision(["tyaga:biomechanics-profile-change", "tyaga:joint-pain-change"]);
+  const biomechanicsProfile = useMemo(() => {
+    void bioRev;
+    return BiomechanicsProfileStore.read(undefined, accountId);
+  }, [accountId, bioRev]);
   const activeLaidPlan = useMemo(
-    () =>
-      activeRoutine && draft
+    () => {
+      void bioRev;
+      return activeRoutine && draft
         ? LaidDupPlan.planFor(activeRoutine, draft.workout.programDate ?? draft.workout.date, {
             workouts: history,
             cycle: activeLaidCycle,
+            accountId,
+            longLevers: biomechanicsProfile.longLevers,
           })
-        : null,
-    [activeRoutine, draft, history, activeLaidCycle],
+        : null;
+    },
+    [activeRoutine, draft, history, activeLaidCycle, accountId, biomechanicsProfile.longLevers, bioRev],
   );
   // QA-R06-02 + периодическая/вставленная разгрузка: «прошлое» масштабируется от последнего
   // НЕразгрузочного результата упражнения, включая тренажёры (machine_stack), а не предлагает полный прошлый вес.
@@ -594,6 +604,9 @@ export default function WorkoutView({
   ) => {
     const spec = exercise.recording;
     if (spec.type === "duration" || spec.loadMode === "bodyweight") return null;
+    if (isLaidTopLift && activeLaidPlan && activeLaidPlan.heavy.weightKg !== activeLaidPlan.work.weightKg) {
+      return null;
+    }
     const workingSetsAll = entry.sets.filter((s) => !s.warmup);
     const firstDone = workingSetsAll.find((s) => s.done && s.reps > 0);
     const remainingUndone = workingSetsAll.filter((s) => !s.done);
@@ -604,7 +617,7 @@ export default function WorkoutView({
     const targetReps =
       isLaidTopLift && activeLaidPlan
         ? activeLaidPlan.heavy.reps
-        : (entry.repMax ?? entry.repMin ?? before?.working?.[0]?.reps ?? 0);
+        : (entry.repMin ?? entry.repMax ?? before?.working?.[0]?.reps ?? 0);
     if (targetReps <= 0) return null;
     const plannedWeight = remainingUndone[0].weight || firstDone.weight;
     const inv = toProgressionInventory(GymInventoryStore.read());
@@ -614,7 +627,7 @@ export default function WorkoutView({
       loadMode: spec.loadMode,
       plannedWeight,
       targetReps,
-      targetRIR: 2,
+      targetRIR: isLaidTopLift && activeLaidPlan?.v3TargetTopRir !== undefined ? activeLaidPlan.v3TargetTopRir : 2,
       actualReps: firstDone.reps,
       actualRIR: firstDone.rir,
       remainingSetsCount: remainingUndone.length,
@@ -674,6 +687,11 @@ export default function WorkoutView({
 
   const applyReadinessAdjustment = (level: "worse" | "hard") => {
     if (appliedReadiness) return;
+    const hasUndoneWorking = w.exercises.some((entry) => entry.sets.some((s) => !s.warmup && !s.done));
+    if (!hasUndoneWorking) {
+      onToast?.("Нет невыполненных рабочих подходов для корректировки.");
+      return;
+    }
     const inv = toProgressionInventory(GymInventoryStore.read());
     const targetRir = level === "worse" ? 2 : 3;
     let adjustedSets = 0;
@@ -765,7 +783,8 @@ export default function WorkoutView({
     const isSupersetTransition =
       patch.done &&
       targetEx?.supersetId &&
-      w.exercises[ei + 1]?.supersetId === targetEx.supersetId;
+      w.exercises[ei + 1]?.supersetId === targetEx.supersetId &&
+      w.exercises[ei + 1].sets.some((s) => !s.warmup && !s.done);
     const workingIdx = targetEx.sets.slice(0, si).filter((s) => !s.warmup).length;
     const laidRest =
       activeLaidPlan && activeLaidPeriodization && !targetSet.warmup
@@ -1456,7 +1475,7 @@ export default function WorkoutView({
                   ? new WarmupPlanner(entry).createForTopSet(GymInventoryStore.read().barWeightKg)
                   : new WarmupPlanner(entry).create()
                 : [];
-              const gymCue = exDef ? BiomechanicsProfileStore.techniqueCue(exDef) : null;
+              const gymCue = exDef ? BiomechanicsProfileStore.techniqueCue(exDef, biomechanicsProfile) : null;
               const gymDdpLine = exDef ? renderDdpGoalLine(entry, exDef, gymBefore, isLaidTopLift) : null;
               const gymAutoregBar = exDef ? renderIntraAutoregBar(entry, exerciseIndex, exDef, gymBefore, isLaidTopLift) : null;
               if (!gymGuidance && !entry.progressionNote && !gymWarmups.length && !gymCue && !gymDdpLine && !gymAutoregBar) return null;
@@ -1781,15 +1800,15 @@ export default function WorkoutView({
               ) : null}
 
               {(() => {
-                const cue = BiomechanicsProfileStore.techniqueCue(exercise);
+                const cue = BiomechanicsProfileStore.techniqueCue(exercise, biomechanicsProfile);
                 return cue ? <p className="lever-cue">{cue}</p> : null;
               })()}
 
               {(() => {
-                const painLogs = JointPainStore.read();
+                const painLogs = JointPainStore.read(undefined, Date.now(), accountId);
                 if (!painLogs.length) return null;
                 const jg = new JointGuardEngine();
-                const longLevers = BiomechanicsProfileStore.read().longLevers;
+                const longLevers = biomechanicsProfile.longLevers;
                 const nowMs = Date.now();
                 const safety = jg.evaluateExerciseSafety(we.exerciseId, painLogs, longLevers, nowMs);
                 if (safety.action === "allow") return null;
@@ -1840,23 +1859,41 @@ export default function WorkoutView({
                               type="button"
                               className="wv-jg-swap-btn"
                               onClick={() => {
-                                const oldSpec = exerciseForEntry(we)?.recording;
+                                const oldEx = exerciseForEntry(we);
+                                const oldSpec = oldEx?.recording;
                                 const swapped = ExerciseSwap.sets(
                                   we.sets,
                                   oldSpec?.loadMode,
                                   oldSpec?.type,
                                   targetEx,
                                   [],
+                                  oldEx,
                                 );
-                                const nextSets = swapped.sets.map((s) =>
-                                  !s.done && !s.warmup && sw.estimatedWorkingWeightKg > 0
+                                const targetMode = targetEx.recording.loadMode;
+                                const nextSets = swapped.sets.map((s) => {
+                                  if (s.done || s.warmup) return s;
+                                  if (targetMode === "bodyweight") return { ...s, weight: 0 };
+                                  if (targetMode === "assisted_bodyweight") {
+                                    return {
+                                      ...s,
+                                      weight: 0,
+                                      assistanceKg: oldSpec?.loadMode === "assisted_bodyweight" && sw.estimatedWorkingWeightKg > 0
+                                        ? sw.estimatedWorkingWeightKg
+                                        : (s.assistanceKg ?? 0),
+                                    };
+                                  }
+                                  return sw.estimatedWorkingWeightKg > 0
                                     ? { ...s, weight: sw.estimatedWorkingWeightKg }
-                                    : s,
-                                );
+                                    : s;
+                                });
                                 const renamed: WorkoutExercise = {
                                   ...we,
                                   exerciseId: targetEx.id,
                                   displayNameSnapshot: targetEx.name,
+                                  catalogRevision: targetEx.catalogRevision,
+                                  recordingSpecRevision: targetEx.catalogRevision,
+                                  muscleMappingRevision: targetEx.catalogRevision,
+                                  ...(targetEx.source || targetEx.custom ? { externalDefinition: targetEx } : { externalDefinition: undefined }),
                                 };
                                 setWorkout({
                                   ...w,
@@ -1977,7 +2014,7 @@ export default function WorkoutView({
                     }
                     onClick={() => {
                       const newSets = we.sets.map((s) => {
-                        if (s.warmup) return s;
+                        if (s.warmup || s.done) return s;
                         const setIndex = ExecutionIdentity.setIndex(we, s);
                         const prevW = deloaded(we, PreviousSets.pick(before.working, setIndex), setIndex);
                         return prevW ? { ...s, ...PreviousSets.patch(prevW, { timed, assistance }) } : s;
@@ -1996,7 +2033,7 @@ export default function WorkoutView({
                       title="Добавить +2.5 кг к рабочим подходам с прошлой тренировки (прогрессивная перегрузка)"
                       onClick={() => {
                         const newSets = we.sets.map((s) => {
-                          if (s.warmup) return s;
+                          if (s.warmup || s.done) return s;
                           const idx = ExecutionIdentity.setIndex(we, s);
                           const prevW = before.working[idx] || before.working[before.working.length - 1];
                           if (!prevW) return s;
@@ -2180,7 +2217,8 @@ export default function WorkoutView({
             const targetEi = swapTarget.ei;
             const target = w.exercises[targetEi];
             const oldExerciseId = target.exerciseId;
-            const oldSpec = exerciseForEntry(target)?.recording;
+            const oldEx = exerciseForEntry(target);
+            const oldSpec = oldEx?.recording;
             const renamed: WorkoutExercise = {
               ...target,
               exerciseId: newEx.id,
@@ -2188,13 +2226,13 @@ export default function WorkoutView({
               catalogRevision: newEx.catalogRevision,
               recordingSpecRevision: newEx.catalogRevision,
               muscleMappingRevision: newEx.catalogRevision,
-              ...(newEx.source || newEx.custom ? { externalDefinition: newEx } : {}),
+              ...(newEx.source || newEx.custom ? { externalDefinition: newEx } : { externalDefinition: undefined }),
             };
             // R08-REQ01: при другом правиле веса числа и ✓ старого упражнения не переходят; берём «Прошлое» нового.
             const find = (pool: Workout[]) => lastEntry(pool, { ...renamed, sets: [] }, workoutId, w.date, { timeZone: settings.timeZone });
             const last = DeloadEngine.isDeloadName(w.name) ? find(history) : (find(DeloadEngine.regular(history)) ?? find(history));
             const previousWorking = last?.sets.filter((s) => s.done && !s.warmup) ?? [];
-            const swapped = ExerciseSwap.sets(target.sets, oldSpec?.loadMode, oldSpec?.type, newEx, previousWorking);
+            const swapped = ExerciseSwap.sets(target.sets, oldSpec?.loadMode, oldSpec?.type, newEx, previousWorking, oldEx);
             // Если правило веса совпало, но пользователь ещё не вводил вес (все рабочие подходы с 0 кг и не отмечены),
             // подставляем знакомый рабочий вес нового тренажёра/упражнения из истории.
             const unstarted =

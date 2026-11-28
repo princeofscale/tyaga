@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AlertCircle, ArrowRight, CheckCircle2, Layers, ShieldCheck, Sparkles } from "lucide-react";
 import {
   REGION_META,
@@ -37,6 +37,7 @@ function mapWeakLinksToRegions(workouts: Workout[], timeZone?: string, bodyMassK
 }
 
 type Props = {
+  accountId?: string;
   workouts: Workout[];
   routines?: Routine[];
   today?: string;
@@ -51,6 +52,7 @@ type Props = {
  * средний SFR (с учётом longLevers) и суставную безопасность JointGuardEngine.
  */
 export default function HypertrophyAuditCard({
+  accountId,
   workouts,
   routines = [],
   today,
@@ -60,9 +62,22 @@ export default function HypertrophyAuditCard({
 }: Props) {
   const hasRoutines = routines.length > 0;
   const [source, setSource] = useState<AuditSource>("week");
+  const [profile, setProfile] = useState(() => BiomechanicsProfileStore.read(undefined, accountId));
+  const [painLogs, setPainLogs] = useState(() => JointPainStore.read(undefined, Date.now(), accountId));
 
-  const profile = useMemo(() => BiomechanicsProfileStore.read(), []);
-  const painLogs = useMemo(() => JointPainStore.read(), []);
+  useEffect(() => {
+    const sync = () => {
+      setProfile(BiomechanicsProfileStore.read(undefined, accountId));
+      setPainLogs(JointPainStore.read(undefined, Date.now(), accountId));
+    };
+    sync();
+    window.addEventListener("tyaga:biomechanics-profile-change", sync);
+    window.addEventListener("tyaga:joint-pain-change", sync);
+    return () => {
+      window.removeEventListener("tyaga:biomechanics-profile-change", sync);
+      window.removeEventListener("tyaga:joint-pain-change", sync);
+    };
+  }, [accountId]);
 
   const priorityRegions = useMemo(
     () => mapWeakLinksToRegions(workouts, timeZone, bodyMassKg, profile.longLevers),

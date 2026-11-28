@@ -112,6 +112,28 @@ export function roundToEquipment(
   return Math.round(Math.max(minWeight, snapped) * 100) / 100;
 }
 
+export function roundDownToEquipment(
+  rawWeightKg: number,
+  ceilingWeightKg: number,
+  loadMode: E1RMLoadMode,
+  inventory: ProgressionInventory = toProgressionInventory(),
+  roundMode: RoundMode = "floor",
+): number {
+  if (!Number.isFinite(rawWeightKg) || rawWeightKg <= 0) {
+    if (loadMode === "total_external") {
+      return Math.min(ceilingWeightKg, inventory.barbellWeightKg);
+    }
+    return 0;
+  }
+  if (loadMode === "total_external" && ceilingWeightKg < inventory.barbellWeightKg) {
+    const step = equipmentStepKg(rawWeightKg, loadMode, inventory);
+    const fn = roundMode === "ceil" ? Math.ceil : roundMode === "floor" ? Math.floor : Math.round;
+    const snapped = Math.max(step, fn(rawWeightKg / step) * step);
+    return Math.round(Math.min(ceilingWeightKg, snapped) * 100) / 100;
+  }
+  return Math.min(ceilingWeightKg, roundToEquipment(rawWeightKg, loadMode, inventory, roundMode));
+}
+
 export interface DDPSetHistory {
   weight: number;
   reps: number;
@@ -212,24 +234,55 @@ export class ProgressionEngine {
         input.stepOverrideKg !== undefined && input.stepOverrideKg > 0
           ? input.stepOverrideKg
           : equipmentStepKg(prevWeight, input.loadMode, inv);
-      const relJump = prevWeight > 0 ? step / prevWeight : 0;
+      const isAssisted = input.loadMode === "assisted_bodyweight";
+      const candidateNextWeight = isAssisted
+        ? input.stepOverrideKg !== undefined
+          ? Math.max(0, Math.round((prevWeight - step) * 100) / 100)
+          : roundToEquipment(Math.max(0, prevWeight - step), input.loadMode, inv, "floor")
+        : input.stepOverrideKg !== undefined
+          ? Math.round((prevWeight + step) * 100) / 100
+          : roundToEquipment(prevWeight + step, input.loadMode, inv, "nearest");
+      const actualStep =
+        !isAssisted && prevWeight > 0 ? Math.max(step, candidateNextWeight - prevWeight) : step;
+      const relJump = !isAssisted && prevWeight > 0 ? actualStep / prevWeight : 0;
       const repBonus = relJump > 0.25 ? 4 : relJump > 0.125 ? 2 : 0;
       const effectiveRepMax = repMax + repBonus;
       const prevRir = prev.rir ?? rirMin;
 
-      // 1. Цель достигнута чисто -> поднимаем вес на 1 шаг и возвращаемся к repMin
-      if (prev.reps >= effectiveRepMax && prevRir >= rirMin && prevWeight > 0) {
-        const nextWeight =
-          input.stepOverrideKg !== undefined
-            ? Math.round((prevWeight + step) * 100) / 100
-            : roundToEquipment(prevWeight + step, input.loadMode, inv, "nearest");
+      // 1. Цель достигнута чисто -> усложняем нагрузку (для assisted_bodyweight уменьшаем противовес) и возвращаемся к repMin
+      if (prev.reps >= effectiveRepMax && prevRir >= rirMin) {
+        if (prevWeight > 0) {
+          return {
+            setIndex,
+            recommendedWeight: candidateNextWeight,
+            recommendedReps: repMin,
+            effectiveRepMax,
+            action: "increase_weight",
+            reasonCode: repBonus > 0 ? "target_met_after_extended_cap" : "target_met",
+          };
+        }
+        if (input.loadMode === "added_bodyweight") {
+          const firstAdded =
+            input.stepOverrideKg !== undefined
+              ? Math.round(step * 100) / 100
+              : roundToEquipment(step, input.loadMode, inv, "ceil");
+          return {
+            setIndex,
+            recommendedWeight: Math.max(step, firstAdded),
+            recommendedReps: repMin,
+            effectiveRepMax,
+            action: "increase_weight",
+            reasonCode: "target_met",
+          };
+        }
+        // Собственный вес (или гравитрон уже на 0 кг помощи): добавляем +1 повтор вместо отката к repMin
         return {
           setIndex,
-          recommendedWeight: nextWeight,
-          recommendedReps: repMin,
-          effectiveRepMax,
-          action: "increase_weight",
-          reasonCode: repBonus > 0 ? "target_met_after_extended_cap" : "target_met",
+          recommendedWeight: 0,
+          recommendedReps: prev.reps + 1,
+          effectiveRepMax: prev.reps + 1,
+          action: "increase_reps",
+          reasonCode: "bodyweight_add_rep",
         };
       }
 
@@ -263,13 +316,21 @@ export class ProgressionEngine {
         };
       }
 
-      // 4. Недобор ниже repMin на отказе -> снизить вес на 1 шаг (или -5%, округление вниз)
-      if (prev.reps < repMin && prevRir <= 0 && prevWeight > 0) {
-        const rawDrop = Math.min(prevWeight - step, prevWeight * 0.95);
-        const nextWeight =
-          input.stepOverrideKg !== undefined
-            ? Math.max(0, Math.round(rawDrop * 100) / 100)
-            : roundToEquipment(Math.max(0, rawDrop), input.loadMode, inv, "floor");
+      // 4. Недобор ниже repMin на отказе -> облегчить нагрузку (для assisted_bodyweight увеличить помощь на 1 шаг)
+      if (prev.reps < repMin && prevRir <= 0 && (prevWeight > 0 || isAssisted)) {
+        const nextWeight = isAssisted
+          ? input.stepOverrideKg !== undefined
+            ? Math.round((prevWeight + step) * 100) / 100
+            : roundToEquipment(prevWeight + step, input.loadMode, inv, "ceil")
+          : input.stepOverrideKg !== undefined
+            ? Math.max(0, Math.round(Math.min(prevWeight - step, prevWeight * 0.95) * 100) / 100)
+            : roundDownToEquipment(
+                Math.max(0, Math.min(prevWeight - step, prevWeight * 0.95)),
+                prevWeight,
+                input.loadMode,
+                inv,
+                "floor",
+              );
         return {
           setIndex,
           recommendedWeight: nextWeight,
@@ -425,7 +486,9 @@ export class ProgressionEngine {
     if (!plan.active) return { weightKg, setsCount, plan };
     const nextWeight =
       weightKg > 0
-        ? roundToEquipment(weightKg * plan.weightMultiplier, loadMode, inventory, "floor")
+        ? loadMode === "assisted_bodyweight"
+          ? roundToEquipment(weightKg / plan.weightMultiplier, loadMode, inventory, "ceil")
+          : roundDownToEquipment(weightKg * plan.weightMultiplier, weightKg, loadMode, inventory, "floor")
         : weightKg;
     const minSets = plan.gapDays >= 56 ? 1 : 2;
     const nextSets = Math.max(
@@ -442,6 +505,8 @@ export class ProgressionEngine {
     weeksInCurrentVariant: number;
     currentRepRange: [number, number];
     loadMode: E1RMLoadMode;
+    implementCount?: number;
+    currentBodyweightKg?: number;
     globalDeloadRecommended: boolean;
     inventory?: ProgressionInventory;
   }): PlateauDecision {
@@ -501,8 +566,21 @@ export class ProgressionEngine {
     const [, curMax] = params.currentRepRange;
     const nextRange: [number, number] = curMax <= 8 ? [10, 12] : [6, 8];
     const targetMidReps = Math.round((nextRange[0] + nextRange[1]) / 2);
+    const totalTargetLoad = recentAvg / (1 + 0.0333 * (targetMidReps + 2));
+    const bw =
+      typeof params.currentBodyweightKg === "number" && Number.isFinite(params.currentBodyweightKg) && params.currentBodyweightKg > 0
+        ? params.currentBodyweightKg
+        : 75;
+    const rawTarget =
+      params.loadMode === "per_implement"
+        ? totalTargetLoad / Math.max(1, params.implementCount ?? 2)
+        : params.loadMode === "added_bodyweight"
+          ? Math.max(0, totalTargetLoad - bw)
+          : params.loadMode === "assisted_bodyweight"
+            ? Math.max(0, bw - totalTargetLoad)
+            : totalTargetLoad;
     const targetStartWeight = roundToEquipment(
-      recentAvg / (1 + 0.0333 * (targetMidReps + 2)),
+      rawTarget,
       params.loadMode,
       inv,
       "nearest",

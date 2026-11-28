@@ -47,6 +47,7 @@ export default function MuscleVolumePanel({
   mapping,
   onMappingChange,
   unmarkedNote,
+  weekOffset = 0,
 }: {
   loads: MuscleLoad[];
   anatomy: Array<{ id: string; name: string; zone: Muscle; direct: number; assisting: number; stabilizing: number }>;
@@ -58,6 +59,7 @@ export default function MuscleVolumePanel({
   mapping: "recorded" | "current";
   onMappingChange: (value: "recorded" | "current") => void;
   unmarkedNote?: ReactNode;
+  weekOffset?: number;
 }) {
   const reduced = useReducedMotion();
   const [filter, setFilter] = useState<PhaseFilter>("all");
@@ -75,14 +77,18 @@ export default function MuscleVolumePanel({
     let maintenance = 0;
     let low = 0;
     let high = 0;
+    let overreaching = 0;
     for (const r of rows) {
       const p = r.assessment.phase;
       if (p === "min_growth" || p === "optimal_growth") growth += 1;
       else if (p === "maintenance") maintenance += 1;
       else if (p === "no_sets" || p === "below_mv") low += 1;
-      else high += 1;
+      else {
+        high += 1;
+        if (p === "overreaching") overreaching += 1;
+      }
     }
-    return { growth, maintenance, low, high };
+    return { growth, maintenance, low, high, overreaching };
   }, [rows]);
 
   const totalEffective = useMemo(
@@ -100,7 +106,7 @@ export default function MuscleVolumePanel({
   const gaugeOffset = GAUGE_C * (1 - Math.min(1, ringRatio));
 
   const heroStatus =
-    counts.high > 0
+    counts.overreaching > 0
       ? "overloaded"
       : counts.growth >= 5
         ? "optimal"
@@ -108,14 +114,22 @@ export default function MuscleVolumePanel({
 
   const heroHeadline =
     activeZones === 0
-      ? "На этой неделе подходов пока нет"
-      : counts.high > 0
-        ? `Перегруз в ${counts.high} ${counts.high === 1 ? "зоне" : "зонах"} — следи за восстановлением`
-        : counts.growth >= 6
-          ? `Отличный недельный объём — ${counts.growth} из ${rows.length} групп в зоне роста`
-          : counts.growth > 0
-            ? `${counts.growth} из ${rows.length} групп в наборе массы, ещё ${counts.maintenance} на поддержке`
-            : `${counts.maintenance} групп на поддержке массы — добавь подходов для роста`;
+      ? hardSetsOnly
+        ? "В выбранной неделе нет рабочих подходов с RIR ≤ 3"
+        : weekOffset < 0
+          ? "На выбранной неделе подходов не было"
+          : "На этой неделе подходов пока нет"
+      : counts.overreaching > 0
+        ? `Перегруз в ${counts.overreaching} ${counts.overreaching === 1 ? "зоне" : "зонах"} — следи за восстановлением`
+        : counts.high > 0
+          ? `Высокий объём в ${counts.high} ${counts.high === 1 ? "зоне" : "зонах"} — близко к MRV`
+          : counts.growth >= 6
+            ? `Отличный недельный объём — ${counts.growth} из ${rows.length} групп в зоне роста`
+            : counts.growth > 0
+              ? `${counts.growth} из ${rows.length} групп в наборе массы, ещё ${counts.maintenance} на поддержке`
+              : counts.maintenance > 0
+                ? `${counts.maintenance} групп на поддержке массы — добавь подходов для роста`
+                : `Есть работа в ${activeZones} ${activeZones === 1 ? "группе" : "группах"}, пока ниже порога поддержки (MV)`;
 
   const visibleRows = useMemo(
     () => rows.filter((r) => filterMatches(r.assessment.phase, filter)),

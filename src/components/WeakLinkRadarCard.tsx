@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, Compass, Sparkles } from "lucide-react";
 import { WeakLinkAnalyzer, type BalanceAxis, type BalanceAxisId } from "../domain/WeakLinkAnalyzer";
 import { BiomechanicsProfileStore } from "../domain/BiomechanicsProfile";
@@ -112,6 +112,7 @@ function RadarSvg({
 }
 
 type Props = {
+  accountId?: string;
   workouts: Workout[];
   timeZone?: string;
   bodyMassKg?: number | null;
@@ -122,12 +123,19 @@ type Props = {
  * Карточка #6: Детектор слабых звеньев и 6-осевой радар биомеханических пропорций силы.
  */
 export default function WeakLinkRadarCard({
+  accountId,
   workouts,
   timeZone,
   bodyMassKg,
   onOpenExerciseDetail,
 }: Props) {
-  const profile = useMemo(() => BiomechanicsProfileStore.read(), []);
+  const [profile, setProfile] = useState(() => BiomechanicsProfileStore.read(undefined, accountId));
+  useEffect(() => {
+    const sync = () => setProfile(BiomechanicsProfileStore.read(undefined, accountId));
+    sync();
+    window.addEventListener("tyaga:biomechanics-profile-change", sync);
+    return () => window.removeEventListener("tyaga:biomechanics-profile-change", sync);
+  }, [accountId]);
 
   const report = useMemo(
     () =>

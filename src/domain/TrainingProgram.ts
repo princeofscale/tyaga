@@ -192,13 +192,18 @@ export class TrainingProgram {
     timeZone: string,
     today = localDate(new Date(), timeZone),
     programDate?: string,
-    options?: { cycle?: readonly Routine[] },
+    options?: { cycle?: readonly Routine[]; accountId?: string; longLevers?: boolean },
   ): Workout {
     const r = this.routine;
     const workout = makeWorkout([], [], timeZone);
     // A move changes the training day, not the plan phase (including Laid's independent cycle).
     const phaseDate = programDate ?? today;
-    const laid = LaidDupPlan.planFor(r, phaseDate, { workouts: history, cycle: options?.cycle });
+    const laid = LaidDupPlan.planFor(r, phaseDate, {
+      workouts: history,
+      cycle: options?.cycle,
+      accountId: options?.accountId,
+      longLevers: options?.longLevers,
+    });
     const cycle = laid ? undefined : r.cycle;
     const deload = !laid && this.isDeload(history, phaseDate);
     const built: Workout = {
@@ -315,16 +320,19 @@ export class TrainingProgram {
     const day = p.day;
     const subs = p.substitutions;
     const totalWeeks = LaidDupPlan.totalWeeks(p);
+    const isV3 = p.version === "v3";
     const isV2 = p.version === "v2";
-    const week = LaidDupPlan.weekLabel(plan.position, { isDeload: plan.isDeload, totalWeeks });
+    const week = LaidDupPlan.weekLabel(plan.position, { isDeload: plan.isDeload, totalWeeks, version: p.version });
     const notesParts = [
       workout.notes,
       week,
       ...(plan.isDeload
         ? [
-            isV2
-              ? "Активная разгрузка DUP v2 (75 % ТМ на базе, −15 % веса и −50 % подходов в подсобке, RIR 4–5)."
-              : "Разгрузочная неделя (55–65 %, половина подходов, RIR 3–4).",
+            isV3
+              ? "Активная разгрузка DUP v3 (80–82,5 % ТМ на базе, −10 % веса и −50 % подходов в подсобке, RIR 4)."
+              : isV2
+                ? "Активная разгрузка DUP v2 (75 % ТМ на базе, −15 % веса и −50 % подходов в подсобке, RIR 4–5)."
+                : "Разгрузочная неделя (55–65 %, половина подходов, RIR 3–4).",
           ]
         : []),
     ].filter(Boolean);
@@ -341,7 +349,7 @@ export class TrainingProgram {
           const working = entry.sets.filter((s) => !s.warmup);
           const keep = Math.max(1, Math.floor(working.length * 0.5));
           const keptIds = new Set(working.slice(0, keep).map((s) => s.id));
-          const factor = isV2 ? 0.85 : 0.65;
+          const factor = isV3 ? 0.9 : isV2 ? 0.85 : 0.65;
           const sets = entry.sets
             .filter((s) => s.warmup || keptIds.has(s.id))
             .map((s) =>
@@ -356,9 +364,11 @@ export class TrainingProgram {
           return {
             ...entry,
             sets,
-            progressionNote: isV2
-              ? "Активная разгрузка DUP v2: −15 % веса, половина подходов, RIR 4–5 (без отказа)."
-              : "Разгрузочная неделя: 65 % рабочего веса, половина подходов, RIR 3–4 (без отказа).",
+            progressionNote: isV3
+              ? "Активная разгрузка DUP v3: −10 % веса, половина подходов, RIR 4 (LP отключены)."
+              : isV2
+                ? "Активная разгрузка DUP v2: −15 % веса, половина подходов, RIR 4–5 (без отказа)."
+                : "Разгрузочная неделя: 65 % рабочего веса, половина подходов, RIR 3–4 (без отказа).",
           };
         }
         const reps = LaidDupPlan.auxReps(day, entry.exerciseId, plan.position.inWave, subs, p.version);

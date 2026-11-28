@@ -12,9 +12,14 @@ export class PersonalExerciseMarking {
     return (exercise.recording.type ?? "reps") === "reps";
   }
 
-  /** Уже размечено: есть группы мышц или привязка к движению каталога — такое не переписываем молча. */
+  /** Уже размечено: есть группы мышц, роли или привязка к движению каталога — такое не переписываем молча. */
   static hasMarking(exercise: Exercise) {
-    return !!(exercise.custom?.declaredZones?.length || exercise.custom?.basedOnExerciseId || exercise.primary.length);
+    return !!(
+      exercise.custom?.declaredZones?.length ||
+      exercise.custom?.basedOnExerciseId ||
+      exercise.primary.length ||
+      exercise.muscles.length
+    );
   }
 
   /** Делит выбранное на уже размеченное и без разметки (для предупреждения «Заменить разметку у N?»). */
@@ -51,6 +56,12 @@ export class PersonalExerciseMarking {
     const custom = exercise.custom;
     if (!custom) throw new Error("Это не личное упражнение");
     const zones = marking.zones ?? custom.declaredZones ?? [];
+    const basedOnExerciseId =
+      marking.basedOn && this.canBaseOn(exercise) ? marking.basedOn : (custom.basedOnExerciseId ?? "");
+    const muscleRoles =
+      !basedOnExerciseId && exercise.muscles.length
+        ? exercise.muscles.map(({ muscleId, role }) => ({ muscleId, role }))
+        : undefined;
     return {
       familyId: custom.familyId,
       name: exercise.name,
@@ -59,7 +70,8 @@ export class PersonalExerciseMarking {
       notes: exercise.tip ?? "",
       equipment: exercise.equipment,
       declaredZones: [...new Set(zones)],
-      basedOnExerciseId: marking.basedOn && this.canBaseOn(exercise) ? marking.basedOn : (custom.basedOnExerciseId ?? ""),
+      basedOnExerciseId,
+      ...(muscleRoles ? { muscleRoles } : {}),
       ...(custom.origin ? { origin: custom.origin } : {}),
       recording: {
         type: exercise.recording.type ?? "reps",

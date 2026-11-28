@@ -930,7 +930,7 @@
     max-width: 68rem;
     color: var(--text);
   }
-  .workout-screen :is(button, input, textarea, summary, [role="button"]) {
+  .workout-screen :is(button, input, textarea, summary, [role="button"], [role="alert"], .inline-error) {
     scroll-margin-top: var(--workout-header-space);
     scroll-margin-bottom: 120px;
     scroll-margin-block: calc(var(--workout-header-space) + var(--sat, 0px))
@@ -1221,7 +1221,7 @@
     .workout-screen .workout-bar, .workout-screen .workout-dock {
       position: static;
     }
-    .workout-screen :is(button, input, textarea, summary, [role="button"]) {
+    .workout-screen :is(button, input, textarea, summary, [role="button"], [role="alert"], .inline-error) {
       scroll-margin-block: 12px;
     }
   }

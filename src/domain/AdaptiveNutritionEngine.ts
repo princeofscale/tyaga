@@ -4,6 +4,7 @@
 // ============================================================================
 
 import type { EnergyStatus } from "./DeloadEngine";
+import { isCalendarDate, localDate } from "../lib/calendar";
 
 export type { EnergyStatus };
 
@@ -421,9 +422,7 @@ export class AdaptiveTdeeEstimator {
       let crWeight = 0;
       if (crDayNum !== null) {
         const dCr = curDay - crDayNum;
-        if (dCr <= 0) {
-          preCreatineWeight = scaleTrend;
-        } else if (dCr >= 1 && dCr <= 14) {
+        if (dCr >= 1 && dCr <= 14) {
           crWeight = 1.0;
         } else if (dCr >= 15 && dCr <= 21) {
           crWeight = (22 - dCr) / 8;
@@ -457,12 +456,18 @@ export class AdaptiveTdeeEstimator {
         scaleTrend = scaleTrend + alpha * clipped;
         const stepChange = scaleTrend - prevScale;
 
-        if (crWeight > 0 && stepChange > 0) {
+        if (crDayNum !== null && curDay <= crDayNum) {
+          preCreatineWeight = scaleTrend;
+        } else if (crWeight > 0 && stepChange > 0) {
           const maxCrWater = 0.022 * preCreatineWeight;
-          const absorbed = Math.min(stepChange * crWeight, Math.max(0, maxCrWater - creatineOffset));
+          const netAboveBaseline = Math.max(0, scaleTrend - preCreatineWeight);
+          const cap = Math.min(maxCrWater, netAboveBaseline);
+          const absorbed = Math.min(stepChange * crWeight, Math.max(0, cap - creatineOffset));
           creatineOffset += absorbed;
         }
         metabolicTrend = scaleTrend - creatineOffset;
+      } else if (crDayNum !== null && curDay <= crDayNum) {
+        preCreatineWeight = scaleTrend;
       }
 
       out.push({
@@ -492,7 +497,8 @@ export class AdaptiveTdeeEstimator {
     creatineStartDate?: string | null,
   ): TdeeEstimateReport {
     const prior = this.estimatePriorTdee(profile);
-    const trendSeries = this.computeTrendWeight(weighIns, creatineStartDate);
+    const scopedWeighIns = asOfDate ? weighIns.filter((w) => w.date <= asOfDate) : weighIns;
+    const trendSeries = this.computeTrendWeight(scopedWeighIns, creatineStartDate);
 
     if (trendSeries.length === 0) {
       return {
@@ -563,24 +569,30 @@ export class AdaptiveTdeeEstimator {
       scaleInterp[i] = scaleInterp[lastKi];
     }
 
-    // Index nutrition logs
+    // Index nutrition logs (deduplicated by date, excluding dates after asOfDate)
     interface IndexedLog {
       kcal: number;
       isValid: boolean;
       dayClass: "rest" | "training";
     }
     const nutByDate = new Map<string, IndexedLog>();
-    let validLogsLast28 = 0;
 
     for (const log of nutritionLogs) {
+      if (!isCalendarDate(log.date)) continue;
       const ld = parseIsoDayNumber(log.date);
+      if (ld > endDay) continue;
       const isValid = log.caloriesKcal >= 800 && !log.partialLog;
       nutByDate.set(log.date, {
         kcal: log.caloriesKcal,
         isValid,
         dayClass: log.dayType === "rest" ? "rest" : "training",
       });
-      if (isValid && endDay - ld >= 0 && endDay - ld < 28) {
+    }
+
+    let validLogsLast28 = 0;
+    for (const [date, entry] of nutByDate) {
+      const ld = parseIsoDayNumber(date);
+      if (entry.isValid && endDay - ld >= 0 && endDay - ld < 28) {
         validLogsLast28++;
       }
     }
@@ -593,19 +605,19 @@ export class AdaptiveTdeeEstimator {
     const rateKgPerWeek = lookback >= 7 ? ((latestMet - prevMet) / lookback) * 7 : 0;
     const ratePctPerWeek = latestScale > 0 ? (rateKgPerWeek / latestScale) * 100 : 0;
 
+    const tailStart = Math.max(0, totalDays - 21);
+    let weighIns21d = 0;
+    for (let i = tailStart; i < totalDays; i++) {
+      if (trendByDate.has(calDays[i])) weighIns21d++;
+    }
+    const spanDays =
+      parseIsoDayNumber(trendSeries[trendSeries.length - 1].date) -
+      parseIsoDayNumber(trendSeries[0].date);
+    const liteConf =
+      weighIns21d >= 6 && spanDays >= 12 ? Math.min(0.85, (weighIns21d / 14) * 0.85) : 0.20;
+
     // LITE MODE DEGRADATION (0 valid calorie logs in last 28 days)
     if (validLogsLast28 === 0) {
-      const tailStart = Math.max(0, totalDays - 21);
-      let weighIns21d = 0;
-      for (let i = tailStart; i < totalDays; i++) {
-        if (trendByDate.has(calDays[i])) weighIns21d++;
-      }
-      const spanDays =
-        parseIsoDayNumber(trendSeries[trendSeries.length - 1].date) -
-        parseIsoDayNumber(trendSeries[0].date);
-      const liteConf =
-        weighIns21d >= 6 && spanDays >= 12 ? Math.min(0.85, (weighIns21d / 14) * 0.85) : 0.20;
-
       return {
         mode: "lite",
         status: liteConf >= 0.35 ? "lite_trend_only" : "lite_insufficient_weighins",
@@ -672,6 +684,8 @@ export class AdaptiveTdeeEstimator {
 
       if (valid14Count < 10 || valid7Count < 4 || weighins14 < 4) {
         status = "holding_low_adherence";
+        lastAvgIn = null;
+        if (updatesCount > 0) P = Math.min(400 ** 2, P + Q);
         tdeeHistory.push({ date: calDays[i], tdee: roundDecimals(tdee, 1), status });
         continue;
       }
@@ -729,6 +743,9 @@ export class AdaptiveTdeeEstimator {
       const uncConf = Math.max(0.2, 1 - Math.sqrt(P) / 300);
       const penalty = status === "holding_low_adherence" ? 0.65 : 1.0;
       conf = roundDecimals(Math.min(0.98, 0.55 * dataConf + 0.45 * uncConf) * penalty, 2);
+    } else if (liteConf >= 0.35) {
+      // 1–9 неполных/разрозненных записей калорий: сохраняем Lite-уверенность по тренду веса для EnergyStatusBridge
+      conf = roundDecimals(liteConf, 2);
     }
 
     return {
@@ -820,6 +837,22 @@ export class NutritionPhaseController {
 
     // LITE MODE
     if (tdeeReport.mode === "lite") {
+      if (tdeeReport.status !== "lite_trend_only") {
+        return {
+          mode: "lite",
+          goalMode,
+          nextTargetKcal: null,
+          kcalDeltaHint: 0,
+          targetRatePctPerWeek: targetRatePct,
+          actualRatePctPerWeek: actualRatePct,
+          safetyFloorKcal,
+          safetyFloorHit: false,
+          neatPlateauDetected: false,
+          dietBreakRecommended,
+          dietBreakReason,
+          adjustmentReason: "lite_insufficient_data",
+        };
+      }
       const rateErrPct = targetRatePct - actualRatePct;
       const rawHint = ((rateErrPct / 100) * trendW * cfg.kcalPerKg) / 7;
       const kcalHint = Math.abs(rawHint) < 50 ? 0 : roundTo(clamp(rawHint, -300, 300), 10);
@@ -846,23 +879,25 @@ export class NutritionPhaseController {
       };
     }
 
-    // PRO MODE — Low Adherence Hold
+    // PRO MODE — Low Adherence Hold (всегда соблюдаем пол безопасности RED-S)
     if (tdeeReport.status === "holding_low_adherence" && previousTarget !== null) {
+      const heldTarget = Math.max(previousTarget, safetyFloorKcal);
+      const floorEnforced = previousTarget < safetyFloorKcal;
       return {
         mode: "pro",
         goalMode,
-        nextTargetKcal: previousTarget,
-        deltaFromPreviousKcal: 0,
+        nextTargetKcal: heldTarget,
+        deltaFromPreviousKcal: roundDecimals(heldTarget - previousTarget, 1),
         goalDeltaKcal: roundDecimals(goalDelta, 1),
         targetRatePctPerWeek: targetRatePct,
         actualRatePctPerWeek: actualRatePct,
         safetyFloorKcal,
-        safetyFloorHit: previousTarget <= safetyFloorKcal,
-        achievedEaKcalPerKgFfm: roundDecimals((previousTarget - avgDailyEeeKcal) / ffmKg, 1),
+        safetyFloorHit: floorEnforced || heldTarget <= safetyFloorKcal,
+        achievedEaKcalPerKgFfm: roundDecimals((heldTarget - avgDailyEeeKcal) / ffmKg, 1),
         neatPlateauDetected: false,
         dietBreakRecommended,
         dietBreakReason,
-        adjustmentReason: "holding_low_adherence",
+        adjustmentReason: floorEnforced ? "safety_floor_reds_ea30" : "holding_low_adherence",
       };
     }
 
@@ -996,15 +1031,15 @@ export class MacroPeriodizer {
       let sum4 = 0;
       for (const k of cycleKeys) {
         const dKcal = baseKcal * (1 + DUP_DAY_OFFSETS[k] * scaleK);
-        rounded4[k] = roundTo((dKcal - fixedKcal) / 4, 5);
+        rounded4[k] = Math.max(50, roundTo((dKcal - fixedKcal) / 4, 5));
         sum4 += rounded4[k];
       }
 
       // Exact 4-day zero-sum residual correction on neutral Push day
-      const exact4CarbSum = roundTo((baseKcal * 4 - fixedKcal * 4) / 4, 5);
+      const exact4CarbSum = Math.max(200, roundTo((baseKcal * 4 - fixedKcal * 4) / 4, 5));
       const remG = exact4CarbSum - sum4;
       if (Math.abs(remG) >= 5) {
-        rounded4.push += remG;
+        rounded4.push = Math.max(50, rounded4.push + remG);
       }
       carbsG = rounded4[dayType];
     } else {
@@ -1316,7 +1351,7 @@ export class NutritionStore {
     };
   }
 
-  public readRaw(): NutritionState | null {
+  public readRaw(fallbackTodayIso?: string): NutritionState | null {
     const store = this.storage;
     if (!store) return null;
     try {
@@ -1356,12 +1391,11 @@ export class NutritionStore {
       const goalMode: GoalMode =
         parsed.goalMode && VALID_GOAL_MODES.has(parsed.goalMode) ? parsed.goalMode : "maintenance";
       const phaseStartedDate =
-        typeof parsed.phaseStartedDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(parsed.phaseStartedDate)
+        typeof parsed.phaseStartedDate === "string" && isCalendarDate(parsed.phaseStartedDate)
           ? parsed.phaseStartedDate
-          : new Date().toISOString().slice(0, 10);
+          : (fallbackTodayIso ?? localDate(new Date()));
       const creatineStartDate =
-        typeof parsed.creatineStartDate === "string" &&
-        /^\d{4}-\d{2}-\d{2}$/.test(parsed.creatineStartDate)
+        typeof parsed.creatineStartDate === "string" && isCalendarDate(parsed.creatineStartDate)
           ? parsed.creatineStartDate
           : null;
       const currentTargetKcal =
@@ -1381,7 +1415,7 @@ export class NutritionStore {
               (l): l is DailyNutritionLog =>
                 Boolean(l) &&
                 typeof l.date === "string" &&
-                /^\d{4}-\d{2}-\d{2}$/.test(l.date) &&
+                isCalendarDate(l.date) &&
                 typeof l.caloriesKcal === "number" &&
                 Number.isFinite(l.caloriesKcal) &&
                 l.caloriesKcal >= 0 &&
@@ -1435,7 +1469,7 @@ export class NutritionStore {
   }
 
   public read(todayIso: string, fallbackWeightKg = 80, longLevers = false): NutritionState {
-    return this.readRaw() ?? NutritionStore.createDefaultState(todayIso, fallbackWeightKg, longLevers);
+    return this.readRaw(todayIso) ?? NutritionStore.createDefaultState(todayIso, fallbackWeightKg, longLevers);
   }
 
   public save(next: NutritionState): NutritionState {

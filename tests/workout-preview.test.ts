@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { MuscleReadiness } from "../src/domain/MuscleReadiness";
 import { WorkoutPreview } from "../src/domain/WorkoutPreview";
-import { makeWorkout } from "../src/lib/model";
+import WorkoutPreviewCard from "../src/components/WorkoutPreviewCard";
+import SessionInsights from "../src/components/SessionInsights";
+import { DEFAULT_SETTINGS, makeWorkout } from "../src/lib/model";
 import type { Workout } from "../src/lib/types";
 
 function makeSession(
@@ -73,4 +78,68 @@ test("WorkoutPreview computes target muscles, before->after weekly volume, EWMA 
 
   assert.ok(res.axialAfterPct >= res.axialBeforePct);
   assert.ok(res.localAfterPct > res.localBeforePct);
+});
+
+test("WorkoutPreview marks empty history as no readiness data instead of certifying fresh muscles", () => {
+  const planned = makeSession("plan-empty", "2026-11-27", [{ exerciseId: "bench", sets: 4, weight: 80, reps: 8 }], false);
+  const res = WorkoutPreview.analyze(planned, [], "2026-11-27", "UTC", { now: new Date("2026-11-27T12:00:00Z") });
+  assert.equal(res.hasTargetReadinessData, false);
+  assert.equal(res.muscles.find((m) => m.muscle === "chest")?.hasReadinessData, false);
+
+  const markup = renderToStaticMarkup(createElement(WorkoutPreviewCard, {
+    planned,
+    history: [],
+    today: "2026-11-27",
+    timeZone: "UTC",
+  }));
+  assert.match(markup, /нет данных/i);
+  assert.doesNotMatch(markup, /Целевые свежие · 100%/);
+});
+
+test("WorkoutPreview matches live MuscleReadiness clock and evaluates only targeted deltoid subgroups", () => {
+  const benchDone = makeSession("h-bench", "2026-11-26", [{ exerciseId: "bench", sets: 5, weight: 80, reps: 8, rir: 2 }]);
+  benchDone.timeZone = "Europe/Saratov";
+  benchDone.createdAt = "2026-11-26T19:30:00Z";
+  const now = new Date("2026-11-26T20:15:00Z");
+
+  const plannedBench = makeSession("plan-bench", "2026-11-27", [{ exerciseId: "bench", sets: 4, weight: 80, reps: 8 }], false);
+  const preview = WorkoutPreview.analyze(plannedBench, [benchDone], "2026-11-27", "Europe/Saratov", { now });
+  const liveChest = MuscleReadiness.fromWorkoutsV2([benchDone], "2026-11-27", "Europe/Saratov", now)
+    .find((g) => g.id === "chest")!;
+  assert.equal(preview.muscles.find((m) => m.muscle === "chest")?.readinessPct, liveChest.readinessPct);
+
+  const frontDeltHeavy = makeSession("h-dip-front", "2026-11-27", [{ exerciseId: "dip-weighted", sets: 10, weight: 20, reps: 8, rir: 0 }]);
+  frontDeltHeavy.createdAt = "2026-11-27T11:00:00Z";
+  const plannedRear = makeSession("plan-rear", "2026-11-27", [{ exerciseId: "rear-delt-fly", sets: 4, weight: 10, reps: 15 }], false);
+  const rearPreview = WorkoutPreview.analyze(plannedRear, [frontDeltHeavy], "2026-11-27", "UTC", {
+    now: new Date("2026-11-27T12:00:00Z"),
+  });
+  assert.equal(rearPreview.lowestTargetReadiness, null);
+
+  const erectorHeavy = makeSession("h-rdl", "2026-11-27", [{ exerciseId: "rdl", sets: 6, weight: 100, reps: 8, rir: 0 }]);
+  erectorHeavy.createdAt = "2026-11-27T11:00:00Z";
+  const plannedLats = makeSession("plan-lats", "2026-11-27", [{ exerciseId: "lat-pulldown", sets: 4, weight: 60, reps: 10 }], false);
+  const latsPreview = WorkoutPreview.analyze(plannedLats, [erectorHeavy], "2026-11-27", "UTC", {
+    now: new Date("2026-11-27T12:00:00Z"),
+  });
+  assert.equal(latsPreview.lowestTargetReadiness, null);
+});
+
+test("SessionInsights includes the displayed workout when absent from allWorkouts and attributes recovery only to affected groups", () => {
+  const bench = makeSession("w-bench", "2026-11-26", [{ exerciseId: "bench", sets: 6, weight: 80, reps: 8, rir: 0 }]);
+  const squat = makeSession("w-squat", "2026-11-26", [{ exerciseId: "squat", sets: 1, weight: 100, reps: 5, rir: 2 }]);
+
+  const squatMarkup = renderToStaticMarkup(createElement(SessionInsights, {
+    workout: squat,
+    settings: { ...DEFAULT_SETTINGS, timeZone: "UTC" },
+    allWorkouts: [bench, squat],
+  }));
+  assert.doesNotMatch(squatMarkup, /грудь/i);
+
+  const justSavedMarkup = renderToStaticMarkup(createElement(SessionInsights, {
+    workout: bench,
+    settings: { ...DEFAULT_SETTINGS, timeZone: "UTC" },
+    allWorkouts: [squat],
+  }));
+  assert.match(justSavedMarkup, /грудь/i);
 });

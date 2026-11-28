@@ -13,6 +13,12 @@ import LaidWaveProgressChart from "./LaidWaveProgressChart";
 
 const SPRING_TAB = { type: "spring" as const, stiffness: 460, damping: 35 };
 
+const V3_WAVE_META: Record<1 | 2 | 3, { title: string; subtitle: string; range: string }> = {
+  1: { title: "Накопление", subtitle: "Вход в 5-дневный гибрид и смена стимула H ↔ S (RIR 3 → 2)", range: "Недели 1–2" },
+  2: { title: "Интенсификация", subtitle: "Рост %ТМ на базе и пик гипертрофии с шлюзом LP (RIR 1,5 → 1)", range: "Недели 3–4" },
+  3: { title: "Реализация и разгрузка", subtitle: "Пиковая неделя 5 (rep-out +3) и активная разгрузка недели 6", range: "Недели 5–6" },
+};
+
 const EXPLAIN = [
   "Тяжёлые и объёмные дни чередуются внутри недели и между неделями.",
   "День начинается с тяжёлого подхода на 1, 3 или 5 повторений (RIR 1–2 → 0,5–1 к волне 3), затем четыре откатных (RIR 2–3).",
@@ -34,6 +40,7 @@ type ScheduleProps = {
   cycle: Routine[];
   workouts: Workout[];
   today: string;
+  accountId?: string;
   busy: boolean;
   onClose: () => void;
   onEditDays?: () => void;
@@ -47,6 +54,7 @@ export function LaidDupSchedule({
   cycle,
   workouts,
   today,
+  accountId,
   busy,
   onClose,
   onEditDays,
@@ -58,7 +66,7 @@ export function LaidDupSchedule({
   const state = useMemo(() => LaidDupPlan.cycleState(cycle, workouts, today), [cycle, workouts, today]);
   const { first, totalWeeks, rawWeek, isCurrentDeload, position, activeMaxes } = state;
   const subs = first.substitutions;
-  const estimates = useMemo(() => LaidDupPlan.estimates(workouts, today, subs), [workouts, today, subs]);
+  const estimates = useMemo(() => LaidDupPlan.estimates(workouts, today, subs, first.version), [workouts, today, subs, first.version]);
   const suggestion = useMemo(() => LaidDupPlan.suggestion(first, workouts, today), [first, workouts, today]);
   const bioAudit = useMemo(() => BiomechanicsEngine.auditLaidCycle(cycle, workouts, today), [cycle, workouts, today]);
   const waveSeries = useMemo(() => LaidDupPlan.waveProgress(cycle, workouts, today), [cycle, workouts, today]);
@@ -72,13 +80,12 @@ export function LaidDupSchedule({
   }, []);
 
   const lifts = ["squat", "bench", "deadlift", "ohp"] as const;
+  const waveMeta = first.version === "v3" ? V3_WAVE_META : LaidDupPlan.WAVE_META;
   const visibleWeeks = useMemo(
     () =>
       Array.from({ length: totalWeeks }, (_, week) => week).filter((week) => {
         if (waveFilter === "all") return true;
-        const deloadsBefore = (first.deloadWeeks ?? []).filter((w) => w < week).length;
-        const idx = LaidDupPlan.isDeloadWeek(first, week) ? Math.max(0, week - deloadsBefore - 1) : week - deloadsBefore;
-        return LaidDupPlan.position(idx).wave === waveFilter;
+        return LaidDupPlan.weekPosition(first, week).wave === waveFilter;
       }),
     [waveFilter, totalWeeks, first],
   );
@@ -90,7 +97,7 @@ export function LaidDupSchedule({
           <p className="laid-week">
             {position.beforeStart
               ? `Старт ${dateLabel(first.startMonday)} · неделя 1 из ${totalWeeks} · волна 1`
-              : LaidDupPlan.weekLabel(position, { isDeload: isCurrentDeload, totalWeeks })}
+              : LaidDupPlan.weekLabel(position, { isDeload: isCurrentDeload, totalWeeks, version: first.version })}
             {first.weekMode === "rolling" ? " · плавающая неделя" : ""}
           </p>
           <p className="laid-explain">{EXPLAIN.join(" ")}</p>
@@ -228,9 +235,9 @@ export function LaidDupSchedule({
               transition={{ duration: 0.18 }}
             >
               <b>
-                {LaidDupPlan.WAVE_META[waveFilter].range} · {LaidDupPlan.WAVE_META[waveFilter].title}
+                {waveMeta[waveFilter].range} · {waveMeta[waveFilter].title}
               </b>
-              <span>{LaidDupPlan.WAVE_META[waveFilter].subtitle}</span>
+              <span>{waveMeta[waveFilter].subtitle}</span>
             </m.div>
           ) : null}
         </AnimatePresence>
@@ -241,9 +248,7 @@ export function LaidDupSchedule({
           <AnimatePresence mode="popLayout" initial={false}>
             {visibleWeeks.map((week) => {
               const isWeekDeload = LaidDupPlan.isDeloadWeek(first, week);
-              const deloadsBefore = (first.deloadWeeks ?? []).filter((w) => w < week).length;
-              const effIdx = isWeekDeload ? Math.max(0, week - deloadsBefore - 1) : week - deloadsBefore;
-              const weekPos = { ...LaidDupPlan.position(effIdx), raw: week };
+              const weekPos = LaidDupPlan.weekPosition(first, week);
               const isCurrent =
                 !position.beforeStart && !position.finished
                   ? week === rawWeek
@@ -278,7 +283,11 @@ export function LaidDupSchedule({
                       {isWeekDeload ? `Неделя ${week + 1} · Разгрузка` : `Неделя ${week + 1} · волна ${wave}`}
                     </span>
                     <small className="laid-wave-tag">
-                      {isWeekDeload ? "55–65 % · RIR 3–4" : LaidDupPlan.WAVE_META[wave].title}
+                      {isWeekDeload
+                        ? first.version === "v3"
+                          ? "80–82,5 % ТМ · RIR 4"
+                          : "55–65 % · RIR 3–4"
+                        : waveMeta[wave].title}
                     </small>
                     {isCurrent && !position.beforeStart ? <span className="laid-now">сейчас</span> : null}
                   </h4>
@@ -295,6 +304,7 @@ export function LaidDupSchedule({
                         calibrationLifts: p.calibrationLifts,
                         painFlags: p.painFlags,
                         deloadWeeks: p.deloadWeeks,
+                        accountId,
                       });
                       const waveAux = isWeekDeload
                         ? null
@@ -316,7 +326,7 @@ export function LaidDupSchedule({
                               : "RIR 1–2";
                       const rowKey = `${week}:${r.id}`;
                       const isOpen = expandedKey === rowKey;
-                      const preview = isOpen ? LaidDupPlan.dayExercisesPreview(r, week, workouts, today) : [];
+                      const preview = isOpen ? LaidDupPlan.dayExercisesPreview(r, week, workouts, today, { accountId }) : [];
                       return (
                         <li key={r.id} className={isOpen ? "is-open" : undefined}>
                           <button
@@ -326,7 +336,7 @@ export function LaidDupSchedule({
                             onClick={() => setExpandedKey(isOpen ? null : rowKey)}
                           >
                             <span className="laid-sched-day-head">
-                              <b>{LaidDupPlan.SHORT[p.day]}</b>
+                              <b>{LaidDupPlan.dayShort(p.day, p.version)}</b>
                               <span className="laid-day-weekday">
                                 {r.days.length ? r.days.map((d) => DAY_NAMES[d]).join("·") : "—"}
                               </span>
@@ -412,12 +422,18 @@ export function LaidDupSchedule({
             </div>
 
             {cycle.map((r) => {
-              const day = r.periodization!.day;
-              const daySubs = r.periodization!.substitutions;
+              const p = r.periodization!;
+              const day = p.day;
+              const daySubs = p.substitutions;
+              const origMainId = LaidDupPlan.baseLiftExerciseId(LaidDupPlan.liftForDay(day, p.version), p.version);
+              const origMainName =
+                p.version === "v3"
+                  ? exerciseById(day === "legs2" ? "rdl" : origMainId)?.name ?? LaidDupPlan.ORIGINAL[day]
+                  : LaidDupPlan.ORIGINAL[day];
               return (
                 <div key={r.id} className="laid-comp-day">
                   <h4>
-                    {LaidDupPlan.SHORT[day]} <small>({LaidDupPlan.ORIGINAL[day]})</small>
+                    {LaidDupPlan.dayShort(day, p.version)} <small>({origMainName})</small>
                   </h4>
                   <ul>
                     {r.exercises.map((e) => {

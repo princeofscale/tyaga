@@ -62,6 +62,8 @@ export class KinematicMuscleSolver {
         next.actions.shoulder_horizontal_adduction = 0.45;
       } else if (next.geometry.benchAngleDeg <= 45 && (next.actions.shoulder_horizontal_adduction ?? 0) > 0) {
         next.actions.shoulder_horizontal_adduction = Math.max(next.actions.shoulder_horizontal_adduction ?? 0, 0.9);
+        delete next.actions.shoulder_flexion;
+        delete next.actions.shoulder_abduction;
       }
     }
 
@@ -77,17 +79,32 @@ export class KinematicMuscleSolver {
 
     const gripText = `${exec.grip ?? ""} ${exec.attachment ?? ""}`.toLowerCase();
     if (gripText.trim()) {
-      // Вращение предплечья
-      if (/(supinat|обратн|супин|underhand|reverse)/.test(gripText)) {
-        next.geometry.forearmRotation = "supinated";
-      } else if (/(neutral|нейтр|v-grip|v-рук|молот|hammer|parallel|параллел|канат|rope)/.test(gripText)) {
-        next.geometry.forearmRotation = "neutral";
-      } else if (/(pronat|прон|прям|overhand|wide|широк)/.test(gripText)) {
-        next.geometry.forearmRotation = "pronated";
+      const isIsoCurl =
+        (next.actions.elbow_flexion ?? 0) >= 0.8 &&
+        (next.actions.shoulder_extension_sagittal ?? 0) < 0.4 &&
+        (next.actions.shoulder_adduction_frontal ?? 0) < 0.4 &&
+        (next.actions.scapular_retraction ?? 0) < 0.4;
+      // Вращение предплечья (на сгибаниях на бицепс «обратный/reverse» = пронированный хват, а «широкий» не меняет супинацию)
+      if (isIsoCurl) {
+        if (/(pronat|прон|overhand|reverse|обратн)/.test(gripText)) {
+          next.geometry.forearmRotation = "pronated";
+        } else if (/(neutral|нейтр|v-grip|v-рук|молот|hammer|parallel|параллел|канат|rope)/.test(gripText)) {
+          next.geometry.forearmRotation = "neutral";
+        } else if (/(supinat|супин|underhand)/.test(gripText)) {
+          next.geometry.forearmRotation = "supinated";
+        }
+      } else {
+        if (/(supinat|обратн|супин|underhand|reverse)/.test(gripText)) {
+          next.geometry.forearmRotation = "supinated";
+        } else if (/(neutral|нейтр|v-grip|v-рук|молот|hammer|parallel|параллел|канат|rope)/.test(gripText)) {
+          next.geometry.forearmRotation = "neutral";
+        } else if (/(pronat|прон|прям|overhand|wide|широк)/.test(gripText)) {
+          next.geometry.forearmRotation = "pronated";
+        }
       }
 
       // Плоскость локтей в тягах
-      const degMatch = gripText.match(/(\d{2})\s*°/);
+      const degMatch = gripText.match(/(\d{1,3})\s*°/);
       if (degMatch) {
         next.geometry.shoulderPlaneDeg = clamp(Number(degMatch[1]), 0, 90);
       } else if (/(flared|развед|груд|chest|face|лиц|wide|широк)/.test(gripText)) {

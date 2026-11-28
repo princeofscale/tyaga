@@ -21,7 +21,8 @@ import {
   type CoachStateV2,
 } from "../domain/SmartCoach";
 import type { DeloadPlanRecord } from "../domain/DeloadPlan";
-import { fmt, type Routine, type Workout } from "../lib/model";
+import { fmt, localDate, type Routine, type Workout } from "../lib/model";
+import { useLiveClock, useStorageRevision } from "../lib/useNow";
 import "../styles/progress.css";
 
 const FILTERS: Array<{ id: "all" | CoachInsightCategory; label: string }> = [
@@ -41,6 +42,7 @@ const CATEGORY_LABEL: Record<CoachInsightCategory, string> = {
 
 const STATE_TONE: Record<CoachStateV2, string> = {
   PEAK_PROGRESSIVE: "is-peak",
+  NO_DATA: "is-nodata",
   MANAGE_FATIGUE: "is-manage",
   DELOAD_ACTIVE: "is-deload",
   OVERLOAD_WARNING: "is-overload",
@@ -83,6 +85,7 @@ export default function SmartCoachPanel({
   routines,
   today,
   timeZone,
+  now,
   accountId,
   deload,
 }: {
@@ -90,25 +93,30 @@ export default function SmartCoachPanel({
   routines: Routine[];
   today: string;
   timeZone?: string;
+  now?: Date;
   accountId?: string;
   deload?: DeloadPlanRecord | null;
 }) {
   const reduced = useReducedMotion();
   const [filter, setFilter] = useState<"all" | CoachInsightCategory>("all");
+  const liveNow = useLiveClock();
+  const effectiveNow = now ?? (localDate(liveNow, timeZone) === today ? liveNow : undefined);
+  const storeRev = useStorageRevision(["tyaga:biomechanics-profile-change", "tyaga:joint-pain-change"]);
 
-  const report = useMemo(
-    () => SmartCoach.analyze(workouts, routines, today, timeZone, undefined, accountId, deload),
-    [workouts, routines, today, timeZone, accountId, deload],
-  );
+  const report = useMemo(() => {
+    void storeRev;
+    return SmartCoach.analyze(workouts, routines, today, timeZone, effectiveNow, accountId, deload);
+  }, [workouts, routines, today, timeZone, effectiveNow, accountId, deload, storeRev]);
 
   const v2 = report.v2;
   const axialPct = Math.min(130, Math.round(v2.deload.axialUtilization * 100));
   const localPct = Math.min(130, Math.round(v2.deload.localUtilization * 100));
 
   const readinessSummary = useMemo(() => {
-    const readyCount = v2.readiness.filter((g) => g.readinessPct >= 75).length;
-    const recoveringCount = v2.readiness.length - readyCount;
-    return { readyCount, recoveringCount };
+    const tracked = v2.readiness.filter((g) => g.hasRecentLoad);
+    const readyCount = tracked.filter((g) => g.readinessPct >= 75).length;
+    const recoveringCount = tracked.length - readyCount;
+    return { trackedCount: tracked.length, readyCount, recoveringCount };
   }, [v2.readiness]);
 
   const insightCounts = useMemo(() => {
@@ -133,7 +141,7 @@ export default function SmartCoachPanel({
       {/* 1. Главный командный блок «Контроль усталости» */}
       <m.section
         className={`coach-v2-hero ${STATE_TONE[v2.state]}`}
-        aria-label="Сводка Умного Коуча v2"
+        aria-label="Контроль усталости"
         initial={reduced ? false : { opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
@@ -143,16 +151,21 @@ export default function SmartCoachPanel({
             <Brain size={14} aria-hidden="true" />
             {v2.stateLabel}
           </span>
-          <span className="coach-rir-badge">{report.nextSession.recommendedRir}</span>
+          {v2.state !== "NO_DATA" ? (
+            <span className="coach-rir-badge">{report.nextSession.recommendedRir}</span>
+          ) : null}
         </div>
         <h2 className="coach-v2-verdict">{v2.verdict}</h2>
+        <p className="tiny coach-v2-disclaimer">
+          Контроль усталости: расчёт по записанным тренировкам. Это не измерение восстановления.
+        </p>
 
-        {/* 2-компонентный EWMA-индикатор: Осевая/ЦНС (τ=4д) и Локальная (τ=10д) */}
-        <div className="coach-ewma-bars" aria-label="Утилизация усталости EWMA">
+        {/* 2-компонентный EWMA-индикатор: Осевая нагрузка (τ=4д) и Локальная нагрузка (τ=10д) */}
+        <div className="coach-ewma-bars" aria-label="Индекс записанной нагрузки EWMA">
           <div className="coach-ewma-row">
             <div className="coach-ewma-head">
               <span>
-                Осевая / ЦНС <small className="coach-ewma-tau">τ 4 дн.</small>
+                Осевая нагрузка <small className="coach-ewma-tau">τ 4 дн.</small>
               </span>
               <strong className={axialPct >= 100 ? "is-high" : axialPct >= 85 ? "is-warn" : ""}>
                 {axialPct}%
@@ -168,7 +181,7 @@ export default function SmartCoachPanel({
           <div className="coach-ewma-row">
             <div className="coach-ewma-head">
               <span>
-                Локальная усталость <small className="coach-ewma-tau">τ 10 дн.</small>
+                Локальная нагрузка <small className="coach-ewma-tau">τ 10 дн.</small>
               </span>
               <strong className={localPct >= 100 ? "is-high" : localPct >= 85 ? "is-warn" : ""}>
                 {localPct}%
@@ -248,41 +261,55 @@ export default function SmartCoachPanel({
         </div>
       )}
 
-      {/* 3. Готовность 12 мышечных групп — главный визуальный радар восстановления */}
+      {/* 3. Готовность 12 мышечных групп — модель недавней нагрузки за 10 дн. */}
       <section className="coach-readiness-card" aria-label="Готовность 12 мышечных групп">
         <div className="coach-readiness-head">
           <div className="coach-readiness-title-group">
             <h3>Готовность мышц</h3>
-            <small>Порог для тяжёлой работы ≥ 75%</small>
+            <small>По записям за 10 дн. · не измерение восстановления</small>
           </div>
           <div className="coach-readiness-counters">
-            <span className="coach-r-pill is-ready">Готовы {readinessSummary.readyCount}/12</span>
-            {readinessSummary.recoveringCount > 0 ? (
-              <span className="coach-r-pill is-rest">
-                Восст. {readinessSummary.recoveringCount}
-              </span>
-            ) : null}
+            {readinessSummary.trackedCount === 0 ? (
+              <span className="coach-r-pill is-nodata">Нет данных за 10 дн.</span>
+            ) : (
+              <>
+                <span className="coach-r-pill is-ready">
+                  ≥75 %: {readinessSummary.readyCount}/{readinessSummary.trackedCount}
+                </span>
+                {readinessSummary.recoveringCount > 0 ? (
+                  <span className="coach-r-pill is-rest">
+                    Недавняя нагр. {readinessSummary.recoveringCount}
+                  </span>
+                ) : null}
+              </>
+            )}
           </div>
         </div>
         <div className="coach-readiness-grid">
           {v2.readiness.map((g) => (
             <div
               key={g.id}
-              className={`coach-readiness-chip status-${g.status}`}
-              title={`${g.label}: ${g.readinessPct}% (${READINESS_STATUS_LABEL[g.status]}, T½ ${g.halfLifeHours} ч)`}
+              className={`coach-readiness-chip ${g.hasRecentLoad ? `status-${g.status}` : "status-nodata"}`}
+              title={
+                g.hasRecentLoad
+                  ? `${g.label}: ${g.readinessPct}% (${READINESS_STATUS_LABEL[g.status]}, T½ ${g.halfLifeHours} ч)`
+                  : `${g.label}: нет записей за 10 дн.`
+              }
             >
               <div className="coach-r-chip-top">
                 <span className="coach-readiness-name">{g.label}</span>
-                <strong className="coach-readiness-pct">{g.readinessPct}%</strong>
+                <strong className="coach-readiness-pct">
+                  {g.hasRecentLoad ? `${g.readinessPct}%` : "Нет данных"}
+                </strong>
               </div>
               <div className="coach-r-bar" aria-hidden="true">
                 <span
                   className="coach-r-bar-fill"
-                  style={{ width: `${Math.max(4, Math.min(100, g.readinessPct))}%` }}
+                  style={{ width: g.hasRecentLoad ? `${Math.max(4, Math.min(100, g.readinessPct))}%` : "0%" }}
                 />
               </div>
               <div className="coach-r-chip-foot">
-                <span>{READINESS_STATUS_LABEL[g.status]}</span>
+                <span>{g.hasRecentLoad ? READINESS_STATUS_LABEL[g.status] : "Без записей"}</span>
                 <span>T½ {g.halfLifeHours}ч</span>
               </div>
             </div>

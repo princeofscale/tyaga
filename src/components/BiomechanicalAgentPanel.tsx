@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { Camera, Check, Sparkles, ShieldAlert, SlidersHorizontal, Zap } from "lucide-react";
-import { ANATOMICAL_MUSCLES, type Muscle } from "../data/muscles";
+import { ANATOMICAL_MUSCLES } from "../data/muscles";
 import { JOINT_ZONES, JOINT_ZONE_LABELS, REGION_META, type HypertrophyRegionId } from "../domain/BiomechanicsCatalogV3";
-import { BiomechanicalMuscleAgent } from "../domain/BiomechanicalMuscleAgent";
+import { BiomechanicalMuscleAgent, type AgentExerciseMarking } from "../domain/BiomechanicalMuscleAgent";
 import { BiomechanicsProfileStore } from "../domain/BiomechanicsProfile";
 import { KinematicMuscleSolver } from "../domain/KinematicMuscleSolver";
 import type {
@@ -12,6 +12,7 @@ import type {
   ExecutionProfileV4,
 } from "../domain/KinematicTypesV4";
 import { fmt } from "../lib/model";
+import { useStorageRevision } from "../lib/useNow";
 
 const MUSCLE_NAME_BY_ID = new Map<string, string>(
   ANATOMICAL_MUSCLES.map((m) => [m.id, m.name]),
@@ -27,10 +28,10 @@ const QUICK_EXAMPLES = [
 ];
 
 type Props = {
+  accountId?: string;
   initialQuery?: string;
   compact?: boolean;
-  onApplyToExercise?: (payload: {
-    zones: Muscle[];
+  onApplyToExercise?: (payload: AgentExerciseMarking & {
     rationale: string;
     unilateral: boolean;
     equipment: "gym" | "dumbbells" | "bodyweight";
@@ -44,6 +45,7 @@ type Props = {
  * и мгновенный (<0.1 мс) оффлайн-пересчёт при смене техники ExecutionProfile.
  */
 export default function BiomechanicalAgentPanel({
+  accountId,
   initialQuery = "",
   compact = false,
   onApplyToExercise,
@@ -57,14 +59,19 @@ export default function BiomechanicalAgentPanel({
   const [execOverride, setExecOverride] = useState<ExecutionProfileV4>({});
 
   const agent = useMemo(() => new BiomechanicalMuscleAgent(), []);
-  const longLevers = useMemo(() => BiomechanicsProfileStore.read().longLevers, []);
+  const bioRev = useStorageRevision(["tyaga:biomechanics-profile-change"]);
+  const longLevers = useMemo(() => {
+    void bioRev;
+    return BiomechanicsProfileStore.read(undefined, accountId).longLevers;
+  }, [accountId, bioRev]);
 
   const runResolve = async (textOverride?: string) => {
     const q = (textOverride ?? query).trim();
-    if (!q) return;
+    if (busy || !q) return;
     if (textOverride !== undefined) setQuery(textOverride);
     setBusy(true);
     setApplied(false);
+    setResult(null);
     setExecOverride({});
     try {
       const res = await agent.resolve({
@@ -94,6 +101,7 @@ export default function BiomechanicalAgentPanel({
       ),
     };
     setResult(next);
+    setApplied(false);
     // Асинхронная фиксация персонализации (не блокирует UI)
     if (typeof fetch !== "undefined") {
       void fetch("/api/v4/biomechanics/clarify", {
@@ -112,6 +120,7 @@ export default function BiomechanicalAgentPanel({
     if (!result) return;
     const merged: ExecutionProfileV4 = { ...execOverride, ...patch };
     setExecOverride(merged);
+    setApplied(false);
     const nextDesc = KinematicMuscleSolver.applyExecutionProfile(result.descriptor, patch);
     const refined = agent.applyClarifyingChip(nextDesc, { id: "live-exec", label: "live" });
     setResult({
@@ -170,11 +179,9 @@ export default function BiomechanicalAgentPanel({
     (result.descriptor.actions.knee_extension ?? 0) >= 0.6 &&
     (result.descriptor.actions.hip_extension ?? 0) >= 0.35;
 
+  const marking = result ? BiomechanicalMuscleAgent.exerciseMarking(result) : null;
   const handleApply = () => {
-    if (!result || !onApplyToExercise) return;
-    const zones = Object.entries(result.solved.zones10)
-      .filter(([, w]) => w !== undefined && w >= 0.5)
-      .map(([z]) => z as Muscle);
+    if (!result || !marking || !onApplyToExercise) return;
     const impl = result.descriptor.profile.implement;
     const equipment: "gym" | "dumbbells" | "bodyweight" =
       impl === "dumbbell" ? "dumbbells" : impl === "bodyweight" ? "bodyweight" : "gym";
@@ -187,7 +194,7 @@ export default function BiomechanicalAgentPanel({
             ? "bodyweight"
             : "total_external";
     onApplyToExercise({
-      zones,
+      ...marking,
       rationale: result.rationale,
       unilateral: result.descriptor.profile.laterality === "unilateral",
       equipment,
@@ -204,7 +211,7 @@ export default function BiomechanicalAgentPanel({
           ИИ-агент биомеханики v4
         </span>
         <p className="bma-sub">
-          Опиши тренажёр, угол, хват или загрузи фото таблички — агент выведет кинематику и точно определит основные и вспомогательные мышцы.
+          Опиши движение, угол и хват или загрузи фото таблички. Агент предложит оценку ролей мышц по модели, а не измерение нагрузки.
         </p>
       </div>
 
@@ -264,6 +271,7 @@ export default function BiomechanicalAgentPanel({
                 key={ex}
                 type="button"
                 className="bma-example-chip"
+                disabled={busy}
                 onClick={() => void runResolve(ex)}
               >
                 {ex}
@@ -280,7 +288,7 @@ export default function BiomechanicalAgentPanel({
               <strong>{result.displayName}</strong>
               <p className="bma-rationale">{result.rationale}</p>
             </div>
-            <div className="bma-badges">
+            {result.verification.passed ? <div className="bma-badges">
               <span className="bma-meta-pill">
                 SFR {fmt(longLevers ? result.solved.sfrLongLevers : result.solved.sfrBase)}
               </span>
@@ -294,8 +302,15 @@ export default function BiomechanicalAgentPanel({
                     ? "Кэш D1"
                     : "Кинематика"}
               </span>
-            </div>
+            </div> : null}
           </div>
+          {!marking ? (
+            <p className="tiny" role="status">
+              {result.verification.passed
+                ? "Предварительная оценка — уточни движение, чтобы применить разметку."
+                : "Разметка не подтверждена моделью и недоступна для применения."}
+            </p>
+          ) : null}
 
           {/* 1-tap уточняющие вопросы (Active Clarification) */}
           {result.clarifyingQuestions.length > 0 ? (
@@ -321,7 +336,7 @@ export default function BiomechanicalAgentPanel({
           ) : null}
 
           {/* Живой пересчёт техники ExecutionProfile (<0.1 мс оффлайн) */}
-          {(isPress || isRow || isLegPressOrSquat) ? (
+          {result.verification.passed && (isPress || isRow || isLegPressOrSquat) ? (
             <div className="bma-live-exec">
               <span className="bma-live-label">
                 <SlidersHorizontal size={13} aria-hidden="true" />
@@ -386,7 +401,8 @@ export default function BiomechanicalAgentPanel({
             </div>
           ) : null}
 
-          {/* Точный разбор: Основные / Вспомогательные / Стабилизаторы */}
+          {result.verification.passed ? <>
+          <p className="tiny">1,0 и 0,5 — условные коэффициенты учёта ролей, а не доли силы, ЭМГ или роста мышц.</p>
           <div className="bma-muscles-grid">
             <div className="bma-muscle-group">
               <span className="bma-group-title is-primary">Основные (1,0×)</span>
@@ -442,7 +458,7 @@ export default function BiomechanicalAgentPanel({
               <div className="bma-risk-line">
                 <ShieldAlert size={13} aria-hidden="true" />
                 <span>
-                  Суставная нагрузка:{" "}
+                  Оценка суставной нагрузки:{" "}
                   {JOINT_ZONES.filter((z) => result.solved.jointRisk[z] >= 2)
                     .map((z) => `${JOINT_ZONE_LABELS[z]} (${result.solved.jointRisk[z]}/3)`)
                     .join(" · ")}
@@ -451,10 +467,13 @@ export default function BiomechanicalAgentPanel({
             ) : null}
           </div>
 
+          </> : null}
+
           {onApplyToExercise ? (
             <button
               type="button"
               className="button primary full-width bma-apply-btn"
+              disabled={!marking}
               onClick={handleApply}
             >
               <Check size={15} aria-hidden="true" />

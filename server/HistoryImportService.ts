@@ -169,6 +169,14 @@ export class HistoryImportService {
         ? `restore|${str(custom.familyId, 36, 1)}`
         : `${format}|${normalizeSearch(sourceName)}|${String(e.type)}`;
       const familyId = (await digest(this.owner + "|" + key)).slice(0, 24);
+      const basedOnExerciseId = custom?.basedOnExerciseId ?? "";
+      const muscleRoles =
+        !basedOnExerciseId && Array.isArray(raw?.muscles) && raw.muscles.length
+          ? raw.muscles.map((m) => {
+              const role = object(m);
+              return { muscleId: role.muscleId, role: role.role };
+            })
+          : undefined;
       const exercise = await new PersonalExerciseFactory().create({
         familyId,
         name,
@@ -180,8 +188,9 @@ export class HistoryImportService {
             : `Импорт из ${format}. Записанные значения источника сохранены.`,
         equipment: raw?.equipment ?? "gym",
         declaredZones: custom?.declaredZones ?? [],
-        basedOnExerciseId: custom?.basedOnExerciseId ?? "",
-        origin: format,
+        basedOnExerciseId,
+        ...(muscleRoles ? { muscleRoles } : {}),
+        origin: typeof custom?.origin === "string" && custom.origin.trim() ? custom.origin : format,
         recording: raw?.recording ?? {
           type: e.type ?? "reps",
           loadMode: "legacy_unspecified",
@@ -245,6 +254,11 @@ export class HistoryImportService {
             ...(e.bodyMassKg !== undefined
               ? { bodyMassKg: e.bodyMassKg as number }
               : {}),
+            ...(format === "tyaga" && e.repMin !== undefined ? { repMin: e.repMin as number } : {}),
+            ...(format === "tyaga" && e.repMax !== undefined ? { repMax: e.repMax as number } : {}),
+            ...(format === "tyaga" && e.progressionNote !== undefined
+              ? { progressionNote: e.progressionNote as string }
+              : {}),
           };
           return entry;
         },
@@ -280,6 +294,7 @@ export class HistoryImportService {
             ? { routineId: routineMap.get(String(source.routineId)) }
             : {}),
           ...(format === "tyaga" && source.programDate !== undefined ? { programDate: source.programDate } : {}),
+          ...(format === "tyaga" && source.createdAt !== undefined ? { createdAt: source.createdAt } : {}),
           ...(source.restSeconds ? { restSeconds: source.restSeconds } : {}),
         },
         { timeZone, importedExercises: definitions, machines: machineDefinitions },

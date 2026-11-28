@@ -28,6 +28,7 @@ type CardProps = {
   cycle: Routine[];
   workouts: Workout[];
   today: string;
+  accountId?: string;
   busy: boolean;
   onSchedule: () => void;
   onEditDays: () => void;
@@ -62,6 +63,7 @@ export function LaidDupCard({
   cycle,
   workouts,
   today,
+  accountId,
   busy,
   onSchedule,
   onEditDays,
@@ -87,8 +89,8 @@ export function LaidDupCard({
   const subCount = subs ? Object.keys(subs).length : 0;
   const suggestion = useMemo(() => LaidDupPlan.suggestion(first, workouts, today), [first, workouts, today]);
   const tmAutoreg = useMemo(
-    () => LaidDupPlan.tmAutoregSuggestions(first, workouts, today, { energyStatus }),
-    [first, workouts, today, energyStatus],
+    () => LaidDupPlan.tmAutoregSuggestions(first, workouts, today, { energyStatus, accountId }),
+    [first, workouts, today, energyStatus, accountId],
   );
   const calibrationReady = useMemo(
     () => LaidDupPlan.calibrationReady(first, workouts, today),
@@ -111,9 +113,9 @@ export function LaidDupCard({
   const expandedPreview = useMemo(
     () =>
       expandedRoutine
-        ? LaidDupPlan.dayExercisesPreview(expandedRoutine, statusWeek, workouts, today)
+        ? LaidDupPlan.dayExercisesPreview(expandedRoutine, statusWeek, workouts, today, { accountId })
         : [],
-    [expandedRoutine, statusWeek, workouts, today],
+    [expandedRoutine, statusWeek, workouts, today, accountId],
   );
 
   return (
@@ -267,7 +269,7 @@ export function LaidDupCard({
             <button
               key={lift}
               type="button"
-              className={`laid-mini-max${LaidDupPlan.isLiftSubstituted(lift, subs) ? " is-replaced" : ""}${liftMode !== "percent_1rm" ? " is-mode" : ""}`}
+              className={`laid-mini-max${LaidDupPlan.isLiftSubstituted(lift, subs, first.version) ? " is-replaced" : ""}${liftMode !== "percent_1rm" ? " is-mode" : ""}`}
               onClick={onUpdate}
               title="Нажми, чтобы обновить максимумы"
             >
@@ -297,6 +299,7 @@ export function LaidDupCard({
             calibrationLifts: p.calibrationLifts,
             painFlags: p.painFlags,
             deloadWeeks: p.deloadWeeks,
+            accountId,
           });
           const waveAux = dayPlan.isDeload
             ? null
@@ -513,7 +516,7 @@ export function LaidDupCard({
                 onApplyTmUpdates(tmAutoreg.map((u) => ({ lift: u.lift, toMax: u.toMax })))
               }
             >
-              Применить TM с недели {position.beforeStart ? 1 : position.week + 1}
+              Применить TM с недели {position.beforeStart ? 1 : Math.min(totalWeeks, position.week + 2)}
             </button>
           </m.div>
         ) : suggestion.length ? (
@@ -528,7 +531,7 @@ export function LaidDupCard({
           >
             <p>
               <b>Можно обновить максимум:</b>{" "}
-              {suggestion.map((s) => `${LaidDupPlan.liftLabel(s.lift, subs)} ${LaidDupPlan.kg(s.from)} → ${LaidDupPlan.kg(s.to)} кг`).join("; ")}.
+              {suggestion.map((s) => `${LaidDupPlan.liftLabel(s.lift, subs, first.version)} ${LaidDupPlan.kg(s.from)} → ${LaidDupPlan.kg(s.to)} кг`).join("; ")}.
             </p>
             <button type="button" className="button secondary" disabled={busy} onClick={onRecalc}>
               Пересчитать с недели {position.beforeStart ? 1 : position.week + 1}

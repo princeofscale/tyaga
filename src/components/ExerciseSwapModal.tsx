@@ -4,7 +4,6 @@ import type { Exercise, Workout } from "../lib/types";
 import { EXERCISES } from "../lib/catalog";
 import { ExerciseAlternativesFinder, type DetectedEquipment } from "../domain/ExerciseAlternatives";
 import { ExerciseLabels } from "../domain/ExerciseLabels";
-import { BiomechanicsEngine } from "../domain/BiomechanicsEngine";
 import { LaidDupPlan } from "../domain/LaidDupPlan";
 import {
   AVOID_REASON_LABELS,
@@ -69,10 +68,6 @@ export default function ExerciseSwapModal({
 }) {
   const [search, setSearch] = useState("");
   const [selectedEquip, setSelectedEquip] = useState<"all" | DetectedEquipment>("all");
-  const isCurrentAxial = useMemo(
-    () => BiomechanicsEngine.loadClass(currentExercise) === "axial_compound",
-    [currentExercise],
-  );
   const [injuryZone, setInjuryZone] = useState<InjuryZone | null>(null);
   const [scope, setScope] = useState<SwapScope>(defaultScope);
   const [avoidReason, setAvoidReason] = useState<AvoidReason>("pain");
@@ -296,7 +291,6 @@ export default function ExerciseSwapModal({
             ) : (
               <div className="swap-cards-grid">
                 {searchResults.map((e) => {
-                  const lowAxial = isCurrentAxial && BiomechanicsEngine.loadClass(e) !== "axial_compound";
                   const compat = showCompatibilityFor
                     ? SubstitutionPolicy.classify(showCompatibilityFor, e, { hasOwnHistory: historyLabels.has(e.id) })
                     : null;
@@ -316,7 +310,6 @@ export default function ExerciseSwapModal({
                         </div>
                         <span className="swap-card-sub">
                           {ExerciseLabels.muscles(e.primary)}
-                          {lowAxial ? " · без осевой" : ""}
                           {lastLabel ? ` · прошлый: ${lastLabel}` : ""}
                         </span>
                       </div>
@@ -340,7 +333,6 @@ export default function ExerciseSwapModal({
             ) : (
               <div className="swap-cards-grid">
                 {filteredSuggested.map((alt) => {
-                  const lowAxial = isCurrentAxial && BiomechanicsEngine.loadClass(alt.exercise) !== "axial_compound";
                   const compat = showCompatibilityFor
                     ? SubstitutionPolicy.classify(showCompatibilityFor, alt.exercise, {
                         hasOwnHistory: historyLabels.has(alt.exercise.id),
@@ -363,8 +355,7 @@ export default function ExerciseSwapModal({
                         <div className="swap-reason-pill">
                           <span className="reason-text">
                             {alt.reason}
-                            {lowAxial ? " · без осевой" : ""}
-                            {lastLabel ? ` · прошлый: ${lastLabel}` : ""}
+                              {lastLabel ? ` · прошлый: ${lastLabel}` : ""}
                           </span>
                         </div>
                       </div>

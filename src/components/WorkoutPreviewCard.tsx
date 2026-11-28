@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { Activity, ChevronDown, Flame, ShieldCheck, Sparkles, Zap } from "lucide-react";
 import { WorkoutPreview, type PreviewMuscleImpact } from "../domain/WorkoutPreview";
-import { fmt, type Muscle, type Workout } from "../lib/model";
+import { fmt, localDate, type Muscle, type Workout } from "../lib/model";
+import { useLiveClock, useStorageRevision } from "../lib/useNow";
 
 type BodyMap = ReturnType<typeof WorkoutPreview.analyze>["bodyMap"];
 
@@ -85,6 +86,8 @@ export default function WorkoutPreviewCard({
   history,
   today,
   timeZone,
+  now,
+  accountId,
   bodyMassKg,
   selectedMuscle = null,
   onSelectMuscle,
@@ -93,16 +96,25 @@ export default function WorkoutPreviewCard({
   history: Workout[];
   today: string;
   timeZone?: string;
+  now?: Date;
+  accountId?: string;
   bodyMassKg?: number | null;
   selectedMuscle?: Muscle | null;
   onSelectMuscle?: (muscle: Muscle | null) => void;
 }) {
   const [showAllMuscles, setShowAllMuscles] = useState(false);
+  const liveNow = useLiveClock();
+  const bioRev = useStorageRevision(["tyaga:biomechanics-profile-change"]);
+  const effectiveNow = now ?? (localDate(liveNow, timeZone) === today ? liveNow : undefined);
 
-  const analysis = useMemo(
-    () => WorkoutPreview.analyze(planned, history, today, timeZone, { bodyMassKg }),
-    [planned, history, today, timeZone, bodyMassKg],
-  );
+  const analysis = useMemo(() => {
+    void bioRev;
+    return WorkoutPreview.analyze(planned, history, today, timeZone, {
+      bodyMassKg,
+      now: effectiveNow,
+      accountId,
+    });
+  }, [planned, history, today, timeZone, bodyMassKg, effectiveNow, accountId, bioRev]);
 
   if (analysis.muscles.length === 0) return null;
 
@@ -136,12 +148,20 @@ export default function WorkoutPreviewCard({
               </span>
             )}
             <span
-              className={`wprev-chip${analysis.lowestTargetReadiness ? " is-caution" : " is-ready"}`}
+              className={`wprev-chip${
+                !analysis.hasTargetReadinessData
+                  ? ""
+                  : analysis.lowestTargetReadiness
+                    ? " is-caution"
+                    : " is-ready"
+              }`}
             >
               <ShieldCheck size={13} aria-hidden="true" />
-              {analysis.lowestTargetReadiness
-                ? `${analysis.lowestTargetReadiness.name} ${analysis.lowestTargetReadiness.pct}%`
-                : `Целевые свежие · ${analysis.avgTargetReadinessPct}%`}
+              {!analysis.hasTargetReadinessData
+                ? "Нет данных по готовности"
+                : analysis.lowestTargetReadiness
+                  ? `${analysis.lowestTargetReadiness.name} ${analysis.lowestTargetReadiness.pct}%`
+                  : `Индекс целевых · ${analysis.avgTargetReadinessPct}%`}
             </span>
           </div>
           <p className="wprev-sub">
@@ -186,7 +206,7 @@ export default function WorkoutPreviewCard({
                 <span className="wprev-muscle-name">
                   <b>{m.name}</b>
                   {m.role === "secondary" ? <small>помощь</small> : null}
-                  {m.readinessPct < 75 ? (
+                  {m.hasReadinessData && m.readinessPct < 75 ? (
                     <small className="is-tired">{m.readinessPct}%</small>
                   ) : null}
                 </span>

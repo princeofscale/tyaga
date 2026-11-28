@@ -28,6 +28,7 @@ import {
 } from "../domain/AdaptiveNutritionEngine";
 import { BiomechanicsProfileStore } from "../domain/BiomechanicsProfile";
 import { DateText } from "../domain/DateText";
+import { isCalendarDate } from "../lib/calendar";
 import { fmt } from "../lib/model";
 
 const GOAL_META: Array<{ id: GoalMode; label: string; short: string }> = [
@@ -88,7 +89,7 @@ export function AdaptiveNutritionPanel({
   const engine = useMemo(() => new AdaptiveNutritionEngine(), []);
 
   const [state, setState] = useState<NutritionState>(() =>
-    store.read(today, currentWeightKg ?? 80, BiomechanicsProfileStore.read().longLevers),
+    store.read(today, currentWeightKg ?? 80, BiomechanicsProfileStore.read(undefined, accountId).longLevers),
   );
   const [selectedDay, setSelectedDay] = useState<DupDayType>("legs");
   const [logDate, setLogDate] = useState(today);
@@ -99,14 +100,29 @@ export function AdaptiveNutritionPanel({
   const [caloriesTouched, setCaloriesTouched] = useState(false);
   const [formNotice, setFormNotice] = useState("");
   const [formError, setFormError] = useState("");
+  const [ageDraft, setAgeDraft] = useState(() => String(state.profile.ageYears));
+  const [heightDraft, setHeightDraft] = useState(() => String(state.profile.heightCm));
+  const [bfDraft, setBfDraft] = useState(() =>
+    state.profile.bodyFatPct !== null && state.profile.bodyFatPct !== undefined
+      ? String(state.profile.bodyFatPct)
+      : "",
+  );
 
   const idPrefix = useId();
   const caloriesRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    setState(store.read(today, currentWeightKg ?? 80, BiomechanicsProfileStore.read().longLevers));
+    const next = store.read(today, currentWeightKg ?? 80, BiomechanicsProfileStore.read(undefined, accountId).longLevers);
+    setState(next);
+    setAgeDraft(String(next.profile.ageYears));
+    setHeightDraft(String(next.profile.heightCm));
+    setBfDraft(
+      next.profile.bodyFatPct !== null && next.profile.bodyFatPct !== undefined
+        ? String(next.profile.bodyFatPct)
+        : "",
+    );
     setLogDate(today);
-  }, [store, today, currentWeightKg]);
+  }, [store, accountId, today, currentWeightKg]);
 
   const effectiveProfile = useMemo(
     () => ({
@@ -245,6 +261,11 @@ export function AdaptiveNutritionPanel({
       caloriesRef.current?.focus();
       return;
     }
+    if (!isCalendarDate(logDate) || logDate > today) {
+      setFormError("Проверь дату записи: она не может быть в будущем.");
+      setFormNotice("");
+      return;
+    }
     const kcal = Math.round(Number(caloriesInput.trim().replace(",", ".")));
     const proteinVal = proteinInput.trim()
       ? Math.round(Number(proteinInput.trim().replace(",", ".")))
@@ -368,7 +389,7 @@ export function AdaptiveNutritionPanel({
         </div>
 
         {/* Creatine water-offset indicator */}
-        {creatineOffsetKg >= 0.05 ? (
+        {latestTrendPt?.inCreatineWindow && creatineOffsetKg >= 0.05 ? (
           <div className="nut-banner is-info" role="status">
             <Sparkles size={15} aria-hidden="true" />
             <span>
@@ -712,14 +733,18 @@ export function AdaptiveNutritionPanel({
               <label htmlFor={`${idPrefix}-age`}>Возраст, лет</label>
               <input
                 id={`${idPrefix}-age`}
-                type="number"
-                min={14}
-                max={100}
-                value={state.profile.ageYears}
+                type="text"
+                inputMode="numeric"
+                value={ageDraft}
                 onChange={(e) => {
-                  const n = Number(e.target.value);
-                  if (Number.isFinite(n) && n >= 14 && n <= 100) updateProfile({ ageYears: n });
+                  const raw = e.target.value;
+                  setAgeDraft(raw);
+                  const n = Number(raw.trim());
+                  if (raw.trim() && Number.isFinite(n) && n >= 14 && n <= 100) {
+                    updateProfile({ ageYears: Math.round(n) });
+                  }
                 }}
+                onBlur={() => setAgeDraft(String(state.profile.ageYears))}
               />
             </div>
 
@@ -727,14 +752,18 @@ export function AdaptiveNutritionPanel({
               <label htmlFor={`${idPrefix}-height`}>Рост, см</label>
               <input
                 id={`${idPrefix}-height`}
-                type="number"
-                min={120}
-                max={240}
-                value={state.profile.heightCm}
+                type="text"
+                inputMode="decimal"
+                value={heightDraft}
                 onChange={(e) => {
-                  const n = Number(e.target.value);
-                  if (Number.isFinite(n) && n >= 120 && n <= 240) updateProfile({ heightCm: n });
+                  const raw = e.target.value;
+                  setHeightDraft(raw);
+                  const n = Number(raw.trim().replace(",", "."));
+                  if (raw.trim() && Number.isFinite(n) && n >= 120 && n <= 240) {
+                    updateProfile({ heightCm: Math.round(n * 10) / 10 });
+                  }
                 }}
+                onBlur={() => setHeightDraft(String(state.profile.heightCm))}
               />
             </div>
 
@@ -745,16 +774,27 @@ export function AdaptiveNutritionPanel({
                 type="text"
                 inputMode="decimal"
                 placeholder={`~${fmt(cycle.tdee.prior.estimatedBfPct)}`}
-                value={state.profile.bodyFatPct ?? ""}
+                value={bfDraft}
                 onChange={(e) => {
-                  const raw = e.target.value.trim().replace(",", ".");
-                  if (!raw) {
+                  const raw = e.target.value;
+                  setBfDraft(raw);
+                  const cleaned = raw.trim().replace(",", ".");
+                  if (!cleaned) {
                     updateProfile({ bodyFatPct: null });
                     return;
                   }
-                  const n = Number(raw);
-                  if (Number.isFinite(n) && n >= 4 && n <= 55) updateProfile({ bodyFatPct: n });
+                  const n = Number(cleaned);
+                  if (Number.isFinite(n) && n >= 4 && n <= 55) {
+                    updateProfile({ bodyFatPct: Math.round(n * 10) / 10 });
+                  }
                 }}
+                onBlur={() =>
+                  setBfDraft(
+                    state.profile.bodyFatPct !== null && state.profile.bodyFatPct !== undefined
+                      ? String(state.profile.bodyFatPct)
+                      : "",
+                  )
+                }
               />
             </div>
 

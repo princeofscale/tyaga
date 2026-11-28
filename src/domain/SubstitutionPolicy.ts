@@ -1,3 +1,4 @@
+import { localDate } from "../lib/calendar";
 import type { Exercise } from "../lib/types";
 import { BiomechanicsEngine } from "./BiomechanicsEngine";
 
@@ -232,13 +233,16 @@ export class SubstitutionPolicy {
     const name = exercise.name.toLowerCase();
     const muscles = new Set(exercise.muscles.filter((m) => m.role === "primary").map((m) => m.muscleId));
 
-    // Икроножная на прямых коленях (standing calf) — сильная доказательность (Kassiano 2023)
-    if (muscles.has("gastrocnemius") && (id.includes("standing") || id.includes("donkey") || id.includes("legpress-calf"))) {
+    // Standing versus seated was studied directly; transfer to leg-press is indirect.
+    if (muscles.has("gastrocnemius") && (id.startsWith("calf-standing") || id === "calf-legpress")) {
+      const legPress = id === "calf-legpress";
       return {
-        level: "strong",
-        label: "Сильная база по растяжению",
-        detail: "Прямое колено растягивает икроножную; работа в полной амплитуде с паузой внизу превосходит вариант сидя для gastrocnemius.",
-        citation: "Kassiano et al., 2023",
+        level: legPress ? "moderate" : "strong",
+        label: legPress ? "Косвенные данные по растяжению" : "Сильная база по растяжению",
+        detail: legPress
+          ? "Почти прямое колено напоминает вариант стоя, но подъём на носки в жиме ногами в этом сравнении не изучался."
+          : "В небольшом исследовании с внешней нагрузкой стоячий вариант дал больший рост икроножной, чем сидячий. Это не сравнение пауз или конкретных тренажёров.",
+        citation: "Kinoshita et al., 2023",
       };
     }
     // Сгибание ног сидя — сильная доказательность (Maeo 2021)
@@ -266,8 +270,8 @@ export class SubstitutionPolicy {
     if (
       exercise.familyId === "squat" ||
       exercise.familyId === "hip-hinge" ||
-      id.includes("incline-db") ||
-      id.includes("fly")
+      (exercise.familyId === "bench-press" && id === "incline-db") ||
+      exercise.familyId === "chest-fly"
     ) {
       return {
         level: "moderate",
@@ -344,12 +348,12 @@ export class ExerciseAvoidStore {
     else s.setItem(key, JSON.stringify(items.slice(-60)));
   }
 
-  add(exerciseId: string, reason: AvoidReason, note?: string): AvoidedExercise[] {
+  add(exerciseId: string, reason: AvoidReason, note?: string, timeZone?: string): AvoidedExercise[] {
     const next = this.read().filter((x) => x.exerciseId !== exerciseId);
     next.push({
       exerciseId,
       reason,
-      addedAt: new Date().toISOString().slice(0, 10),
+      addedAt: localDate(new Date(), timeZone),
       ...(note?.trim() ? { note: note.trim().slice(0, 140) } : {}),
     });
     this.write(next);

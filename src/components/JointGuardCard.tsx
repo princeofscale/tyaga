@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ChevronDown, ShieldCheck, ShieldAlert } from "lucide-react";
 import {
   JOINT_ZONES,
@@ -21,6 +21,7 @@ const SEVERITY_OPTIONS: ReadonlyArray<{ val: PainSeverity; short: string; title:
 ];
 
 type Props = {
+  accountId?: string;
   onLogsChange?: (logs: JointPainLog[]) => void;
 };
 
@@ -28,23 +29,18 @@ type Props = {
  * Компактный чек-ин суставов и сухожилий (JointGuardEngine v3) на экране «Сегодня».
  * В спокойном состоянии свёрнут в 1 строку; при отметке боли сразу активирует автозамены и S5_pain.
  */
-export default function JointGuardCard({ onLogsChange }: Props) {
-  const [logs, setLogs] = useState<JointPainLog[]>(() => JointPainStore.read());
+export default function JointGuardCard({ accountId, onLogsChange }: Props) {
+  const [logs, setLogs] = useState<JointPainLog[]>(() => JointPainStore.read(undefined, Date.now(), accountId));
+  useEffect(() => {
+    setLogs(JointPainStore.read(undefined, Date.now(), accountId));
+  }, [accountId]);
   const nowMs = Date.now();
   const active = useMemo(() => JointGuardEngine.activeZoneSeverities(logs, nowMs), [logs, nowMs]);
   const activeCount = JOINT_ZONES.filter((z) => active[z] > 0).length;
   const maxSev = Math.max(0, ...JOINT_ZONES.map((z) => active[z])) as PainSeverity;
   const [expanded, setExpanded] = useState(() => activeCount > 0);
 
-  const hasRedFlag = useMemo(
-    () =>
-      logs.some(
-        (l) =>
-          nowMs - l.timestamp <= 14 * 86_400_000 &&
-          (l.isAcuteNightOrRadiating || l.severity === 3),
-      ),
-    [logs, nowMs],
-  );
+  const hasRedFlag = maxSev >= 3;
 
   const warmupHints = useMemo(() => {
     const out: Array<(typeof OPTIONAL_WARMUP_PROTOCOLS)[keyof typeof OPTIONAL_WARMUP_PROTOCOLS]> = [];
@@ -56,7 +52,7 @@ export default function JointGuardCard({ onLogsChange }: Props) {
   }, [active]);
 
   const setZone = (zone: JointZone, severity: PainSeverity, redFlag = false) => {
-    const next = JointPainStore.setZoneStatus(zone, severity, redFlag, Date.now());
+    const next = JointPainStore.setZoneStatus(zone, severity, redFlag, Date.now(), undefined, accountId);
     setLogs(next);
     onLogsChange?.(next);
   };

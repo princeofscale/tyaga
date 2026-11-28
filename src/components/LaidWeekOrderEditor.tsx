@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { ArrowDown, ArrowUp, GripVertical, Moon, RotateCcw } from "lucide-react";
-import { LaidDupPlan, type LaidDay, type LaidWeekSlot } from "../domain/LaidDupPlan";
+import { LaidDupPlan, type LaidDay, type LaidVersion, type LaidWeekSlot } from "../domain/LaidDupPlan";
 import { DAY_NAMES } from "../domain/TrainingProgram";
 import type { Routine } from "../lib/types";
 
@@ -13,6 +13,7 @@ type Props = {
   showPresets?: boolean;
   initialSlots?: LaidWeekSlot[];
   otherRoutines?: readonly Routine[];
+  version?: LaidVersion;
   disabled?: boolean;
 };
 
@@ -31,8 +32,17 @@ type DragState = {
   itemHeight: number;
 };
 
-const slotKey = (slot: LaidWeekSlot) => slot ?? "rest";
-const slotName = (slot: LaidWeekSlot) => (slot ? LaidDupPlan.SHORT[slot] : "День отдыха");
+const slotKeyAt = (slots: readonly LaidWeekSlot[], index: number) => {
+  const slot = slots[index];
+  if (slot !== null) return slot;
+  let restIdx = 0;
+  for (let i = 0; i < index; i++) {
+    if (slots[i] === null) restIdx++;
+  }
+  return `rest-${restIdx}`;
+};
+const slotName = (slot: LaidWeekSlot, version?: LaidVersion) =>
+  slot ? LaidDupPlan.dayShort(slot, version) : "День отдыха";
 
 function prefersReducedMotion(): boolean {
   return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -61,6 +71,7 @@ export default function LaidWeekOrderEditor({
   showPresets = true,
   initialSlots,
   otherRoutines,
+  version,
   disabled = false,
 }: Props) {
   const listId = useId();
@@ -77,7 +88,13 @@ export default function LaidWeekOrderEditor({
   const announceTimerRef = useRef<number | undefined>(undefined);
   const [announcement, setAnnouncement] = useState("");
 
+  const trainingDaysCount = useMemo(() => slots.filter((s) => s !== null).length, [slots]);
   const activePreset = useMemo(() => LaidDupPlan.matchingRhythm(slots), [slots]);
+  const isV3Default = useMemo(() => {
+    if (trainingDaysCount !== 5) return false;
+    const def = LaidDupPlan.slotsForV3();
+    return def.every((s, i) => s === slots[i]);
+  }, [slots, trainingDaysCount]);
   const recoveryNotes = useMemo(() => LaidDupPlan.backToBackNotice(slots, DAY_NAMES), [slots]);
   const overlapNotes = useMemo(() => {
     if (!otherRoutines?.length) return [] as string[];
@@ -85,10 +102,10 @@ export default function LaidWeekOrderEditor({
     slots.forEach((slot, weekday) => {
       if (!slot) return;
       const names = otherRoutines.filter((r) => r.days.includes(weekday)).map((r) => `«${r.name}»`);
-      if (names.length) out.push(`${DAY_NAMES[weekday]} (${LaidDupPlan.SHORT[slot]}) совпадает с ${names.join(", ")}.`);
+      if (names.length) out.push(`${DAY_NAMES[weekday]} (${LaidDupPlan.dayShort(slot, version)}) совпадает с ${names.join(", ")}.`);
     });
     return out;
-  }, [otherRoutines, slots]);
+  }, [otherRoutines, slots, version]);
   const isDirty = useMemo(
     () => !!initialSlots && initialSlots.some((s, i) => s !== slots[i]),
     [initialSlots, slots],
@@ -238,14 +255,15 @@ export default function LaidWeekOrderEditor({
 
       const currentSlots = slotsRef.current;
       const movedSlot = currentSlots[state.fromIndex];
-      const key = slotKey(movedSlot);
+      const key = slotKeyAt(currentSlots, state.fromIndex);
 
       if (commit && state.dropIndex !== state.fromIndex) {
         const next = LaidDupPlan.moveSlot(currentSlots, state.fromIndex, state.dropIndex);
+        const nextKey = slotKeyAt(next, state.dropIndex);
         applyOrderWithFlip(next, key, releasedRect);
-        const movedEl = itemRefs.current.get(key);
+        const movedEl = itemRefs.current.get(nextKey);
         movedEl?.scrollIntoView({ block: "nearest", inline: "nearest" });
-        announce(`${slotName(movedSlot)} — теперь ${DAY_NAMES[state.dropIndex]}`);
+        announce(`${slotName(movedSlot, version)} — теперь ${DAY_NAMES[state.dropIndex]}`);
       } else if (!prefersReducedMotion()) {
         // Плавный возврат на место при отмене или drop без сдвига.
         const finalRect = state.itemEl.getBoundingClientRect();
@@ -261,7 +279,7 @@ export default function LaidWeekOrderEditor({
         announce("Перемещение отменено");
       }
     },
-    [announce, applyOrderWithFlip, clearDropMarker],
+    [announce, applyOrderWithFlip, clearDropMarker, version],
   );
 
   // Глобальные слушатели pointer / Escape на время перетаскивания (не дают закрыть <dialog> по Esc).
@@ -325,7 +343,7 @@ export default function LaidWeekOrderEditor({
   const startPointerDrag = (e: React.PointerEvent<HTMLButtonElement>, index: number) => {
     if (disabled || dragRef.current) return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
-    const key = slotKey(slots[index]);
+    const key = slotKeyAt(slots, index);
     const itemEl = itemRefs.current.get(key);
     const handleEl = e.currentTarget;
     if (!itemEl) return;
@@ -399,13 +417,13 @@ export default function LaidWeekOrderEditor({
     const target = index + delta;
     if (target < 0 || target >= slots.length) return;
     const moved = slots[index];
-    const key = slotKey(moved);
     const next = LaidDupPlan.moveSlot(slots, index, target);
+    const nextKey = slotKeyAt(next, target);
 
     movingFocusRef.current = true;
     applyOrderWithFlip(next);
 
-    const movedEl = itemRefs.current.get(key);
+    const movedEl = itemRefs.current.get(nextKey);
     movedEl?.scrollIntoView({ block: "nearest", inline: "nearest" });
 
     if (movedEl) {
@@ -421,12 +439,12 @@ export default function LaidWeekOrderEditor({
       }
     }
     movingFocusRef.current = false;
-    announce(`${slotName(moved)} — теперь ${DAY_NAMES[target]}`, 240);
+    announce(`${slotName(moved, version)} — теперь ${DAY_NAMES[target]}`, 240);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
     if (disabled) return;
-    const key = slotKey(slots[index]);
+    const key = slotKeyAt(slots, index);
     const isGrabbed = grabbedKey === key;
 
     if (e.key === " " || e.key === "Enter") {
@@ -434,20 +452,24 @@ export default function LaidWeekOrderEditor({
       if (isGrabbed) {
         setGrabbedKey(null);
         preGrabSlotsRef.current = null;
-        announce(`${slotName(slots[index])} закреплён на ${DAY_NAMES[index]}`);
+        announce(`${slotName(slots[index], version)} закреплён на ${DAY_NAMES[index]}`);
       } else {
         preGrabSlotsRef.current = [...slots];
         setGrabbedKey(key);
-        announce(`${slotName(slots[index])} выбран (${DAY_NAMES[index]}). Стрелки вверх и вниз — перенести, Пробел — поставить, Escape — отмена.`);
+        announce(`${slotName(slots[index], version)} выбран (${DAY_NAMES[index]}). Стрелки вверх и вниз — перенести, Пробел — поставить, Escape — отмена.`);
       }
       return;
     }
     if (!isGrabbed) return;
     if (e.key === "ArrowUp") {
       e.preventDefault();
+      const target = index - 1;
+      if (target >= 0) setGrabbedKey(slotKeyAt(LaidDupPlan.moveSlot(slots, index, target), target));
       stepSlot(index, -1, "handle");
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
+      const target = index + 1;
+      if (target < slots.length) setGrabbedKey(slotKeyAt(LaidDupPlan.moveSlot(slots, index, target), target));
       stepSlot(index, 1, "handle");
     }
   };
@@ -456,24 +478,38 @@ export default function LaidWeekOrderEditor({
     <div className="laid-week-editor">
       {showPresets ? (
         <div className="laid-week-presets" role="group" aria-label="Готовые раскладки">
-          <button
-            type="button"
-            disabled={disabled}
-            aria-pressed={activePreset === "6x1"}
-            className={`laid-preset-btn${activePreset === "6x1" ? " active" : ""}`}
-            onClick={() => applyPreset(LaidDupPlan.slotsForRhythm("6x1"), "Выбрана классика: Пн–Сб, выходной Вс")}
-          >
-            Пн–Сб · отдых Вс
-          </button>
-          <button
-            type="button"
-            disabled={disabled}
-            aria-pressed={activePreset === "3x1x3"}
-            className={`laid-preset-btn${activePreset === "3x1x3" ? " active" : ""}`}
-            onClick={() => applyPreset(LaidDupPlan.slotsForRhythm("3x1x3"), "Выбран ритм 3 + 1 + 3: отдых Чт")}
-          >
-            3 + 1 + 3 · отдых Чт
-          </button>
+          {trainingDaysCount === 6 ? (
+            <>
+              <button
+                type="button"
+                disabled={disabled}
+                aria-pressed={activePreset === "6x1"}
+                className={`laid-preset-btn${activePreset === "6x1" ? " active" : ""}`}
+                onClick={() => applyPreset(LaidDupPlan.slotsForRhythm("6x1"), "Выбрана классика: Пн–Сб, выходной Вс")}
+              >
+                Пн–Сб · отдых Вс
+              </button>
+              <button
+                type="button"
+                disabled={disabled}
+                aria-pressed={activePreset === "3x1x3"}
+                className={`laid-preset-btn${activePreset === "3x1x3" ? " active" : ""}`}
+                onClick={() => applyPreset(LaidDupPlan.slotsForRhythm("3x1x3"), "Выбран ритм 3 + 1 + 3: отдых Чт")}
+              >
+                3 + 1 + 3 · отдых Чт
+              </button>
+            </>
+          ) : trainingDaysCount === 5 ? (
+            <button
+              type="button"
+              disabled={disabled}
+              aria-pressed={isV3Default}
+              className={`laid-preset-btn${isV3Default ? " active" : ""}`}
+              onClick={() => applyPreset(LaidDupPlan.slotsForV3(), "Выбран стандарт DUP v3: Пн–Ср и Пт–Сб, отдых Чт и Вс")}
+            >
+              5 дн. DUP v3 · отдых Чт и Вс
+            </button>
+          ) : null}
           {isDirty && initialSlots ? (
             <button
               type="button"
@@ -501,11 +537,11 @@ export default function LaidWeekOrderEditor({
         }}
       >
         {slots.map((slot, index) => {
-          const key = slotKey(slot);
+          const key = slotKeyAt(slots, index);
           const isRest = slot === null;
           const isDragging = draggingKey === key;
           const isGrabbed = grabbedKey === key;
-          const title = slotName(slot);
+          const title = slotName(slot, version);
           const subtitle = slot
             ? [counts?.[slot], summaries?.[slot]].filter(Boolean).join(" · ") || LaidDupPlan.ORIGINAL[slot]
             : "Восстановление без тренировки";
@@ -519,7 +555,7 @@ export default function LaidWeekOrderEditor({
               className={`laid-week-slot${isRest ? " is-rest" : ""}${isDragging ? " is-dragging" : ""}${isGrabbed ? " is-grabbed" : ""}`}
               style={{ ["--laid-vt-name" as string]: `laid-slot-${key}` }}
               data-weekday={index}
-              data-slot={key}
+              data-slot={slot ?? "rest"}
             >
               <button
                 type="button"

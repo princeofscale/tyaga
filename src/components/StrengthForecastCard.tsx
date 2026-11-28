@@ -9,6 +9,7 @@ import { BiomechanicsProfileStore } from "../domain/BiomechanicsProfile";
 import type { BigLiftId } from "../domain/StrengthTotal";
 import { DateText } from "../domain/DateText";
 import { fmt, type Workout } from "../lib/model";
+import { useStorageRevision } from "../lib/useNow";
 
 const SEX_STORAGE_KEY = "tyaga-dots-sex-v1";
 const TARGETS_STORAGE_KEY = "tyaga-lift-targets-v1";
@@ -146,6 +147,7 @@ function ForecastMiniChart({ lift }: { lift: LiftForecast }) {
 }
 
 type Props = {
+  accountId?: string;
   workouts: Workout[];
   timeZone?: string;
   bodyMassKg?: number | null;
@@ -157,6 +159,7 @@ type Props = {
  * и интерактивный прогноз дат достижения целевых рекордов по базовым движениям.
  */
 export default function StrengthForecastCard({
+  accountId,
   workouts,
   timeZone,
   bodyMassKg,
@@ -166,7 +169,11 @@ export default function StrengthForecastCard({
   const [targets, setTargets] = useState<Partial<Record<BigLiftId, number>>>(readSavedTargets);
   const [selectedLift, setSelectedLift] = useState<BigLiftId>("bench");
 
-  const profile = useMemo(() => BiomechanicsProfileStore.read(), []);
+  const bioRev = useStorageRevision(["tyaga:biomechanics-profile-change"]);
+  const profile = useMemo(() => {
+    void bioRev;
+    return BiomechanicsProfileStore.read(undefined, accountId);
+  }, [accountId, bioRev]);
 
   const report = useMemo(
     () =>

@@ -60,7 +60,7 @@ const LIFT_META: Record<BigLiftId, { label: string; short: string; match: (id: s
   ohp: {
     label: "Армейский жим",
     short: "Жим стоя",
-    match: (id, name) => id === "ohp-bar" || id === "ohp" || /жим штанги стоя/i.test(name),
+    match: (id, name) => id === "ohp-bar" || /жим штанги стоя/i.test(name),
   },
 };
 

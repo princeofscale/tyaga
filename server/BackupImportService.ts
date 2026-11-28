@@ -50,6 +50,14 @@ export class BackupImportService {
         const familyId = (
           await digest(this.owner + "|restore|" + str(custom.familyId, 36, 1))
         ).slice(0, 24);
+        const basedOnExerciseId = custom.basedOnExerciseId ?? "";
+        const muscleRoles =
+          !basedOnExerciseId && Array.isArray(raw.muscles) && raw.muscles.length
+            ? raw.muscles.map((m) => {
+                const role = object(m);
+                return { muscleId: role.muscleId, role: role.role };
+              })
+            : undefined;
         const e = await new PersonalExerciseFactory().create({
           familyId,
           name: raw.name,
@@ -58,8 +66,9 @@ export class BackupImportService {
           notes: raw.tip ?? "",
           equipment: raw.equipment,
           declaredZones: custom.declaredZones ?? [],
-          basedOnExerciseId: custom.basedOnExerciseId ?? "",
-          origin: "tyaga",
+          basedOnExerciseId,
+          ...(muscleRoles ? { muscleRoles } : {}),
+          origin: typeof custom.origin === "string" && custom.origin.trim() ? custom.origin : "tyaga",
           recording: raw.recording,
         });
         // Restore without replacing a newer personal variant.

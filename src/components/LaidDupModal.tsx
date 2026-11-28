@@ -134,8 +134,8 @@ export default function LaidDupModal(props: Props) {
   const subCount = activeSubs ? Object.keys(activeSubs).length : 0;
 
   const estimates = useMemo(
-    () => LaidDupPlan.estimates(props.workouts, today, activeSubs),
-    [props.workouts, today, activeSubs],
+    () => LaidDupPlan.estimates(props.workouts, today, activeSubs, version),
+    [props.workouts, today, activeSubs, version],
   );
   const estimateCount = useMemo(
     () => LIFTS.filter((l) => estimates[l] !== null).length,
@@ -198,14 +198,16 @@ export default function LaidDupModal(props: Props) {
 
   const taken = useMemo(() => {
     if (mode !== "create" || replaceExisting) return [] as string[];
-    return [...LaidDupPlan.DAYS]
-      .sort((a, b) => weekdays[a] - weekdays[b])
+    const activeDays = isV3 ? [...LaidDupPlan.V3_DAYS] : [...LaidDupPlan.DAYS];
+    const activeWeekdays = isV3 ? LaidDupPlan.V3_WEEKDAYS : weekdays;
+    return activeDays
+      .sort((a, b) => activeWeekdays[a] - activeWeekdays[b])
       .flatMap((day) => {
-        const weekday = weekdays[day];
+        const weekday = activeWeekdays[day];
         const names = props.routines.filter((r) => r.days.includes(weekday)).map((r) => `«${r.name}»`);
         return names.length ? [`${DAY_NAMES[weekday]} уже занят программой ${names.join(", ")}: обе будут в плане недели.`] : [];
       });
-  }, [mode, props.routines, weekdays, replaceExisting]);
+  }, [mode, props.routines, weekdays, replaceExisting, isV3]);
 
   function applySubstitution(originalId: string, nextId: string | null) {
     setSubstitutions((prev) => {
@@ -217,7 +219,7 @@ export default function LaidDupModal(props: Props) {
       }
       return next;
     });
-    const lift = LIFTS.find((l) => LaidDupPlan.LIFT_EXERCISE[l] === originalId);
+    const lift = LIFTS.find((l) => LaidDupPlan.baseLiftExerciseId(l, version) === originalId);
     if (lift) {
       if (!nextId || nextId === originalId) {
         setCalibrationLifts((prev) => prev.filter((l) => l !== lift));
@@ -326,7 +328,9 @@ export default function LaidDupModal(props: Props) {
             ...(nextPain ? { painFlags: nextPain } : {}),
           };
           if (mode === "restart") {
-            if (midDeload) next.deloadWeeks = [6];
+            if (cycleIsV3) next.deloadWeeks = [LaidDupPlan.V3_DELOAD_WEEK];
+            else if (cycleIsV2) next.deloadWeeks = [LaidDupPlan.V2_DELOAD_WEEK];
+            else if (midDeload) next.deloadWeeks = [6];
             else delete next.deloadWeeks;
           }
           if (rollingWeek) next.weekMode = "rolling";
@@ -348,9 +352,10 @@ export default function LaidDupModal(props: Props) {
       }
       props.onClose();
     } catch (e) {
+      const expectedCount = mode === "create" ? (isV3 ? 5 : 6) : (cycle?.length ?? 6);
       setError(
         (e instanceof Error ? e.message : "Не удалось сохранить") +
-          (saved ? ` Уже сохранено программ: ${saved} из 6 — проверь список и повтори.` : ""),
+          (saved ? ` Уже сохранено программ: ${saved} из ${expectedCount} — проверь список и повтори.` : ""),
       );
     } finally {
       setBusy(false);
@@ -407,7 +412,7 @@ export default function LaidDupModal(props: Props) {
   const swapCurrentEx = swapSlot ? exerciseById(swapSlot.resolvedId) ?? exerciseById(swapSlot.originalId) : null;
   const swapOriginalEx = swapSlot ? exerciseById(swapSlot.originalId) : undefined;
   const swapExcludeIds = swapSlot
-    ? LaidDupPlan.conflictingIdsForSubstitution(swapSlot.originalId, extras, activeSubs)
+    ? LaidDupPlan.conflictingIdsForSubstitution(swapSlot.originalId, isV3 || isV2 ? true : extras, activeSubs, version)
     : [];
 
   return (
@@ -634,8 +639,8 @@ export default function LaidDupModal(props: Props) {
                   const targetEst = estimate !== null ? suggestedEstimate(estimate) : null;
                   const message = shown && c.error ? c.error : "";
                   const isApplied = appliedLift === lift && targetEst !== null && values[lift] === LaidDupPlan.kg(targetEst);
-                  const origId = LaidDupPlan.LIFT_EXERCISE[lift];
-                  const resolvedId = LaidDupPlan.liftExerciseId(lift, activeSubs);
+                  const origId = LaidDupPlan.baseLiftExerciseId(lift, version);
+                  const resolvedId = LaidDupPlan.liftExerciseId(lift, activeSubs, version);
                   const isReplaced = resolvedId !== origId;
                   const resolvedDef = exerciseById(resolvedId);
                   const origDef = exerciseById(origId);
@@ -768,7 +773,7 @@ export default function LaidDupModal(props: Props) {
                               {isApplied ? <Check size={13} aria-hidden="true" /> : <Sparkles size={13} aria-hidden="true" />}
                               <span>
                                 {useTrainingMax
-                                  ? `ТМ 92,5 % ≈ ${LaidDupPlan.kg(targetEst)} кг (1ПМ ${LaidDupPlan.kg(estimate)})`
+                                  ? `ТМ ${tmPctLabel} ≈ ${LaidDupPlan.kg(targetEst)} кг (1ПМ ${LaidDupPlan.kg(estimate)})`
                                   : `по истории ≈ ${LaidDupPlan.kg(estimate)} кг (Эпли)`}
                               </span>
                             </m.button>
@@ -1316,6 +1321,7 @@ export default function LaidDupModal(props: Props) {
                             substitutions: mode === "create" ? activeSubs : base?.substitutions,
                             calibrationLifts: mode === "create" ? calibrationLifts : base?.calibrationLifts,
                             painFlags: mode === "create" ? painFlags : base?.painFlags,
+                            accountId: props.accountId,
                           });
                           const weekday = previewWeekdays[day];
                           const replacedLiftName =

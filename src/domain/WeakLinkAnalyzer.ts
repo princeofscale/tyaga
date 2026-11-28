@@ -129,9 +129,13 @@ export class WeakLinkAnalyzer {
     if (id === "row-v-grip" || id === "row-cable" || id === "row-chest-supported") {
       return { pattern: "row", scale: 1.0, estimated: false, priority: 2 };
     }
+    if (id === "row-single-cable") {
+      return { pattern: "row", scale: 2.0, estimated: true, priority: 2 };
+    }
     if (fam === "horizontal-row") {
       const perHand = def?.recording.loadMode === "per_implement";
-      return { pattern: "row", scale: perHand ? 2.0 : 1.0, estimated: true, priority: 1 };
+      const unilateral = def?.recording.laterality === "unilateral";
+      return { pattern: "row", scale: perHand || unilateral ? 2.0 : 1.0, estimated: true, priority: 1 };
     }
 
     // 3. Жим стоя
@@ -173,7 +177,7 @@ export class WeakLinkAnalyzer {
   }
 
   /** Считает эффективный e1RM подхода с учётом веса тела для подтягиваний. */
-  private effectiveSetE1rm(entry: WorkoutExercise, weight: number, reps: number): number {
+  private effectiveSetE1rm(entry: WorkoutExercise, weight: number, reps: number, assistanceKg?: number): number {
     const def = exerciseForEntry(entry);
     const loadMode = def?.recording.loadMode;
     let totalLoad = weight;
@@ -182,7 +186,8 @@ export class WeakLinkAnalyzer {
     } else if (loadMode === "added_bodyweight") {
       totalLoad = this.bodyMassKg + Math.max(0, weight);
     } else if (loadMode === "assisted_bodyweight") {
-      totalLoad = Math.max(15, this.bodyMassKg - Math.max(0, weight));
+      const assist = typeof assistanceKg === "number" && Number.isFinite(assistanceKg) ? assistanceKg : weight;
+      totalLoad = Math.max(15, this.bodyMassKg - Math.max(0, assist));
     }
     if (totalLoad <= 0 || reps < 1 || reps > 15) return 0;
     return OneRepMaxFormulas.round(OneRepMaxFormulas.epley(totalLoad, reps));
@@ -191,6 +196,7 @@ export class WeakLinkAnalyzer {
   private extractPatterns(): Record<PatternKey, PatternBest> {
     const eligible = new AnalyticsFacts([...this.workouts], {
       now: this.now,
+      through: this.today,
       timeZone: this.timeZone,
     }).workouts();
 
@@ -209,7 +215,7 @@ export class WeakLinkAnalyzer {
         let entryBest = 0;
         for (const s of entry.sets) {
           if (!s.done || s.warmup) continue;
-          const raw = this.effectiveSetE1rm(entry, s.weight, s.reps);
+          const raw = this.effectiveSetE1rm(entry, s.weight, s.reps, s.assistanceKg);
           const scaled = raw * match.scale;
           if (scaled > entryBest) entryBest = scaled;
         }

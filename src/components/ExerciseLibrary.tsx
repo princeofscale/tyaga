@@ -131,6 +131,7 @@ function equipmentLabel(eq: Exercise["equipment"]): string {
 
 function LibraryContent({
   picker = false,
+  accountId,
   onAdd,
   onDetail,
   selectedIds = [],
@@ -147,6 +148,7 @@ function LibraryContent({
   workouts = [],
 }: {
   picker?: boolean;
+  accountId?: string;
   onAdd: (id: string) => void;
   onDetail: (id: string) => void;
   selectedIds?: string[];
@@ -447,7 +449,7 @@ function LibraryContent({
       </div>
       {agentOpen ? (
         <Modal title="ИИ-агент разметки мышц" onClose={() => setAgentOpen(false)}>
-          <BiomechanicalAgentPanel initialQuery={search} />
+          <BiomechanicalAgentPanel accountId={accountId} initialQuery={search} />
         </Modal>
       ) : null}
 

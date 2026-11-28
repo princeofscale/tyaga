@@ -99,6 +99,9 @@ export class BodyweightJournal {
       setItem: (key, value) => this.write(key, JSON.parse(value)),
     });
   }
+  setTimeZone(timeZone: string) {
+    this.tracker.setTimeZone(timeZone);
+  }
   private static queues = new Map<string, Promise<unknown>>();
   /** Lock only short cache transactions; a network request never delays local input. */
   async change<T>(action: () => T): Promise<T> {

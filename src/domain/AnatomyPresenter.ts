@@ -18,7 +18,12 @@ const PARTS: Record<string, Omit<AnatomyPart, "slug">> = {
   chest: {
     name: "Грудные",
     zone: "chest",
-    muscles: ["pectoralis-major"],
+    muscles: [
+      "pectoralis-major",
+      "pectoralis-clavicular",
+      "pectoralis-sternal",
+      "pectoralis-abdominal",
+    ],
     wgerIds: [4],
   },
   "chest-upper": {
@@ -184,7 +189,7 @@ export class AnatomyPresenter {
   ) {}
   part(
     slug: string,
-    side: "front" | "back" = "front",
+    side: "front" | "back" | "all" = "front",
   ): AnatomyPart | undefined {
     const data = PARTS[slug];
     if (!data) return;
@@ -192,7 +197,7 @@ export class AnatomyPresenter {
       slug,
       ...data,
       muscles:
-        slug === "deltoids"
+        slug === "deltoids" && side !== "all"
           ? side === "front"
             ? ["deltoid-anterior", "deltoid-middle"]
             : ["deltoid-posterior", "deltoid-middle"]

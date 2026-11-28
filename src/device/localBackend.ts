@@ -75,6 +75,7 @@ export async function installLocalBackend() {
       .then(() => store("readwrite", (f) => f.put(bytes, "db")))
       .then(() => undefined)
       .catch((e) => {
+        dirty = true;
         console.error("Failed to persist device database", e);
       });
     return writing;
@@ -163,5 +164,26 @@ export async function installLocalBackend() {
     deleteState("credentials");
     dirty = true;
     await persistNow();
+  } else {
+    // Локальная офлайн-сессия истекла после долгого перерыва: выпускаем новую для единственного профиля устройства.
+    const accountId = scalar(db, "SELECT id FROM accounts WHERE platform_id = 'device'") as string | null;
+    if (accountId) {
+      const hex = (bytes: ArrayBuffer | Uint8Array) =>
+        [...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, "0")).join("");
+      const sha256 = async (v: string) => hex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(v)));
+      const token = hex(crypto.getRandomValues(new Uint8Array(32)));
+      const tokenHash = await sha256(token);
+      const sid = (await sha256(`sid:${tokenHash}`)).slice(0, 16);
+      const now = Date.now();
+      const ua = (typeof navigator !== "undefined" ? navigator.userAgent : "").slice(0, 200);
+      db.run("DELETE FROM sessions WHERE expires_at <= ?", [now]);
+      db.run(
+        "INSERT INTO sessions (token_hash,id,account_id,user_agent,last_seen_at,expires_at,created_at) VALUES (?,?,?,?,?,?,?)",
+        [tokenHash, sid, accountId, ua, now, now + 30 * 86_400_000, now],
+      );
+      setState("session", token);
+      dirty = true;
+      await persistNow();
+    }
   }
 }

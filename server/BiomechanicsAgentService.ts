@@ -1,6 +1,7 @@
 import { BiomechanicalMuscleAgent } from "../src/domain/BiomechanicalMuscleAgent";
 import { BiomechanicalVerifier } from "../src/domain/BiomechanicalVerifier";
 import { KinematicMuscleSolver } from "../src/domain/KinematicMuscleSolver";
+import { InputError, object } from "./validation";
 import {
   SOLVER_VERSION_V4,
   TYAGA_V4_JSON_SCHEMA,
@@ -10,6 +11,7 @@ import {
   type ClarifyingParam,
   type JointActionKey,
   type KinematicDescriptor,
+  type SolverOutput,
 } from "../src/domain/KinematicTypesV4";
 
 export interface AgentProviderEnv {
@@ -77,6 +79,34 @@ function normalizeAlias(text: string, brandHint?: string): string {
     .slice(0, 140);
 }
 
+function validateDescriptorInput(raw: unknown): KinematicDescriptor {
+  const d = object(raw);
+  const actions = object(d.actions);
+  const geometry = object(d.geometry);
+  const profile = object(d.profile);
+  for (const val of Object.values(actions)) {
+    if (val !== undefined && (typeof val !== "number" || !Number.isFinite(val) || val < 0 || val > 1)) {
+      throw new InputError("Некорректные веса суставных действий");
+    }
+  }
+  for (const k of ["benchAngleDeg", "shoulderPlaneDeg", "torsoAngleDeg", "shoulderFlexionDeg", "hipFlexionDeg", "kneeFlexionDeg"]) {
+    const v = geometry[k];
+    if (typeof v !== "number" || !Number.isFinite(v)) {
+      throw new InputError(`Некорректный параметр геометрии: ${k}`);
+    }
+  }
+  if (typeof profile.supportType !== "string" || typeof profile.implement !== "string") {
+    throw new InputError("Некорректный профиль опоры или снаряда");
+  }
+  return d as unknown as KinematicDescriptor;
+}
+
+type ExtractionBundle = {
+  response: AgentResolveResponse;
+  baseDescriptor: KinematicDescriptor;
+  baseSolved: SolverOutput;
+};
+
 /**
  * Серверный ООП-сервис ИИ-агента биомеханической разметки мышц «Тяга v4» (Cloudflare Worker + D1).
  * Реализует каскад: Tier 1 (D1-кэш) -> Tier 2 (LLM/VLM Structured Output + 1 ретрай при hard_reject_retry) ->
@@ -132,8 +162,8 @@ export class BiomechanicsAgentService {
     if (this.providerEnv.OPENAI_API_KEY) {
       const llmRes = await this.tryLlmExtraction(queryText, req, t0);
       if (llmRes) {
-        await this.persistCache(alias, req.machineBrandHint, llmRes);
-        return llmRes;
+        await this.persistCache(alias, req.machineBrandHint, llmRes.response, llmRes.baseDescriptor, llmRes.baseSolved);
+        return llmRes.response;
       }
     }
 
@@ -141,8 +171,8 @@ export class BiomechanicsAgentService {
     if (this.providerEnv.AI) {
       const cfRes = await this.tryWorkersAiExtraction(queryText, req, t0);
       if (cfRes) {
-        await this.persistCache(alias, req.machineBrandHint, cfRes);
-        return cfRes;
+        await this.persistCache(alias, req.machineBrandHint, cfRes.response, cfRes.baseDescriptor, cfRes.baseSolved);
+        return cfRes.response;
       }
     }
 
@@ -156,8 +186,9 @@ export class BiomechanicsAgentService {
     updatedDescriptor: KinematicDescriptor;
     executionPatch?: Record<string, unknown>;
   }) {
-    const raw = this.solver.solveKinematics(body.updatedDescriptor);
-    const verified = this.verifier.verifyAndCorrect(body.updatedDescriptor, raw);
+    const updatedDescriptor = validateDescriptorInput(body.updatedDescriptor);
+    const raw = this.solver.solveKinematics(updatedDescriptor);
+    const verified = this.verifier.verifyAndCorrect(updatedDescriptor, raw);
     if (!verified.passed) {
       return { ok: false, verification: verified };
     }
@@ -176,7 +207,7 @@ export class BiomechanicsAgentService {
           this.userId,
           body.canonicalSlug,
           body.executionPatch ? JSON.stringify(body.executionPatch) : null,
-          JSON.stringify(body.updatedDescriptor),
+          JSON.stringify(updatedDescriptor),
           now,
         )
         .run();
@@ -199,18 +230,42 @@ export class BiomechanicsAgentService {
     proposedDescriptor?: KinematicDescriptor;
     manualMuscleJson?: Record<string, unknown>;
   }) {
+    const proposed =
+      body.proposedDescriptor !== undefined ? validateDescriptorInput(body.proposedDescriptor) : undefined;
     const now = Date.now();
     try {
+      await this.db
+        .prepare(
+          `CREATE TABLE IF NOT EXISTS exercise_hitl_votes (
+             user_id TEXT NOT NULL,
+             canonical_slug TEXT NOT NULL,
+             created_at INTEGER NOT NULL,
+             PRIMARY KEY (user_id, canonical_slug)
+           )`,
+        )
+        .run();
+      const voteRes = await this.db
+        .prepare(
+          `INSERT INTO exercise_hitl_votes (user_id, canonical_slug, created_at)
+           VALUES (?1, ?2, ?3) ON CONFLICT(user_id, canonical_slug) DO NOTHING`,
+        )
+        .bind(this.userId, body.canonicalSlug, now)
+        .run();
+      const isNewVote = (voteRes?.meta?.changes ?? 1) > 0;
+
       const existing = await this.db
         .prepare(
-          `SELECT id, consensus_count FROM exercise_hitl_queue
+          `SELECT id, consensus_count, status FROM exercise_hitl_queue
            WHERE canonical_slug = ?1 AND status IN ('open','ready_for_review')
            ORDER BY id DESC LIMIT 1`,
         )
         .bind(body.canonicalSlug)
-        .first<{ id: number; consensus_count: number }>();
+        .first<{ id: number; consensus_count: number; status: "open" | "ready_for_review" }>();
 
       if (existing) {
+        if (!isNewVote) {
+          return { ok: true, consensusCount: existing.consensus_count, status: existing.status };
+        }
         const nextCount = existing.consensus_count + 1;
         const nextStatus = nextCount >= 3 ? "ready_for_review" : "open";
         await this.db
@@ -222,13 +277,13 @@ export class BiomechanicsAgentService {
         return { ok: true, consensusCount: nextCount, status: nextStatus };
       }
 
-      if (body.proposedDescriptor) {
+      if (proposed) {
         await this.db
           .prepare(
             `INSERT INTO exercise_hitl_queue (canonical_slug, reason, proposed_desc_json, consensus_count, status, created_at, updated_at)
              VALUES (?1, 'user_consensus', ?2, 1, 'open', ?3, ?3)`,
           )
-          .bind(body.canonicalSlug, JSON.stringify(body.proposedDescriptor), now)
+          .bind(body.canonicalSlug, JSON.stringify(proposed), now)
           .run();
       }
     } catch {
@@ -293,8 +348,8 @@ export class BiomechanicsAgentService {
         }>();
       if (!row) return null;
       await this.db
-        .prepare(`UPDATE exercise_canonical_cache SET hit_count = hit_count + 1, updated_at = ?1 WHERE canonical_slug = ?2`)
-        .bind(Date.now(), row.canonical_slug)
+        .prepare(`UPDATE exercise_canonical_cache SET hit_count = hit_count + 1 WHERE canonical_slug = ?1`)
+        .bind(row.canonical_slug)
         .run();
       return {
         canonicalSlug: row.canonical_slug,
@@ -307,7 +362,13 @@ export class BiomechanicsAgentService {
     }
   }
 
-  private async persistCache(alias: string, brandHint: string | undefined, res: AgentResolveResponse) {
+  private async persistCache(
+    alias: string,
+    brandHint: string | undefined,
+    res: AgentResolveResponse,
+    baseDescriptor: KinematicDescriptor,
+    baseSolved: SolverOutput,
+  ) {
     const now = Date.now();
     try {
       await this.db
@@ -325,8 +386,8 @@ export class BiomechanicsAgentService {
           res.displayName,
           res.displayName,
           alias,
-          JSON.stringify(res.descriptor),
-          JSON.stringify(res.solved),
+          JSON.stringify(baseDescriptor),
+          JSON.stringify(baseSolved),
           SOLVER_VERSION_V4,
           res.source === "vlm_v4" ? "vlm_v4" : "llm_v4",
           res.modelUsed ?? null,
@@ -352,7 +413,7 @@ export class BiomechanicsAgentService {
     queryText: string,
     req: AgentResolveRequest,
     t0: number,
-  ): Promise<AgentResolveResponse | null> {
+  ): Promise<ExtractionBundle | null> {
     const apiKey = this.providerEnv.OPENAI_API_KEY;
     if (!apiKey) return null;
 
@@ -419,31 +480,36 @@ export class BiomechanicsAgentService {
           geometry: extracted.geometry,
           profile: extracted.profile,
         };
+        const baseSolved = this.verifier.verifyAndCorrect(baseDesc, this.solver.solveKinematics(baseDesc));
         const descriptor = KinematicMuscleSolver.applyExecutionProfile(baseDesc, req.executionProfile);
         const raw = this.solver.solveKinematics(descriptor);
         const verified = this.verifier.verifyAndCorrect(descriptor, raw);
 
         if (verified.passed) {
           return {
-            canonicalSlug: extracted.canonicalSlug,
-            displayName: req.locale === "en" ? extracted.displayNameEn : extracted.displayNameRu,
-            rationale: extracted.rationale,
-            source: req.imageBase64 ? "vlm_v4" : "llm_v4",
-            modelUsed: model,
-            confidence: extracted.confidence,
-            descriptor,
-            solved: verified.correctedResult,
-            verification: {
-              passed: verified.passed,
-              status: verified.status,
-              violations: verified.violations,
+            baseDescriptor: baseDesc,
+            baseSolved: baseSolved.correctedResult,
+            response: {
+              canonicalSlug: extracted.canonicalSlug,
+              displayName: req.locale === "en" ? extracted.displayNameEn : extracted.displayNameRu,
+              rationale: extracted.rationale,
+              source: req.imageBase64 ? "vlm_v4" : "llm_v4",
+              modelUsed: model,
+              confidence: extracted.confidence,
+              descriptor,
+              solved: verified.correctedResult,
+              verification: {
+                passed: verified.passed,
+                status: verified.status,
+                violations: verified.violations,
+              },
+              clarifyingQuestions:
+                extracted.confidence < 0.8
+                  ? BiomechanicalMuscleAgent.buildClarifyingQuestions(extracted.missingParams)
+                  : [],
+              latencyMs: Date.now() - t0,
+              solverVersion: SOLVER_VERSION_V4,
             },
-            clarifyingQuestions:
-              extracted.confidence < 0.8
-                ? BiomechanicalMuscleAgent.buildClarifyingQuestions(extracted.missingParams)
-                : [],
-            latencyMs: Date.now() - t0,
-            solverVersion: SOLVER_VERSION_V4,
           };
         }
 
@@ -464,7 +530,7 @@ export class BiomechanicsAgentService {
     queryText: string,
     req: AgentResolveRequest,
     t0: number,
-  ): Promise<AgentResolveResponse | null> {
+  ): Promise<ExtractionBundle | null> {
     const ai = this.providerEnv.AI;
     if (!ai) return null;
 
@@ -524,31 +590,36 @@ export class BiomechanicsAgentService {
           geometry: extracted.geometry,
           profile: extracted.profile,
         };
+        const baseSolved = this.verifier.verifyAndCorrect(baseDesc, this.solver.solveKinematics(baseDesc));
         const descriptor = KinematicMuscleSolver.applyExecutionProfile(baseDesc, req.executionProfile);
         const rawSolved = this.solver.solveKinematics(descriptor);
         const verified = this.verifier.verifyAndCorrect(descriptor, rawSolved);
 
         if (verified.passed) {
           return {
-            canonicalSlug: extracted.canonicalSlug,
-            displayName: req.locale === "en" ? extracted.displayNameEn : extracted.displayNameRu,
-            rationale: extracted.rationale,
-            source: hasPhoto ? "vlm_v4" : "llm_v4",
-            modelUsed: model,
-            confidence: extracted.confidence,
-            descriptor,
-            solved: verified.correctedResult,
-            verification: {
-              passed: verified.passed,
-              status: verified.status,
-              violations: verified.violations,
+            baseDescriptor: baseDesc,
+            baseSolved: baseSolved.correctedResult,
+            response: {
+              canonicalSlug: extracted.canonicalSlug,
+              displayName: req.locale === "en" ? extracted.displayNameEn : extracted.displayNameRu,
+              rationale: extracted.rationale,
+              source: hasPhoto ? "vlm_v4" : "llm_v4",
+              modelUsed: model,
+              confidence: extracted.confidence,
+              descriptor,
+              solved: verified.correctedResult,
+              verification: {
+                passed: verified.passed,
+                status: verified.status,
+                violations: verified.violations,
+              },
+              clarifyingQuestions:
+                extracted.confidence < 0.8
+                  ? BiomechanicalMuscleAgent.buildClarifyingQuestions(extracted.missingParams)
+                  : [],
+              latencyMs: Date.now() - t0,
+              solverVersion: SOLVER_VERSION_V4,
             },
-            clarifyingQuestions:
-              extracted.confidence < 0.8
-                ? BiomechanicalMuscleAgent.buildClarifyingQuestions(extracted.missingParams)
-                : [],
-            latencyMs: Date.now() - t0,
-            solverVersion: SOLVER_VERSION_V4,
           };
         }
 

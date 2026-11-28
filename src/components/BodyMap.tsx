@@ -529,17 +529,18 @@ export default function BodyMap({
 
                       {part ? (
                         <title>
-                          {part.name}
-                          {exercise
-                            ? role
-                              ? " · " +
-                                {
-                                  primary: "движитель",
-                                  assistant: "помощь",
-                                  stabilizer: "стабилизация",
-                                }[role]
-                              : ""
-                            : ` · ${quantity(activity?.direct ?? 0, "прямой подход", "прямых подхода", "прямых подходов")}`}
+                          {`${part.name}${
+                            exercise
+                              ? role
+                                ? " · " +
+                                  {
+                                    primary: "движитель",
+                                    assistant: "помощь",
+                                    stabilizer: "стабилизация",
+                                  }[role]
+                                : ""
+                              : ` · ${quantity(activity?.direct ?? 0, "прямой подход", "прямых подхода", "прямых подходов")}`
+                          }`}
                         </title>
                       ) : null}
                     </g>
@@ -566,7 +567,7 @@ export default function BodyMap({
                   const p = presenter.part("chest", "front");
                   if (p) onPartSelect?.(p);
                 } else {
-                  const p = presenter.part("deltoids", "front");
+                  const p = presenter.part("deltoids", "all");
                   if (p) onPartSelect?.(p);
                 }
               }}

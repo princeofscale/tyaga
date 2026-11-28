@@ -158,9 +158,21 @@ export default function ProgramsScreen(props: Props) {
   const laidCopy = pendingNote !== "";
   /** Основной лифт программы Лейда: его подходы и веса считаются по неделе, плоской схемой не редактируются. */
   const laidLift = laidEdited
-    ? LaidDupPlan.liftExerciseId(LaidDupPlan.LIFT_OF[laidEdited.day], laidEdited.substitutions)
+    ? LaidDupPlan.liftExerciseId(
+        LaidDupPlan.liftForDay(laidEdited.day, laidEdited.version),
+        laidEdited.substitutions,
+        laidEdited.version,
+      )
     : null;
-  const laidPlan = editor && laidEdited ? LaidDupPlan.planFor(editor, today) : null;
+  const laidEditedCycle = editor && laidEdited ? LaidDupPlan.cycleOf(props.routines, editor) : [];
+  const laidPlan =
+    editor && laidEdited
+      ? LaidDupPlan.planFor(editor, today, {
+          workouts: props.workouts,
+          cycle: laidEditedCycle,
+          accountId: props.accountId,
+        })
+      : null;
   const open = (routine: Routine) => {
     setPendingNote("");
     setEditor(structuredClone(routine));
@@ -265,8 +277,7 @@ export default function ProgramsScreen(props: Props) {
     maxes: LaidMaxes,
     options?: { calibrationLifts?: LaidLift[]; painFlags?: LaidLift[] },
   ) {
-    const first = cycle[0].periodization!;
-    const position = LaidDupPlan.position(LaidDupPlan.weekOf(first.startMonday, today));
+    const { position } = LaidDupPlan.cycleState(cycle, props.workouts, today);
     const fromWeek = position.beforeStart ? 0 : position.week;
     const updated = LaidDupPlan.withSubstitutions(cycle, substitutions, {
       maxes,
@@ -310,7 +321,7 @@ export default function ProgramsScreen(props: Props) {
     const maxes = { ...first.maxes };
     for (const u of updates) maxes[u.lift] = u.toMax;
     const state = LaidDupPlan.cycleState(cycle, props.workouts, today);
-    const from = state.position.beforeStart ? 0 : state.position.week;
+    const from = state.position.beforeStart ? 0 : Math.min(state.totalWeeks - 1, state.position.week + 1);
     setBusy(true);
     setError("");
     setNotice("");
@@ -318,7 +329,7 @@ export default function ProgramsScreen(props: Props) {
       for (const r of cycle) {
         await props.onSave({ ...r, periodization: LaidDupPlan.withMaxes(r.periodization!, maxes, from) });
       }
-      setNotice(`TM обновлён по топ-сетам DUP v2 (с недели ${from + 1}).`);
+      setNotice(`TM обновлён по топ-сетам DUP ${first.version ?? "v2"} (с недели ${from + 1}).`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось обновить TM");
     } finally {
@@ -390,7 +401,13 @@ export default function ProgramsScreen(props: Props) {
     setBusy(true);
     setError("");
     try {
-      const upgraded = LaidDupPlan.upgradeCycleToV3(cycle);
+      const first = cycle[0]?.periodization;
+      const oldWeek = first ? LaidDupPlan.weekOf(first.startMonday, today) : 0;
+      const freshStart =
+        !first || oldWeek >= LaidDupPlan.V3_WEEKS
+          ? LaidDupPlan.startMonday(today, "this")
+          : undefined;
+      const upgraded = LaidDupPlan.upgradeCycleToV3(cycle, freshStart);
       await replaceRoutinesBatch(cycle, upgraded);
       setNotice(
         "Цикл обновлён до «DUP v3 · Hypertrophy Max»: 5 дней (PPL + Upper/Lower), 5+1 нед., 14 сетов груди, 8 сред. дельты и авторегуляция топ-сета.",
@@ -403,27 +420,39 @@ export default function ProgramsScreen(props: Props) {
   }
 
   const liveEnergyStatus: EnergyStatus = useMemo(() => {
-    if (!props.accountId) return "optimal_surplus";
+    if (!props.accountId) return "unknown";
     try {
       const store = new NutritionStore(props.accountId);
-      const saved = store.readRaw();
-      if (!saved) return "optimal_surplus";
-      const tracker = new BodyweightTracker(props.accountId, props.timeZone);
+      const saved = store.readRaw(today);
+      const tracker = BodyweightTracker.fromSyncedCache(props.accountId, props.timeZone);
       const entries = tracker.getEntries();
       const stats = tracker.getStats();
-      const eng = new AdaptiveNutritionEngine();
-      const tdee = eng.tdeeEstimator.estimateTdee(
-        { ...saved.profile, weightKg: stats?.currentKg ?? saved.profile.weightKg },
-        entries,
-        saved.logs,
-        saved.goalMode,
-        today,
-        saved.creatineStartDate,
-      );
-      const bridged = eng.energyBridge.deriveEnergyStatus(tdee, saved.lastEnergyStatus);
-      return bridged.energyStatus === "unknown" ? "optimal_surplus" : bridged.energyStatus;
+      if (saved && (saved.logs.length > 0 || entries.length > 0)) {
+        const eng = new AdaptiveNutritionEngine();
+        const tdee = eng.tdeeEstimator.estimateTdee(
+          { ...saved.profile, weightKg: stats?.currentKg ?? saved.profile.weightKg },
+          entries,
+          saved.logs,
+          saved.goalMode,
+          today,
+          saved.creatineStartDate,
+        );
+        const bridged = eng.energyBridge.deriveEnergyStatus(tdee, saved.lastEnergyStatus);
+        if (bridged.energyStatus !== "unknown") return bridged.energyStatus;
+      }
+      const verdict = tracker.getNeatVerdict(today);
+      if (verdict.ratePctPerWeek !== null) {
+        return verdict.ratePctPerWeek <= -0.20
+          ? "deficit"
+          : verdict.ratePctPerWeek < 0.12
+            ? "maintenance"
+            : verdict.ratePctPerWeek < 0.50
+              ? "optimal_surplus"
+              : "high_surplus";
+      }
+      return "unknown";
     } catch {
-      return "optimal_surplus";
+      return "unknown";
     }
   }, [props.accountId, props.timeZone, today]);
 
@@ -629,6 +658,7 @@ export default function ProgramsScreen(props: Props) {
               cycle={cycle}
               workouts={props.workouts}
               today={today}
+              accountId={props.accountId}
               busy={busy}
               onSchedule={() => setSchedule(plan.cycleId)}
               onEditDays={() => setWeekEditor(plan.cycleId)}
@@ -838,6 +868,7 @@ export default function ProgramsScreen(props: Props) {
           cycle={cycleById(schedule)}
           workouts={props.workouts}
           today={today}
+          accountId={props.accountId}
           busy={busy}
           onClose={() => setSchedule(null)}
           onEditDays={() => {
@@ -852,9 +883,10 @@ export default function ProgramsScreen(props: Props) {
           }}
           onUpdate={() => {
             const cycle = cycleById(schedule);
+            const state = LaidDupPlan.cycleState(cycle, props.workouts, today);
             setSchedule(null);
             setLaid({
-              mode: LaidDupPlan.position(LaidDupPlan.weekOf(cycle[0].periodization!.startMonday, today)).finished ? "restart" : "update",
+              mode: state.position.finished ? "restart" : "update",
               cycleId: cycle[0].periodization!.cycleId,
             });
           }}
@@ -866,6 +898,7 @@ export default function ProgramsScreen(props: Props) {
           cycle={cycleById(weekEditor)}
           allRoutines={props.routines}
           today={today}
+          accountId={props.accountId}
           onSave={(weekdays) => saveLaidWeekdays(cycleById(weekEditor), weekdays)}
           onClose={() => setWeekEditor(null)}
         />
@@ -892,7 +925,7 @@ export default function ProgramsScreen(props: Props) {
           props.timeZone,
           today,
           undefined,
-          cycle ? { cycle } : undefined,
+          { ...(cycle ? { cycle } : {}), accountId: props.accountId },
         );
         return (
           <Modal
@@ -909,6 +942,7 @@ export default function ProgramsScreen(props: Props) {
                 history={props.workouts}
                 today={today}
                 timeZone={props.timeZone}
+                accountId={props.accountId}
                 selectedMuscle={previewMuscle}
                 onSelectMuscle={setPreviewMuscle}
               />
@@ -1433,9 +1467,13 @@ export default function ProgramsScreen(props: Props) {
             const nextExercises = editor.exercises.map((e, i) => (i === swapIndex ? nextEntry : e));
             let nextPeriodization = editor.periodization;
             if (laidEdited) {
-              const origLift = LaidDupPlan.LIFT_EXERCISE[LaidDupPlan.LIFT_OF[laidEdited.day]];
-              const currentLift = LaidDupPlan.liftExerciseId(LaidDupPlan.LIFT_OF[laidEdited.day], laidEdited.substitutions);
-              if (target.exerciseId === currentLift) {
+              const dayLift = LaidDupPlan.liftForDay(laidEdited.day, laidEdited.version);
+              const origLift =
+                laidEdited.version === "v3" && laidEdited.day === "legs2"
+                  ? "rdl"
+                  : LaidDupPlan.baseLiftExerciseId(dayLift, laidEdited.version);
+              const currentLift = LaidDupPlan.liftExerciseId(dayLift, laidEdited.substitutions, laidEdited.version);
+              if (target.exerciseId === currentLift || (laidEdited.version === "v3" && laidEdited.day === "legs2" && target.exerciseId === (laidEdited.substitutions?.rdl || "rdl"))) {
                 const merged = LaidDupPlan.normalizeSubstitutions({
                   ...(laidEdited.substitutions ?? {}),
                   [origLift]: nextEx.id,
@@ -1459,6 +1497,7 @@ export default function ProgramsScreen(props: Props) {
           <Suspense fallback={<p>Открываем библиотеку…</p>}>
             <ExerciseLibrary
               picker
+              accountId={props.accountId}
               personal={props.personal}
               favorites={props.favorites}
               onFavorite={props.onFavorite}

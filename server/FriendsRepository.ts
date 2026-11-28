@@ -223,7 +223,7 @@ export class FriendsRepository {
       throw new AuthError("Входящая заявка не найдена. Обнови список.", 404);
   }
 
-  /** Atomically revokes the pair and its mutual reactions. */
+  /** Atomically revokes the pair, mutual reactions and shared program memberships. */
   async remove(otherId: string) {
     const [low, high] = [this.account.id, otherId].sort();
     await this.db.batch([
@@ -238,6 +238,18 @@ export class FriendsRepository {
         .prepare("DELETE FROM friendships WHERE low_id = ? AND high_id = ?")
         .bind(low, high),
     ]);
+    try {
+      await this.db
+        .prepare(
+          `DELETE FROM shared_program_members
+           WHERE (account_id = ? AND program_id IN (SELECT id FROM shared_programs WHERE owner_id = ?))
+              OR (account_id = ? AND program_id IN (SELECT id FROM shared_programs WHERE owner_id = ?))`,
+        )
+        .bind(otherId, this.account.id, this.account.id, otherId)
+        .run();
+    } catch {
+      // Таблицы shared_programs создаются лениво при первом обращении.
+    }
   }
 
   /** Persists an explicit check-in with a server-owned two-hour expiry. */
